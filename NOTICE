@@ -1,0 +1,9 @@
+Hi Player (Ultra HD Video & Hi-Fi Audio Player for Android)
+Copyright 2024-2026 The Hi Player Authors. All rights reserved.
+
+This product includes software developed by:
+- The Android Open Source Project (https://source.android.com/)
+- Google LLC (Media3 ExoPlayer, Jetpack Compose, Material 3, Room, AndroidX)
+- JetBrains s.r.o. (Kotlin, Kotlin Coroutines, Kotlinx Serialization)
+- Coil Contributors (https://coil-kt.github.io/coil/)
+- Square, Inc. (OkHttp, Retrofit, Moshi)
