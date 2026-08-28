@@ -256,46 +256,64 @@ fun SubtitleSettingsBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(140.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(subtitleTracks) { track ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (track.isSelected) Color(0x3300E5FF) else HiSurfaceElevated)
-                            .clickable { onSelectTrack(track) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+            if (subtitleTracks.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(HiSurfaceElevated)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No embedded captions were detected. You can load an external subtitle file above.",
+                        color = HiTextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(subtitleTracks) { track ->
                         Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (track.isSelected) Color(0x3300E5FF) else HiSurfaceElevated)
+                                .clickable { onSelectTrack(track) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ClosedCaption,
-                                contentDescription = null,
-                                tint = if (track.isSelected) HiPrimaryCyan else HiTextSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = track.label,
-                                fontSize = 13.sp,
-                                fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (track.isSelected) HiPrimaryCyan else HiTextPrimary
-                            )
-                        }
-                        if (track.isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = HiPrimaryCyan,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ClosedCaption,
+                                    contentDescription = null,
+                                    tint = if (track.isSelected) HiPrimaryCyan else HiTextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = track.label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (track.isSelected) HiPrimaryCyan else HiTextPrimary
+                                )
+                            }
+                            if (track.isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = HiPrimaryCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

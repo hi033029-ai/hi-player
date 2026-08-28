@@ -24,7 +24,11 @@ data class VideoTrackInfo(
     val language: String?,
     val mimeType: String?,
     val isSelected: Boolean,
+    /** Media3 track type (for example, text or image captions). */
+    val trackType: Int,
+    /** Index in Player.currentTracks.groups. */
     val trackGroupIndex: Int,
+    /** Index inside [trackGroupIndex]. */
     val trackIndex: Int
 )
 

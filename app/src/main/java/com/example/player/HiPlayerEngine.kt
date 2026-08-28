@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -87,6 +88,10 @@ class HiPlayerEngine(
 
     private val _hdrEnhanceActive = MutableStateFlow(false)
     val hdrEnhanceActive = _hdrEnhanceActive.asStateFlow()
+
+    /** True when the video decoder reports an HDR transfer function (HLG/PQ). */
+    private val _isHdrContent = MutableStateFlow(false)
+    val isHdrContent = _isHdrContent.asStateFlow()
 
     /**
      * Real-time picture boost applied directly to the decoded video frames
@@ -263,6 +268,11 @@ class HiPlayerEngine(
             if (playbackState == Player.STATE_READY) {
                 _durationMs.value = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
                 _playerError.value = null
+                // Some containers publish their caption tracks only once they are
+                // prepared. Refresh here as well as in onTracksChanged so the CC
+                // sheet never opens with a stale or empty list.
+                updateAvailableTracks(exoPlayer?.currentTracks)
+                updateVideoOutputInfo()
                 updateTelemetry()
             } else if (playbackState == Player.STATE_ENDED) {
                 onVideoEnded?.invoke()
@@ -278,6 +288,7 @@ class HiPlayerEngine(
 
         override fun onTracksChanged(tracks: Tracks) {
             updateAvailableTracks(tracks)
+            updateVideoOutputInfo()
             updateTelemetry()
         }
 
@@ -454,6 +465,12 @@ class HiPlayerEngine(
         externalSubtitleMimeType: String? = null
     ) {
         _playerError.value = null
+        // Do not show caption tracks from a previously played film while this
+        // item is still being prepared. Fresh tracks are published on
+        // onTracksChanged/STATE_READY.
+        _availableAudioTracks.value = emptyList()
+        _availableSubtitleTracks.value = emptyList()
+        _isHdrContent.value = false
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
 
         if (externalSubtitleUri != null) {
@@ -569,19 +586,24 @@ class HiPlayerEngine(
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
         val selector = trackSelector ?: return
         if (track == null) {
-            // Disable subtitles
+            // Captions in movie files are commonly text (SRT/ASS/WebVTT), but
+            // Blu-ray PGS/VobSub captions can be reported as image tracks.
+            // Disable both when the user selects "Subtitles Off".
             selector.parameters = selector.parameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, true)
                 .build()
         } else {
             val currentTracks = exoPlayer?.currentTracks ?: return
             for ((groupIndex, group) in currentTracks.groups.withIndex()) {
-                if (group.type == C.TRACK_TYPE_TEXT && groupIndex == track.trackGroupIndex) {
+                if (group.type == track.trackType && groupIndex == track.trackGroupIndex) {
                     val mediaTrackGroup = group.mediaTrackGroup
                     if (mediaTrackGroup.length > track.trackIndex) {
                         val override = TrackSelectionOverride(mediaTrackGroup, listOf(track.trackIndex))
                         selector.parameters = selector.parameters.buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            // Only one caption type should be active at a time.
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, track.trackType != C.TRACK_TYPE_TEXT)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, track.trackType != C.TRACK_TYPE_IMAGE)
                             .setOverrideForType(override)
                             .build()
                     }
@@ -589,7 +611,13 @@ class HiPlayerEngine(
                 }
             }
         }
+        refreshAvailableTracks()
+    }
+
+    /** Re-reads Media3's current track groups for a newly opened CC panel. */
+    fun refreshAvailableTracks() {
         updateAvailableTracks(exoPlayer?.currentTracks)
+        updateVideoOutputInfo()
     }
 
     private fun updateAvailableTracks(tracks: Tracks?) {
@@ -621,12 +649,13 @@ class HiPlayerEngine(
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
+                            trackType = group.type,
                             trackGroupIndex = groupIndex,
                             trackIndex = trackIndex
                         )
                     )
                 }
-            } else if (group.type == C.TRACK_TYPE_TEXT) {
+            } else if (group.type == C.TRACK_TYPE_TEXT || group.type == C.TRACK_TYPE_IMAGE) {
                 for (trackIndex in 0 until mediaTrackGroup.length) {
                     val format = mediaTrackGroup.getFormat(trackIndex)
                     val label = format.label ?: format.language ?: "Subtitle ${subtitleList.size + 1}"
@@ -639,6 +668,7 @@ class HiPlayerEngine(
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
+                            trackType = group.type,
                             trackGroupIndex = groupIndex,
                             trackIndex = trackIndex
                         )
@@ -649,6 +679,10 @@ class HiPlayerEngine(
 
         _availableAudioTracks.value = audioList
         _availableSubtitleTracks.value = subtitleList
+    }
+
+    private fun updateVideoOutputInfo() {
+        _isHdrContent.value = ColorInfo.isTransferHdr(exoPlayer?.videoFormat?.colorInfo)
     }
 
     private fun updateTelemetry() {

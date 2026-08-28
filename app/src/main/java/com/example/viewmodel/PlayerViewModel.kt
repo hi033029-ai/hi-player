@@ -21,6 +21,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -66,6 +68,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         .map { it.tmdbApiKey }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
+    /** Whether SDR playback may request a wide-gamut output surface. */
+    val wideColorGamutEnabled = preferencesRepo.settingsFlow
+        .map { it.enableWideColorGamut }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     private val _activeSheet = MutableStateFlow(ActiveSheet.NONE)
     val activeSheet = _activeSheet.asStateFlow()
 
@@ -104,6 +111,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     init {
         HiMediaSessionService.sharedPlayer = engine.getPlayer()
         startProgressSync()
+
+        // The app-level HDR setting previously only changed DataStore. Observe
+        // it here so a change takes effect immediately while a video is open.
+        viewModelScope.launch {
+            preferencesRepo.settingsFlow
+                .map { it.enableHdrEnhance }
+                .distinctUntilChanged()
+                .collect { enabled -> engine.setHdrEnhanceActive(enabled) }
+        }
     }
 
     fun playVideo(video: VideoItem, startPositionOverride: Long? = null) {
@@ -117,6 +133,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 remuxUltraBuffer = settings.remuxUltraBufferMode,
                 tunneling = settings.enableTunneling
             )
+            // applyConfiguration creates a fresh ExoPlayer, so reapply the
+            // persisted picture mode to the replacement instance.
+            engine.setHdrEnhanceActive(settings.enableHdrEnhance)
+            HiMediaSessionService.sharedPlayer = engine.getPlayer()
 
             val record = videoDao.getVideoRecord(video.uri.toString())
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
@@ -271,6 +291,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         engine.selectSubtitleTrack(track)
     }
 
+    fun refreshCaptionTracks() {
+        engine.refreshAvailableTracks()
+    }
+
     fun setAudioDelay(ms: Long) {
         engine.setAudioDelay(ms)
     }
@@ -282,7 +306,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val hdrEnhanceActive = engine.hdrEnhanceActive
 
     fun toggleHdrEnhance() {
-        engine.setHdrEnhanceActive(!engine.hdrEnhanceActive.value)
+        val enabled = !engine.hdrEnhanceActive.value
+        engine.setHdrEnhanceActive(enabled)
+        // Keep the in-player HDR control and the app Settings switch in sync.
+        // A later player recreation must not silently revert the user's choice.
+        viewModelScope.launch {
+            preferencesRepo.setHdrEnhance(enabled)
+        }
     }
 
     fun loadExternalSubtitle(uri: Uri) {

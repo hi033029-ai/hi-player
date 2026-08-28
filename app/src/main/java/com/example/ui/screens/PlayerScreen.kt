@@ -124,6 +124,8 @@ fun PlayerScreen(
     val videoScale by playerViewModel.videoScale.collectAsState()
     val subtitleStyle by playerViewModel.subtitleStyle.collectAsState()
     val hdrEnhanceActive by playerViewModel.hdrEnhanceActive.collectAsState()
+    val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
+    val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
 
     // HUD States
@@ -159,19 +161,20 @@ fun PlayerScreen(
         activity?.requestedOrientation = screenOrientation
     }
 
-    // Keep screen on during playback, enable Wide Color Gamut (BT.2020 / HDR),
-    // and boost screen brightness while the player is open. Many videos -
-    // especially HDR-mastered content viewed on a non-HDR-calibrated screen -
-    // look noticeably dark at the phone's normal brightness; bumping the
-    // window's brightness to max while watching (and restoring the system
-    // default on exit) is the standard fix most video players use for this.
-    DisposableEffect(Unit) {
+    // Keep screen on and restore the display state the activity had before
+    // playback. Color mode updates themselves live in the LaunchedEffect below
+    // so the original mode is not accidentally recaptured on every track or
+    // settings update.
+    DisposableEffect(activity) {
         val window = activity?.window
         val originalBrightness = window?.attributes?.screenBrightness
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            window?.colorMode = ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
+        val originalColorMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            window?.colorMode
+        } else {
+            null
         }
+
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window?.let { w ->
             val lp = w.attributes
             lp.screenBrightness = 1.0f
@@ -180,12 +183,26 @@ fun PlayerScreen(
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                window?.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
+                window?.colorMode = originalColorMode ?: ActivityInfo.COLOR_MODE_DEFAULT
             }
             window?.let { w ->
                 val lp = w.attributes
                 lp.screenBrightness = originalBrightness ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 w.attributes = lp
+            }
+        }
+    }
+
+    // Wide gamut alone does not enable HDR output. On Android O+ an HDR stream
+    // needs COLOR_MODE_HDR, while SDR material can use wide gamut only when the
+    // user enabled that preference. Devices without an HDR-capable display
+    // safely fall back to their supported output mode.
+    LaunchedEffect(activity, isHdrContent, wideColorGamutEnabled) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            activity?.window?.colorMode = when {
+                isHdrContent -> ActivityInfo.COLOR_MODE_HDR
+                wideColorGamutEnabled -> ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
+                else -> ActivityInfo.COLOR_MODE_DEFAULT
             }
         }
     }
@@ -331,34 +348,14 @@ fun PlayerScreen(
             },
             onOpenPlaylist = { playerViewModel.openSheet(ActiveSheet.PLAYLIST_CHOOSER) },
             onToggleSubtitles = {
-                when {
-                    availableSubtitleTracks.isEmpty() -> {
-                        // No tracks loaded at all - open the sheet so the user can
-                        // load an external file or fetch one by URL.
-                        playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS)
-                    }
-                    availableSubtitleTracks.size == 1 -> {
-                        // Only one track: a plain on/off toggle is enough.
-                        val track = availableSubtitleTracks.first()
-                        playerViewModel.selectSubtitleTrack(if (track.isSelected) null else track)
-                    }
-                    else -> {
-                        // Multiple tracks: cycle Off -> Track 1 -> Track 2 -> ... -> Off
-                        // on each tap, so users can switch between subtitle languages
-                        // directly from the CC button instead of it just toggling on/off.
-                        val selectedIndex = availableSubtitleTracks.indexOfFirst { it.isSelected }
-                        val nextIndex = selectedIndex + 1
-                        if (nextIndex >= availableSubtitleTracks.size) {
-                            playerViewModel.selectSubtitleTrack(null)
-                        } else {
-                            playerViewModel.selectSubtitleTrack(availableSubtitleTracks[nextIndex])
-                        }
-                    }
-                }
+                // CC now opens the caption picker on a normal tap. Cycling tracks
+                // was undiscoverable and prevented users from seeing the embedded
+                // languages in a movie unless they knew to long-press the icon.
+                playerViewModel.refreshCaptionTracks()
+                playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS)
             },
             onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
-            onOpenSubtitleSettings = { playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS) },
             onOpenMoreOptions = { playerViewModel.openSheet(ActiveSheet.PLAYLIST_CHOOSER) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
             onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },

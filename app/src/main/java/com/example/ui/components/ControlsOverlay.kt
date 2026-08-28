@@ -4,10 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -83,7 +81,6 @@ import com.example.ui.theme.HiPrimaryCyan
 import com.example.util.MediaRating
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ControlsOverlay(
     isVisible: Boolean,
@@ -119,7 +116,6 @@ fun ControlsOverlay(
     onToggleSubtitles: () -> Unit,
     onOpenAudioSettings: () -> Unit,
     onOpenVideoSettings: () -> Unit,
-    onOpenSubtitleSettings: () -> Unit,
     onOpenMoreOptions: () -> Unit,
     onOpenTelemetry: () -> Unit,
     onCycleAspectRatio: () -> Unit,
@@ -523,15 +519,13 @@ fun ControlsOverlay(
                             testTag = "audio_tracks_button"
                         )
 
-                        // Subtitle (CC) Icon: Single tap toggles, long press opens panel
+                        // Subtitle (CC) Icon: Tap to view all embedded captions
+                        // and select the desired language/track.
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .combinedClickable(
-                                    onClick = onToggleSubtitles,
-                                    onLongClick = onOpenSubtitleSettings
-                                )
+                                .clickable(onClick = onToggleSubtitles)
                                 .padding(horizontal = 6.dp, vertical = 4.dp)
                                 .testTag("subtitles_cc_button")
                         ) {
@@ -584,7 +578,7 @@ fun ControlsOverlay(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "HDR",
+                            text = if (isHdrEnhanceActive) "HDR ON" else "HDR",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
