@@ -79,6 +79,7 @@ import com.example.R
 import com.example.data.AppThemeMode
 import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.LocalHiUiMetrics
 import com.example.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -92,6 +93,7 @@ fun SettingsScreen(
 ) {
     val settings by libraryViewModel.playerSettings.collectAsState()
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -101,10 +103,10 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(96.dp),
+                modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
+                        com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
@@ -396,6 +398,7 @@ private fun SettingsSwitchItem(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,

@@ -92,6 +92,7 @@ fun FullScreenAudioPlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalHiPalette.current
+    val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
     val context = LocalContext.current
     val progress = if (duration > 0) (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
@@ -124,7 +125,7 @@ fun FullScreenAudioPlayerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(96.dp),
+                    .height(uiMetrics.headerHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -146,7 +147,7 @@ fun FullScreenAudioPlayerScreen(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
+                    com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(

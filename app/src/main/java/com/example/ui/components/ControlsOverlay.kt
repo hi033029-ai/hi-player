@@ -79,6 +79,7 @@ import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.ui.theme.HiAccentAmber
 import com.example.ui.theme.HiPrimaryCyan
+import com.example.ui.theme.LocalHiUiMetrics
 import com.example.util.MediaRating
 import kotlin.math.roundToInt
 
@@ -124,6 +125,7 @@ fun ControlsOverlay(
     onCycleSpeed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val uiMetrics = LocalHiUiMetrics.current
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
             // Floating Unlock Button when locked
@@ -177,7 +179,7 @@ fun ControlsOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .height(104.dp)
+                        .height(uiMetrics.headerHeight)
                         .align(Alignment.TopCenter)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically

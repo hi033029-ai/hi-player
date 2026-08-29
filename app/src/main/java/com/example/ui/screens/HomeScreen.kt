@@ -104,6 +104,7 @@ import com.example.ui.components.VideoInfoDialog
 import com.example.ui.components.VideoItemCard
 import com.example.ui.components.VideoThumbnail
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.LocalHiUiMetrics
 import com.example.viewmodel.LibraryNavMode
 import com.example.viewmodel.LibraryViewMode
 import com.example.viewmodel.LibraryViewModel
@@ -152,6 +153,7 @@ fun HomeScreen(
     }
 
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
     val favoriteCount = remember(filteredVideos, allVideos) {
         allVideos.count { it.isFavorite }
     }
@@ -172,7 +174,7 @@ fun HomeScreen(
         containerColor = palette.background,
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(96.dp),
+                modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
                     if (isSearchActive) {
                         OutlinedTextField(
@@ -207,7 +209,7 @@ fun HomeScreen(
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             com.example.ui.components.HiPlayerLogoBadge(
-                                size = 56.dp
+                                size = uiMetrics.logoSize
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
@@ -891,6 +893,7 @@ private fun PlanSheetChip(
 @Composable
 private fun EmptyState(onBrowse: () -> Unit) {
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -953,6 +956,7 @@ fun ContinueWatchingCard(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
 
     Card(
         modifier = modifier
@@ -1054,6 +1058,7 @@ private fun ContinueWatchingStrip(
     modifier: Modifier = Modifier
 ) {
     val palette = LocalHiPalette.current
+    val uiMetrics = LocalHiUiMetrics.current
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier

@@ -138,6 +138,7 @@ fun FileManagerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
     val currentDir by fileManagerViewModel.currentDirectory.collectAsState()
     val folderFiles by fileManagerViewModel.folderFiles.collectAsState()
     val allArchives by fileManagerViewModel.allArchives.collectAsState()
@@ -261,7 +262,7 @@ fun FileManagerScreen(
         // Top App Bar - swaps into a selection action bar during long-press selection
         if (isSelectionMode) {
             TopAppBar(
-                modifier = Modifier.height(96.dp),
+                modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
                     Text(
                         text = "${selectedPaths.size} selected",
@@ -305,7 +306,7 @@ fun FileManagerScreen(
             )
         } else {
         TopAppBar(
-            modifier = Modifier.height(96.dp),
+            modifier = Modifier.height(uiMetrics.headerHeight),
             title = {
                 if (isSearchActive) {
                     OutlinedTextField(
@@ -341,7 +342,7 @@ fun FileManagerScreen(
                             }
                             Spacer(modifier = Modifier.width(4.dp))
                         } else {
-                            com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
+                            com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
                             Spacer(modifier = Modifier.width(10.dp))
                         }
                         Column {
