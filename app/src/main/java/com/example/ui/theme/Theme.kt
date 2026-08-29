@@ -5,6 +5,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
 import com.example.data.AppThemeMode
 
@@ -53,12 +55,21 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
 @Composable
 fun HiPlayerTheme(
     themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
+    uiTextScale: Float = 1f,
     content: @Composable () -> Unit
 ) {
     val palette = getPaletteForTheme(themeMode)
     val colorScheme = createColorScheme(palette)
+    val baseDensity = LocalDensity.current
+    val scaledDensity = Density(
+        density = baseDensity.density,
+        fontScale = (baseDensity.fontScale * uiTextScale).coerceIn(0.75f, 1.5f)
+    )
 
-    CompositionLocalProvider(LocalHiPalette provides palette) {
+    CompositionLocalProvider(
+        LocalHiPalette provides palette,
+        LocalDensity provides scaledDensity
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

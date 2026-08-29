@@ -81,7 +81,10 @@ class MainActivity : ComponentActivity() {
             val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsState()
             var isShowingSplash by remember { mutableStateOf(true) }
 
-            HiPlayerTheme(themeMode = settings.themeMode) {
+            HiPlayerTheme(
+                themeMode = settings.themeMode,
+                uiTextScale = (settings.uiTextSizeSp / 16f).coerceIn(0.75f, 1.5f)
+            ) {
                 val palette = LocalHiPalette.current
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
                 var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }

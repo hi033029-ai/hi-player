@@ -261,7 +261,7 @@ fun FileManagerScreen(
         // Top App Bar - swaps into a selection action bar during long-press selection
         if (isSelectionMode) {
             TopAppBar(
-                modifier = Modifier.height(104.dp),
+                modifier = Modifier.height(96.dp),
                 title = {
                     Text(
                         text = "${selectedPaths.size} selected",
@@ -305,7 +305,7 @@ fun FileManagerScreen(
             )
         } else {
         TopAppBar(
-            modifier = Modifier.height(104.dp),
+            modifier = Modifier.height(96.dp),
             title = {
                 if (isSearchActive) {
                     OutlinedTextField(
@@ -341,31 +341,14 @@ fun FileManagerScreen(
                             }
                             Spacer(modifier = Modifier.width(4.dp))
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(1.dp, palette.secondary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                    .background(palette.surface),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(context)
-                                        .data(R.drawable.hi_player_logo)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = "Hi Player Logo",
-                                    contentScale = ContentScale.Fit,
-                                    modifier = Modifier.size(30.dp)
-                                )
-                            }
+                            com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
                             Spacer(modifier = Modifier.width(10.dp))
                         }
                         Column {
                             Text(
                                 text = if (isInsideFolder) currentDir.name else "Hi Player",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
+                                fontSize = 28.sp,
                                 color = palette.textPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis

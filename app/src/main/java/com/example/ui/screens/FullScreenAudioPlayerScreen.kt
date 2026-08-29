@@ -124,7 +124,7 @@ fun FullScreenAudioPlayerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(104.dp),
+                    .height(96.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -142,19 +142,27 @@ fun FullScreenAudioPlayerScreen(
                     )
                 }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "NOW PLAYING",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.primary,
-                        letterSpacing = 1.2.sp
-                    )
-                    Text(
-                        text = "Hi Player",
-                        fontSize = 10.sp,
-                        color = palette.textSecondary
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Hi Player",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary
+                        )
+                        Text(
+                            text = "NOW PLAYING",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.primary,
+                            letterSpacing = 1.2.sp
+                        )
+                    }
                 }
 
                 IconButton(

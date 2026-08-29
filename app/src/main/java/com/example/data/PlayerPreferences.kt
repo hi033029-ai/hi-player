@@ -57,6 +57,7 @@ data class AppPlayerSettings(
     val seekStepSeconds: Int = 10,
     val defaultAspectRatio: String = "FIT",
     val subtitleTextSizeSp: Int = 18,
+    val uiTextSizeSp: Int = 16,
     val subtitleTextColorHex: String = "#FFFFFF",
     val subtitleBackgroundHex: String = "#80000000",
     val nightAudioMode: Boolean = false,
@@ -82,6 +83,7 @@ class PlayerPreferencesRepository(private val context: Context) {
         val SEEK_STEP = intPreferencesKey("seek_step_seconds")
         val ASPECT_RATIO = stringPreferencesKey("default_aspect_ratio")
         val SUBTITLE_SIZE = intPreferencesKey("subtitle_text_size")
+        val UI_TEXT_SIZE = intPreferencesKey("ui_text_size")
         val SUBTITLE_COLOR = stringPreferencesKey("subtitle_text_color")
         val NIGHT_AUDIO = booleanPreferencesKey("night_audio_mode")
         val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
@@ -110,6 +112,7 @@ class PlayerPreferencesRepository(private val context: Context) {
             seekStepSeconds = prefs[Keys.SEEK_STEP] ?: 10,
             defaultAspectRatio = prefs[Keys.ASPECT_RATIO] ?: "FIT",
             subtitleTextSizeSp = prefs[Keys.SUBTITLE_SIZE] ?: 18,
+            uiTextSizeSp = prefs[Keys.UI_TEXT_SIZE] ?: 16,
             subtitleTextColorHex = prefs[Keys.SUBTITLE_COLOR] ?: "#FFFFFF",
             nightAudioMode = prefs[Keys.NIGHT_AUDIO] ?: false,
             tmdbApiKey = prefs[Keys.TMDB_API_KEY] ?: "",
@@ -180,6 +183,10 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     suspend fun setSubtitleTextSize(sizeSp: Int) {
         context.dataStore.edit { it[Keys.SUBTITLE_SIZE] = sizeSp }
+    }
+
+    suspend fun setUiTextSize(sizeSp: Int) {
+        context.dataStore.edit { it[Keys.UI_TEXT_SIZE] = sizeSp.coerceIn(12, 24) }
     }
 
     suspend fun setNightAudioMode(enabled: Boolean) {

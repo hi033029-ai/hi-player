@@ -172,7 +172,7 @@ fun HomeScreen(
         containerColor = palette.background,
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(104.dp),
+                modifier = Modifier.height(96.dp),
                 title = {
                     if (isSearchActive) {
                         OutlinedTextField(
@@ -207,14 +207,14 @@ fun HomeScreen(
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             com.example.ui.components.HiPlayerLogoBadge(
-                                size = 36.dp
+                                size = 56.dp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = "Hi Player",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 19.sp,
+                                    fontSize = 28.sp,
                                     color = palette.textPrimary
                                 )
                             }

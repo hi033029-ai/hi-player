@@ -49,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -80,6 +81,7 @@ import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,33 +101,16 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(104.dp),
+                modifier = Modifier.height(96.dp),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, palette.primary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                .background(Color(0xFF0F172A)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(R.drawable.hi_player_logo)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = "Hi Player Logo",
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
+                        com.example.ui.components.HiPlayerLogoBadge(size = 56.dp)
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "Hi Player",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
+                                fontSize = 28.sp,
                                 color = palette.textPrimary
                             )
                             Text(
@@ -221,7 +206,53 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Hardware Decoder Mode
+            // 2. Global Text Size
+            SettingsSectionHeader(title = "Text Size", accentColor = palette.primary)
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                border = null,
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Player text size",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = palette.textPrimary
+                        )
+                        Text(
+                            text = "${settings.uiTextSizeSp}sp",
+                            fontSize = 13.sp,
+                            color = palette.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Slider(
+                        value = settings.uiTextSizeSp.toFloat(),
+                        onValueChange = { libraryViewModel.setUiTextSize(it.roundToInt()) },
+                        valueRange = 12f..24f,
+                        steps = 11,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_ui_text_size_slider")
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Small", fontSize = 11.sp, color = palette.textSecondary)
+                        Text("Large", fontSize = 11.sp, color = palette.textSecondary)
+                    }
+                }
+            }
+
+            // 3. Hardware Decoder Mode
             SettingsSectionHeader(title = "Decoder & Hardware Acceleration", accentColor = palette.primary)
 
             Card(
@@ -280,7 +311,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 3. 4K UHD Blu-ray Remux Engine & HDR Enhancement
+            // 4. 4K UHD Blu-ray Remux Engine & HDR Enhancement
             SettingsSectionHeader(title = "4K UHD Blu-ray & HDR Graphics", accentColor = palette.primary)
 
             Card(
@@ -314,7 +345,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Playback & Multitasking
+            // 5. Playback & Multitasking
             SettingsSectionHeader(title = "Playback & Multitasking", accentColor = palette.primary)
 
             Card(

@@ -495,4 +495,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             preferencesRepo.setAutoPip(enabled)
         }
     }
+
+    fun setUiTextSize(sizeSp: Int) {
+        viewModelScope.launch {
+            preferencesRepo.setUiTextSize(sizeSp)
+        }
+    }
 }
