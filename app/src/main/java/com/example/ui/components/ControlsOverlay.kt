@@ -175,7 +175,7 @@ fun ControlsOverlay(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(88.dp)
+                        .height(104.dp)
                         .align(Alignment.TopCenter)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically

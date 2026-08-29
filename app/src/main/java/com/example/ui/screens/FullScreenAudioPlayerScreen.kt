@@ -122,7 +122,7 @@ fun FullScreenAudioPlayerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(88.dp),
+                    .height(104.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
