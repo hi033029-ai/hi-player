@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
 
             HiPlayerTheme(
                 themeMode = settings.themeMode,
-                uiTextScale = (settings.uiTextSizeSp / 16f).coerceIn(0.75f, 1.5f)
+                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(0.75f, 1.5f)
             ) {
                 val palette = LocalHiPalette.current
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }

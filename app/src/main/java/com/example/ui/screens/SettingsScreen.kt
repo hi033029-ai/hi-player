@@ -112,7 +112,7 @@ fun SettingsScreen(
                             Text(
                                 text = "Hi Player",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
+                                fontSize = 24.sp,
                                 color = palette.textPrimary
                             )
                             Text(

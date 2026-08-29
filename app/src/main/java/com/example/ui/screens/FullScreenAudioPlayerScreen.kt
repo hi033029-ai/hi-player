@@ -152,7 +152,7 @@ fun FullScreenAudioPlayerScreen(
                     Column {
                         Text(
                             text = "Hi Player",
-                            fontSize = 28.sp,
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = palette.textPrimary
                         )
