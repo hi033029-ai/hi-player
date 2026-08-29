@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background Base Circle -->
+    <path
+        android:pathData="M 54,4 A 50,50 0 1 1 53.99,4 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108">
+                <item android:color="#FF0F172A" android:offset="0.0" />
+                <item android:color="#FF1E293B" android:offset="0.5" />
+                <item android:color="#FF0F2042" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Glowing Accent Outer Ring -->
+    <path
+        android:pathData="M 54,12 A 42,42 0 1 1 53.99,12 Z"
+        android:strokeWidth="2.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="12"
+                android:startY="12"
+                android:endX="96"
+                android:endY="96">
+                <item android:color="#FF00E5FF" android:offset="0.0" />
+                <item android:color="#FF3B82F6" android:offset="0.5" />
+                <item android:color="#FF8B5CF6" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Play Triangle Symbol -->
+    <path
+        android:pathData="M 44,32 C 41.8,30.7 39,32.3 39,34.8 L 39,73.2 C 39,75.7 41.8,77.3 44,76 L 76,56.8 C 78.1,55.5 78.1,52.5 76,51.2 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="39"
+                android:startY="32"
+                android:endX="78"
+                android:endY="76">
+                <item android:color="#FF00E5FF" android:offset="0.0" />
+                <item android:color="#FF2563EB" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Equalizer / Wave Lines Accent -->
+    <path
+        android:pathData="M 28,42 L 28,66 M 80,44 L 80,64 M 86,48 L 86,60"
+        android:strokeWidth="3"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28"
+                android:startY="42"
+                android:endX="86"
+                android:endY="66">
+                <item android:color="#FF00E5FF" android:offset="0.0" />
+                <item android:color="#FF60A5FA" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
