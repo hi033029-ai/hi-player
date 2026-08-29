@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -263,9 +261,7 @@ fun FileManagerScreen(
         // Top App Bar - swaps into a selection action bar during long-press selection
         if (isSelectionMode) {
             TopAppBar(
-                modifier = Modifier
-                    .statusBarsPadding()
-                    .height(104.dp),
+                modifier = Modifier.height(104.dp),
                 title = {
                     Text(
                         text = "${selectedPaths.size} selected",
@@ -304,14 +300,12 @@ fun FileManagerScreen(
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
                     }
                 },
-                windowInsets = WindowInsets(0),
+                windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
             )
         } else {
         TopAppBar(
-            modifier = Modifier
-                .statusBarsPadding()
-                .height(104.dp),
+            modifier = Modifier.height(104.dp),
             title = {
                 if (isSearchActive) {
                     OutlinedTextField(
@@ -419,7 +413,7 @@ fun FileManagerScreen(
                     )
                 }
             },
-            windowInsets = WindowInsets(0),
+            windowInsets = TopAppBarDefaults.windowInsets,
             colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
         )
         }
