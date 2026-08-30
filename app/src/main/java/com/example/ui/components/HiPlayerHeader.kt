@@ -3,12 +3,14 @@ package com.example.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
@@ -56,55 +58,63 @@ fun HiPlayerHeader(
             .testTag(testTag),
         color = palette.surface
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(metrics.headerHeight)
-                .statusBarsPadding()
-                .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            HiPlayerLogoBadge(size = metrics.logoSize)
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(
-                    text = "Hi Player",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.textPrimary,
-                    maxLines = 1
-                )
-                if (!subtitle.isNullOrBlank()) {
+        Column {
+            // Status-bar inset as its own spacer, ADDED above the header content
+            // instead of being carved out of a fixed-height box. Previously
+            // .height(metrics.headerHeight) was applied before .statusBarsPadding(),
+            // which locked the row to ~56-88dp and then ate the status-bar height
+            // out of that same fixed box - squeezing the logo/title down until
+            // they were clipped to a thin sliver on phones with a tall status bar.
+            Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(metrics.headerHeight)
+                    .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                HiPlayerLogoBadge(size = metrics.logoSize)
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
                     Text(
-                        text = subtitle,
-                        fontSize = 11.sp,
-                        color = palette.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = "Hi Player",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.textPrimary,
+                        maxLines = 1
                     )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            text = subtitle,
+                            fontSize = 11.sp,
+                            color = palette.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            if (showSearch && onSearchClick != null) {
-                IconButton(onClick = onSearchClick, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = if (searchActive) Icons.Default.Clear else Icons.Default.Search,
-                        contentDescription = if (searchActive) "Close search" else "Search",
-                        tint = palette.textPrimary
-                    )
+                Spacer(modifier = Modifier.weight(1f))
+                if (showSearch && onSearchClick != null) {
+                    IconButton(onClick = onSearchClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = if (searchActive) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = if (searchActive) "Close search" else "Search",
+                            tint = palette.textPrimary
+                        )
+                    }
                 }
-            }
-            if (onRefreshClick != null) {
-                IconButton(onClick = onRefreshClick, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = palette.textPrimary
-                    )
+                if (onRefreshClick != null) {
+                    IconButton(onClick = onRefreshClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = palette.textPrimary
+                        )
+                    }
                 }
+                extraActions?.invoke()
             }
-            extraActions?.invoke()
         }
     }
 }
