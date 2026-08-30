@@ -47,6 +47,8 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -144,8 +146,12 @@ fun MusicScreen(
     val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
     var showEqDialog by remember { mutableStateOf(false) }
+    var viewMenuExpanded by remember { mutableStateOf(false) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var compactAudioView by remember { mutableStateOf(false) }
+    var audioSort by remember { mutableStateOf("Name") }
 
-    val filteredList = remember(audioList, searchQuery, selectedFilter) {
+    val filteredList = remember(audioList, searchQuery, selectedFilter, audioSort) {
         audioList.filter { track ->
             val matchesQuery = searchQuery.isBlank() ||
                     track.title.contains(searchQuery, ignoreCase = true) ||
@@ -160,6 +166,13 @@ fun MusicScreen(
             }
 
             matchesQuery && matchesFilter
+        }.let { list ->
+            when (audioSort) {
+                "Artist" -> list.sortedBy { it.artist.lowercase() }
+                "Duration" -> list.sortedByDescending { it.durationMs }
+                "Newest" -> list.sortedByDescending { it.dateAdded }
+                else -> list.sortedBy { it.title.lowercase() }
+            }
         }
     }
 
@@ -177,27 +190,25 @@ fun MusicScreen(
             )
         }
 
-        // Clean Sheet Plan Filter chips bar
-        Column(
+        // Plan-sheet audio controls: stacked filters on the left, view/sort on the right.
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(palette.surface)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
         ) {
-            val filters = listOf("All", "MP3 Audio")
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filters) { filter ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("All", "MP3 Audio").forEach { filter ->
                     val isSelected = selectedFilter == filter
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (isSelected) palette.primary.copy(alpha = 0.18f) else palette.surfaceElevated
-                            )
+                            .background(if (isSelected) palette.primary.copy(alpha = 0.18f) else Color.Transparent)
                             .clickable { musicViewModel.setFilter(filter) }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("audio_filter_$filter")
                     ) {
                         Text(
                             text = filter,
@@ -205,6 +216,31 @@ fun MusicScreen(
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isSelected) palette.primary else palette.textPrimary
                         )
+                    }
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box {
+                    TextButton(onClick = { viewMenuExpanded = true }) {
+                        Text(if (compactAudioView) "View: Compact" else "View: List", fontSize = 12.sp, color = palette.textPrimary)
+                    }
+                    DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("List") }, onClick = { compactAudioView = false; viewMenuExpanded = false })
+                        DropdownMenuItem(text = { Text("Compact") }, onClick = { compactAudioView = true; viewMenuExpanded = false })
+                    }
+                }
+                Box {
+                    TextButton(onClick = { sortMenuExpanded = true }) {
+                        Text("Sort By", fontSize = 12.sp, color = palette.textPrimary)
+                    }
+                    DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                        listOf("Name", "Artist", "Duration", "Newest").forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = { audioSort = option; sortMenuExpanded = false }
+                            )
+                        }
                     }
                 }
             }
@@ -234,8 +270,8 @@ fun MusicScreen(
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = if (compactAudioView) 4.dp else 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compactAudioView) 4.dp else 8.dp)
                 ) {
                     items(filteredList, key = { it.id }) { track ->
                         val isSelected = currentTrack?.id == track.id
