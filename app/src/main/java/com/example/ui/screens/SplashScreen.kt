@@ -52,6 +52,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,23 +81,26 @@ import coil.request.ImageRequest
 import com.example.R
 import com.example.data.AppThemeMode
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 enum class OnboardingStep {
     SPLASH_LOGO,
     WELCOME_NOTE,
     CHOOSE_THEME,
-    PERMISSIONS
+    PERMISSIONS,
+    TEXT_SIZE
 }
 
 @Composable
 fun SplashScreen(
     isFirstLaunch: Boolean,
-    onFinish: (selectedTheme: AppThemeMode) -> Unit,
+    onFinish: (selectedTheme: AppThemeMode, textSizeSp: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var currentStep by remember { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
     var selectedTheme by remember { mutableStateOf<AppThemeMode>(AppThemeMode.WARM_SUNSET_LIGHT) }
+    var textSizeSp by remember { mutableStateOf(14) }
 
     // Smooth In & Out Animation for Logo
     val logoScale = remember { Animatable(0.6f) }
@@ -115,7 +119,7 @@ fun SplashScreen(
             // Logo Exit (Out)
             logoAlpha.animateTo(0f, animationSpec = tween(400, easing = FastOutSlowInEasing))
             logoScale.animateTo(1.12f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-            onFinish(selectedTheme)
+            onFinish(selectedTheme, textSizeSp)
         }
     }
 
@@ -170,11 +174,82 @@ fun SplashScreen(
                     PermissionsSetupView(
                         selectedTheme = selectedTheme,
                         onComplete = {
-                            onFinish(selectedTheme)
+                            currentStep = OnboardingStep.TEXT_SIZE
                         }
                     )
                 }
+
+                OnboardingStep.TEXT_SIZE -> {
+                    TextSizeSetupView(
+                        selectedTheme = selectedTheme,
+                        textSizeSp = textSizeSp,
+                        onTextSizeChanged = { textSizeSp = it },
+                        onComplete = { onFinish(selectedTheme, textSizeSp) }
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun TextSizeSetupView(
+    selectedTheme: AppThemeMode,
+    textSizeSp: Int,
+    onTextSizeChanged: (Int) -> Unit,
+    onComplete: () -> Unit
+) {
+    val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme).primary
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp, vertical = 20.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.Memory, contentDescription = null, tint = accent, modifier = Modifier.size(54.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        Text("Choose Text Size", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0C2133))
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "Set the size used throughout Hi Player. You can change it later in Settings.",
+            fontSize = 13.sp,
+            color = Color(0xFF2C4A60),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Hi Player preview", fontSize = textSizeSp.sp, fontWeight = FontWeight.Bold, color = accent)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = Color(0xFF2C4A60))
+                Slider(
+                    value = textSizeSp.toFloat(),
+                    onValueChange = { onTextSizeChanged(it.roundToInt()) },
+                    valueRange = 12f..24f,
+                    steps = 11,
+                    modifier = Modifier.fillMaxWidth().testTag("onboarding_text_size_slider")
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Small", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                    Text("${textSizeSp}sp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accent)
+                    Text("Large", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Button(
+            onClick = onComplete,
+            colors = ButtonDefaults.buttonColors(containerColor = accent),
+            modifier = Modifier.fillMaxWidth().height(46.dp)
+        ) {
+            Text("Enter Hi Player", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -336,6 +411,18 @@ private fun WelcomeNoteView(
                     icon = Icons.Default.Folder,
                     title = "Universal File Explorer",
                     description = "Clean media browser with instant subfolder navigation."
+                )
+
+                FeatureRow(
+                    icon = Icons.Default.Security,
+                    title = "Archives, APKs & Stream URLs",
+                    description = "Choose archive destinations, install APKs directly, and play valid video URLs."
+                )
+
+                FeatureRow(
+                    icon = Icons.Default.CheckCircle,
+                    title = "Continue Watching & Favorites",
+                    description = "Resume progress and keep library modes, views, sorting, and preferences between launches."
                 )
             }
         }

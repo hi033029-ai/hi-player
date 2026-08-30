@@ -124,7 +124,9 @@ private fun openLyricsFallbackIfAny(context: android.content.Context, url: Strin
 fun MusicScreen(
     musicViewModel: MusicViewModel,
     onPlayVideo: (android.net.Uri) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    includeHeader: Boolean = true,
+    onSearchRequested: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -164,16 +166,16 @@ fun MusicScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
             .background(palette.background)
     ) {
-        // One shared compact header used across the player.
-        HiPlayerHeader(
-            testTag = "music_header",
-            onSearchClick = { musicViewModel.setSearchQuery("") },
-            onRefreshClick = { musicViewModel.loadAudioTracks() },
-            onStreamClick = { /* Stream URL dialog is handled by the host screen. */ }
-        )
+        if (includeHeader) {
+            HiPlayerHeader(
+                testTag = "music_header",
+                onSearchClick = { onSearchRequested?.invoke() ?: musicViewModel.setSearchQuery("") },
+                onRefreshClick = { musicViewModel.loadAudioTracks() },
+                onStreamClick = { /* Stream URL dialog is handled by the host screen. */ }
+            )
+        }
 
         // Clean Sheet Plan Filter chips bar
         Column(

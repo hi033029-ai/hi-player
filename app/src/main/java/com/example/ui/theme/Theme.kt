@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
@@ -16,10 +17,17 @@ import com.example.data.AppThemeMode
 /** Shared header geometry; dimensions scale with the persisted global text-size setting. */
 data class HiUiMetrics(
     val headerHeight: Dp,
-    val logoSize: Dp
+    val logoSize: Dp,
+    val titleTextSize: androidx.compose.ui.unit.TextUnit
 )
 
-val LocalHiUiMetrics = compositionLocalOf { HiUiMetrics(headerHeight = 64.dp, logoSize = 38.dp) }
+val LocalHiUiMetrics = compositionLocalOf {
+    HiUiMetrics(
+        headerHeight = 64.dp,
+        logoSize = 38.dp,
+        titleTextSize = 24f.sp
+    )
+}
 
 private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
     darkColorScheme(
@@ -79,7 +87,8 @@ fun HiPlayerTheme(
 
     val uiMetrics = HiUiMetrics(
         headerHeight = (64.dp * uiTextScale).coerceIn(56.dp, 88.dp),
-        logoSize = (38.dp * uiTextScale).coerceIn(34.dp, 52.dp)
+        logoSize = (38.dp * uiTextScale).coerceIn(34.dp, 52.dp),
+        titleTextSize = (24f * uiTextScale).coerceIn(18f, 32f).sp
     )
 
     CompositionLocalProvider(

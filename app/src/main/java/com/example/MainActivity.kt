@@ -21,8 +21,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +44,7 @@ import com.example.model.VideoItem
 import com.example.ui.components.HiBottomNavigationBar
 import com.example.ui.components.HiNavigationBottomSheet
 import com.example.ui.components.NavTab
+import com.example.ui.components.HiPlayerHeader
 import com.example.ui.screens.FileManagerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
@@ -89,6 +94,10 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
                 var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
+                var showGlobalSearchDialog by remember { mutableStateOf(false) }
+                var showStreamUrlDialog by remember { mutableStateOf(false) }
+                var globalSearchQuery by remember { mutableStateOf("") }
+                var streamUrl by remember { mutableStateOf("") }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
@@ -116,9 +125,10 @@ class MainActivity : ComponentActivity() {
                 } else if (isShowingSplash) {
                     SplashScreen(
                         isFirstLaunch = settings.isFirstLaunch,
-                        onFinish = { selectedTheme ->
+                        onFinish = { selectedTheme, textSizeSp ->
                             if (settings.isFirstLaunch) {
                                 libraryViewModel.setThemeMode(selectedTheme)
+                                libraryViewModel.setUiTextSize(textSizeSp)
                                 libraryViewModel.setFirstLaunchCompleted()
                             }
                             isShowingSplash = false
@@ -190,6 +200,17 @@ class MainActivity : ComponentActivity() {
                                 Scaffold(
                                     modifier = Modifier.fillMaxSize(),
                                     containerColor = palette.background,
+                                    topBar = {
+                                        HiPlayerHeader(
+                                            onSearchClick = { showGlobalSearchDialog = true },
+                                            onRefreshClick = {
+                                                libraryViewModel.refreshVideos()
+                                                musicViewModel.loadAudioTracks()
+                                                fileManagerViewModel.refreshAll()
+                                            },
+                                            onStreamClick = { showStreamUrlDialog = true }
+                                        )
+                                    },
                                     bottomBar = {
                                         Column {
                                             if (currentTab != com.example.ui.components.NavTab.MUSIC && currentAudioTrack != null && !isAudioFullScreenOpen) {
@@ -238,7 +259,8 @@ class MainActivity : ComponentActivity() {
                                                     },
                                                     onOpenSettings = {
                                                         currentTab = NavTab.SETTINGS
-                                                    }
+                                                    },
+                                                    includeHeader = false
                                                 )
                                             }
                                             NavTab.MUSIC -> {
@@ -252,22 +274,88 @@ class MainActivity : ComponentActivity() {
                                                             playerViewModel.playVideo(video)
                                                             currentScreen = AppScreen.Player
                                                         }
-                                                    }
+                                                    },
+                                                    includeHeader = false
                                                 )
                                             }
                                             NavTab.FILE_MANAGER -> {
                                                 FileManagerScreen(
-                                                    fileManagerViewModel = fileManagerViewModel
+                                                    fileManagerViewModel = fileManagerViewModel,
+                                                    includeHeader = false
                                                 )
                                             }
                                             NavTab.SETTINGS -> {
                                                 SettingsScreen(
                                                     libraryViewModel = libraryViewModel,
-                                                    onBack = { currentTab = NavTab.VIDEOS }
+                                                    onBack = { currentTab = NavTab.VIDEOS },
+                                                    includeHeader = false
                                                 )
                                             }
                                         }
                                     }
+                                }
+
+                                if (showGlobalSearchDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { showGlobalSearchDialog = false },
+                                        title = { Text("Search Hi Player") },
+                                        text = {
+                                            OutlinedTextField(
+                                                value = globalSearchQuery,
+                                                onValueChange = { globalSearchQuery = it },
+                                                singleLine = true,
+                                                label = { Text("Search videos, music, and files") }
+                                            )
+                                        },
+                                        confirmButton = {
+                                            Button(onClick = {
+                                                libraryViewModel.setSearchQuery(globalSearchQuery)
+                                                musicViewModel.setSearchQuery(globalSearchQuery)
+                                                fileManagerViewModel.setSearchQuery(globalSearchQuery)
+                                                showGlobalSearchDialog = false
+                                            }) { Text("Search") }
+                                        },
+                                        dismissButton = {
+                                            Button(onClick = { showGlobalSearchDialog = false }) { Text("Cancel") }
+                                        }
+                                    )
+                                }
+
+                                if (showStreamUrlDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { showStreamUrlDialog = false },
+                                        title = { Text("Play Stream URL") },
+                                        text = {
+                                            OutlinedTextField(
+                                                value = streamUrl,
+                                                onValueChange = { streamUrl = it },
+                                                singleLine = true,
+                                                label = { Text("HTTP(S) video URL") },
+                                                placeholder = { Text("https://example.com/video.mp4") }
+                                            )
+                                        },
+                                        confirmButton = {
+                                            Button(onClick = {
+                                                val candidate = streamUrl.trim()
+                                                val parsed = runCatching { Uri.parse(candidate) }.getOrNull()
+                                                if (parsed != null && (parsed.scheme == "http" || parsed.scheme == "https") && parsed.host != null) {
+                                                    playerViewModel.playVideo(
+                                                        VideoItem(
+                                                            uri = parsed,
+                                                            title = parsed.lastPathSegment ?: "Stream",
+                                                            path = candidate,
+                                                            mimeType = "video/*"
+                                                        )
+                                                    )
+                                                    currentScreen = AppScreen.Player
+                                                    showStreamUrlDialog = false
+                                                }
+                                            }) { Text("Play") }
+                                        },
+                                        dismissButton = {
+                                            Button(onClick = { showStreamUrlDialog = false }) { Text("Cancel") }
+                                        }
+                                    )
                                 }
 
                                 if (currentTab != NavTab.MUSIC && currentAudioTrack != null && isAudioFullScreenOpen) {

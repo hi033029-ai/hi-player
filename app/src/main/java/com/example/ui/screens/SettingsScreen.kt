@@ -91,7 +91,8 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     libraryViewModel: LibraryViewModel,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    includeHeader: Boolean = true
 ) {
     val settings by libraryViewModel.playerSettings.collectAsState()
     val palette = LocalHiPalette.current
@@ -100,18 +101,18 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding(),
+        modifier = modifier.fillMaxSize(),
         containerColor = palette.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            HiPlayerHeader(
-                testTag = "settings_header",
-                onSearchClick = { },
-                onRefreshClick = { libraryViewModel.refreshVideos() },
-                onStreamClick = { }
-            )
+            if (includeHeader) {
+                HiPlayerHeader(
+                    testTag = "settings_header",
+                    onSearchClick = { },
+                    onRefreshClick = { libraryViewModel.refreshVideos() },
+                    onStreamClick = { }
+                )
+            }
         }
     ) { paddingValues ->
         Column(

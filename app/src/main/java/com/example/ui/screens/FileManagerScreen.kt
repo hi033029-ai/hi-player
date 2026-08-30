@@ -119,6 +119,7 @@ import com.example.ui.theme.HiSurfaceElevated
 import com.example.ui.theme.HiTextPrimary
 import com.example.ui.theme.HiTextSecondary
 import com.example.viewmodel.FileManagerViewModel
+import com.example.ui.components.HiPlayerHeader
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -135,7 +136,9 @@ enum class FileViewTab {
 @Composable
 fun FileManagerScreen(
     fileManagerViewModel: FileManagerViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    includeHeader: Boolean = true,
+    onSearchRequested: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
@@ -259,8 +262,8 @@ fun FileManagerScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        // Top App Bar - swaps into a selection action bar during long-press selection
-        if (isSelectionMode) {
+        // Local header can be disabled when the root shell owns the global header.
+        if (includeHeader && isSelectionMode) {
             TopAppBar(
                 modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
@@ -304,7 +307,7 @@ fun FileManagerScreen(
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
             )
-        } else {
+        } else if (includeHeader) {
         TopAppBar(
             modifier = Modifier.height(uiMetrics.headerHeight),
             title = {
@@ -361,8 +364,10 @@ fun FileManagerScreen(
             actions = {
                 IconButton(
                     onClick = {
-                        isSearchActive = !isSearchActive
-                        if (!isSearchActive) fileManagerViewModel.setSearchQuery("")
+                        onSearchRequested?.invoke() ?: run {
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) fileManagerViewModel.setSearchQuery("")
+                        }
                     },
                     modifier = Modifier.testTag("toggle_file_search")
                 ) {

@@ -105,6 +105,7 @@ import com.example.ui.components.VideoItemCard
 import com.example.ui.components.VideoThumbnail
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
+import com.example.ui.components.HiPlayerHeader
 import com.example.viewmodel.LibraryNavMode
 import com.example.viewmodel.LibraryViewMode
 import com.example.viewmodel.LibraryViewModel
@@ -116,7 +117,9 @@ fun HomeScreen(
     libraryViewModel: LibraryViewModel,
     onVideoSelected: (VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    includeHeader: Boolean = true,
+    onSearchRequested: (() -> Unit)? = null
 ) {
     val allVideos by libraryViewModel.allVideos.collectAsState()
     val filteredVideos by libraryViewModel.filteredVideos.collectAsState()
@@ -173,7 +176,7 @@ fun HomeScreen(
         modifier = modifier.fillMaxSize(),
         containerColor = palette.background,
         topBar = {
-            TopAppBar(
+            if (includeHeader) TopAppBar(
                 modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
                     if (isSearchActive) {
@@ -226,7 +229,7 @@ fun HomeScreen(
                 actions = {
                     // Search Button
                     IconButton(
-                        onClick = { isSearchActive = !isSearchActive },
+                        onClick = { onSearchRequested?.invoke() ?: run { isSearchActive = !isSearchActive } },
                         modifier = Modifier.testTag("toggle_search_button")
                     ) {
                         Icon(
