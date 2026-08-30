@@ -167,7 +167,7 @@ fun MusicScreen(
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
     var audioSort by remember { mutableStateOf("Name") }
-    val audioGridTransformState = rememberTransformableState { _, zoomChange, _ ->
+    val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
         if (compactAudioView && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             val next = (audioGridMinSize / zoomChange).roundToInt().coerceIn(120, 240)
             audioGridMinSize = next

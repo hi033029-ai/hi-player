@@ -138,7 +138,7 @@ fun HomeScreen(
     val historyRecords by libraryViewModel.historyRecords.collectAsState()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsState()
     val playerSettings by libraryViewModel.playerSettings.collectAsState()
-    val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { _, zoomChange, _ ->
+    val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
         if (viewMode == LibraryViewMode.GRADLE_GRID && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             libraryViewModel.setGridMinSize((gridMinSize / zoomChange).roundToInt())
         }
