@@ -7,6 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pointerInput
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -86,6 +91,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
@@ -151,8 +157,27 @@ fun MusicScreen(
     var showEqDialog by remember { mutableStateOf(false) }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var compactAudioView by remember { mutableStateOf(false) }
+    val musicPreferences = remember {
+        context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
+    }
+    var compactAudioView by remember {
+        mutableStateOf(musicPreferences.getBoolean("horizontal_view", false))
+    }
+    var audioGridMinSize by remember {
+        mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
+    }
     var audioSort by remember { mutableStateOf("Name") }
+    val audioGridTransformState = rememberTransformableState { _, zoomChange, _ ->
+        if (compactAudioView && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
+            val next = (audioGridMinSize / zoomChange).roundToInt().coerceIn(120, 240)
+            audioGridMinSize = next
+            musicPreferences.edit().putInt("grid_min_size_dp", next).apply()
+        }
+    }
+    val audioGridGestureModifier = Modifier.transformable(
+        state = audioGridTransformState,
+        enabled = compactAudioView
+    )
 
     val filteredList = remember(audioList, searchQuery, selectedFilter, audioSort) {
         audioList.filter { track ->
@@ -235,14 +260,22 @@ fun MusicScreen(
                 Box {
                     IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
                         Icon(
-                            imageVector = if (compactAudioView) Icons.Default.GridView else Icons.Default.ViewList,
+                            imageVector = if (compactAudioView) Icons.Default.ViewList else Icons.Default.GridView,
                             contentDescription = "View",
                             tint = palette.textPrimary
                         )
                     }
                     DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
-                        DropdownMenuItem(text = { Text("List") }, onClick = { compactAudioView = false; viewMenuExpanded = false })
-                        DropdownMenuItem(text = { Text("Compact") }, onClick = { compactAudioView = true; viewMenuExpanded = false })
+                        DropdownMenuItem(text = { Text("Vertical") }, onClick = {
+                            compactAudioView = false
+                            musicPreferences.edit().putBoolean("horizontal_view", false).apply()
+                            viewMenuExpanded = false
+                        })
+                        DropdownMenuItem(text = { Text("Horizontal") }, onClick = {
+                            compactAudioView = true
+                            musicPreferences.edit().putBoolean("horizontal_view", true).apply()
+                            viewMenuExpanded = false
+                        })
                     }
                 }
                 Box {
@@ -284,18 +317,40 @@ fun MusicScreen(
                     }
                 }
             } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = if (compactAudioView) 4.dp else 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (compactAudioView) 4.dp else 8.dp)
-                ) {
-                    items(filteredList, key = { it.id }) { track ->
-                        val isSelected = currentTrack?.id == track.id
-                        AudioTrackCard(
-                            track = track,
-                            isSelected = isSelected,
-                            isPlaying = isSelected && isPlaying,
-                            onClick = { musicViewModel.playTrack(track) }
-                        )
+                if (compactAudioView) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = audioGridMinSize.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
+                    ) {
+                        items(filteredList.size, key = { index -> filteredList[index].id }) { index ->
+                            val track = filteredList[index]
+                            val isSelected = currentTrack?.id == track.id
+                            AudioTrackCard(
+                                track = track,
+                                isSelected = isSelected,
+                                isPlaying = isSelected && isPlaying,
+                                onClick = { musicViewModel.playTrack(track) },
+                                modifier = Modifier.padding(4.dp)
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filteredList, key = { it.id }) { track ->
+                            val isSelected = currentTrack?.id == track.id
+                            AudioTrackCard(
+                                track = track,
+                                isSelected = isSelected,
+                                isPlaying = isSelected && isPlaying,
+                                onClick = { musicViewModel.playTrack(track) }
+                            )
+                        }
                     }
                 }
             }

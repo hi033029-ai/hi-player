@@ -13,6 +13,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pointerInput
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -111,6 +114,7 @@ import com.example.viewmodel.LibraryNavMode
 import com.example.viewmodel.LibraryViewMode
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.VideoSortOption
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,6 +131,7 @@ fun HomeScreen(
     val folders by libraryViewModel.folders.collectAsState()
     val navMode by libraryViewModel.navMode.collectAsState()
     val viewMode by libraryViewModel.viewMode.collectAsState()
+    val gridMinSize by libraryViewModel.gridMinSize.collectAsState()
     val sortOption by libraryViewModel.sortOption.collectAsState()
     val selectedFolder by libraryViewModel.selectedFolder.collectAsState()
     val searchQuery by libraryViewModel.searchQuery.collectAsState()
@@ -134,6 +139,15 @@ fun HomeScreen(
     val historyRecords by libraryViewModel.historyRecords.collectAsState()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsState()
     val playerSettings by libraryViewModel.playerSettings.collectAsState()
+    val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { _, zoomChange, _ ->
+        if (viewMode == LibraryViewMode.GRADLE_GRID && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
+            libraryViewModel.setGridMinSize((gridMinSize / zoomChange).roundToInt())
+        }
+    }
+    val pinchGridModifier = Modifier.transformable(
+        state = gridTransformState,
+        enabled = viewMode == LibraryViewMode.GRADLE_GRID
+    )
     val treeCurrentPath by libraryViewModel.treeCurrentPath.collectAsState()
     val currentTreeNode by libraryViewModel.currentTreeNode.collectAsState()
 
@@ -637,11 +651,11 @@ fun HomeScreen(
                     EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
                 } else if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 130.dp),
+                        columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
                         itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
                             FolderGridCard(
@@ -685,7 +699,7 @@ fun HomeScreen(
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
                         if (node.childFolders.isNotEmpty()) {
                             item {
@@ -699,7 +713,8 @@ fun HomeScreen(
                                 )
                             }
                             if (viewMode == LibraryViewMode.GRADLE_GRID) {
-                                val rows = node.childFolders.chunked(2)
+                                val columns = (360 / gridMinSize).coerceIn(1, 3)
+                                val rows = node.childFolders.chunked(columns)
                                 items(rows, key = { row -> row.first().dirPath }) { row ->
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -777,11 +792,11 @@ fun HomeScreen(
                 }
                 if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 160.dp),
+                        columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
                         itemsIndexed(filteredVideos, key = { _, video -> video.id }) { _, video ->
                             val record = historyMap[video.uri.toString()]

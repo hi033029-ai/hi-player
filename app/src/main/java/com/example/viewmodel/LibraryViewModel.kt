@@ -95,6 +95,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     )
     val viewMode = _viewMode.asStateFlow()
 
+    private val _gridMinSize = MutableStateFlow(
+        libraryPrefs.getInt("grid_min_size_dp", 160).coerceIn(110, 240)
+    )
+    val gridMinSize = _gridMinSize.asStateFlow()
+
     private val _sortOption = MutableStateFlow(VideoSortOption.DATE_DESC)
     val sortOption = _sortOption.asStateFlow()
 
@@ -395,6 +400,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _viewMode.value = mode
     }
 
+    fun setGridMinSize(sizeDp: Int) {
+        val clamped = sizeDp.coerceIn(110, 240)
+        libraryPrefs.edit().putInt("grid_min_size_dp", clamped).apply()
+        _gridMinSize.value = clamped
+    }
 
     fun setSortOption(option: VideoSortOption) {
         _sortOption.value = option

@@ -366,7 +366,7 @@ fun VideoGridCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("video_grid_card_${video.id}"),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.Transparent
         ),
@@ -381,12 +381,12 @@ fun VideoGridCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(105.dp)
-                    .background(palette.surface)
+                    .background(Color.Transparent)
             ) {
                 VideoThumbnail(
                     video = video,
                     modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                    shape = RoundedCornerShape(0.dp),
                     contentScale = ContentScale.Crop
                 )
 

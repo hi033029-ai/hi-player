@@ -116,21 +116,15 @@ fun FolderGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (palette.isDark) Color(0xFF181E29) else Color(0xFFF1F5F9))
             .clickable(onClick = onClick)
-            .padding(vertical = 18.dp, horizontal = 10.dp)
+            .padding(vertical = 10.dp, horizontal = 0.dp)
             .testTag("folder_grid_$name"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (palette.isDark) Color(0xFF232B38)
-                    else Color(0xFFE2E8F0)
-                ),
+                .background(Color.Transparent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
