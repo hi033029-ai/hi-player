@@ -22,10 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pointerInput
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -325,8 +325,7 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
                     ) {
-                        items(filteredList.size, key = { index -> filteredList[index].id }) { index ->
-                            val track = filteredList[index]
+                        gridItems(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
                                 track = track,
