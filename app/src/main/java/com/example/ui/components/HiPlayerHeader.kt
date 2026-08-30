@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -31,10 +32,11 @@ import com.example.ui.theme.LocalHiUiMetrics
 fun HiPlayerHeader(
     title: String = "Hi Player",
     modifier: Modifier = Modifier,
-    showSearch: Boolean = false,
+    showSearch: Boolean = true,
     searchActive: Boolean = false,
-    onSearchClick: (() -> Unit)? = null,
-    onRefreshClick: (() -> Unit)? = null,
+    onSearchClick: (() -> Unit)? = {},
+    onRefreshClick: (() -> Unit)? = {},
+    onStreamClick: (() -> Unit)? = {},
     testTag: String = "hi_player_header",
     extraActions: @Composable (() -> Unit)? = null
 ) {
@@ -78,6 +80,15 @@ fun HiPlayerHeader(
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Refresh",
+                        tint = palette.textPrimary
+                    )
+                }
+            }
+            if (onStreamClick != null) {
+                IconButton(onClick = onStreamClick, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Cast,
+                        contentDescription = "Stream URL",
                         tint = palette.textPrimary
                     )
                 }

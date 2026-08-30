@@ -106,7 +106,12 @@ fun SettingsScreen(
         containerColor = palette.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            HiPlayerHeader(testTag = "settings_header")
+            HiPlayerHeader(
+                testTag = "settings_header",
+                onSearchClick = { },
+                onRefreshClick = { libraryViewModel.refreshVideos() },
+                onStreamClick = { }
+            )
         }
     ) { paddingValues ->
         Column(

@@ -168,7 +168,12 @@ fun MusicScreen(
             .background(palette.background)
     ) {
         // One shared compact header used across the player.
-        HiPlayerHeader(testTag = "music_header")
+        HiPlayerHeader(
+            testTag = "music_header",
+            onSearchClick = { musicViewModel.setSearchQuery("") },
+            onRefreshClick = { musicViewModel.loadAudioTracks() },
+            onStreamClick = { /* Stream URL dialog is handled by the host screen. */ }
+        )
 
         // Clean Sheet Plan Filter chips bar
         Column(
