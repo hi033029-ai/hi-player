@@ -19,7 +19,7 @@ data class HiUiMetrics(
     val logoSize: Dp
 )
 
-val LocalHiUiMetrics = compositionLocalOf { HiUiMetrics(headerHeight = 84.dp, logoSize = 48.dp) }
+val LocalHiUiMetrics = compositionLocalOf { HiUiMetrics(headerHeight = 64.dp, logoSize = 38.dp) }
 
 private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
     darkColorScheme(
@@ -78,8 +78,8 @@ fun HiPlayerTheme(
     )
 
     val uiMetrics = HiUiMetrics(
-        headerHeight = (88.dp * uiTextScale).coerceIn(80.dp, 120.dp),
-        logoSize = (50.dp * uiTextScale).coerceIn(44.dp, 68.dp)
+        headerHeight = (64.dp * uiTextScale).coerceIn(56.dp, 88.dp),
+        logoSize = (38.dp * uiTextScale).coerceIn(34.dp, 52.dp)
     )
 
     CompositionLocalProvider(
