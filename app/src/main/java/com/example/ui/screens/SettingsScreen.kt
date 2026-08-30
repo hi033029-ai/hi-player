@@ -80,6 +80,7 @@ import com.example.data.AppThemeMode
 import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
+import com.example.ui.components.HiPlayerHeader
 import com.example.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -102,30 +103,7 @@ fun SettingsScreen(
         containerColor = palette.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                modifier = Modifier.height(uiMetrics.headerHeight),
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Hi Player",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 24.sp,
-                                color = palette.textPrimary
-                            )
-                            Text(
-                                text = "Settings • Themes, Decoder & Playback Engine",
-                                fontSize = 11.sp,
-                                color = palette.primary
-                            )
-                        }
-                    }
-                },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-            )
+            HiPlayerHeader(testTag = "settings_header")
         }
     ) { paddingValues ->
         Column(

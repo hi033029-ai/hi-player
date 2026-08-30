@@ -211,7 +211,7 @@ private fun SplashLogoView(
             // Soft background glow
             Box(
                 modifier = Modifier
-                    .size(160.dp)
+                    .size(104.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(
@@ -224,7 +224,7 @@ private fun SplashLogoView(
             )
 
             com.example.ui.components.HiPlayerLogoBadge(
-                size = 120.dp,
+                size = 82.dp,
                 shape = RoundedCornerShape(percent = 38)
             )
         }
@@ -233,7 +233,7 @@ private fun SplashLogoView(
 
         Text(
             text = "Hi Player",
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF0C2133),
             letterSpacing = 0.5.sp
@@ -272,7 +272,7 @@ private fun WelcomeNoteView(
             // Header with Logo
             Box(
                 modifier = Modifier
-                    .size(68.dp)
+                    .size(48.dp)
                     .shadow(8.dp, RoundedCornerShape(18.dp), spotColor = Color(0xFF004080).copy(alpha = 0.3f))
                     .clip(RoundedCornerShape(18.dp))
                     .border(1.dp, Color(0xFF7E9EB8), RoundedCornerShape(18.dp))
@@ -283,7 +283,7 @@ private fun WelcomeNoteView(
                     painter = painterResource(id = R.drawable.hi_player_logo),
                     contentDescription = "Hi Player Logo",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(60.dp)
+                    modifier = Modifier.size(42.dp)
                 )
             }
 
@@ -291,7 +291,7 @@ private fun WelcomeNoteView(
 
             Text(
                 text = "Welcome to Hi Player",
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0C2133),
                 textAlign = TextAlign.Center
@@ -301,10 +301,10 @@ private fun WelcomeNoteView(
 
             Text(
                 text = "Designed for high-bitrate 4K HDR playback, lossless audio, and clean file management.",
-                fontSize = 11.5.sp,
+                fontSize = 10.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center,
-                lineHeight = 16.sp
+                lineHeight = 13.sp
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -401,15 +401,15 @@ private fun FeatureRow(
                 Text(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.5.sp,
+                    fontSize = 11.5.sp,
                     color = Color(0xFF0C2133)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
-                    fontSize = 10.5.sp,
+                    fontSize = 10.sp,
                     color = Color(0xFF2C4A60),
-                    lineHeight = 14.sp
+                    lineHeight = 13.sp
                 )
             }
         }
@@ -455,7 +455,7 @@ private fun ChooseThemeView(
 
             Text(
                 text = "Choose Your Theme",
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0C2133),
                 textAlign = TextAlign.Center
@@ -465,7 +465,7 @@ private fun ChooseThemeView(
 
             Text(
                 text = "Select your preferred theme. Set it as default for the whole app.",
-                fontSize = 11.5.sp,
+                fontSize = 10.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center
             )
@@ -512,7 +512,7 @@ private fun ChooseThemeView(
                         Text(
                             text = selectedTheme.displayName,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.5.sp,
+                            fontSize = 11.5.sp,
                             color = Color(0xFF0C2133)
                         )
                         Text(
@@ -601,13 +601,13 @@ private fun ThemeOptionCard(
                     Text(
                         text = title,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.5.sp,
+                        fontSize = 11.5.sp,
                         color = Color(0xFF0C2133)
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         color = Color(0xFF2C4A60)
                     )
                 }
@@ -666,7 +666,7 @@ private fun PermissionsSetupView(
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(accentColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
@@ -683,7 +683,7 @@ private fun PermissionsSetupView(
 
             Text(
                 text = "Permissions Required",
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0C2133),
                 textAlign = TextAlign.Center
@@ -693,10 +693,10 @@ private fun PermissionsSetupView(
 
             Text(
                 text = "To scan your videos, audio, and provide media controls, please grant storage and notification access.",
-                fontSize = 11.5.sp,
+                fontSize = 10.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center,
-                lineHeight = 16.sp
+                lineHeight = 13.sp
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -793,15 +793,15 @@ private fun PermissionCard(
                 Text(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.5.sp,
+                    fontSize = 11.5.sp,
                     color = Color(0xFF0C2133)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
-                    fontSize = 10.5.sp,
+                    fontSize = 10.sp,
                     color = Color(0xFF2C4A60),
-                    lineHeight = 14.sp
+                    lineHeight = 13.sp
                 )
             }
         }

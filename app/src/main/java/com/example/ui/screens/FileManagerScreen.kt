@@ -354,11 +354,6 @@ fun FileManagerScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                text = if (isInsideFolder) "Folder Content • ${folderFiles.size} items" else "Storage & Files Explorer",
-                                fontSize = 11.sp,
-                                color = palette.secondary
-                            )
                         }
                     }
                 }

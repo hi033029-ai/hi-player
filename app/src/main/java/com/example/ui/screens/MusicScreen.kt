@@ -85,6 +85,7 @@ import coil.request.ImageRequest
 import com.example.R
 import com.example.model.AudioItem
 import com.example.ui.components.AudioTrackThumbnail
+import com.example.ui.components.HiPlayerHeader
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.MusicViewModel
 
@@ -164,31 +165,8 @@ fun MusicScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        // Top App Bar
-        TopAppBar(
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    com.example.ui.components.HiPlayerLogoBadge(
-                        size = 34.dp
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Hi Player",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = palette.textPrimary
-                        )
-                        Text(
-                            text = "Music & Hi-Fi Audio",
-                            fontSize = 11.sp,
-                            color = palette.primary
-                        )
-                    }
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-        )
+        // One shared compact header used across the player.
+        HiPlayerHeader(testTag = "music_header")
 
         // Clean Sheet Plan Filter chips bar
         Column(

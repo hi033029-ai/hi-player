@@ -103,7 +103,7 @@ fun RoundColorThemeItem(
         // Combined Round Small Colors (Circle with dual / combined colors preview)
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(38.dp)
                 .then(
                     if (isSelected) {
                         Modifier
@@ -146,7 +146,7 @@ fun RoundColorThemeItem(
             // Inner center dot with accent color or checkmark when selected
             Box(
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(14.dp)
                     .clip(CircleShape)
                     .background(
                         if (isSelected) palette.primary else if (palette.isDark) Color(0xFF0F172A) else Color.White
@@ -181,13 +181,13 @@ fun RoundColorThemeItem(
         // Lower Theme Name
         Text(
             text = theme.displayName,
-            fontSize = 10.5.sp,
+            fontSize = 9.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             color = if (isSelected) currentAppPalette.primary else currentAppPalette.textPrimary,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            lineHeight = 13.sp
+            lineHeight = 12.sp
         )
     }
 }
