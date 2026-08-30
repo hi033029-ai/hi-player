@@ -44,6 +44,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -202,14 +205,22 @@ fun MusicScreen(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 listOf("All", "MP3 Audio").forEach { filter ->
                     val isSelected = selectedFilter == filter
-                    Box(
+                    Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) palette.primary.copy(alpha = 0.18f) else Color.Transparent)
                             .clickable { musicViewModel.setFilter(filter) }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                            .testTag("audio_filter_$filter")
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("audio_filter_$filter"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Icon(
+                            imageVector = if (filter == "All") Icons.Default.Audiotrack else Icons.Default.MusicNote,
+                            contentDescription = filter,
+                            tint = if (isSelected) palette.primary else palette.textSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Text(
                             text = filter,
                             fontSize = 12.sp,
@@ -222,8 +233,12 @@ fun MusicScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box {
-                    TextButton(onClick = { viewMenuExpanded = true }) {
-                        Text(if (compactAudioView) "View: Compact" else "View: List", fontSize = 12.sp, color = palette.textPrimary)
+                    IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
+                        Icon(
+                            imageVector = if (compactAudioView) Icons.Default.GridView else Icons.Default.ViewList,
+                            contentDescription = "View",
+                            tint = palette.textPrimary
+                        )
                     }
                     DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
                         DropdownMenuItem(text = { Text("List") }, onClick = { compactAudioView = false; viewMenuExpanded = false })
@@ -231,8 +246,8 @@ fun MusicScreen(
                     }
                 }
                 Box {
-                    TextButton(onClick = { sortMenuExpanded = true }) {
-                        Text("Sort By", fontSize = 12.sp, color = palette.textPrimary)
+                    IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.testTag("audio_sort_button")) {
+                        Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
                     }
                     DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
                         listOf("Name", "Artist", "Duration", "Newest").forEach { option ->

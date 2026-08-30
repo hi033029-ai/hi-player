@@ -95,6 +95,7 @@ enum class OnboardingStep {
 fun SplashScreen(
     isFirstLaunch: Boolean,
     onFinish: (selectedTheme: AppThemeMode, textSizeSp: Int) -> Unit,
+    onSkip: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -156,7 +157,8 @@ fun SplashScreen(
                     WelcomeNoteView(
                         onContinue = {
                             currentStep = OnboardingStep.CHOOSE_THEME
-                        }
+                        },
+                        onSkip = onSkip
                     )
                 }
 
@@ -200,54 +202,60 @@ private fun TextSizeSetupView(
     onComplete: () -> Unit
 ) {
     val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme).primary
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 20.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.Memory, contentDescription = null, tint = accent, modifier = Modifier.size(54.dp))
-        Spacer(modifier = Modifier.height(12.dp))
-        Text("Choose Text Size", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0C2133))
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "Set the size used throughout Hi Player. You can change it later in Settings.",
-            fontSize = 13.sp,
-            color = Color(0xFF2C4A60),
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(18.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
-            shape = RoundedCornerShape(14.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 20.dp)
+                .padding(bottom = 86.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Hi Player preview", fontSize = textSizeSp.sp, fontWeight = FontWeight.Bold, color = accent)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = Color(0xFF2C4A60))
-                Slider(
-                    value = textSizeSp.toFloat(),
-                    onValueChange = { onTextSizeChanged(it.roundToInt()) },
-                    valueRange = 12f..24f,
-                    steps = 11,
-                    modifier = Modifier.fillMaxWidth().testTag("onboarding_text_size_slider")
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Small", fontSize = 11.sp, color = Color(0xFF2C4A60))
-                    Text("${textSizeSp}sp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accent)
-                    Text("Large", fontSize = 11.sp, color = Color(0xFF2C4A60))
+            com.example.ui.components.HiPlayerLogoBadge(size = 58.dp)
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("Choose Text Size", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0C2133))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "Set the size used throughout Hi Player. You can change it later in Settings.",
+                fontSize = 13.sp,
+                color = Color(0xFF2C4A60),
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Hi Player preview", fontSize = textSizeSp.sp, fontWeight = FontWeight.Bold, color = accent)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = Color(0xFF2C4A60))
+                    Slider(
+                        value = textSizeSp.toFloat(),
+                        onValueChange = { onTextSizeChanged(it.roundToInt()) },
+                        valueRange = 12f..24f,
+                        steps = 11,
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_text_size_slider")
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Small", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                        Text("${textSizeSp}sp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accent)
+                        Text("Large", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                    }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(20.dp))
         Button(
             onClick = onComplete,
             colors = ButtonDefaults.buttonColors(containerColor = accent),
-            modifier = Modifier.fillMaxWidth().height(46.dp)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 20.dp)
+                .height(46.dp)
         ) {
             Text("Enter Hi Player", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
@@ -328,18 +336,21 @@ private fun SplashLogoView(
 
 @Composable
 private fun WelcomeNoteView(
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    onSkip: () -> Unit
 ) {
     val context = LocalContext.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 28.dp)
+                .padding(bottom = 92.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
@@ -427,25 +438,47 @@ private fun WelcomeNoteView(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Button(
-            onClick = onContinue,
+        }
+        Row(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(44.dp)
-                .testTag("welcome_continue_button"),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Button(
+                onClick = onSkip,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("welcome_skip_button"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF0056B3)
+                ),
+                border = BorderStroke(1.dp, Color(0xFF0056B3))
+            ) {
+                Text("Skip", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            }
+
+            Button(
+                onClick = onContinue,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .testTag("welcome_continue_button"),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF0056B3),
                 contentColor = Color.White
             )
         ) {
-            Text(
-                text = "Continue",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp
-            )
+                Text(
+                    text = "Continue",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
@@ -511,14 +544,16 @@ private fun ChooseThemeView(
 ) {
     val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 24.dp)
+                .padding(bottom = 86.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
@@ -612,12 +647,13 @@ private fun ChooseThemeView(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+        }
         Button(
             onClick = onProceed,
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
                 .height(44.dp)
                 .testTag("theme_proceed_button"),
             shape = RoundedCornerShape(10.dp),
@@ -626,11 +662,7 @@ private fun ChooseThemeView(
                 contentColor = if (selectedPalette.isDark) Color.Black else Color.White
             )
         ) {
-            Text(
-                text = "Apply & Continue",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp
-            )
+            Text("Apply & Continue", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
     }
 }
@@ -739,14 +771,16 @@ private fun PermissionsSetupView(
 
     val accentColor = com.example.ui.theme.getPaletteForTheme(selectedTheme).primary
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 28.dp)
+                .padding(bottom = 90.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
@@ -805,8 +839,7 @@ private fun PermissionsSetupView(
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
-
+        }
         Button(
             onClick = {
                 val hasAll = permissionsToRequest.all {
@@ -823,7 +856,9 @@ private fun PermissionsSetupView(
                 }
             },
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 20.dp)
                 .height(48.dp)
                 .testTag("grant_permissions_button"),
             shape = RoundedCornerShape(12.dp),
