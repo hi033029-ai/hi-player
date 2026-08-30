@@ -338,7 +338,7 @@ private fun WelcomeNoteView(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.Top
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -517,7 +517,7 @@ private fun ChooseThemeView(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.Top
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -745,7 +745,7 @@ private fun PermissionsSetupView(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.Top
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,

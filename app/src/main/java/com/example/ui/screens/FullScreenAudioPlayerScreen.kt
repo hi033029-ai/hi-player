@@ -119,7 +119,7 @@ fun FullScreenAudioPlayerScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.Top
         ) {
             // Top Bar (Back Arrow, Title, Cancel X)
             Row(

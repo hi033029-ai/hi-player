@@ -55,46 +55,49 @@ fun HiPlayerHeader(
                 .height(metrics.headerHeight)
                 .padding(start = 16.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            HiPlayerLogoBadge(size = metrics.logoSize)
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = title,
-                fontSize = metrics.titleTextSize,
-                fontWeight = FontWeight.Bold,
-                color = palette.primary,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            if (onRefreshClick != null) {
-                IconButton(onClick = onRefreshClick, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = palette.textPrimary
-                    )
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HiPlayerLogoBadge(size = metrics.logoSize)
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = title,
+                    fontSize = metrics.titleTextSize,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.primary,
+                    maxLines = 1
+                )
             }
-            if (showSearch && onSearchClick != null) {
-                IconButton(onClick = onSearchClick, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = if (searchActive) Icons.Default.Clear else Icons.Default.Search,
-                        contentDescription = if (searchActive) "Close search" else "Search",
-                        tint = palette.textPrimary
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onRefreshClick != null) {
+                    IconButton(onClick = onRefreshClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = palette.textPrimary
+                        )
+                    }
                 }
-            }
-            if (onStreamClick != null) {
-                IconButton(onClick = onStreamClick, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Cast,
-                        contentDescription = "Stream URL",
-                        tint = palette.textPrimary
-                    )
+                if (showSearch && onSearchClick != null) {
+                    IconButton(onClick = onSearchClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = if (searchActive) Icons.Default.Clear else Icons.Default.Search,
+                            contentDescription = if (searchActive) "Close search" else "Search",
+                            tint = palette.textPrimary
+                        )
+                    }
                 }
+                if (onStreamClick != null) {
+                    IconButton(onClick = onStreamClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Cast,
+                            contentDescription = "Stream URL",
+                            tint = palette.textPrimary
+                        )
+                    }
+                }
+                extraActions?.invoke()
             }
-            extraActions?.invoke()
         }
     }
 }
