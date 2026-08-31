@@ -95,7 +95,7 @@ import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
-import com.example.data.AudioItem
+import com.example.model.AudioItem
 import com.example.model.VideoItem
 import com.example.ui.components.AudioTrackThumbnail
 import com.example.ui.components.HiPlayerHeader
