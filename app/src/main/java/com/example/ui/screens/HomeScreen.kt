@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -638,13 +639,6 @@ fun HomeScreen(
                     CircularProgressIndicator(color = palette.primary)
                 }
             } else if (navMode == LibraryNavMode.FOLDERS && selectedFolder == null) {
-                if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
-                    ContinueWatchingStrip(
-                        items = continueWatchingVideos,
-                        onVideoSelected = onVideoSelected,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-                }
                 // CLEAN FOLDER SYSTEM VIEW (Matching User's Reference Image)
                 if (folders.isEmpty()) {
                     EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
@@ -656,6 +650,15 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = onVideoSelected,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
                             FolderGridCard(
                                 name = folder.name,
@@ -670,6 +673,15 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
+                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                            item {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = onVideoSelected,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
                             FolderItemRow(
                                 folder = folder,
@@ -682,13 +694,6 @@ fun HomeScreen(
                     }
                 }
             } else if (navMode == LibraryNavMode.TREE_FOLDERS) {
-                if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
-                    ContinueWatchingStrip(
-                        items = continueWatchingVideos,
-                        onVideoSelected = onVideoSelected,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-                }
                 // REAL NESTED FOLDER TREE - browse actual on-disk subfolders,
                 // descending into them, instead of a flat "Recent" list.
                 val node = currentTreeNode
@@ -700,6 +705,15 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                            item {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = onVideoSelected,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         if (node.childFolders.isNotEmpty()) {
                             item {
                                 Text(
@@ -782,13 +796,6 @@ fun HomeScreen(
             } else {
                 // Unified media items (List or Grid). Continue Watching is kept
                 // above both layouts so it never disappears when switching modes.
-                if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
-                    ContinueWatchingStrip(
-                        items = continueWatchingVideos,
-                        onVideoSelected = onVideoSelected,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-                }
                 if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
@@ -1071,7 +1078,7 @@ fun ContinueWatchingCard(
 
 
 @Composable
-private fun ContinueWatchingStrip(
+fun ContinueWatchingStrip(
     items: List<LibraryViewModel.ContinueWatchingItem>,
     onVideoSelected: (VideoItem) -> Unit,
     modifier: Modifier = Modifier

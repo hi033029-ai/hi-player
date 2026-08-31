@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                 var showStreamUrlDialog by remember { mutableStateOf(false) }
                 var globalSearchQuery by remember { mutableStateOf("") }
                 var streamUrl by remember { mutableStateOf("") }
+                var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
@@ -134,13 +135,25 @@ class MainActivity : ComponentActivity() {
                             isShowingSplash = false
                             libraryViewModel.refreshVideos()
                             musicViewModel.loadAudioTracks()
+                        },
+                        onSkip = {
+                            libraryViewModel.setThemeMode(com.example.data.AppThemeMode.WARM_SUNSET_LIGHT)
+                            libraryViewModel.setUiTextSize(14)
+                            completeFirstLaunchAfterPermission = true
+                            isShowingSplash = false
+                            libraryViewModel.refreshVideos()
+                            musicViewModel.loadAudioTracks()
                         }
                     )
                 } else {
                     // Dynamic Permission Request on Launch (Only prompt dialog on first launch)
                     RequestPermissionsOnLaunch(
-                        isFirstLaunch = settings.isFirstLaunch,
+                        isFirstLaunch = settings.isFirstLaunch || completeFirstLaunchAfterPermission,
                         onGranted = {
+                            if (completeFirstLaunchAfterPermission) {
+                                libraryViewModel.setFirstLaunchCompleted()
+                                completeFirstLaunchAfterPermission = false
+                            }
                             libraryViewModel.refreshVideos()
                             musicViewModel.loadAudioTracks()
                         }
@@ -275,7 +288,8 @@ class MainActivity : ComponentActivity() {
                                                             currentScreen = AppScreen.Player
                                                         }
                                                     },
-                                                    includeHeader = false
+                                                    includeHeader = false,
+                                                    libraryViewModel = libraryViewModel
                                                 )
                                             }
                                             NavTab.FILE_MANAGER -> {

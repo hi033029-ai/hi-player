@@ -95,11 +95,14 @@ import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
-import com.example.model.AudioItem
+import com.example.data.AudioItem
+import com.example.model.VideoItem
 import com.example.ui.components.AudioTrackThumbnail
 import com.example.ui.components.HiPlayerHeader
 import com.example.ui.theme.LocalHiPalette
+import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * "Find Video" now searches the internet (YouTube) for this track's music
@@ -137,7 +140,8 @@ fun MusicScreen(
     onPlayVideo: (android.net.Uri) -> Unit = {},
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
-    onSearchRequested: (() -> Unit)? = null
+    onSearchRequested: (() -> Unit)? = null,
+    libraryViewModel: LibraryViewModel? = null
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -148,6 +152,9 @@ fun MusicScreen(
     val duration by musicViewModel.durationMs.collectAsState()
     val searchQuery by musicViewModel.searchQuery.collectAsState()
     val selectedFilter by musicViewModel.selectedFilter.collectAsState()
+    val continueWatchingVideos by (libraryViewModel?.continueWatchingVideos
+        ?: flowOf(emptyList<LibraryViewModel.ContinueWatchingItem>()))
+        .collectAsState(initial = emptyList())
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsState()
     val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
     val lyricsFallbackUrl by musicViewModel.lyricsFallbackUrl.collectAsState()
@@ -325,6 +332,15 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
                     ) {
+                        if (continueWatchingVideos.isNotEmpty()) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = { video -> onPlayVideo(video.uri) },
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         gridItems(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
@@ -341,6 +357,15 @@ fun MusicScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (continueWatchingVideos.isNotEmpty()) {
+                            item {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = { video -> onPlayVideo(video.uri) },
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         items(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
