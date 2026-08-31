@@ -225,76 +225,76 @@ fun MusicScreen(
             )
         }
 
-        // Plan-sheet audio controls: stacked filters on the left, view/sort on the right.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(palette.surface)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("All", "MP3 Audio").forEach { filter ->
-                    val isSelected = selectedFilter == filter
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) palette.primary.copy(alpha = 0.18f) else Color.Transparent)
-                            .clickable { musicViewModel.setFilter(filter) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("audio_filter_$filter"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (filter == "All") Icons.Default.Audiotrack else Icons.Default.MusicNote,
-                            contentDescription = filter,
-                            tint = if (isSelected) palette.primary else palette.textSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = filter,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) palette.primary else palette.textPrimary
-                        )
-                    }
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box {
-                    IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
-                        Icon(
-                            imageVector = if (compactAudioView) Icons.Default.ViewList else Icons.Default.GridView,
-                            contentDescription = "View",
-                            tint = palette.textPrimary
-                        )
-                    }
-                    DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
-                        DropdownMenuItem(text = { Text("Vertical") }, onClick = {
-                            compactAudioView = false
-                            musicPreferences.edit().putBoolean("horizontal_view", false).apply()
-                            viewMenuExpanded = false
-                        })
-                        DropdownMenuItem(text = { Text("Horizontal") }, onClick = {
-                            compactAudioView = true
-                            musicPreferences.edit().putBoolean("horizontal_view", true).apply()
-                            viewMenuExpanded = false
-                        })
-                    }
-                }
-                Box {
-                    IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.testTag("audio_sort_button")) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
-                    }
-                    DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
-                        listOf("Name", "Artist", "Duration", "Newest").forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option) },
-                                onClick = { audioSort = option; sortMenuExpanded = false }
+        val audioToolbar: @Composable () -> Unit = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(palette.surface)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("All", "MP3 Audio").forEach { filter ->
+                        val isSelected = selectedFilter == filter
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) palette.primary.copy(alpha = 0.18f) else Color.Transparent)
+                                .clickable { musicViewModel.setFilter(filter) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .testTag("audio_filter_$filter"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (filter == "All") Icons.Default.Audiotrack else Icons.Default.MusicNote,
+                                contentDescription = filter,
+                                tint = if (isSelected) palette.primary else palette.textSecondary,
+                                modifier = Modifier.size(16.dp)
                             )
+                            Text(
+                                text = filter,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) palette.primary else palette.textPrimary
+                            )
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box {
+                        IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
+                            Icon(
+                                imageVector = if (compactAudioView) Icons.Default.ViewList else Icons.Default.GridView,
+                                contentDescription = "View",
+                                tint = palette.textPrimary
+                            )
+                        }
+                        DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
+                            DropdownMenuItem(text = { Text("Vertical") }, onClick = {
+                                compactAudioView = false
+                                musicPreferences.edit().putBoolean("horizontal_view", false).apply()
+                                viewMenuExpanded = false
+                            })
+                            DropdownMenuItem(text = { Text("Horizontal") }, onClick = {
+                                compactAudioView = true
+                                musicPreferences.edit().putBoolean("horizontal_view", true).apply()
+                                viewMenuExpanded = false
+                            })
+                        }
+                    }
+                    Box {
+                        IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.testTag("audio_sort_button")) {
+                            Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
+                        }
+                        DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                            listOf("Name", "Artist", "Duration", "Newest").forEach { option ->
+                                DropdownMenuItem(text = { Text(option) }, onClick = {
+                                    audioSort = option
+                                    sortMenuExpanded = false
+                                })
+                            }
                         }
                     }
                 }
@@ -332,6 +332,9 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
                     ) {
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            audioToolbar()
+                        }
                         if (continueWatchingVideos.isNotEmpty()) {
                             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
@@ -357,6 +360,9 @@ fun MusicScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        item {
+                            audioToolbar()
+                        }
                         if (continueWatchingVideos.isNotEmpty()) {
                             item {
                                 ContinueWatchingStrip(

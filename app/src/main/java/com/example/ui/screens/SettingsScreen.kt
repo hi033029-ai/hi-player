@@ -122,19 +122,19 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 0.dp, vertical = 0.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             // 1. Theme & Appearance (Horizontal Form)
             SettingsSectionHeader(title = "App Theme & Visual Style (Horizontal)", accentColor = palette.primary)
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                 border = null,
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
                     Text(
                         text = "CHOOSE APP THEME",
                         fontSize = 10.sp,
@@ -201,11 +201,11 @@ fun SettingsScreen(
             SettingsSectionHeader(title = "Text Size", accentColor = palette.primary)
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                 border = null,
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -248,9 +248,9 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     HwAccelerationMode.entries.forEach { hwMode ->
                         val isSelected = settings.hwAccelerationMode == hwMode
                         Card(
@@ -307,9 +307,9 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     SettingsSwitchItem(
                         icon = Icons.Default.HdrOn,
                         title = "Wide Color Gamut (BT.2020 / P3)",
@@ -341,9 +341,9 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     SettingsSwitchItem(
                         icon = Icons.Default.Headphones,
                         title = "Background Audio Playback",
@@ -371,10 +371,10 @@ fun SettingsScreen(
 private fun SettingsSectionHeader(title: String, accentColor: Color) {
     Text(
         text = title,
-        color = accentColor,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        color = accentColor.copy(alpha = 0.75f),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp)
     )
 }
 
@@ -408,13 +408,15 @@ private fun SettingsSwitchItem(
                 Text(
                     text = title,
                     color = palette.textPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = subtitle,
                     color = palette.textSecondary,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

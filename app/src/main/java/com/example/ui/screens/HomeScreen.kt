@@ -804,6 +804,15 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = onVideoSelected,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         itemsIndexed(filteredVideos, key = { _, video -> video.id }) { _, video ->
                             val record = historyMap[video.uri.toString()]
                             val progressFraction = if (record != null && record.durationMs > 0) {
@@ -830,6 +839,15 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                            item {
+                                ContinueWatchingStrip(
+                                    items = continueWatchingVideos,
+                                    onVideoSelected = onVideoSelected,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         // Video item rows
                         items(filteredVideos, key = { it.id }) { video ->
                             val record = historyMap[video.uri.toString()]
