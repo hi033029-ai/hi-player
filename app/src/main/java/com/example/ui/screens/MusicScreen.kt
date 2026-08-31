@@ -335,15 +335,6 @@ fun MusicScreen(
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                             audioToolbar()
                         }
-                        if (continueWatchingVideos.isNotEmpty()) {
-                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                ContinueWatchingStrip(
-                                    items = continueWatchingVideos,
-                                    onVideoSelected = { video -> onPlayVideo(video.uri) },
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
                         gridItems(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
@@ -362,15 +353,6 @@ fun MusicScreen(
                     ) {
                         item {
                             audioToolbar()
-                        }
-                        if (continueWatchingVideos.isNotEmpty()) {
-                            item {
-                                ContinueWatchingStrip(
-                                    items = continueWatchingVideos,
-                                    onVideoSelected = { video -> onPlayVideo(video.uri) },
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                )
-                            }
                         }
                         items(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id

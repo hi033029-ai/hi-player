@@ -176,6 +176,13 @@ fun FileManagerScreen(
     var apkInstallCandidate by remember { mutableStateOf<FileItem?>(null) }
     var showQuickPanels by remember { mutableStateOf(true) }
 
+    // Upper quick panels are restored whenever Files is revisited or navigation changes.
+    // Scrolling must not permanently hide them; the user can dismiss them only through
+    // an explicit UI action, and returning to Files always restores the default view.
+    LaunchedEffect(activeTab, currentDir.absolutePath) {
+        showQuickPanels = true
+    }
+
     // Single back handler with an explicit priority order: any open dialog/sheet
     // must be dismissed (and its state cleared) before back is allowed to fall
     // through to folder navigation. Previously the archive inspector and the
@@ -724,7 +731,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { showQuickPanels = false },
+                            onContentScrolled = { /* Do not hide quick panels permanently on scroll. */ },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -758,7 +765,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { showQuickPanels = false },
+                            onContentScrolled = { /* Do not hide quick panels permanently on scroll. */ },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
