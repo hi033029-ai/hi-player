@@ -163,38 +163,6 @@ fun SettingsScreen(
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    // Active theme badge footer
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.surface)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text = "Current Theme: ${settings.themeMode.displayName}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = palette.textPrimary
-                            )
-                            Text(
-                                text = settings.themeMode.description,
-                                fontSize = 10.sp,
-                                color = palette.textSecondary
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(palette.primary)
-                        )
-                    }
                 }
             }
 
@@ -303,41 +271,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. 4K UHD Blu-ray Remux Engine & HDR Enhancement
-            SettingsSectionHeader(title = "4K UHD Blu-ray & HDR Graphics", accentColor = palette.primary)
-
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SettingsSwitchItem(
-                        icon = Icons.Default.HdrOn,
-                        title = "Wide Color Gamut (BT.2020 / P3)",
-                        subtitle = "Prevents dull or washed out colors on HDR 4K videos",
-                        checked = settings.enableWideColorGamut,
-                        onCheckedChange = { libraryViewModel.setWideColorGamut(it) }
-                    )
-                    HorizontalDivider(color = palette.surfaceBorder)
-                    SettingsSwitchItem(
-                        icon = Icons.Default.ColorLens,
-                        title = "HDR Color Enhancement",
-                        subtitle = "Hardware tonemapping for vivid, accurate dynamic range",
-                        checked = settings.enableHdrEnhance,
-                        onCheckedChange = { libraryViewModel.setHdrEnhance(it) }
-                    )
-                    HorizontalDivider(color = palette.surfaceBorder)
-                    SettingsSwitchItem(
-                        icon = Icons.Default.Tv,
-                        title = "4K Remux Ultra Buffer (128MB)",
-                        subtitle = "High throughput memory cache for 80+ Mbps Blu-ray remux",
-                        checked = settings.remuxUltraBufferMode,
-                        onCheckedChange = { libraryViewModel.setRemuxUltraBufferMode(it) }
-                    )
-                }
-            }
-
-            // 5. Playback & Multitasking
+            // 4. Playback & Multitasking
             SettingsSectionHeader(title = "Playback & Multitasking", accentColor = palette.primary)
 
             Card(

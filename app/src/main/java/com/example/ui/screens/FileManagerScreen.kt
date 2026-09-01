@@ -731,7 +731,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { showQuickPanels = false },
+                            onContentScrolled = { atTop -> showQuickPanels = atTop },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -765,7 +765,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { showQuickPanels = false },
+                            onContentScrolled = { atTop -> showQuickPanels = atTop },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -1027,13 +1027,14 @@ fun MergedFilesView(
     onItemLongClick: (FileItem) -> Unit = {},
     onItemTap: (FileItem) -> Unit = {},
     onItemMenuClick: (FileItem) -> Unit = {},
-    onContentScrolled: () -> Unit = {}
+    onContentScrolled: (Boolean) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     var isArchivesExpanded by remember { mutableStateOf(false) }
     val mergedListState = rememberLazyListState()
     LaunchedEffect(mergedListState.firstVisibleItemIndex, mergedListState.firstVisibleItemScrollOffset) {
-        if (mergedListState.firstVisibleItemIndex > 0 || mergedListState.firstVisibleItemScrollOffset > 48) onContentScrolled()
+        val atTop = mergedListState.firstVisibleItemIndex == 0 && mergedListState.firstVisibleItemScrollOffset <= 48
+        onContentScrolled(atTop)
     }
     var isDocumentsExpanded by remember { mutableStateOf(false) }
 
@@ -1432,12 +1433,13 @@ fun FoldersBrowserView(
     onItemLongClick: (FileItem) -> Unit = {},
     onItemTap: (FileItem) -> Unit = {},
         onItemMenuClick: (FileItem) -> Unit = {},
-    onContentScrolled: () -> Unit = {}
+    onContentScrolled: (Boolean) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val folderListState = rememberLazyListState()
     LaunchedEffect(folderListState.firstVisibleItemIndex, folderListState.firstVisibleItemScrollOffset) {
-        if (folderListState.firstVisibleItemIndex > 0 || folderListState.firstVisibleItemScrollOffset > 48) onContentScrolled()
+        val atTop = folderListState.firstVisibleItemIndex == 0 && folderListState.firstVisibleItemScrollOffset <= 48
+        onContentScrolled(atTop)
     }
     Column(modifier = Modifier.fillMaxSize()) {
         // Folder Bar
