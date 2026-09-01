@@ -731,7 +731,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { /* Do not hide quick panels permanently on scroll. */ },
+                            onContentScrolled = { showQuickPanels = false },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -765,7 +765,7 @@ fun FileManagerScreen(
                         if (it.isApk) apkInstallCandidate = it
                         else fileManagerViewModel.openWithExternalApp(it, context)
                     },
-                            onContentScrolled = { /* Do not hide quick panels permanently on scroll. */ },
+                            onContentScrolled = { showQuickPanels = false },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
