@@ -139,13 +139,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
      * replacing the previous fake feature that just set one static made-up
      * label string with no real timed content behind it.
      */
-    private val _lyricsFallbackUrl = MutableStateFlow<String?>(null)
-    val lyricsFallbackUrl = _lyricsFallbackUrl.asStateFlow()
+    private val _lyricsText = MutableStateFlow<String?>(null)
+    val lyricsText = _lyricsText.asStateFlow()
 
     fun fetchAndSyncLyrics(track: AudioItem) {
         lyricsSyncJob?.cancel()
         _activeSubtitle.value = "Searching for lyrics…"
-        _lyricsFallbackUrl.value = null
+        _lyricsText.value = null
         lyricsLines = emptyList()
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -156,8 +156,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 // 1. Try an exact match first.
                 var synced = ""
                 var plain = ""
-                val exactUrl = java.net.URL("https://lrclib.net/api/get?track_name=$titleQ&artist_name=$artistQ")
+                val durationQ = (track.durationMs / 1000L).coerceIn(1L, 3600L)
+                val exactUrl = java.net.URL("https://lrclib.net/api/get?track_name=$titleQ&artist_name=$artistQ&album_name=${java.net.URLEncoder.encode(track.album, "UTF-8")}&duration=$durationQ")
                 val exactConn = exactUrl.openConnection() as java.net.HttpURLConnection
+                exactConn.setRequestProperty("User-Agent", "HiPlayer/1.0 (https://github.com/hi033029-ai/hi-player)")
                 exactConn.connectTimeout = 8000
                 exactConn.readTimeout = 8000
                 if (exactConn.responseCode in 200..299) {
@@ -175,6 +177,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val searchQ = java.net.URLEncoder.encode("${track.artist} ${track.title}", "UTF-8")
                     val searchUrl = java.net.URL("https://lrclib.net/api/search?q=$searchQ")
                     val searchConn = searchUrl.openConnection() as java.net.HttpURLConnection
+                    searchConn.setRequestProperty("User-Agent", "HiPlayer/1.0 (https://github.com/hi033029-ai/hi-player)")
                     searchConn.connectTimeout = 8000
                     searchConn.readTimeout = 8000
                     if (searchConn.responseCode in 200..299) {
@@ -189,8 +192,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     searchConn.disconnect()
                 }
 
+                // Plain-lyrics fallback for tracks not available in LRCLIB.
+                if (synced.isBlank() && plain.isBlank()) {
+                    val fallbackUrl = java.net.URL("https://api.lyrics.ovh/v1/$artistQ/$titleQ")
+                    val fallbackConn = fallbackUrl.openConnection() as java.net.HttpURLConnection
+                    fallbackConn.connectTimeout = 8000
+                    fallbackConn.readTimeout = 8000
+                    if (fallbackConn.responseCode in 200..299) {
+                        val fallbackObj = org.json.JSONObject(fallbackConn.inputStream.bufferedReader().use { it.readText() })
+                        plain = fallbackObj.optString("lyrics", "")
+                    }
+                    fallbackConn.disconnect()
+                }
+
                 when {
                     synced.isNotBlank() -> {
+                        withContext(Dispatchers.Main) { _lyricsText.value = synced }
                         val lineRegex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""")
                         lyricsLines = synced.lines().mapNotNull { line ->
                             val match = lineRegex.find(line) ?: return@mapNotNull null
@@ -207,24 +224,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         // text exists - show it as static (non-karaoke) text
                         // rather than treating "no sync data" as "no lyrics".
                         withContext(Dispatchers.Main) {
+                            _lyricsText.value = plain
                             _activeSubtitle.value = plain.replace("\n", "  •  ").take(500)
                         }
                     }
                     else -> {
-                        // Nothing found anywhere - offer a real web search as
-                        // a fallback instead of a dead end.
-                        val webQuery = java.net.URLEncoder.encode("${track.artist} ${track.title} lyrics", "UTF-8")
                         withContext(Dispatchers.Main) {
-                            _activeSubtitle.value = "Lyrics not found - tap to search the web"
-                            _lyricsFallbackUrl.value = "https://www.google.com/search?q=$webQuery"
+                            _activeSubtitle.value = "Lyrics not found for this track"
                         }
                     }
                 }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
-                    val webQuery = java.net.URLEncoder.encode("${track.artist} ${track.title} lyrics", "UTF-8")
-                    _activeSubtitle.value = "Couldn't fetch lyrics - tap to search the web"
-                    _lyricsFallbackUrl.value = "https://www.google.com/search?q=$webQuery"
+                    _activeSubtitle.value = "Couldn't fetch lyrics. Try again."
                 }
             }
         }
@@ -245,7 +257,31 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun clearLyrics() {
         lyricsSyncJob?.cancel()
         lyricsLines = emptyList()
+        _lyricsText.value = null
         _activeSubtitle.value = null
+    }
+
+    fun downloadLyrics(context: android.content.Context, track: AudioItem) {
+        val content = _lyricsText.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val downloads = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                if (!downloads.exists()) downloads.mkdirs()
+                val safeName = track.title.replace(Regex("[^a-zA-Z0-9._-]+"), "_").trim('_')
+                val extension = if (Regex("""\[\d{2}:\d{2}\.""").containsMatchIn(content)) ".lrc" else ".txt"
+                val output = java.io.File(downloads, "${safeName.ifBlank { "lyrics" }}$extension")
+                output.writeText(content)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Lyrics saved to Downloads/${output.name}", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Couldn't save lyrics", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private val _isFullScreenPlayerOpen = MutableStateFlow(false)

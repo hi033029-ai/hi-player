@@ -3,7 +3,7 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,11 +69,14 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,6 +106,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.delay
 
 /**
  * "Find Video" now searches the internet (YouTube) for this track's music
@@ -122,14 +126,6 @@ private fun openYoutubeSearchForTrack(context: android.content.Context, track: A
             Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")
         )
         context.startActivity(webIntent)
-    }
-}
-
-private fun openLyricsFallbackIfAny(context: android.content.Context, url: String?) {
-    if (url.isNullOrBlank()) return
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-    } catch (_: Exception) {
     }
 }
 
@@ -157,11 +153,13 @@ fun MusicScreen(
         .collectAsState(initial = emptyList())
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsState()
     val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
-    val lyricsFallbackUrl by musicViewModel.lyricsFallbackUrl.collectAsState()
+    val lyricsText by musicViewModel.lyricsText.collectAsState()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
     val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
     var showEqDialog by remember { mutableStateOf(false) }
+    var showLyricsDialog by remember { mutableStateOf(false) }
+    var recognizeLyrics by remember { mutableStateOf(false) }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val musicPreferences = remember {
@@ -174,6 +172,14 @@ fun MusicScreen(
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
     var audioSort by remember { mutableStateOf("Name") }
+
+    LaunchedEffect(showLyricsDialog, recognizeLyrics, currentTrack?.id) {
+        if (showLyricsDialog && recognizeLyrics) {
+            musicViewModel.clearLyrics()
+            delay(3500)
+            currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+        }
+    }
     val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
         if (compactAudioView && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             val next = (audioGridMinSize / zoomChange).roundToInt().coerceIn(120, 240)
@@ -383,10 +389,10 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { musicViewModel.fetchAndSyncLyrics(currentTrack!!) },
+                    onOpenSubtitleSearch = { showLyricsDialog = true },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onBack = { musicViewModel.closeFullScreenPlayer() },
-                    onLyricsTap = { openLyricsFallbackIfAny(context, lyricsFallbackUrl) },
+                    onLyricsTap = { showLyricsDialog = true },
                     onCancel = { musicViewModel.stopTrack() }
                 )
             } else {
@@ -402,14 +408,93 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { musicViewModel.fetchAndSyncLyrics(currentTrack!!) },
+                    onOpenSubtitleSearch = { showLyricsDialog = true },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
-                    onLyricsTap = { openLyricsFallbackIfAny(context, lyricsFallbackUrl) },
+                    onLyricsTap = { showLyricsDialog = true },
                     onCancel = { musicViewModel.stopTrack() },
                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                 )
             }
         }
+    }
+
+    if (showLyricsDialog && currentTrack != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showLyricsDialog = false
+                recognizeLyrics = false
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = palette.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Lyrics", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "${currentTrack!!.artist} — ${currentTrack!!.title}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Recognize audio", fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
+                            Text("Match title, artist, album, and duration", fontSize = 11.sp, color = palette.textSecondary)
+                        }
+                        Switch(
+                            checked = recognizeLyrics,
+                            onCheckedChange = { recognizeLyrics = it },
+                            modifier = Modifier.testTag("lyrics_recognize_toggle")
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (recognizeLyrics && lyricsText == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = palette.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Recognizing…", color = palette.textSecondary, fontSize = 12.sp)
+                        }
+                    } else if (!lyricsText.isNullOrBlank()) {
+                        Text(
+                            text = lyricsText!!,
+                            color = palette.textPrimary,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            maxLines = 14,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else if (!recognizeLyrics) {
+                        Text("Turn on recognition to search for lyrics for the track now playing.", color = palette.textSecondary, fontSize = 12.sp)
+                    } else {
+                        Text(activeSubtitle ?: "No lyrics found.", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        currentTrack?.let { musicViewModel.downloadLyrics(context, it) }
+                    },
+                    enabled = !lyricsText.isNullOrBlank()
+                ) { Text("Download Lyrics") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showLyricsDialog = false
+                    recognizeLyrics = false
+                }) { Text("Close") }
+            }
+        )
     }
 
     // Equalizer Preset Dialog
