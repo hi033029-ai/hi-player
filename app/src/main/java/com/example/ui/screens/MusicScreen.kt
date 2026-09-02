@@ -70,6 +70,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -92,6 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -409,19 +411,20 @@ fun MusicScreen(
     }
 
     if (showLyricsDialog && currentTrack != null) {
-        AlertDialog(
-            onDismissRequest = {
-                showLyricsDialog = false
-            },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = palette.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Lyrics", fontWeight = FontWeight.Bold)
-                }
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+        Dialog(onDismissRequest = { showLyricsDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = palette.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(22.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Subtitles, contentDescription = null, tint = palette.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Lyrics", fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "${currentTrack!!.artist} — ${currentTrack!!.title}",
                         fontSize = 13.sp,
@@ -468,14 +471,13 @@ fun MusicScreen(
                             fontSize = 12.sp
                         )
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showLyricsDialog = false }) { Text("Close") }
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showLyricsDialog = false
-                }) { Text("Close") }
             }
-        )
+        }
     }
 
     // Equalizer Preset Dialog
