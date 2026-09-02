@@ -143,10 +143,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _lyricsText = MutableStateFlow<String?>(null)
     val lyricsText = _lyricsText.asStateFlow()
 
+    private val _currentLyricLineIndex = MutableStateFlow(-1)
+    val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
+
     fun fetchAndSyncLyrics(track: AudioItem) {
         lyricsSyncJob?.cancel()
         _activeSubtitle.value = null
         _lyricsText.value = null
+        _currentLyricLineIndex.value = -1
         lyricsLines = emptyList()
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -248,8 +252,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         lyricsSyncJob = viewModelScope.launch {
             while (isActive) {
                 val positionMs = _currentPositionMs.value
-                val line = lyricsLines.lastOrNull { it.first <= positionMs }?.second
-                _activeSubtitle.value = line?.takeIf { it.isNotBlank() } ?: _activeSubtitle.value
+                val lineIndex = lyricsLines.indexOfLast { it.first <= positionMs }
+                _currentLyricLineIndex.value = lineIndex
+                _activeSubtitle.value = lyricsLines.getOrNull(lineIndex)?.second?.takeIf { it.isNotBlank() }
                 delay(300)
             }
         }
@@ -258,31 +263,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun clearLyrics() {
         lyricsSyncJob?.cancel()
         lyricsLines = emptyList()
+        _currentLyricLineIndex.value = -1
         _lyricsText.value = null
         _activeSubtitle.value = null
-    }
-
-    fun downloadLyrics(context: android.content.Context, track: AudioItem) {
-        val content = _lyricsText.value ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val downloads = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS
-                )
-                if (!downloads.exists()) downloads.mkdirs()
-                val safeName = track.title.replace(Regex("[^a-zA-Z0-9._-]+"), "_").trim('_')
-                val extension = if (Regex("""\[\d{2}:\d{2}\.""").containsMatchIn(content)) ".lrc" else ".txt"
-                val output = java.io.File(downloads, "${safeName.ifBlank { "lyrics" }}$extension")
-                output.writeText(content)
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "Lyrics saved to Downloads/${output.name}", android.widget.Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "Couldn't save lyrics", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
-        }
     }
 
     private val _isFullScreenPlayerOpen = MutableStateFlow(false)

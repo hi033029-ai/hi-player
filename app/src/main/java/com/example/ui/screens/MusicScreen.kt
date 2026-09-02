@@ -151,6 +151,7 @@ fun MusicScreen(
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsState()
     val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
     val lyricsText by musicViewModel.lyricsText.collectAsState()
+    val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
     val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
@@ -431,30 +432,43 @@ fun MusicScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     if (!lyricsText.isNullOrBlank()) {
-                        Text(
-                            text = lyricsText!!,
-                            color = palette.textPrimary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            maxLines = 18,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        val lrcRegex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""")
+                        val lyricLines = lyricsText!!.lines().mapNotNull { line ->
+                            lrcRegex.find(line)?.groupValues?.getOrNull(4)?.trim()
+                        }
+                        if (lyricLines.isEmpty()) {
+                            Text(
+                                text = lyricsText!!,
+                                color = palette.textPrimary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp,
+                                maxLines = 18,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                lyricLines.forEachIndexed { index, line ->
+                                    Text(
+                                        text = line.ifBlank { "♪" },
+                                        color = if (index == currentLyricLineIndex) palette.primary else palette.textSecondary,
+                                        fontSize = if (index == currentLyricLineIndex) 16.sp else 13.sp,
+                                        fontWeight = if (index == currentLyricLineIndex) FontWeight.Bold else FontWeight.Normal,
+                                        lineHeight = 21.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         Text(
-                            text = activeSubtitle ?: "Lyrics are not available for this track.",
+                            text = "Lyrics are not available for this track.",
                             color = palette.textSecondary,
                             fontSize = 12.sp
                         )
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        currentTrack?.let { musicViewModel.downloadLyrics(context, it) }
-                    },
-                    enabled = !lyricsText.isNullOrBlank()
-                ) { Text("Download Lyrics") }
             },
             dismissButton = {
                 TextButton(onClick = {
