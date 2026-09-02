@@ -411,7 +411,6 @@ fun MusicScreen(
         AlertDialog(
             onDismissRequest = {
                 showLyricsDialog = false
-                recognizeLyrics = false
             },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
