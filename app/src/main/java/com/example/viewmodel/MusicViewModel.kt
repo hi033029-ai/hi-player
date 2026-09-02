@@ -55,6 +55,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private var lyricsSyncJob: Job? = null
     private var lyricsLines: List<Pair<Long, String>> = emptyList()
+    private var loadTracksJob: Job? = null
 
     private val _matchingVideoState = MutableStateFlow<MatchingVideoState>(MatchingVideoState.Idle)
     val matchingVideoState = _matchingVideoState.asStateFlow()
@@ -144,7 +145,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fetchAndSyncLyrics(track: AudioItem) {
         lyricsSyncJob?.cancel()
-        _activeSubtitle.value = "Searching for lyrics…"
+        _activeSubtitle.value = null
         _lyricsText.value = null
         lyricsLines = emptyList()
 
@@ -230,13 +231,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     else -> {
                         withContext(Dispatchers.Main) {
-                            _activeSubtitle.value = "Lyrics not found for this track"
+                            _activeSubtitle.value = null
                         }
                     }
                 }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
-                    _activeSubtitle.value = "Couldn't fetch lyrics. Try again."
+                    _activeSubtitle.value = null
                 }
             }
         }
@@ -339,7 +340,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun loadAudioTracks() {
-        viewModelScope.launch {
+        loadTracksJob?.cancel()
+        loadTracksJob = viewModelScope.launch {
             val tracks = withContext(Dispatchers.IO) {
                 queryDeviceAudio()
             }
@@ -489,6 +491,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun playTrack(track: AudioItem) {
         _currentTrack.value = track
         _isFullScreenPlayerOpen.value = true
+        // Prepare lyrics silently in the background for the track now playing.
+        // Results remain available to the existing Lyrics menu and download action.
+        fetchAndSyncLyrics(track)
         exoPlayer?.let { player ->
             player.stop()
             player.clearMediaItems()

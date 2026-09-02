@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 enum class LibraryTab {
@@ -82,6 +83,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+
+    private var refreshJob: Job? = null
 
     private val _navMode = MutableStateFlow(
         runCatching { LibraryNavMode.valueOf(libraryPrefs.getString("nav_mode", LibraryNavMode.FOLDERS.name)!!) }
@@ -292,11 +295,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _isLoading.value = true
-            val scanned = MediaScanner.scanLocalVideos(getApplication())
-            _allVideos.value = scanned
-            _isLoading.value = false
+            try {
+                val scanned = MediaScanner.scanLocalVideos(getApplication())
+                _allVideos.value = scanned
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
