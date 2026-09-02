@@ -121,67 +121,9 @@ fun FullScreenAudioPlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            // Top Bar (Back Arrow, Title, Cancel X)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(uiMetrics.headerHeight),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag("audio_player_back_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back to Sheet",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Hi Player",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textPrimary
-                        )
-                        Text(
-                            text = "NOW PLAYING",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.primary,
-                            letterSpacing = 1.2.sp
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = onCancel,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag("audio_player_cancel_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close Player",
-                        tint = palette.textSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            // The global Hi Player header is owned by the root shell. Keep the
+            // expanded player content directly below it; do not render a second header.
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Large Hero Album Art / PNG Artwork Display Card
             Box(

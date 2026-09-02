@@ -160,7 +160,7 @@ fun MusicScreen(
 
     var showEqDialog by remember { mutableStateOf(false) }
     var showLyricsDialog by remember { mutableStateOf(false) }
-    var recognizeLyrics by remember { mutableStateOf(false) }
+    var recognizeLyrics by remember { mutableStateOf(true) }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val musicPreferences = remember {
@@ -390,10 +390,16 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { showLyricsDialog = true },
+                    onOpenSubtitleSearch = {
+                        recognizeLyrics = true
+                        showLyricsDialog = true
+                    },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onBack = { musicViewModel.closeFullScreenPlayer() },
-                    onLyricsTap = { showLyricsDialog = true },
+                    onLyricsTap = {
+                        recognizeLyrics = true
+                        showLyricsDialog = true
+                    },
                     onCancel = { musicViewModel.stopTrack() }
                 )
             } else {
@@ -409,9 +415,15 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { showLyricsDialog = true },
+                    onOpenSubtitleSearch = {
+                        recognizeLyrics = true
+                        showLyricsDialog = true
+                    },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
-                    onLyricsTap = { showLyricsDialog = true },
+                    onLyricsTap = {
+                        recognizeLyrics = true
+                        showLyricsDialog = true
+                    },
                     onCancel = { musicViewModel.stopTrack() },
                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                 )
