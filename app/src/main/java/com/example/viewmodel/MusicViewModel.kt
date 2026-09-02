@@ -197,6 +197,50 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     searchConn.disconnect()
                 }
 
+                // Broaden the search for real-world files whose MediaStore metadata
+                // is missing or whose title still contains filename tags.
+                if (synced.isBlank() && plain.isBlank()) {
+                    val filenameTitle = track.path.substringAfterLast('/').substringBeforeLast('.')
+                    val candidates = linkedSetOf(
+                        track.title to track.artist,
+                        filenameTitle to track.artist
+                    ).flatMap { (candidateTitle, candidateArtist) ->
+                        val cleanedTitle = normalizeForMatch(candidateTitle)
+                        val cleanedArtist = normalizeForMatch(candidateArtist)
+                        val split = candidateTitle.split(" - ", " — ", limit = 2)
+                        buildList {
+                            if (cleanedTitle.isNotBlank() && cleanedArtist.isNotBlank()) {
+                                add(cleanedArtist to cleanedTitle)
+                            }
+                            if (split.size == 2) {
+                                add(normalizeForMatch(split[0]) to normalizeForMatch(split[1]))
+                            }
+                        }
+                    }.distinct()
+
+                    for ((candidateArtist, candidateTitle) in candidates) {
+                        if (synced.isNotBlank() || plain.isNotBlank()) break
+                        val candidateQ = java.net.URLEncoder.encode("$candidateArtist $candidateTitle", "UTF-8")
+                        val candidateUrl = java.net.URL("https://lrclib.net/api/search?q=$candidateQ")
+                        val candidateConn = candidateUrl.openConnection() as java.net.HttpURLConnection
+                        candidateConn.setRequestProperty("User-Agent", "HiPlayer/1.0")
+                        candidateConn.connectTimeout = 8000
+                        candidateConn.readTimeout = 8000
+                        try {
+                            if (candidateConn.responseCode in 200..299) {
+                                val arr = org.json.JSONArray(candidateConn.inputStream.bufferedReader().use { it.readText() })
+                                if (arr.length() > 0) {
+                                    val best = arr.getJSONObject(0)
+                                    synced = best.optString("syncedLyrics", "")
+                                    plain = best.optString("plainLyrics", "")
+                                }
+                            }
+                        } finally {
+                            candidateConn.disconnect()
+                        }
+                    }
+                }
+
                 // Plain-lyrics fallback for tracks not available in LRCLIB.
                 if (synced.isBlank() && plain.isBlank()) {
                     val fallbackUrl = java.net.URL("https://api.lyrics.ovh/v1/$artistQ/$titleQ")
