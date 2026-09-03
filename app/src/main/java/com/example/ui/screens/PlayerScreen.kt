@@ -152,21 +152,40 @@ fun PlayerScreen(
     var isRecognizing by remember { mutableStateOf(false) }
     val recognitionScope = rememberCoroutineScope()
 
-    fun startRecognition(token: String) {
+    fun startRecognition(token: String, showProgress: Boolean = false) {
         currentVideo?.let { video ->
             isRecognizing = true
             recognizedSong = null
             recognitionError = null
-            recognitionDialogVisible = true
+            if (showProgress) recognitionDialogVisible = true
             recognitionScope.launch {
                 recognizeVideoSong(context, video, token, currentPositionMs)
                     .onSuccess { match ->
                         recognizedSong = match
-                        if (match == null) recognitionError = "No matching song was found in this video."
+                        if (match == null) {
+                            recognitionError = "No matching song was found in this video."
+                        } else {
+                            recognitionDialogVisible = true
+                        }
                     }
-                    .onFailure { error -> recognitionError = error.message ?: "Song recognition failed." }
+                    .onFailure { error ->
+                        recognitionError = error.message ?: "Song recognition failed."
+                        if (showProgress) recognitionDialogVisible = true
+                    }
                 isRecognizing = false
             }
+        }
+    }
+
+    val searchSongFromVideo: () -> Unit = {
+        if (recognitionToken.isBlank()) {
+            recognizedSong = null
+            recognitionError = null
+            recognitionDialogVisible = true
+        } else if (recognizedSong != null) {
+            recognitionDialogVisible = true
+        } else {
+            startRecognition(recognitionToken.trim(), showProgress = true)
         }
     }
 
@@ -180,7 +199,6 @@ fun PlayerScreen(
         currentVideo?.let {
             recognizedSong = null
             recognitionError = null
-            recognitionDialogVisible = true
             val savedToken = recognitionToken.trim()
             if (savedToken.isNotBlank()) startRecognition(savedToken)
         }
@@ -391,6 +409,7 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
+            onSearchSong = searchSongFromVideo,
             isHdrEnhanceActive = hdrEnhanceActive,
             onToggleHdrEnhance = {
                 playerViewModel.toggleHdrEnhance()
@@ -472,7 +491,7 @@ fun PlayerScreen(
                         Button(onClick = {
                             openSongSearch(recognizedSong!!.title, recognizedSong!!.artist)
                             recognitionDialogVisible = false
-                        }) { Text("Find on YouTube") }
+                        }) { Text("Get Video on YouTube") }
                     } else if (!isRecognizing) {
                         Button(onClick = { recognitionDialogVisible = false }) { Text("Close") }
                     }

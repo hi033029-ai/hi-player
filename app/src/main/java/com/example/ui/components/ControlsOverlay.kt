@@ -112,6 +112,7 @@ fun ControlsOverlay(
     onEnterPip: () -> Unit,
     onToggleBgPlay: () -> Unit,
     onOpenFile: () -> Unit,
+    onSearchSong: () -> Unit = {},
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
     onOpenPlaylist: () -> Unit,
@@ -498,6 +499,14 @@ fun ControlsOverlay(
                             label = "Playlist",
                             onClick = onOpenPlaylist,
                             testTag = "playlist_button"
+                        )
+
+                        // Recognition runs automatically; this opens its YouTube result.
+                        PlayerToolbarButton(
+                            icon = Icons.Default.Audiotrack,
+                            label = "Search Song",
+                            onClick = onSearchSong,
+                            testTag = "search_song_button"
                         )
 
                         // Back 10s
