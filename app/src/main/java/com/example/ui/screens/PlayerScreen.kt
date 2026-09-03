@@ -155,6 +155,15 @@ fun PlayerScreen(
     var isRecognizing by remember { mutableStateOf(false) }
     val recognitionScope = rememberCoroutineScope()
 
+    fun openVideoTitleSearch() {
+        currentVideo?.let { video ->
+            val cleanTitle = video.title.substringBeforeLast('.', video.title)
+                .replace(Regex("[_-]+"), " ").trim()
+            val query = Uri.encode("$cleanTitle song")
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
+        }
+    }
+
     fun startRecognition(token: String, showProgress: Boolean = false) {
         currentVideo?.let { video ->
             isRecognizing = true
@@ -187,15 +196,6 @@ fun PlayerScreen(
                     }
                 isRecognizing = false
             }
-        }
-    }
-
-    fun openVideoTitleSearch() {
-        currentVideo?.let { video ->
-            val cleanTitle = video.title.substringBeforeLast('.', video.title)
-                .replace(Regex("[_-]+"), " ").trim()
-            val query = Uri.encode("$cleanTitle song")
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
         }
     }
 
