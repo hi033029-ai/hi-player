@@ -170,30 +170,19 @@ fun PlayerScreen(
         }
     }
 
-    val searchSongFromVideo: () -> Unit = {
-        val savedToken = recognitionToken.trim()
-        if (savedToken.isBlank()) {
-            recognizedSong = null
-            recognitionError = null
-            recognitionDialogVisible = true
-        } else {
-            recognitionToken = savedToken
-            startRecognition(savedToken)
-        }
-    }
-
     fun openSongSearch(title: String, artist: String) {
         val query = Uri.encode("$artist $title song")
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
     }
 
-    fun openVideoTitleSearch() {
-        currentVideo?.let { video ->
-            val cleanTitle = video.title.substringBeforeLast('.', video.title)
-                .replace(Regex("[_-]+"), " ").trim()
-            val query = Uri.encode("$cleanTitle song")
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
-            recognitionDialogVisible = false
+    // Recognition starts automatically whenever a different video begins playing.
+    LaunchedEffect(currentVideo?.uri) {
+        currentVideo?.let {
+            recognizedSong = null
+            recognitionError = null
+            recognitionDialogVisible = true
+            val savedToken = recognitionToken.trim()
+            if (savedToken.isNotBlank()) startRecognition(savedToken)
         }
     }
 
@@ -402,8 +391,6 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
-            // Search the currently playing video title as a song on YouTube.
-            onSearchSong = searchSongFromVideo,
             isHdrEnhanceActive = hdrEnhanceActive,
             onToggleHdrEnhance = {
                 playerViewModel.toggleHdrEnhance()
@@ -480,14 +467,14 @@ fun PlayerScreen(
                                     .edit().putString("audd_token", savedToken).apply()
                                 startRecognition(savedToken)
                             }
-                        }) { Text("Save & Recognize") }
+                        }) { Text("Save Token & Continue") }
                     } else if (recognizedSong != null) {
                         Button(onClick = {
                             openSongSearch(recognizedSong!!.title, recognizedSong!!.artist)
                             recognitionDialogVisible = false
-                        }) { Text("Search Song") }
+                        }) { Text("Find on YouTube") }
                     } else if (!isRecognizing) {
-                        Button(onClick = { openVideoTitleSearch() }) { Text("Search Video Name") }
+                        Button(onClick = { recognitionDialogVisible = false }) { Text("Close") }
                     }
                 },
                 dismissButton = {
