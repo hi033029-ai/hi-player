@@ -157,6 +157,15 @@ fun MusicScreen(
 
     var showEqDialog by remember { mutableStateOf(false) }
     var lyricsEnabled by remember { mutableStateOf(false) }
+    val toggleLyrics: () -> Unit = {
+        if (lyricsEnabled) {
+            lyricsEnabled = false
+            musicViewModel.clearLyrics()
+        } else {
+            lyricsEnabled = true
+            currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+        }
+    }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val musicPreferences = remember {
@@ -221,17 +230,6 @@ fun MusicScreen(
             )
         }
 
-        if (lyricsEnabled && currentTrack != null) {
-            InlineLyricsPanel(
-                track = currentTrack!!,
-                lyricsText = lyricsText,
-                activeLineIndex = currentLyricLineIndex,
-                onTurnOff = {
-                    lyricsEnabled = false
-                    musicViewModel.clearLyrics()
-                }
-            )
-        }
 
         val audioToolbar: @Composable () -> Unit = {
             Row(
@@ -391,16 +389,10 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = {
-                        lyricsEnabled = true
-                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
-                    },
+                    onOpenSubtitleSearch = toggleLyrics,
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onBack = { musicViewModel.closeFullScreenPlayer() },
-                    onLyricsTap = {
-                        lyricsEnabled = true
-                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
-                    },
+                    onLyricsTap = toggleLyrics,
                     onCancel = { musicViewModel.stopTrack() }
                 )
             } else {
@@ -416,17 +408,15 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = {
-                        lyricsEnabled = true
-                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
-                    },
+                    onOpenSubtitleSearch = toggleLyrics,
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
-                    onLyricsTap = {
-                        lyricsEnabled = true
-                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
-                    },
+                    onLyricsTap = toggleLyrics,
                     onCancel = { musicViewModel.stopTrack() },
-                    onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
+                    onExpandFullScreen = { musicViewModel.openFullScreenPlayer() },
+                    lyricsEnabled = lyricsEnabled,
+                    lyricsText = lyricsText,
+                    activeLyricLineIndex = currentLyricLineIndex,
+                    onLyricsToggle = toggleLyrics
                 )
             }
         }
@@ -720,6 +710,10 @@ fun WavyNowPlayingBottomSheet(
     onLyricsTap: () -> Unit = {},
     onCancel: () -> Unit,
     onExpandFullScreen: () -> Unit = {},
+    lyricsEnabled: Boolean = false,
+    lyricsText: String? = null,
+    activeLyricLineIndex: Int = -1,
+    onLyricsToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val palette = LocalHiPalette.current
@@ -757,7 +751,7 @@ fun WavyNowPlayingBottomSheet(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(palette.primary.copy(alpha = 0.15f))
-                            .clickable(onClick = onOpenSubtitleSearch)
+                            .clickable(onClick = onLyricsToggle)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -770,7 +764,7 @@ fun WavyNowPlayingBottomSheet(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (activeSubtitle != null) "Lyrics On" else "Lyrics",
+                                text = if (lyricsEnabled) "Lyrics Off" else "Lyrics",
                                 fontSize = 11.sp,
                                 color = palette.primary,
                                 fontWeight = FontWeight.Bold
@@ -912,21 +906,41 @@ fun WavyNowPlayingBottomSheet(
                         .clickable(onClick = onExpandFullScreen),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // PNG Thumbnail of local audio track
+                    // The thumbnail becomes a compact live lyric preview when enabled.
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(width = 210.dp, height = 54.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(palette.surface)
                             .border(1.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        AudioTrackThumbnail(
-                            track = track,
-                            modifier = Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(10.dp),
-                            contentScale = ContentScale.Crop
-                        )
+                        if (lyricsEnabled && !lyricsText.isNullOrBlank()) {
+                            val previewLines = lyricsText.lines().mapNotNull { line ->
+                                Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""").find(line)?.groupValues?.getOrNull(4)?.trim()
+                            }
+                            val previewStart = if (activeLyricLineIndex >= 0) activeLyricLineIndex else 0
+                            val preview = previewLines.drop(previewStart).take(2)
+                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                preview.forEachIndexed { index, line ->
+                                    Text(
+                                        text = line.ifBlank { "♪" },
+                                        color = if (index == 0) palette.primary else palette.textSecondary,
+                                        fontSize = if (index == 0) 11.sp else 9.sp,
+                                        fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        } else {
+                            AudioTrackThumbnail(
+                                track = track,
+                                modifier = Modifier.fillMaxSize(),
+                                shape = RoundedCornerShape(10.dp),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(10.dp))
