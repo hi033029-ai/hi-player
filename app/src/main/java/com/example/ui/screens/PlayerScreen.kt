@@ -152,27 +152,33 @@ fun PlayerScreen(
     var isRecognizing by remember { mutableStateOf(false) }
     val recognitionScope = rememberCoroutineScope()
 
+    fun startRecognition(token: String) {
+        currentVideo?.let { video ->
+            isRecognizing = true
+            recognizedSong = null
+            recognitionError = null
+            recognitionDialogVisible = true
+            recognitionScope.launch {
+                recognizeVideoSong(context, video, token, currentPositionMs)
+                    .onSuccess { match ->
+                        recognizedSong = match
+                        if (match == null) recognitionError = "No matching song was found in this video."
+                    }
+                    .onFailure { error -> recognitionError = error.message ?: "Song recognition failed." }
+                isRecognizing = false
+            }
+        }
+    }
+
     val searchSongFromVideo: () -> Unit = {
-        if (recognitionToken.isBlank()) {
+        val savedToken = recognitionToken.trim()
+        if (savedToken.isBlank()) {
             recognizedSong = null
             recognitionError = null
             recognitionDialogVisible = true
         } else {
-            currentVideo?.let { video ->
-                isRecognizing = true
-                recognizedSong = null
-                recognitionError = null
-                recognitionDialogVisible = true
-                recognitionScope.launch {
-                    recognizeVideoSong(context, video, recognitionToken, currentPositionMs)
-                        .onSuccess { match ->
-                            recognizedSong = match
-                            if (match == null) recognitionError = "No matching song was found in this video."
-                        }
-                        .onFailure { error -> recognitionError = error.message ?: "Song recognition failed." }
-                    isRecognizing = false
-                }
-            }
+            recognitionToken = savedToken
+            startRecognition(savedToken)
         }
     }
 
@@ -467,11 +473,13 @@ fun PlayerScreen(
                 confirmButton = {
                     if (recognitionToken.isBlank()) {
                         Button(onClick = {
-                            recognitionToken = recognitionToken.trim()
-                            context.getSharedPreferences("hi_player_recognition", 0)
-                                .edit().putString("audd_token", recognitionToken).apply()
-                            recognitionDialogVisible = false
-                            searchSongFromVideo()
+                            val savedToken = recognitionToken.trim()
+                            if (savedToken.isNotBlank()) {
+                                recognitionToken = savedToken
+                                context.getSharedPreferences("hi_player_recognition", 0)
+                                    .edit().putString("audd_token", savedToken).apply()
+                                startRecognition(savedToken)
+                            }
                         }) { Text("Save & Recognize") }
                     } else if (recognizedSong != null) {
                         Button(onClick = {
