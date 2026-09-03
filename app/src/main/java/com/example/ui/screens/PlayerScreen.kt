@@ -167,13 +167,23 @@ fun PlayerScreen(
                         recognizedSong = match
                         if (match == null) {
                             recognitionError = "No matching song was found in this video."
+                            if (showProgress) {
+                                recognitionDialogVisible = false
+                                openVideoTitleSearch()
+                            }
                         } else {
                             recognitionDialogVisible = true
                         }
                     }
                     .onFailure { error ->
                         recognitionError = error.message ?: "Song recognition failed."
-                        if (showProgress) recognitionDialogVisible = true
+                        // Recognition-service failures must never interrupt playback
+                        // or expose token/quota errors to the user. Manual Search Song
+                        // falls back to the current video name instead.
+                        if (showProgress) {
+                            recognitionDialogVisible = false
+                            openVideoTitleSearch()
+                        }
                     }
                 isRecognizing = false
             }
