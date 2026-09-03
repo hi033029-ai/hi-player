@@ -80,6 +80,7 @@ fun FullScreenAudioPlayerScreen(
     duration: Long,
     eqPreset: String,
     activeSubtitle: String?,
+    lyricsEnabled: Boolean = false,
     lyricsText: String? = null,
     activeLyricLineIndex: Int = -1,
     onTogglePlay: () -> Unit,
@@ -138,7 +139,7 @@ fun FullScreenAudioPlayerScreen(
                     .border(1.5.dp, palette.primary.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!lyricsText.isNullOrBlank()) {
+                if (lyricsEnabled && !lyricsText.isNullOrBlank()) {
                     val lrcRegex = remember { Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""") }
                     val lyricLines = remember(lyricsText) {
                         lyricsText.lines().mapNotNull { line ->
@@ -299,7 +300,7 @@ fun FullScreenAudioPlayerScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (!lyricsText.isNullOrBlank()) "Lyrics Off" else "Lyrics",
+                            text = if (lyricsEnabled) "Lyrics Off" else "Lyrics",
                             fontSize = 12.sp,
                             color = palette.primary,
                             fontWeight = FontWeight.Bold
