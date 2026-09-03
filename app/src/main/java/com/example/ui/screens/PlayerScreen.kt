@@ -30,7 +30,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -177,11 +176,18 @@ fun PlayerScreen(
         }
     }
 
+    fun openVideoTitleSearch() {
+        currentVideo?.let { video ->
+            val cleanTitle = video.title.substringBeforeLast('.', video.title)
+                .replace(Regex("[_-]+"), " ").trim()
+            val query = Uri.encode("$cleanTitle song")
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
+        }
+    }
+
     val searchSongFromVideo: () -> Unit = {
         if (recognitionToken.isBlank()) {
-            recognizedSong = null
-            recognitionError = null
-            recognitionDialogVisible = true
+            openVideoTitleSearch()
         } else if (recognizedSong != null) {
             recognitionDialogVisible = true
         } else {
@@ -454,19 +460,10 @@ fun PlayerScreen(
         if (recognitionDialogVisible) {
             AlertDialog(
                 onDismissRequest = { if (!isRecognizing) recognitionDialogVisible = false },
-                title = { Text(if (recognitionToken.isBlank()) "Set up Song Recognition" else "Song Recognition") },
+                title = { Text("Song Recognition") },
                 text = {
                     Column {
-                        if (recognitionToken.isBlank()) {
-                            Text("Enter your AudD API token once. The app stores it only on this device and uses it to identify music from local videos.")
-                            Spacer(modifier = Modifier.height(12.dp))
-                            OutlinedTextField(
-                                value = recognitionToken,
-                                onValueChange = { recognitionToken = it },
-                                singleLine = true,
-                                label = { Text("AudD API token") }
-                            )
-                        } else if (isRecognizing) {
+                        if (isRecognizing) {
                             Text("Listening to the current video audio…")
                         } else if (recognizedSong != null) {
                             Text("${recognizedSong!!.title}\n${recognizedSong!!.artist}", fontWeight = FontWeight.Bold)
@@ -477,17 +474,7 @@ fun PlayerScreen(
                     }
                 },
                 confirmButton = {
-                    if (recognitionToken.isBlank()) {
-                        Button(onClick = {
-                            val savedToken = recognitionToken.trim()
-                            if (savedToken.isNotBlank()) {
-                                recognitionToken = savedToken
-                                context.getSharedPreferences("hi_player_recognition", 0)
-                                    .edit().putString("audd_token", savedToken).apply()
-                                startRecognition(savedToken)
-                            }
-                        }) { Text("Save Token & Continue") }
-                    } else if (recognizedSong != null) {
+                    if (recognizedSong != null) {
                         Button(onClick = {
                             openSongSearch(recognizedSong!!.title, recognizedSong!!.artist)
                             recognitionDialogVisible = false
@@ -497,7 +484,7 @@ fun PlayerScreen(
                     }
                 },
                 dismissButton = {
-                    if (!isRecognizing && recognitionToken.isNotBlank()) {
+                    if (!isRecognizing) {
                         OutlinedButton(onClick = { recognitionDialogVisible = false }) { Text("Cancel") }
                     }
                 }
