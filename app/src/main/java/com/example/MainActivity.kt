@@ -111,6 +111,8 @@ class MainActivity : ComponentActivity() {
                 val currentAudioPos by musicViewModel.currentPositionMs.collectAsState()
                 val audioDuration by musicViewModel.durationMs.collectAsState()
                 val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
+                val lyricsText by musicViewModel.lyricsText.collectAsState()
+                val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
                 val isAudioFullScreenOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
                 val audioEqPreset by musicViewModel.equalizerPreset.collectAsState()
 
@@ -248,6 +250,7 @@ class MainActivity : ComponentActivity() {
                                             HiBottomNavigationBar(
                                                 currentTab = currentTab,
                                                 onTabSelected = { tab ->
+                                                    if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
                                                     currentTab = tab
                                                 },
                                                 onOpenHubSheet = {
@@ -372,26 +375,6 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
-                                if (currentTab != NavTab.MUSIC && currentAudioTrack != null && isAudioFullScreenOpen) {
-                                     com.example.ui.screens.FullScreenAudioPlayerScreen(
-                                         track = currentAudioTrack!!,
-                                         isPlaying = isAudioPlaying,
-                                         currentPos = currentAudioPos,
-                                         duration = if (audioDuration > 0) audioDuration else currentAudioTrack!!.durationMs,
-                                         eqPreset = audioEqPreset,
-                                         activeSubtitle = activeSubtitle,
-                                         onTogglePlay = { musicViewModel.togglePlayPause() },
-                                         onNext = { musicViewModel.playNext() },
-                                         onPrevious = { musicViewModel.playPrevious() },
-                                         onSeek = { musicViewModel.seekTo(it) },
-                                         onOpenEq = { currentTab = NavTab.MUSIC },
-                                         onOpenSubtitleSearch = { currentTab = NavTab.MUSIC },
-                                         onOpenVideoSearch = { currentTab = NavTab.MUSIC },
-                                         onBack = { musicViewModel.closeFullScreenPlayer() },
-                                         onCancel = { musicViewModel.stopTrack() }
-                                     )
-                                 }
-
                                  // Modal Navigation Hub Bottom Sheet
                                 if (showHubBottomSheet) {
                                     HiNavigationBottomSheet(
@@ -400,6 +383,7 @@ class MainActivity : ComponentActivity() {
                                         videoCount = videos.size,
                                         audioCount = audios.size,
                                         onTabSelected = { tab ->
+                                            if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
                                             currentTab = tab
                                             showHubBottomSheet = false
                                         },

@@ -79,6 +79,8 @@ fun FullScreenAudioPlayerScreen(
     duration: Long,
     eqPreset: String,
     activeSubtitle: String?,
+    lyricsText: String? = null,
+    activeLyricLineIndex: Int = -1,
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -135,12 +137,45 @@ fun FullScreenAudioPlayerScreen(
                     .border(1.5.dp, palette.primary.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                AudioTrackThumbnail(
-                    track = track,
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(24.dp),
-                    contentScale = ContentScale.Crop
-                )
+                if (!lyricsText.isNullOrBlank()) {
+                    val lrcRegex = remember { Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""") }
+                    val lyricLines = remember(lyricsText) {
+                        lyricsText.lines().mapNotNull { line ->
+                            lrcRegex.find(line)?.groupValues?.getOrNull(4)?.trim()
+                        }
+                    }
+                    val start = if (activeLyricLineIndex >= 0) {
+                        (activeLyricLineIndex - 3).coerceAtLeast(0)
+                    } else 0
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        lyricLines.drop(start).take(10).forEachIndexed { offset, line ->
+                            val actualIndex = start + offset
+                            Text(
+                                text = line.ifBlank { "♪" },
+                                color = if (actualIndex == activeLyricLineIndex) palette.primary else palette.textSecondary,
+                                fontSize = if (actualIndex == activeLyricLineIndex) 18.sp else 14.sp,
+                                fontWeight = if (actualIndex == activeLyricLineIndex) FontWeight.Bold else FontWeight.Normal,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            )
+                        }
+                    }
+                } else {
+                    AudioTrackThumbnail(
+                        track = track,
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(24.dp),
+                        contentScale = ContentScale.Crop
+                    )
+                }
 
                 // Overlay Gradient Badge at top
                 Box(
@@ -263,7 +298,7 @@ fun FullScreenAudioPlayerScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (activeSubtitle != null) "Lyrics On" else "Lyrics",
+                            text = if (!lyricsText.isNullOrBlank()) "Lyrics Off" else "Lyrics",
                             fontSize = 12.sp,
                             color = palette.primary,
                             fontWeight = FontWeight.Bold
