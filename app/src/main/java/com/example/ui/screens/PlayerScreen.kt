@@ -27,8 +27,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -67,6 +70,9 @@ import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.example.util.RecognizedSong
+import com.example.util.recognizeVideoSong
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -137,15 +143,51 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+    var recognitionDialogVisible by remember { mutableStateOf(false) }
+    var recognitionToken by remember {
+        mutableStateOf(context.getSharedPreferences("hi_player_recognition", 0).getString("audd_token", "") ?: "")
+    }
+    var recognizedSong by remember { mutableStateOf<RecognizedSong?>(null) }
+    var recognitionError by remember { mutableStateOf<String?>(null) }
+    var isRecognizing by remember { mutableStateOf(false) }
+    val recognitionScope = rememberCoroutineScope()
 
     val searchSongFromVideo: () -> Unit = {
+        if (recognitionToken.isBlank()) {
+            recognizedSong = null
+            recognitionError = null
+            recognitionDialogVisible = true
+        } else {
+            currentVideo?.let { video ->
+                isRecognizing = true
+                recognizedSong = null
+                recognitionError = null
+                recognitionDialogVisible = true
+                recognitionScope.launch {
+                    recognizeVideoSong(context, video, recognitionToken, currentPositionMs)
+                        .onSuccess { match ->
+                            recognizedSong = match
+                            if (match == null) recognitionError = "No matching song was found in this video."
+                        }
+                        .onFailure { error -> recognitionError = error.message ?: "Song recognition failed." }
+                    isRecognizing = false
+                }
+            }
+        }
+    }
+
+    fun openSongSearch(title: String, artist: String) {
+        val query = Uri.encode("$artist $title song")
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
+    }
+
+    fun openVideoTitleSearch() {
         currentVideo?.let { video ->
-            val cleanTitle = video.title
-                .substringBeforeLast('.', video.title)
-                .replace(Regex("[_-]+"), " ")
-                .trim()
+            val cleanTitle = video.title.substringBeforeLast('.', video.title)
+                .replace(Regex("[_-]+"), " ").trim()
             val query = Uri.encode("$cleanTitle song")
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
+            recognitionDialogVisible = false
         }
     }
 
@@ -396,6 +438,57 @@ fun PlayerScreen(
                 playerViewModel.setPlaybackSpeed(nextSpeed)
             }
         )
+
+        if (recognitionDialogVisible) {
+            AlertDialog(
+                onDismissRequest = { if (!isRecognizing) recognitionDialogVisible = false },
+                title = { Text(if (recognitionToken.isBlank()) "Set up Song Recognition" else "Song Recognition") },
+                text = {
+                    Column {
+                        if (recognitionToken.isBlank()) {
+                            Text("Enter your AudD API token once. The app stores it only on this device and uses it to identify music from local videos.")
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = recognitionToken,
+                                onValueChange = { recognitionToken = it },
+                                singleLine = true,
+                                label = { Text("AudD API token") }
+                            )
+                        } else if (isRecognizing) {
+                            Text("Listening to the current video audio…")
+                        } else if (recognizedSong != null) {
+                            Text("${recognizedSong!!.title}\n${recognizedSong!!.artist}", fontWeight = FontWeight.Bold)
+                            recognizedSong!!.album?.let { album -> Text("Album: $album") }
+                        } else {
+                            Text(recognitionError ?: "No result.")
+                        }
+                    }
+                },
+                confirmButton = {
+                    if (recognitionToken.isBlank()) {
+                        Button(onClick = {
+                            recognitionToken = recognitionToken.trim()
+                            context.getSharedPreferences("hi_player_recognition", 0)
+                                .edit().putString("audd_token", recognitionToken).apply()
+                            recognitionDialogVisible = false
+                            searchSongFromVideo()
+                        }) { Text("Save & Recognize") }
+                    } else if (recognizedSong != null) {
+                        Button(onClick = {
+                            openSongSearch(recognizedSong!!.title, recognizedSong!!.artist)
+                            recognitionDialogVisible = false
+                        }) { Text("Search Song") }
+                    } else if (!isRecognizing) {
+                        Button(onClick = { openVideoTitleSearch() }) { Text("Search Video Name") }
+                    }
+                },
+                dismissButton = {
+                    if (!isRecognizing && recognitionToken.isNotBlank()) {
+                        OutlinedButton(onClick = { recognitionDialogVisible = false }) { Text("Cancel") }
+                    }
+                }
+            )
+        }
 
         // Error Card Overlay
         playerError?.let { err ->
