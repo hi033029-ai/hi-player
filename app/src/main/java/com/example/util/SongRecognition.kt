@@ -16,7 +16,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
-/** Result returned by the AudD standard music-recognition endpoint. */
+/** Result returned by the local ShazamIO recognition backend. */
 data class RecognizedSong(
     val title: String,
     val artist: String,
@@ -26,34 +26,25 @@ data class RecognizedSong(
 
 /**
  * Recognizes music from the currently playing video. Local videos are reduced to a
- * short audio-only M4A sample so the request stays within AudD's standard 10 MB limit.
- * Remote videos are sent as URLs, allowing AudD to fetch the media itself.
+ * short audio-only M4A sample so the request stays within the backend's 10 MB limit.
  */
 suspend fun recognizeVideoSong(
     context: Context,
     video: VideoItem,
-    apiToken: String,
     positionMs: Long = 0L
 ): Result<RecognizedSong?> = withContext(Dispatchers.IO) {
     runCatching {
-        require(apiToken.isNotBlank()) { "Enter an AudD API token first." }
         val source = video.uri
         val remoteUrl = source.toString().takeIf { it.startsWith("http://") || it.startsWith("https://") }
         val sample = if (remoteUrl == null) extractAudioSample(context, source, positionMs) else null
         try {
-            val response = postRecognition(apiToken, remoteUrl, sample)
-            val status = response.optString("status")
-            if (status != "success") {
-                val error = response.optJSONObject("error")?.optString("error_message")
-                    ?: response.optString("error_code").ifBlank { "Recognition failed." }
-                error(error)
-            }
-            val result = response.optJSONObject("result") ?: return@runCatching null
+            val response = postRecognition(remoteUrl, sample)
+            if (!response.optBoolean("matched", false)) return@runCatching null
             RecognizedSong(
-                title = result.optString("title").trim(),
-                artist = result.optString("artist").trim(),
-                album = result.optString("album").trim().ifBlank { null },
-                songLink = result.optString("song_link").trim().ifBlank { null }
+                title = response.optString("title").trim(),
+                artist = response.optString("artist").trim(),
+                album = response.optString("album").trim().ifBlank { null },
+                songLink = response.optString("songLink").trim().ifBlank { null }
             ).takeIf { it.title.isNotBlank() }
         } finally {
             sample?.delete()
@@ -101,7 +92,7 @@ private fun extractAudioSample(context: Context, uri: Uri, positionMs: Long): Fi
         }
         muxer.stop()
         require(output.exists() && output.length() > 0) { "Could not extract audio from this video." }
-        require(output.length() <= 10L * 1024L * 1024L) { "The audio sample is larger than AudD's 10 MB limit." }
+        require(output.length() <= 10L * 1024L * 1024L) { "The audio sample is larger than the backend's 10 MB limit." }
         return output
     } catch (error: Throwable) {
         output.delete()
@@ -112,9 +103,9 @@ private fun extractAudioSample(context: Context, uri: Uri, positionMs: Long): Fi
     }
 }
 
-private fun postRecognition(apiToken: String, remoteUrl: String?, sample: File?): JSONObject {
+private fun postRecognition(remoteUrl: String?, sample: File?): JSONObject {
     val boundary = "----HiPlayer${UUID.randomUUID()}"
-    val connection = (URL("https://api.audd.io/").openConnection() as HttpURLConnection).apply {
+    val connection = (URL("http://127.0.0.1:8765/recognize").openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"
         doOutput = true
         connectTimeout = 15_000
@@ -129,10 +120,10 @@ private fun postRecognition(apiToken: String, remoteUrl: String?, sample: File?)
             output.write(value.toByteArray(Charsets.UTF_8))
             output.write("\r\n".toByteArray())
         }
-        field("api_token", apiToken.trim())
-        field("return", "apple_music,spotify")
         if (remoteUrl != null) {
-            field("url", remoteUrl)
+            // The local backend currently recognizes uploaded samples only.
+            // Keep the URL in the multipart request for future remote support.
+            field("source_url", remoteUrl)
         } else {
             requireNotNull(sample) { "No audio sample available." }
             output.write("--$boundary\r\n".toByteArray())

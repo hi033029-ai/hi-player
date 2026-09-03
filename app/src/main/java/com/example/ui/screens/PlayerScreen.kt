@@ -143,43 +143,24 @@ fun PlayerScreen(
 
     var areControlsVisible by remember { mutableStateOf(true) }
     var recognitionDialogVisible by remember { mutableStateOf(false) }
-    // AudD documents the public "test" token for its no-key demo endpoint.
-    // Use it by default so recognition starts automatically without blocking
-    // playback with a token setup dialog.
-    var recognitionToken by remember {
-        mutableStateOf(context.getSharedPreferences("hi_player_recognition", 0)
-            .getString("audd_token", "test") ?: "test")
-    }
     var recognizedSong by remember { mutableStateOf<RecognizedSong?>(null) }
     var recognitionError by remember { mutableStateOf<String?>(null) }
     var isRecognizing by remember { mutableStateOf(false) }
     val recognitionScope = rememberCoroutineScope()
 
-    fun openVideoTitleSearch() {
-        currentVideo?.let { video ->
-            val cleanTitle = video.title.substringBeforeLast('.', video.title)
-                .replace(Regex("[_-]+"), " ").trim()
-            val query = Uri.encode("$cleanTitle song")
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
-        }
-    }
-
-    fun startRecognition(token: String, showProgress: Boolean = false) {
+    fun startRecognition(showProgress: Boolean = false) {
         currentVideo?.let { video ->
             isRecognizing = true
             recognizedSong = null
             recognitionError = null
             if (showProgress) recognitionDialogVisible = true
             recognitionScope.launch {
-                recognizeVideoSong(context, video, token, currentPositionMs)
+                recognizeVideoSong(context, video, currentPositionMs)
                     .onSuccess { match ->
                         recognizedSong = match
                         if (match == null) {
                             recognitionError = "No matching song was found in this video."
-                            if (showProgress) {
-                                recognitionDialogVisible = false
-                                openVideoTitleSearch()
-                            }
+                            if (showProgress) recognitionDialogVisible = true
                         } else {
                             recognitionDialogVisible = true
                         }
@@ -188,11 +169,8 @@ fun PlayerScreen(
                         recognitionError = error.message ?: "Song recognition failed."
                         // Recognition-service failures must never interrupt playback
                         // or expose token/quota errors to the user. Manual Search Song
-                        // falls back to the current video name instead.
-                        if (showProgress) {
-                            recognitionDialogVisible = false
-                            openVideoTitleSearch()
-                        }
+                        // reports only that recognition was unavailable.
+                        if (showProgress) recognitionDialogVisible = true
                     }
                 isRecognizing = false
             }
@@ -200,12 +178,10 @@ fun PlayerScreen(
     }
 
     val searchSongFromVideo: () -> Unit = {
-        if (recognitionToken.isBlank()) {
-            openVideoTitleSearch()
-        } else if (recognizedSong != null) {
+        if (recognizedSong != null) {
             recognitionDialogVisible = true
         } else {
-            startRecognition(recognitionToken.trim(), showProgress = true)
+            startRecognition(showProgress = true)
         }
     }
 
@@ -219,8 +195,7 @@ fun PlayerScreen(
         currentVideo?.let {
             recognizedSong = null
             recognitionError = null
-            val savedToken = recognitionToken.trim()
-            if (savedToken.isNotBlank()) startRecognition(savedToken)
+            startRecognition()
         }
     }
 
@@ -498,9 +473,7 @@ fun PlayerScreen(
                     }
                 },
                 dismissButton = {
-                    if (!isRecognizing) {
-                        OutlinedButton(onClick = { recognitionDialogVisible = false }) { Text("Cancel") }
-                    }
+                    if (!isRecognizing) OutlinedButton(onClick = { recognitionDialogVisible = false }) { Text("Cancel") }
                 }
             )
         }
