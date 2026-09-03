@@ -143,8 +143,12 @@ fun PlayerScreen(
 
     var areControlsVisible by remember { mutableStateOf(true) }
     var recognitionDialogVisible by remember { mutableStateOf(false) }
+    // AudD documents the public "test" token for its no-key demo endpoint.
+    // Use it by default so recognition starts automatically without blocking
+    // playback with a token setup dialog.
     var recognitionToken by remember {
-        mutableStateOf(context.getSharedPreferences("hi_player_recognition", 0).getString("audd_token", "") ?: "")
+        mutableStateOf(context.getSharedPreferences("hi_player_recognition", 0)
+            .getString("audd_token", "test") ?: "test")
     }
     var recognizedSong by remember { mutableStateOf<RecognizedSong?>(null) }
     var recognitionError by remember { mutableStateOf<String?>(null) }
