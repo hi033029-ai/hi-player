@@ -64,6 +64,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
@@ -89,6 +90,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -819,6 +821,7 @@ fun WavyNowPlayingBottomSheet(
                                         color = if (index == 0) palette.primary else palette.textSecondary,
                                         fontSize = if (index == 0) 11.sp else 9.sp,
                                         fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
+                                        style = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrRtl),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )

@@ -43,6 +43,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -60,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,6 +164,7 @@ fun FullScreenAudioPlayerScreen(
                                 color = if (actualIndex == activeLyricLineIndex) palette.primary else palette.textSecondary,
                                 fontSize = if (actualIndex == activeLyricLineIndex) 18.sp else 14.sp,
                                 fontWeight = if (actualIndex == activeLyricLineIndex) FontWeight.Bold else FontWeight.Normal,
+                                style = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrRtl),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
