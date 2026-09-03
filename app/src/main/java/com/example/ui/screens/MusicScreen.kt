@@ -70,7 +70,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -93,7 +92,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -158,7 +156,7 @@ fun MusicScreen(
     val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
     var showEqDialog by remember { mutableStateOf(false) }
-    var showLyricsDialog by remember { mutableStateOf(false) }
+    var lyricsEnabled by remember { mutableStateOf(false) }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val musicPreferences = remember {
@@ -220,6 +218,18 @@ fun MusicScreen(
                 onSearchClick = { onSearchRequested?.invoke() ?: musicViewModel.setSearchQuery("") },
                 onRefreshClick = { musicViewModel.loadAudioTracks() },
                 onStreamClick = { /* Stream URL dialog is handled by the host screen. */ }
+            )
+        }
+
+        if (lyricsEnabled && currentTrack != null) {
+            InlineLyricsPanel(
+                track = currentTrack!!,
+                lyricsText = lyricsText,
+                activeLineIndex = currentLyricLineIndex,
+                onTurnOff = {
+                    lyricsEnabled = false
+                    musicViewModel.clearLyrics()
+                }
             )
         }
 
@@ -381,10 +391,16 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { showLyricsDialog = true },
+                    onOpenSubtitleSearch = {
+                        lyricsEnabled = true
+                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+                    },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onBack = { musicViewModel.closeFullScreenPlayer() },
-                    onLyricsTap = { showLyricsDialog = true },
+                    onLyricsTap = {
+                        lyricsEnabled = true
+                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+                    },
                     onCancel = { musicViewModel.stopTrack() }
                 )
             } else {
@@ -400,82 +416,18 @@ fun MusicScreen(
                     onPrevious = { musicViewModel.playPrevious() },
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = { showLyricsDialog = true },
+                    onOpenSubtitleSearch = {
+                        lyricsEnabled = true
+                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+                    },
                     onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
-                    onLyricsTap = { showLyricsDialog = true },
+                    onLyricsTap = {
+                        lyricsEnabled = true
+                        currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
+                    },
                     onCancel = { musicViewModel.stopTrack() },
                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                 )
-            }
-        }
-    }
-
-    if (showLyricsDialog && currentTrack != null) {
-        Dialog(onDismissRequest = { showLyricsDialog = false }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = palette.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(22.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Subtitles, contentDescription = null, tint = palette.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Lyrics", fontWeight = FontWeight.Bold, color = palette.textPrimary)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "${currentTrack!!.artist} — ${currentTrack!!.title}",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.textPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (!lyricsText.isNullOrBlank()) {
-                        val lrcRegex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""")
-                        val lyricLines = lyricsText!!.lines().mapNotNull { line ->
-                            lrcRegex.find(line)?.groupValues?.getOrNull(4)?.trim()
-                        }
-                        if (lyricLines.isEmpty()) {
-                            Text(
-                                text = lyricsText!!,
-                                color = palette.textPrimary,
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp,
-                                maxLines = 18,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                lyricLines.forEachIndexed { index, line ->
-                                    Text(
-                                        text = line.ifBlank { "♪" },
-                                        color = if (index == currentLyricLineIndex) palette.primary else palette.textSecondary,
-                                        fontSize = if (index == currentLyricLineIndex) 16.sp else 13.sp,
-                                        fontWeight = if (index == currentLyricLineIndex) FontWeight.Bold else FontWeight.Normal,
-                                        lineHeight = 21.sp,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "Lyrics are not available for this track.",
-                            color = palette.textSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = { showLyricsDialog = false }) { Text("Close") }
-                    }
-                }
             }
         }
     }
@@ -659,6 +611,93 @@ fun AudioTrackCard(
                 fontSize = 11.sp,
                 color = palette.textSecondary
             )
+        }
+    }
+}
+
+@Composable
+private fun InlineLyricsPanel(
+    track: AudioItem,
+    lyricsText: String?,
+    activeLineIndex: Int,
+    onTurnOff: () -> Unit
+) {
+    val palette = LocalHiPalette.current
+    val lrcRegex = remember { Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""") }
+    val lyricLines = remember(lyricsText) {
+        lyricsText.orEmpty().lines().mapNotNull { line ->
+            lrcRegex.find(line)?.groupValues?.getOrNull(4)?.trim()
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+        border = BorderStroke(1.dp, palette.surfaceBorder.copy(alpha = 0.5f))
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = palette.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Lyrics", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "${track.artist} — ${track.title}",
+                            color = palette.textSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                TextButton(onClick = onTurnOff) {
+                    Text("Lyrics Off", color = palette.primary, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            if (lyricsText.isNullOrBlank()) {
+                Text(
+                    "Lyrics are not available for this track.",
+                    color = palette.textSecondary,
+                    fontSize = 12.sp
+                )
+            } else if (lyricLines.isEmpty()) {
+                Text(
+                    lyricsText,
+                    color = palette.textPrimary,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                val windowStart = if (activeLineIndex >= 0) {
+                    (activeLineIndex - 3).coerceAtLeast(0)
+                } else {
+                    0
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    lyricLines.drop(windowStart).take(8).forEachIndexed { offset, line ->
+                        val actualIndex = windowStart + offset
+                        Text(
+                            text = line.ifBlank { "♪" },
+                            color = if (actualIndex == activeLineIndex) palette.primary else palette.textSecondary,
+                            fontSize = if (actualIndex == activeLineIndex) 16.sp else 13.sp,
+                            fontWeight = if (actualIndex == activeLineIndex) FontWeight.Bold else FontWeight.Normal,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
         }
     }
 }
