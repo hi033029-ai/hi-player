@@ -759,29 +759,6 @@ fun WavyNowPlayingBottomSheet(
                 height = 20.dp
             )
 
-            // Attached Active Subtitle Banner if loaded
-            if (activeSubtitle != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(palette.primary.copy(alpha = 0.12f))
-                        .clickable(onClick = onLyricsTap)
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = activeSubtitle,
-                        fontSize = 11.sp,
-                        color = palette.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
             // Slider Scrub Bar
             Slider(
                 value = progress,

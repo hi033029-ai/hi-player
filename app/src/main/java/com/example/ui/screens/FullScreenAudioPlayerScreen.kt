@@ -240,42 +240,6 @@ fun FullScreenAudioPlayerScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Subtitle / Lyrics Banner if attached
-            if (activeSubtitle != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp)
-                        .clickable(onClick = onLyricsTap),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = palette.primary.copy(alpha = 0.12f)),
-                    border = BorderStroke(0.5.dp, palette.primary.copy(alpha = 0.3f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Subtitles,
-                            contentDescription = null,
-                            tint = palette.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = activeSubtitle,
-                            fontSize = 12.sp,
-                            color = palette.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
             // Quick Options Row (Subtitles Search, Find Video, EQ Preset)
             Row(
                 modifier = Modifier.fillMaxWidth(),
