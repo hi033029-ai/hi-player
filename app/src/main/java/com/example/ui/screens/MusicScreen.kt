@@ -75,7 +75,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,21 +151,16 @@ fun MusicScreen(
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsState()
     val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
     val lyricsText by musicViewModel.lyricsText.collectAsState()
+    val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsState()
     val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
     val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
     var showEqDialog by remember { mutableStateOf(false) }
-    var lyricsEnabled by remember { mutableStateOf(false) }
-    LaunchedEffect(currentTrack?.id) {
-        lyricsEnabled = false
-    }
     val toggleLyrics: () -> Unit = {
-        if (lyricsEnabled) {
-            lyricsEnabled = false
-            musicViewModel.clearLyrics()
-        } else {
-            lyricsEnabled = true
+        val enabled = !lyricsEnabled
+        musicViewModel.setLyricsEnabled(enabled)
+        if (enabled) {
             currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
         }
     }

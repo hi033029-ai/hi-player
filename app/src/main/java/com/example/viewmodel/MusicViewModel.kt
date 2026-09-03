@@ -143,6 +143,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _lyricsText = MutableStateFlow<String?>(null)
     val lyricsText = _lyricsText.asStateFlow()
 
+    private val _lyricsEnabled = MutableStateFlow(false)
+    val lyricsEnabled = _lyricsEnabled.asStateFlow()
+
+    fun setLyricsEnabled(enabled: Boolean) {
+        _lyricsEnabled.value = enabled
+        if (!enabled) clearLyrics()
+    }
+
     private val _currentLyricLineIndex = MutableStateFlow(-1)
     val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
 
@@ -517,6 +525,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playTrack(track: AudioItem) {
         _currentTrack.value = track
+        _lyricsEnabled.value = false
         _isFullScreenPlayerOpen.value = true
         // Prepare lyrics silently in the background for the track now playing.
         // Results remain available to the existing Lyrics menu and download action.
