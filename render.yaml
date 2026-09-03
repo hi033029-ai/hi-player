@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: hi-player-shazamio
+    runtime: docker
+    plan: free
+    dockerfilePath: ./shazam_backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
