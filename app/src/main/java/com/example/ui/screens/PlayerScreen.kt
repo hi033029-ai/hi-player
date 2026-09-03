@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Build
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -135,6 +137,17 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+
+    val searchSongFromVideo: () -> Unit = {
+        currentVideo?.let { video ->
+            val cleanTitle = video.title
+                .substringBeforeLast('.', video.title)
+                .replace(Regex("[_-]+"), " ")
+                .trim()
+            val query = Uri.encode("$cleanTitle song")
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
+        }
+    }
 
     // File pickers for open file and external subtitles
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -341,6 +354,8 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
+            // Search the currently playing video title as a song on YouTube.
+            onSearchSong = searchSongFromVideo,
             isHdrEnhanceActive = hdrEnhanceActive,
             onToggleHdrEnhance = {
                 playerViewModel.toggleHdrEnhance()
