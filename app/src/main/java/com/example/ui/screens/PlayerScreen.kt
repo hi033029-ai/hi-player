@@ -167,27 +167,12 @@ fun PlayerScreen(
                     }
                     .onFailure { error ->
                         recognitionError = error.message ?: "Song recognition failed."
-                        // Recognition-service failures must never interrupt playback
-                        // or expose token/quota errors to the user. Manual Search Song
-                        // reports only that recognition was unavailable.
+                        // Recognition-service failures must never interrupt playback.
                         if (showProgress) recognitionDialogVisible = true
                     }
                 isRecognizing = false
             }
         }
-    }
-
-    val searchSongFromVideo: () -> Unit = {
-        if (recognizedSong != null) {
-            recognitionDialogVisible = true
-        } else {
-            startRecognition(showProgress = true)
-        }
-    }
-
-    fun openSongSearch(title: String, artist: String) {
-        val query = Uri.encode("$artist $title song")
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$query")))
     }
 
     // Recognition starts automatically whenever a different video begins playing.
@@ -404,7 +389,6 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
-            onSearchSong = searchSongFromVideo,
             isHdrEnhanceActive = hdrEnhanceActive,
             onToggleHdrEnhance = {
                 playerViewModel.toggleHdrEnhance()
@@ -463,12 +447,7 @@ fun PlayerScreen(
                     }
                 },
                 confirmButton = {
-                    if (recognizedSong != null) {
-                        Button(onClick = {
-                            openSongSearch(recognizedSong!!.title, recognizedSong!!.artist)
-                            recognitionDialogVisible = false
-                        }) { Text("Get Video on YouTube") }
-                    } else if (!isRecognizing) {
+                    if (!isRecognizing) {
                         Button(onClick = { recognitionDialogVisible = false }) { Text("Close") }
                     }
                 },
