@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -232,48 +231,6 @@ fun MusicScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        // Music-local header: the shared Hi Player header is intentionally not used here.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(palette.surface)
-                .statusBarsPadding()
-                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.MusicNote, contentDescription = null, tint = palette.primary, modifier = Modifier.size(26.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text("Music", color = palette.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(libraryMode, color = palette.textSecondary, fontSize = 12.sp)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onSearchRequested?.invoke() ?: musicViewModel.setSearchQuery("") }) {
-                    Icon(Icons.Default.Search, contentDescription = "Search music", tint = palette.textPrimary)
-                }
-                Box {
-                    IconButton(onClick = { libraryMenuExpanded = true }, modifier = Modifier.testTag("music_library_menu")) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Music library options", tint = palette.textPrimary)
-                    }
-                    DropdownMenu(expanded = libraryMenuExpanded, onDismissRequest = { libraryMenuExpanded = false }) {
-                        listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(if (option == libraryMode) "✓  $option" else option) },
-                                onClick = {
-                                    libraryMode = option
-                                    libraryMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-
         val audioToolbar: @Composable () -> Unit = {
             Row(
                 modifier = Modifier
@@ -312,6 +269,22 @@ fun MusicScreen(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box {
+                        IconButton(onClick = { libraryMenuExpanded = true }, modifier = Modifier.testTag("music_library_menu")) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Music library options", tint = palette.textPrimary)
+                        }
+                        DropdownMenu(expanded = libraryMenuExpanded, onDismissRequest = { libraryMenuExpanded = false }) {
+                            listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(if (option == libraryMode) "✓  $option" else option) },
+                                    onClick = {
+                                        libraryMode = option
+                                        libraryMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     Box {
                         IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
                             Icon(
