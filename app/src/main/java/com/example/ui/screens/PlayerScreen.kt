@@ -27,7 +27,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -43,7 +42,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,8 +68,6 @@ import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.example.util.RecognizedSong
-import com.example.util.recognizeVideoSong
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -142,48 +138,6 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
-    var recognitionDialogVisible by remember { mutableStateOf(false) }
-    var recognizedSong by remember { mutableStateOf<RecognizedSong?>(null) }
-    var recognitionError by remember { mutableStateOf<String?>(null) }
-    var isRecognizing by remember { mutableStateOf(false) }
-    val recognitionScope = rememberCoroutineScope()
-
-    fun startRecognition(showProgress: Boolean = false) {
-        currentVideo?.let { video ->
-            isRecognizing = true
-            recognizedSong = null
-            recognitionError = null
-            if (showProgress) recognitionDialogVisible = true
-            recognitionScope.launch {
-                recognizeVideoSong(context, video, currentPositionMs)
-                    .onSuccess { match ->
-                        recognizedSong = match
-                        if (match == null) {
-                            recognitionError = "No matching song was found in this video."
-                            if (showProgress) recognitionDialogVisible = true
-                        } else {
-                            recognitionDialogVisible = true
-                        }
-                    }
-                    .onFailure { error ->
-                        recognitionError = error.message ?: "Song recognition failed."
-                        // Recognition-service failures must never interrupt playback.
-                        if (showProgress) recognitionDialogVisible = true
-                    }
-                isRecognizing = false
-            }
-        }
-    }
-
-    // Recognition starts automatically whenever a different video begins playing.
-    LaunchedEffect(currentVideo?.uri) {
-        currentVideo?.let {
-            recognizedSong = null
-            recognitionError = null
-            startRecognition()
-        }
-    }
-
     // File pickers for open file and external subtitles
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -429,33 +383,6 @@ fun PlayerScreen(
                 playerViewModel.setPlaybackSpeed(nextSpeed)
             }
         )
-
-        if (recognitionDialogVisible) {
-            AlertDialog(
-                onDismissRequest = { if (!isRecognizing) recognitionDialogVisible = false },
-                title = { Text("Song Recognition") },
-                text = {
-                    Column {
-                        if (isRecognizing) {
-                            Text("Listening to the current video audio…")
-                        } else if (recognizedSong != null) {
-                            Text("${recognizedSong!!.title}\n${recognizedSong!!.artist}", fontWeight = FontWeight.Bold)
-                            recognizedSong!!.album?.let { album -> Text("Album: $album") }
-                        } else {
-                            Text(recognitionError ?: "No result.")
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (!isRecognizing) {
-                        Button(onClick = { recognitionDialogVisible = false }) { Text("Close") }
-                    }
-                },
-                dismissButton = {
-                    if (!isRecognizing) OutlinedButton(onClick = { recognitionDialogVisible = false }) { Text("Cancel") }
-                }
-            )
-        }
 
         // Error Card Overlay
         playerError?.let { err ->
