@@ -101,7 +101,6 @@ import com.example.R
 import com.example.model.AudioItem
 import com.example.model.VideoItem
 import com.example.ui.components.AudioTrackThumbnail
-import com.example.ui.components.HiPlayerHeader
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
@@ -168,6 +167,8 @@ fun MusicScreen(
     }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var libraryMenuExpanded by remember { mutableStateOf(false) }
+    var libraryMode by remember { mutableStateOf("All MP3") }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
     }
@@ -191,7 +192,7 @@ fun MusicScreen(
         enabled = compactAudioView
     )
 
-    val filteredList = remember(audioList, searchQuery, selectedFilter, audioSort) {
+    val filteredList = remember(audioList, searchQuery, selectedFilter, audioSort, libraryMode) {
         audioList.filter { track ->
             val matchesQuery = searchQuery.isBlank() ||
                     track.title.contains(searchQuery, ignoreCase = true) ||
@@ -205,13 +206,23 @@ fun MusicScreen(
                 else -> true
             }
 
-            matchesQuery && matchesFilter
+            val matchesLibrary = when (libraryMode) {
+                "All MP3" -> track.path.endsWith(".mp3", ignoreCase = true)
+                "Playlists" -> track.isFavorite
+                else -> true
+            }
+            matchesQuery && matchesFilter && matchesLibrary
         }.let { list ->
             when (audioSort) {
                 "Artist" -> list.sortedBy { it.artist.lowercase() }
                 "Duration" -> list.sortedByDescending { it.durationMs }
                 "Newest" -> list.sortedByDescending { it.dateAdded }
-                else -> list.sortedBy { it.title.lowercase() }
+                else -> when (libraryMode) {
+                    "Folders" -> list.sortedWith(compareBy({ it.path.substringBeforeLast('/', "").lowercase() }, { it.title.lowercase() }))
+                    "Albums" -> list.sortedWith(compareBy({ it.album.lowercase() }, { it.title.lowercase() }))
+                    "Artists" -> list.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
+                    else -> list.sortedBy { it.title.lowercase() }
+                }
             }
         }
     }
@@ -221,13 +232,45 @@ fun MusicScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        if (includeHeader) {
-            HiPlayerHeader(
-                testTag = "music_header",
-                onSearchClick = { onSearchRequested?.invoke() ?: musicViewModel.setSearchQuery("") },
-                onRefreshClick = { musicViewModel.loadAudioTracks() },
-                onStreamClick = { /* Stream URL dialog is handled by the host screen. */ }
-            )
+        // Music-local header: the shared Hi Player header is intentionally not used here.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(palette.surface)
+                .statusBarsPadding()
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.MusicNote, contentDescription = null, tint = palette.primary, modifier = Modifier.size(26.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text("Music", color = palette.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(libraryMode, color = palette.textSecondary, fontSize = 12.sp)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onSearchRequested?.invoke() ?: musicViewModel.setSearchQuery("") }) {
+                    Icon(Icons.Default.Search, contentDescription = "Search music", tint = palette.textPrimary)
+                }
+                Box {
+                    IconButton(onClick = { libraryMenuExpanded = true }, modifier = Modifier.testTag("music_library_menu")) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Music library options", tint = palette.textPrimary)
+                    }
+                    DropdownMenu(expanded = libraryMenuExpanded, onDismissRequest = { libraryMenuExpanded = false }) {
+                        listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(if (option == libraryMode) "✓  $option" else option) },
+                                onClick = {
+                                    libraryMode = option
+                                    libraryMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
 
 
