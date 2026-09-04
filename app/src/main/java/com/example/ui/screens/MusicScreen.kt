@@ -323,6 +323,10 @@ fun MusicScreen(
             }
         }
 
+        // Keep the toolbar outside the list so it remains available when a
+        // library mode has no matching tracks (for example an empty playlist).
+        audioToolbar()
+
         // Track List
         Box(modifier = Modifier.weight(1f)) {
             if (filteredList.isEmpty()) {
@@ -339,7 +343,13 @@ fun MusicScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "No audio tracks found",
+                            text = when (libraryMode) {
+                                "Playlists" -> "No playlist tracks yet"
+                                "Folders" -> "No folder tracks found"
+                                "Albums" -> "No album tracks found"
+                                "Artists" -> "No artist tracks found"
+                                else -> "No audio tracks found"
+                            },
                             color = palette.textSecondary,
                             fontSize = 14.sp
                         )
@@ -354,9 +364,6 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
                     ) {
-                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                            audioToolbar()
-                        }
                         gridItems(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
@@ -373,9 +380,6 @@ fun MusicScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item {
-                            audioToolbar()
-                        }
                         items(filteredList, key = { it.id }) { track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
