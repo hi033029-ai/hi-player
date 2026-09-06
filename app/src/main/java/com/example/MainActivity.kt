@@ -242,7 +242,6 @@ class MainActivity : ComponentActivity() {
                                                     onSeek = { musicViewModel.seekTo(it) },
                                                     onOpenEq = { currentTab = com.example.ui.components.NavTab.MUSIC },
                                                     onOpenSubtitleSearch = { currentTab = com.example.ui.components.NavTab.MUSIC },
-                                                    onOpenVideoSearch = { currentTab = com.example.ui.components.NavTab.MUSIC },
                                                     onCancel = { musicViewModel.stopTrack() },
                                                      onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                                                 )

@@ -1,7 +1,5 @@
 package com.example.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
@@ -34,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Subtitles
 import com.example.ui.components.WavyAudioWaveform
 import androidx.compose.material.icons.filled.Equalizer
@@ -86,7 +83,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
@@ -105,27 +101,6 @@ import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
 import kotlinx.coroutines.flow.flowOf
 
-/**
- * "Find Video" now searches the internet (YouTube) for this track's music
- * video instead of only checking the device's local library - opens the
- * YouTube app directly if installed, otherwise falls back to the browser.
- */
-private fun openYoutubeSearchForTrack(context: android.content.Context, track: AudioItem) {
-    val query = "${track.artist} ${track.title} official video".trim()
-    val encodedQuery = Uri.encode(query)
-    try {
-        val appIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:search?q=$encodedQuery"))
-        appIntent.setPackage("com.google.android.youtube")
-        context.startActivity(appIntent)
-    } catch (e: Exception) {
-        val webIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")
-        )
-        context.startActivity(webIntent)
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusicScreen(
@@ -136,7 +111,6 @@ fun MusicScreen(
     onSearchRequested: (() -> Unit)? = null,
     libraryViewModel: LibraryViewModel? = null
 ) {
-    val context = LocalContext.current
     val palette = LocalHiPalette.current
     val audioList by musicViewModel.audioList.collectAsState()
     val currentTrack by musicViewModel.currentTrack.collectAsState()
@@ -154,7 +128,6 @@ fun MusicScreen(
     val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsState()
     val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
-    val matchingVideoState by musicViewModel.matchingVideoState.collectAsState()
 
     var showEqDialog by remember { mutableStateOf(false) }
     val toggleLyrics: () -> Unit = {
@@ -413,7 +386,6 @@ fun MusicScreen(
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
                     onOpenSubtitleSearch = toggleLyrics,
-                    onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onBack = { musicViewModel.closeFullScreenPlayer() },
                     onLyricsTap = toggleLyrics,
                     onCancel = { musicViewModel.stopTrack() }
@@ -432,7 +404,6 @@ fun MusicScreen(
                     onSeek = { musicViewModel.seekTo(it) },
                     onOpenEq = { showEqDialog = true },
                     onOpenSubtitleSearch = toggleLyrics,
-                    onOpenVideoSearch = { openYoutubeSearchForTrack(context, currentTrack!!) },
                     onLyricsTap = toggleLyrics,
                     onCancel = { musicViewModel.stopTrack() },
                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() },
@@ -457,64 +428,6 @@ fun MusicScreen(
         )
     }
 
-    // Matching-video search result - replaces the old fake dialog that
-    // listed made-up video titles and whose "play" action did nothing.
-    // This is a real MediaStore lookup against the device's actual videos.
-    when (val state = matchingVideoState) {
-        is MusicViewModel.MatchingVideoState.Searching -> {
-            AlertDialog(
-                onDismissRequest = { },
-                title = { Text("Searching your library…", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold) },
-                text = { Text("Looking for a matching video for this track.", color = palette.textSecondary, fontSize = 12.sp) },
-                confirmButton = {}
-            )
-        }
-        is MusicViewModel.MatchingVideoState.Found -> {
-            AlertDialog(
-                onDismissRequest = { musicViewModel.resetMatchingVideoState() },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.OndemandVideo, contentDescription = null, tint = palette.secondary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Video Found", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                },
-                text = {
-                    Text(
-                        text = "Found a matching video in your library: ${state.title}",
-                        color = palette.textSecondary,
-                        fontSize = 13.sp
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        musicViewModel.resetMatchingVideoState()
-                        onPlayVideo(state.uri)
-                    }) {
-                        Text("Play", color = palette.secondary, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { musicViewModel.resetMatchingVideoState() }) {
-                        Text("Cancel", color = palette.textSecondary)
-                    }
-                }
-            )
-        }
-        is MusicViewModel.MatchingVideoState.NotFound -> {
-            AlertDialog(
-                onDismissRequest = { musicViewModel.resetMatchingVideoState() },
-                title = { Text("No Matching Video", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold) },
-                text = { Text("No video matching this track was found in your library.", color = palette.textSecondary, fontSize = 12.sp) },
-                confirmButton = {
-                    TextButton(onClick = { musicViewModel.resetMatchingVideoState() }) {
-                        Text("OK", color = palette.primary, fontWeight = FontWeight.Bold)
-                    }
-                }
-            )
-        }
-        is MusicViewModel.MatchingVideoState.Idle -> {}
-    }
 }
 
 @Composable
@@ -642,7 +555,6 @@ fun WavyNowPlayingBottomSheet(
     onSeek: (Long) -> Unit,
     onOpenEq: () -> Unit,
     onOpenSubtitleSearch: () -> Unit,
-    onOpenVideoSearch: () -> Unit,
     onLyricsTap: () -> Unit = {},
     onCancel: () -> Unit,
     onExpandFullScreen: () -> Unit = {},
@@ -709,32 +621,6 @@ fun WavyNowPlayingBottomSheet(
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
-
-                    // Internet Video Search Button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.secondary.copy(alpha = 0.15f))
-                            .clickable(onClick = onOpenVideoSearch)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.OndemandVideo,
-                                contentDescription = "Find Video",
-                                tint = palette.secondary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Find Video",
-                                fontSize = 11.sp,
-                                color = palette.secondary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
 
                     Spacer(modifier = Modifier.width(6.dp))
 

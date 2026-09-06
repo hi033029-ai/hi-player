@@ -31,7 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
@@ -57,7 +56,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -91,7 +89,6 @@ fun FullScreenAudioPlayerScreen(
     onSeek: (Long) -> Unit,
     onOpenEq: () -> Unit,
     onOpenSubtitleSearch: () -> Unit,
-    onOpenVideoSearch: () -> Unit,
     onLyricsTap: () -> Unit = {},
     onBack: () -> Unit,
     onCancel: () -> Unit,
@@ -99,7 +96,6 @@ fun FullScreenAudioPlayerScreen(
 ) {
     val palette = LocalHiPalette.current
     val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
-    val context = LocalContext.current
     val progress = if (duration > 0) (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
 
     // Intercept hardware/gesture Back button -> collapse to sheet mode
@@ -243,7 +239,7 @@ fun FullScreenAudioPlayerScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Quick Options Row (Subtitles Search, Find Video, EQ Preset)
+            // Quick Options Row (Lyrics and EQ Preset)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -270,32 +266,6 @@ fun FullScreenAudioPlayerScreen(
                             text = if (lyricsEnabled) "Lyrics Off" else "Lyrics",
                             fontSize = 12.sp,
                             color = palette.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Internet Video Search Button
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(palette.secondary.copy(alpha = 0.15f))
-                        .clickable(onClick = onOpenVideoSearch)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.OndemandVideo,
-                            contentDescription = "Find Video",
-                            tint = palette.secondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Find Video",
-                            fontSize = 12.sp,
-                            color = palette.secondary,
                             fontWeight = FontWeight.Bold
                         )
                     }
