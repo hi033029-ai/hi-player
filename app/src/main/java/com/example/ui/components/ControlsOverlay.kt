@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarHalf
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -107,6 +109,8 @@ fun ControlsOverlay(
     onZoomOut: () -> Unit,
     onEnterPip: () -> Unit,
     onToggleBgPlay: () -> Unit,
+    isMuted: Boolean = false,
+    onToggleMute: () -> Unit = {},
     onOpenFile: () -> Unit,
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
@@ -227,41 +231,6 @@ fun ControlsOverlay(
                         testTag = "top_subtitles_cc_button"
                     )
 
-                    // Background Play Toggle
-                    IconButton(
-                        onClick = onToggleBgPlay,
-                        modifier = Modifier.testTag("bg_play_toggle_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Headphones,
-                            contentDescription = "Background Play",
-                            tint = if (isBgPlayActive) HiPrimaryCyan else Color.White.copy(alpha = 0.6f)
-                        )
-                    }
-
-                    // Picture-in-Picture Button
-                    IconButton(
-                        onClick = onEnterPip,
-                        modifier = Modifier.testTag("pip_mode_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PictureInPictureAlt,
-                            contentDescription = "Picture in Picture",
-                            tint = Color.White
-                        )
-                    }
-
-                    // Fullscreen / Cycle Aspect Ratio
-                    IconButton(
-                        onClick = onCycleAspectRatio,
-                        modifier = Modifier.testTag("fullscreen_toggle_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Fullscreen",
-                            tint = Color.White
-                        )
-                    }
                 }
 
                 // 2. LEFT EDGE CONTROLS: reference-style utility actions.
@@ -417,9 +386,9 @@ fun ControlsOverlay(
                         )
 
                         PlayerToolbarButton(
-                            icon = Icons.Default.Audiotrack,
-                            label = "Audio",
-                            onClick = onOpenAudioSettings,
+                            icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            label = if (isMuted) "Muted" else "Volume",
+                            onClick = onToggleMute,
                             testTag = "bottom_audio_button"
                         )
 

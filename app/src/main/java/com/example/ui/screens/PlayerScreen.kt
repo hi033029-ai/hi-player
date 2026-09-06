@@ -57,7 +57,6 @@ import com.example.ui.components.AudioSettingsBottomSheet
 import com.example.ui.components.ControlsOverlay
 import com.example.ui.components.FetchSubtitleUrlDialog
 import com.example.ui.components.GestureOverlay
-import com.example.ui.components.MoreOptionsBottomSheet
 import com.example.ui.components.TmdbKeyDialog
 
 import com.example.ui.components.SubtitleCustomizationBottomSheet
@@ -136,7 +135,9 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
-    // File pickers for open file and external subtitles
+    var isMuted by remember { mutableStateOf(false) }
+
+    // File picker for opening a local video.
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -148,12 +149,6 @@ fun PlayerScreen(
             )
             playerViewModel.playVideo(videoItem)
         }
-    }
-
-    val subtitlePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { playerViewModel.loadExternalSubtitle(it) }
     }
 
     // Handle orientation changes
@@ -338,6 +333,11 @@ fun PlayerScreen(
             onZoomOut = { playerViewModel.zoomOut() },
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
+            isMuted = isMuted,
+            onToggleMute = {
+                isMuted = !isMuted
+                playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
+            },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
             isHdrEnhanceActive = hdrEnhanceActive,
             onToggleHdrEnhance = {
@@ -473,19 +473,6 @@ fun PlayerScreen(
                 VideoInfoDialog(
                     video = currentVideo,
                     telemetry = telemetry,
-                    onDismiss = { playerViewModel.closeSheet() }
-                )
-            }
-            ActiveSheet.PLAYLIST_CHOOSER -> {
-                MoreOptionsBottomSheet(
-                    onLoadSubtitleFile = { subtitlePickerLauncher.launch("*/*") },
-                    onFetchSubtitleUrl = { playerViewModel.openSheet(ActiveSheet.FETCH_SUBTITLE_URL_DIALOG) },
-                    onDownloadCurrentSubtitle = { playerViewModel.downloadCurrentSubtitle(context) },
-                    onOpenSubtitleCustomization = { playerViewModel.openSheet(ActiveSheet.SUBTITLE_CUSTOMIZATION) },
-                    onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
-                    onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
-                    onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
-                    onOpenRatingKey = { playerViewModel.openSheet(ActiveSheet.TMDB_KEY_DIALOG) },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }
