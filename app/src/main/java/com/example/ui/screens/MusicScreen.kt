@@ -141,7 +141,6 @@ fun MusicScreen(
     }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var libraryMenuExpanded by remember { mutableStateOf(false) }
     var libraryMode by remember { mutableStateOf("All MP3") }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
@@ -207,15 +206,48 @@ fun MusicScreen(
             .background(palette.background)
     ) {
         val audioToolbar: @Composable () -> Unit = {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(palette.surface)
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                    .padding(vertical = 8.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("music_library_categories")
+                ) {
+                    listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
+                        item {
+                            val isSelected = libraryMode == option
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(if (isSelected) palette.primary else palette.surfaceElevated)
+                                    .clickable { libraryMode = option }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .testTag("music_library_category_$option"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = option,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.Black else palette.textPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("All", "MP3 Audio").forEach { filter ->
                         val isSelected = selectedFilter == filter
                         Row(
@@ -242,24 +274,8 @@ fun MusicScreen(
                             )
                         }
                     }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box {
-                        IconButton(onClick = { libraryMenuExpanded = true }, modifier = Modifier.testTag("music_library_menu")) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Music library options", tint = palette.textPrimary)
-                        }
-                        DropdownMenu(expanded = libraryMenuExpanded, onDismissRequest = { libraryMenuExpanded = false }) {
-                            listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(if (option == libraryMode) "✓  $option" else option) },
-                                    onClick = {
-                                        libraryMode = option
-                                        libraryMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
                     }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box {
                         IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
                             Icon(

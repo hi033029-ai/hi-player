@@ -2,9 +2,6 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -64,7 +61,6 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -89,7 +85,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -167,7 +162,7 @@ fun FileManagerScreen(
     val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
 
     var isSearchActive by remember { mutableStateOf(false) }
-    val savedTab = remember { runCatching { FileViewTab.valueOf(fileManagerViewModel.preferredFileTab) }.getOrDefault(FileViewTab.FOLDERS_BROWSER) }
+    val savedTab = remember { runCatching { FileViewTab.valueOf(fileManagerViewModel.preferredFileTab) }.getOrDefault(FileViewTab.ALL_MERGED) }
     var activeTab by remember { mutableStateOf(savedTab) }
     fun selectTab(tab: FileViewTab) {
         activeTab = tab
@@ -215,30 +210,6 @@ fun FileManagerScreen(
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
             fileManagerViewModel.dismissDeleteResult()
         }
-    }
-
-    // "All Files Access" permission state - without this, folder listings
-    // return empty for anything outside the app's own scoped storage on
-    // Android 11+, which is why archives/documents could silently show as
-    // 0 even when real files exist on the device.
-    var hasAllFilesAccess by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else true
-        )
-    }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else true
-                if (granted != hasAllFilesAccess) {
-                    hasAllFilesAccess = granted
-                    if (granted) fileManagerViewModel.refreshAll()
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val storageFraction = if (totalStorage > 0) (usedStorage.toFloat() / totalStorage.toFloat()).coerceIn(0f, 1f) else 0.38f
@@ -409,56 +380,6 @@ fun FileManagerScreen(
         )
         }
 
-        // Permission banner - shown until "All Files Access" is granted,
-        // since without it folder scanning silently returns nothing for
-        // most real-world directories.
-        if (!hasAllFilesAccess) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFB45309))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "Full storage access needed",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Color(0xFF78350F)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        "Without this, folders can appear empty even when they contain files. Grant access to see archives, documents, and everything else.",
-                        fontSize = 12.5.sp,
-                        color = Color(0xFF78350F)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                try {
-                                    val intent = Intent(
-                                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                        Uri.parse("package:${context.packageName}")
-                                    )
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB45309))
-                    ) {
-                        Text("Grant Access", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
 
         // Quick sections are hidden after the file list is scrolled to preserve space.
         if (!isInsideFolder && showQuickPanels) {
