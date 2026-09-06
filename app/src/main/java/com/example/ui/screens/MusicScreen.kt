@@ -112,6 +112,7 @@ fun MusicScreen(
     onSearchRequested: (() -> Unit)? = null,
     libraryViewModel: LibraryViewModel? = null
 ) {
+    val context = LocalContext.current
     val palette = LocalHiPalette.current
     val audioList by musicViewModel.audioList.collectAsState()
     val currentTrack by musicViewModel.currentTrack.collectAsState()
