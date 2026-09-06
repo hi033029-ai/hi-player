@@ -313,6 +313,7 @@ fun MusicScreen(
                 }
             }
         }
+        }
 
         // Keep the toolbar outside the list so it remains available when a
         // library mode has no matching tracks (for example an empty playlist).
