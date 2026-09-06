@@ -244,6 +244,72 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Best-effort keyless subtitle lookup for the CC panel. This scrapes the
+     * public OpenSubtitles web search, caches the first downloadable result,
+     * and loads it into the active Media3 player. Website changes or rate
+     * limits become a toast and never interrupt video playback.
+     */
+    fun searchAndDownloadSubtitle(context: Context) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val video = _currentVideo.value ?: return@launch
+            val query = video.path.substringAfterLast('/').ifBlank { video.title }
+                .substringBeforeLast('.')
+                .replace(Regex("[._]+"), " ")
+                .replace(Regex("[\\[\\]()]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            try {
+                require(query.isNotBlank()) { "The video has no usable filename." }
+                val encoded = java.net.URLEncoder.encode(query, Charsets.UTF_8.name())
+                val searchUrl = "https://www.opensubtitles.org/en/search2/moviename-$encoded/sublanguageid-all"
+                val searchConnection = (java.net.URL(searchUrl).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 8_000
+                    readTimeout = 12_000
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) HiPlayer/1.0")
+                }
+                val html = searchConnection.inputStream.bufferedReader().use { it.readText() }
+                searchConnection.disconnect()
+                val link = Regex("href=[\\\"']([^\\\"']*(?:subtitleserve|download)[^\\\"']*)[\\\"']", RegexOption.IGNORE_CASE)
+                    .find(html)?.groupValues?.getOrNull(1)
+                    ?: error("No downloadable subtitle was found for $query")
+                val downloadUrl = when {
+                    link.startsWith("http") -> link
+                    link.startsWith("//") -> "https:$link"
+                    else -> "https://www.opensubtitles.org${if (link.startsWith('/')) link else "/$link"}"
+                }
+                val downloadConnection = (java.net.URL(downloadUrl).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 8_000
+                    readTimeout = 20_000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) HiPlayer/1.0")
+                }
+                val downloaded = downloadConnection.inputStream.use { it.readBytes() }
+                downloadConnection.disconnect()
+                require(downloaded.isNotEmpty()) { "The subtitle download was empty." }
+                val subtitleText = java.io.ByteArrayInputStream(downloaded).use { input ->
+                    java.util.zip.ZipInputStream(input).use { zip ->
+                        val entry = zip.nextEntry
+                        if (entry != null) zip.readBytes().toString(Charsets.UTF_8) else downloaded.toString(Charsets.UTF_8)
+                    }
+                }
+                require(subtitleText.contains(Regex("(?m)^(\\d{1,}:)?\\d{1,2}:\\d{2}[,.]\\d{3}.*-->|WEBVTT", RegexOption.IGNORE_CASE))) {
+                    "The downloaded result was not a readable subtitle file."
+                }
+                val subtitleFile = java.io.File.createTempFile("hiplayer-online-", ".srt", getApplication<Application>().cacheDir)
+                subtitleFile.writeText(subtitleText)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    loadExternalSubtitle(Uri.fromFile(subtitleFile))
+                    android.widget.Toast.makeText(context, "Subtitles downloaded and loaded", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch (error: Exception) {
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Subtitle search failed: ${error.message ?: "try again later"}", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     fun togglePlayPause() {
         engine.togglePlayPause()
         saveCurrentProgress()

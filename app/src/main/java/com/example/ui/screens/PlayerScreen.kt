@@ -464,7 +464,7 @@ fun PlayerScreen(
                     onOpenCustomizeAppearance = { playerViewModel.openSheet(ActiveSheet.SUBTITLE_CUSTOMIZATION) },
                     onDownloadSubtitle = {
                         playerViewModel.closeSheet()
-                        playerViewModel.downloadCurrentSubtitle(context)
+                        playerViewModel.searchAndDownloadSubtitle(context)
                     },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
