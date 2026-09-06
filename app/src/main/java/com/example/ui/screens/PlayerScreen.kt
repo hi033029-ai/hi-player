@@ -116,8 +116,6 @@ fun PlayerScreen(
     val volumeBoostPercent by playerViewModel.engine.volumeBoostPercent.collectAsState()
     val audioDelayMs by playerViewModel.engine.audioDelayMs.collectAsState()
     val subtitleOffsetMs by playerViewModel.engine.subtitleOffsetMs.collectAsState()
-    val abRepeatA by playerViewModel.engine.abRepeatA.collectAsState()
-    val abRepeatB by playerViewModel.engine.abRepeatB.collectAsState()
     val activeSheet by playerViewModel.activeSheet.collectAsState()
     val currentRating by playerViewModel.currentRating.collectAsState()
     val sleepTimerMinutes by playerViewModel.sleepTimerMinutesLeft.collectAsState()
@@ -327,8 +325,6 @@ fun PlayerScreen(
             aspectRatioMode = aspectRatioMode,
             playbackSpeed = playbackSpeed,
             isBgPlayActive = isBgPlayActive,
-            abRepeatA = abRepeatA,
-            abRepeatB = abRepeatB,
             videoScale = videoScale,
             rating = currentRating,
             onTogglePlayPause = { playerViewModel.togglePlayPause() },
@@ -348,7 +344,6 @@ fun PlayerScreen(
                 playerViewModel.toggleHdrEnhance()
                 areControlsVisible = false
             },
-            onOpenPlaylist = { playerViewModel.openSheet(ActiveSheet.PLAYLIST_CHOOSER) },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
                 // was undiscoverable and prevented users from seeing the embedded
@@ -358,18 +353,8 @@ fun PlayerScreen(
             },
             onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
-            onOpenMoreOptions = { playerViewModel.openSheet(ActiveSheet.PLAYLIST_CHOOSER) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
             onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
-            onSetAbRepeat = {
-                if (abRepeatA == null) {
-                    playerViewModel.engine.setAbRepeatA()
-                } else if (abRepeatB == null) {
-                    playerViewModel.engine.setAbRepeatB()
-                } else {
-                    playerViewModel.engine.clearAbRepeat()
-                }
-            },
             onCycleSpeed = {
                 val nextSpeed = when (playbackSpeed) {
                     0.5f -> 0.75f
@@ -477,6 +462,10 @@ fun PlayerScreen(
                     onSubtitleOffsetChange = { playerViewModel.setSubtitleOffset(it) },
                     onLoadExternalSubtitle = { playerViewModel.loadExternalSubtitle(it) },
                     onOpenCustomizeAppearance = { playerViewModel.openSheet(ActiveSheet.SUBTITLE_CUSTOMIZATION) },
+                    onDownloadSubtitle = {
+                        playerViewModel.closeSheet()
+                        playerViewModel.downloadCurrentSubtitle(context)
+                    },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }

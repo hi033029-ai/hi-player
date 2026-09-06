@@ -38,11 +38,9 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Replay10
@@ -96,8 +94,6 @@ fun ControlsOverlay(
     aspectRatioMode: AspectRatioMode,
     playbackSpeed: Float,
     isBgPlayActive: Boolean,
-    abRepeatA: Long?,
-    abRepeatB: Long?,
     videoScale: Float = 1.0f,
     rating: MediaRating? = null,
     onTogglePlayPause: () -> Unit,
@@ -114,14 +110,11 @@ fun ControlsOverlay(
     onOpenFile: () -> Unit,
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
-    onOpenPlaylist: () -> Unit,
     onToggleSubtitles: () -> Unit,
     onOpenAudioSettings: () -> Unit,
     onOpenVideoSettings: () -> Unit,
-    onOpenMoreOptions: () -> Unit,
     onOpenTelemetry: () -> Unit,
     onCycleAspectRatio: () -> Unit,
-    onSetAbRepeat: () -> Unit,
     onCycleSpeed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -174,7 +167,7 @@ fun ControlsOverlay(
                         )
                     )
             ) {
-                // 1. TOP BAR: Back (left), Filename (center), Fullscreen Toggle (right)
+                // 1. TOP BAR: Back (left), title + filename (center), Audio/CC/actions (right)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -208,34 +201,31 @@ fun ControlsOverlay(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            if (video?.isHdr == true || video?.resolutionBadge == com.example.model.VideoResolutionBadge.UHD_4K) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(HiAccentAmber, RoundedCornerShape(3.dp))
-                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        text = "4K UHD REMUX",
-                                        color = Color.Black,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
-                            }
-                            Text(
-                                text = video?.codec ?: "HEVC HW",
-                                color = HiPrimaryCyan,
-                                fontSize = 11.sp
-                            )
-                            if (rating != null) {
-                                RatingStarsBadge(rating = rating)
-                            }
-                        }
+                        Text(
+                            text = video?.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                                ?: video?.title ?: "Unknown file",
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
+
+                    PlayerToolbarButton(
+                        icon = Icons.Default.Audiotrack,
+                        label = "Audio",
+                        onClick = onOpenAudioSettings,
+                        tint = Color.White,
+                        testTag = "top_audio_tracks_button"
+                    )
+
+                    PlayerToolbarButton(
+                        icon = Icons.Default.ClosedCaption,
+                        label = "CC",
+                        onClick = onToggleSubtitles,
+                        tint = Color.White,
+                        testTag = "top_subtitles_cc_button"
+                    )
 
                     // Background Play Toggle
                     IconButton(
@@ -492,14 +482,6 @@ fun ControlsOverlay(
                             testTag = "open_file_button"
                         )
 
-                        // Playlist Icon
-                        PlayerToolbarButton(
-                            icon = Icons.Default.PlaylistPlay,
-                            label = "Playlist",
-                            onClick = onOpenPlaylist,
-                            testTag = "playlist_button"
-                        )
-
                         // Back 10s
                         PlayerToolbarButton(
                             icon = Icons.Default.Replay10,
@@ -516,46 +498,6 @@ fun ControlsOverlay(
                             testTag = "bottom_ff_button"
                         )
 
-                        // Audio Track Selector
-                        PlayerToolbarButton(
-                            icon = Icons.Default.Audiotrack,
-                            label = "Audio",
-                            onClick = onOpenAudioSettings,
-                            testTag = "audio_tracks_button"
-                        )
-
-                        // Subtitle (CC) Icon: Tap to view all embedded captions
-                        // and select the desired language/track.
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClick = onToggleSubtitles)
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                                .testTag("subtitles_cc_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ClosedCaption,
-                                contentDescription = "Subtitles",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "CC",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
-                        // "⋮" More Options
-                        PlayerToolbarButton(
-                            icon = Icons.Default.MoreVert,
-                            label = "More",
-                            onClick = onOpenMoreOptions,
-                            testTag = "more_options_button"
-                        )
                     }
                 }
 
