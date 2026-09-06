@@ -264,95 +264,30 @@ fun ControlsOverlay(
                     }
                 }
 
-                // 2. LEFT EDGE CONTROLS: Lock button & Rotate button
+                // 2. LEFT EDGE CONTROLS: reference-style utility actions.
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(start = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    IconButton(
-                        onClick = onToggleLock,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color(0x88000000), CircleShape)
-                            .testTag("left_edge_lock_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LockOpen,
-                            contentDescription = "Lock Controls",
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onRotateScreen,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color(0x88000000), CircleShape)
-                            .testTag("left_edge_rotate_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ScreenRotation,
-                            contentDescription = "Rotate Screen",
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
+                    HudSideAction(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, "left_edge_rotate_button", labelBeforeIcon = false)
+                    HudSideAction(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip, "left_edge_pip_button", labelBeforeIcon = false)
+                    HudSideAction(Icons.Default.AutoAwesome, if (isHdrEnhanceActive) "HDR On" else "HDR Filters", onToggleHdrEnhance, "left_edge_hdr_button", HiAccentAmber, labelBeforeIcon = false)
                 }
 
-                // 3. RIGHT EDGE CONTROLS: Zoom In, Live "1.0x" Label, Zoom Out
+                // 3. RIGHT EDGE CONTROLS: speed, background audio, equalizer, and scale.
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(end = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    IconButton(
-                        onClick = onZoomIn,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0x88000000), CircleShape)
-                            .testTag("zoom_in_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Zoom In",
-                            tint = HiPrimaryCyan,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xCC111827), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = String.format("%.1fx", videoScale),
-                            color = HiPrimaryCyan,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onZoomOut,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0x88000000), CircleShape)
-                            .testTag("zoom_out_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Zoom Out",
-                            tint = HiPrimaryCyan,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                    HudSideAction(Icons.Default.Speed, "Speed  ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, "right_speed_button")
+                    HudSideAction(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, "right_audio_button", if (isBgPlayActive) HiPrimaryCyan else Color.White)
+                    HudSideAction(Icons.Default.Tune, "Equalizer", onOpenAudioSettings, "right_equalizer_button")
+                    HudSideAction(Icons.Default.AspectRatio, "Zoom  ${String.format("%.1fX", videoScale)}", onZoomIn, "right_zoom_button")
                 }
 
                 // 4. CENTER CONTROLS (Rewind 10s, Play/Pause/Buffer, Forward 10s)
@@ -468,21 +403,26 @@ fun ControlsOverlay(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Secondary Control Row: open-file, playlist, back-10s, play/pause, forward-10s, audio-track, subtitle (CC), "⋮" options
+                    // Reference-style bottom transport row.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Open File Icon
                         PlayerToolbarButton(
-                            icon = Icons.Default.FolderOpen,
-                            label = "Open",
-                            onClick = onOpenFile,
-                            testTag = "open_file_button"
+                            icon = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                            label = "Lock",
+                            onClick = onToggleLock,
+                            testTag = "bottom_lock_button"
                         )
 
-                        // Back 10s
+                        PlayerToolbarButton(
+                            icon = Icons.Default.Audiotrack,
+                            label = "Audio",
+                            onClick = onOpenAudioSettings,
+                            testTag = "bottom_audio_button"
+                        )
+
                         PlayerToolbarButton(
                             icon = Icons.Default.Replay10,
                             label = "-10s",
@@ -490,7 +430,14 @@ fun ControlsOverlay(
                             testTag = "bottom_rewind_button"
                         )
 
-                        // Forward 10s
+                        PlayerToolbarButton(
+                            icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            label = if (isPlaying) "Pause" else "Play",
+                            onClick = onTogglePlayPause,
+                            tint = HiPrimaryCyan,
+                            testTag = "bottom_play_pause_button"
+                        )
+
                         PlayerToolbarButton(
                             icon = Icons.Default.Forward10,
                             label = "+10s",
@@ -498,6 +445,12 @@ fun ControlsOverlay(
                             testTag = "bottom_ff_button"
                         )
 
+                        PlayerToolbarButton(
+                            icon = Icons.Default.AspectRatio,
+                            label = "Crop",
+                            onClick = onCycleAspectRatio,
+                            testTag = "bottom_aspect_button"
+                        )
                     }
                 }
 
@@ -657,6 +610,47 @@ private fun HiVideoSeekBar(
                     .background(HiPrimaryCyan, CircleShape)
             )
         }
+    }
+}
+
+@Composable
+private fun HudSideAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    testTag: String,
+    tint: Color = Color.White,
+    labelBeforeIcon: Boolean = true
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag(testTag)
+    ) {
+        if (!labelBeforeIcon) {
+            HudActionIcon(icon, label, onClick, tint)
+        }
+        Text(text = label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        if (labelBeforeIcon) {
+            HudActionIcon(icon, label, onClick, tint)
+        }
+    }
+}
+
+@Composable
+private fun HudActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color(0x991A1A1A), CircleShape)
+    ) {
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
     }
 }
 
