@@ -423,37 +423,6 @@ fun ControlsOverlay(
                     }
                 }
 
-                // HDR / Vivid picture boost - floating toggle, bottom-right
-                // corner. Lifts contrast and saturation on the decoded video
-                // itself (not just screen brightness) for a punchier, more
-                // vibrant picture on request.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 96.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isHdrEnhanceActive) HiPrimaryCyan else Color(0xCC1F2937))
-                        .clickable {
-                            onToggleHdrEnhance()
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Vivid picture boost",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (isHdrEnhanceActive) "HDR ON" else "HDR",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
         }
     }
