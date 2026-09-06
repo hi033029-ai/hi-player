@@ -57,6 +57,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var lyricsLines: List<Pair<Long, String>> = emptyList()
     private var loadTracksJob: Job? = null
 
+    private fun normalizeForMatch(text: String): String {
+        return text.lowercase()
+            .replace(Regex("\\.[a-z0-9]{2,4}$"), "")
+            .replace(Regex("[\\[(].*?[\\])]"), "")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+    }
+
     /**
      * Fetches real, time-synced lyrics for the current track from lrclib.net
      * (a free, keyless public API) and syncs them to playback position -
