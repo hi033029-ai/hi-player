@@ -52,8 +52,8 @@ data class AppPlayerSettings(
     val enableTunneling: Boolean = false,
     val enableWideColorGamut: Boolean = true, // Fix 4K dull colors
     val enableHdrEnhance: Boolean = true, // Fix 4K color washed out/distortion
-    val backgroundPlayEnabled: Boolean = true,
-    val autoPipEnabled: Boolean = true,
+    val backgroundPlayEnabled: Boolean = false,
+    val autoPipEnabled: Boolean = false,
     val seekStepSeconds: Int = 10,
     val defaultAspectRatio: String = "FIT",
     val subtitleTextSizeSp: Int = 18,
@@ -107,8 +107,8 @@ class PlayerPreferencesRepository(private val context: Context) {
             enableTunneling = (hwMode == HwAccelerationMode.HW_PLUS) && (prefs[Keys.TUNNELING] ?: false),
             enableWideColorGamut = prefs[Keys.WIDE_COLOR_GAMUT] ?: true,
             enableHdrEnhance = prefs[Keys.HDR_ENHANCE] ?: true,
-            backgroundPlayEnabled = prefs[Keys.BG_PLAY] ?: true,
-            autoPipEnabled = prefs[Keys.AUTO_PIP] ?: true,
+            backgroundPlayEnabled = prefs[Keys.BG_PLAY] ?: false,
+            autoPipEnabled = prefs[Keys.AUTO_PIP] ?: false,
             seekStepSeconds = prefs[Keys.SEEK_STEP] ?: 10,
             defaultAspectRatio = prefs[Keys.ASPECT_RATIO] ?: "FIT",
             subtitleTextSizeSp = prefs[Keys.SUBTITLE_SIZE] ?: 18,

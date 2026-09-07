@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private val fileManagerViewModel: FileManagerViewModel by viewModels()
 
     private val _isInPipMode = mutableStateOf(false)
+    private var pipTransitionRequested = false
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -423,6 +424,7 @@ class MainActivity : ComponentActivity() {
 
     fun enterPipMode() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pipTransitionRequested = true
             val aspectRatio = Rational(16, 9)
             val params = PictureInPictureParams.Builder()
                 .setAspectRatio(aspectRatio)
@@ -451,9 +453,9 @@ class MainActivity : ComponentActivity() {
     // the user has explicitly enabled PiP or background audio playback.
     override fun onStop() {
         super.onStop()
-        if (isInPictureInPictureMode) return
+        if (isInPictureInPictureMode || pipTransitionRequested) return
         val settings = libraryViewModel.playerSettings.value
-        if (!settings.autoPipEnabled && !settings.backgroundPlayEnabled) {
+        if (!settings.backgroundPlayEnabled) {
             if (playerViewModel.engine.isPlaying.value) {
                 playerViewModel.engine.pause()
             }
@@ -466,6 +468,12 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         _isInPipMode.value = isInPictureInPictureMode
+        if (isInPictureInPictureMode) {
+            pipTransitionRequested = false
+        } else if (!libraryViewModel.playerSettings.value.backgroundPlayEnabled) {
+            pipTransitionRequested = false
+            playerViewModel.engine.pause()
+        }
         // Tapping the PiP window's own close/"cancel" control finishes the
         // activity, which triggers onStop() above and pauses playback there
         // if the user hasn't opted into background audio. Nothing further
