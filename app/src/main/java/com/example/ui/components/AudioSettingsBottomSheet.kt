@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -55,9 +57,11 @@ fun AudioSettingsBottomSheet(
     audioTracks: List<VideoTrackInfo>,
     volumeBoostPercent: Int,
     audioDelayMs: Long,
+    equalizerPreset: String = "Flat",
     onSelectTrack: (VideoTrackInfo) -> Unit,
     onVolumeBoostChange: (Int) -> Unit,
     onAudioDelayChange: (Long) -> Unit,
+    onEqualizerPresetChange: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -87,6 +91,39 @@ fun AudioSettingsBottomSheet(
                 fontSize = 12.sp,
                 color = HiTextSecondary
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Equalizer Preset",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = HiTextPrimary
+            )
+            Text(
+                text = "Applies real audio band gains to the current player",
+                fontSize = 11.sp,
+                color = HiTextSecondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal")) { preset ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (preset == equalizerPreset) HiPrimaryCyan else HiSurfaceElevated)
+                            .clickable { onEqualizerPresetChange(preset) }
+                            .padding(horizontal = 13.dp, vertical = 9.dp)
+                    ) {
+                        Text(
+                            text = preset,
+                            color = if (preset == equalizerPreset) Color.Black else HiTextPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (preset == equalizerPreset) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 

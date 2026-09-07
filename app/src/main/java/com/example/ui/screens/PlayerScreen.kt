@@ -114,6 +114,7 @@ fun PlayerScreen(
     val availableSubtitleTracks by playerViewModel.engine.availableSubtitleTracks.collectAsState()
     val telemetry by playerViewModel.engine.telemetry.collectAsState()
     val volumeBoostPercent by playerViewModel.engine.volumeBoostPercent.collectAsState()
+    val equalizerPreset by playerViewModel.engine.equalizerPreset.collectAsState()
     val audioDelayMs by playerViewModel.engine.audioDelayMs.collectAsState()
     val subtitleOffsetMs by playerViewModel.engine.subtitleOffsetMs.collectAsState()
     val activeSheet by playerViewModel.activeSheet.collectAsState()
@@ -450,9 +451,11 @@ fun PlayerScreen(
                     audioTracks = availableAudioTracks,
                     volumeBoostPercent = volumeBoostPercent,
                     audioDelayMs = audioDelayMs,
+                    equalizerPreset = equalizerPreset,
                     onSelectTrack = { playerViewModel.selectAudioTrack(it) },
                     onVolumeBoostChange = { playerViewModel.setVolumeBoost(it) },
                     onAudioDelayChange = { playerViewModel.setAudioDelay(it) },
+                    onEqualizerPresetChange = { playerViewModel.engine.setEqualizerPreset(it) },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }

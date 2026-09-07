@@ -1,6 +1,7 @@
 package com.example.player
 
 import android.content.Context
+import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import androidx.annotation.OptIn
@@ -54,6 +55,7 @@ class HiPlayerEngine(
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var equalizer: Equalizer? = null
     private var progressJob: Job? = null
 
     private val _isPlaying = MutableStateFlow(false)
@@ -79,6 +81,9 @@ class HiPlayerEngine(
 
     private val _volumeBoostPercent = MutableStateFlow(0) // 0 to 100% boost
     val volumeBoostPercent = _volumeBoostPercent.asStateFlow()
+
+    private val _equalizerPreset = MutableStateFlow("Flat")
+    val equalizerPreset = _equalizerPreset.asStateFlow()
 
     private val _audioDelayMs = MutableStateFlow(0L)
     val audioDelayMs = _audioDelayMs.asStateFlow()
@@ -292,6 +297,10 @@ class HiPlayerEngine(
             updateTelemetry()
         }
 
+        override fun onAudioSessionIdChanged(audioSessionId: Int) {
+            setupEqualizer(audioSessionId)
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             _isBuffering.value = false
             _isPlaying.value = false
@@ -406,6 +415,7 @@ class HiPlayerEngine(
             }
 
         setupLoudnessEnhancer()
+        setupEqualizer()
         startProgressTracker()
     }
 
@@ -421,6 +431,58 @@ class HiPlayerEngine(
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun setupEqualizer(sessionId: Int? = null) {
+        try {
+            val audioSessionId = sessionId
+                ?: exoPlayer?.audioSessionId
+                ?: C.AUDIO_SESSION_ID_UNSET
+            if (audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
+            equalizer?.release()
+            equalizer = Equalizer(0, audioSessionId).apply { enabled = true }
+            applyEqualizerPreset(_equalizerPreset.value)
+        } catch (_: Exception) {
+            equalizer?.release()
+            equalizer = null
+        }
+    }
+
+    fun setEqualizerPreset(preset: String) {
+        val normalized = preset.trim().ifBlank { "Flat" }
+        _equalizerPreset.value = normalized
+        applyEqualizerPreset(normalized)
+    }
+
+    private fun applyEqualizerPreset(preset: String) {
+        val eq = equalizer ?: return
+        try {
+            val gainsDb = when (preset) {
+                "Bass Boost" -> floatArrayOf(8f, 5f, 2f, 0f, -1f)
+                "Jazz" -> floatArrayOf(4f, 2f, 0f, 2f, 4f)
+                "Rock" -> floatArrayOf(6f, 3f, -1f, 3f, 5f)
+                "Classical" -> floatArrayOf(3f, 0f, 2f, 4f, 3f)
+                "Vocal" -> floatArrayOf(-1f, 2f, 5f, 2f, -1f)
+                else -> floatArrayOf(0f, 0f, 0f, 0f, 0f)
+            }
+            val range = eq.bandLevelRange
+            val minLevel = range[0].toInt()
+            val maxLevel = range[1].toInt()
+            val bandCount = eq.numberOfBands.toInt()
+            for (band in 0 until bandCount) {
+                val normalized = if (bandCount <= 1) 0f else band.toFloat() / (bandCount - 1)
+                val position = normalized * (gainsDb.size - 1)
+                val low = position.toInt().coerceIn(0, gainsDb.lastIndex)
+                val high = (low + 1).coerceAtMost(gainsDb.lastIndex)
+                val fraction = position - low
+                val gainDb = gainsDb[low] + (gainsDb[high] - gainsDb[low]) * fraction
+                val level = (gainDb * 100f).toInt().coerceIn(minLevel, maxLevel).toShort()
+                eq.setBandLevel(band.toShort(), level)
+            }
+            eq.enabled = true
+        } catch (_: Exception) {
+            // OEM audio stacks may expose no writable bands; playback remains usable.
         }
     }
 
@@ -741,6 +803,8 @@ class HiPlayerEngine(
         progressJob = null
         loudnessEnhancer?.release()
         loudnessEnhancer = null
+        equalizer?.release()
+        equalizer = null
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
