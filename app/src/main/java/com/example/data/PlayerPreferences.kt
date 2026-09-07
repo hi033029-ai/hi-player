@@ -38,7 +38,7 @@ enum class HwAccelerationMode(val id: String, val displayName: String, val descr
 
     companion object {
         fun fromId(id: String?): HwAccelerationMode {
-            return entries.find { it.id == id } ?: HW_PLUS
+            return entries.find { it.id == id } ?: SW
         }
     }
 }
@@ -46,12 +46,12 @@ enum class HwAccelerationMode(val id: String, val displayName: String, val descr
 data class AppPlayerSettings(
     val themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
     val isFirstLaunch: Boolean = true,
-    val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.HW_PLUS,
-    val hardwareDecoding: Boolean = true,
-    val remuxUltraBufferMode: Boolean = true, // 128MB buffer for 4K UHD Blu-ray
+    val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.SW,
+    val hardwareDecoding: Boolean = false,
+    val remuxUltraBufferMode: Boolean = false, // 128MB buffer for 4K UHD Blu-ray
     val enableTunneling: Boolean = false,
-    val enableWideColorGamut: Boolean = true, // Fix 4K dull colors
-    val enableHdrEnhance: Boolean = true, // Fix 4K color washed out/distortion
+    val enableWideColorGamut: Boolean = false, // Fix 4K dull colors
+    val enableHdrEnhance: Boolean = false, // Fix 4K color washed out/distortion
     val backgroundPlayEnabled: Boolean = false,
     val autoPipEnabled: Boolean = false,
     val seekStepSeconds: Int = 10,
@@ -94,7 +94,7 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     val settingsFlow: Flow<AppPlayerSettings> = context.dataStore.data.map { prefs ->
         val themeStr = prefs[Keys.THEME_MODE] ?: AppThemeMode.WARM_SUNSET_LIGHT.id
-        val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.HW_PLUS.id
+        val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.SW.id
         val isFirst = prefs[Keys.IS_FIRST_LAUNCH] ?: true
         val hwMode = HwAccelerationMode.fromId(hwStr)
 
@@ -103,10 +103,10 @@ class PlayerPreferencesRepository(private val context: Context) {
             isFirstLaunch = isFirst,
             hwAccelerationMode = hwMode,
             hardwareDecoding = hwMode != HwAccelerationMode.SW,
-            remuxUltraBufferMode = prefs[Keys.REMUX_BUFFER] ?: true,
+            remuxUltraBufferMode = prefs[Keys.REMUX_BUFFER] ?: false,
             enableTunneling = (hwMode == HwAccelerationMode.HW_PLUS) && (prefs[Keys.TUNNELING] ?: false),
-            enableWideColorGamut = prefs[Keys.WIDE_COLOR_GAMUT] ?: true,
-            enableHdrEnhance = prefs[Keys.HDR_ENHANCE] ?: true,
+            enableWideColorGamut = prefs[Keys.WIDE_COLOR_GAMUT] ?: false,
+            enableHdrEnhance = prefs[Keys.HDR_ENHANCE] ?: false,
             backgroundPlayEnabled = prefs[Keys.BG_PLAY] ?: false,
             autoPipEnabled = prefs[Keys.AUTO_PIP] ?: false,
             seekStepSeconds = prefs[Keys.SEEK_STEP] ?: 10,

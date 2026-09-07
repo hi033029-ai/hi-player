@@ -253,7 +253,7 @@ class HiPlayerEngine(
     private val _isScreenLocked = MutableStateFlow(false)
     val isScreenLocked = _isScreenLocked.asStateFlow()
 
-    private val _isBackgroundPlayActive = MutableStateFlow(true)
+    private val _isBackgroundPlayActive = MutableStateFlow(false)
     val isBackgroundPlayActive = _isBackgroundPlayActive.asStateFlow()
 
     private val _abRepeatA = MutableStateFlow<Long?>(null)
@@ -326,8 +326,8 @@ class HiPlayerEngine(
     }
 
     private fun initializePlayer(
-        enableHwDecoding: Boolean = true,
-        enableRemuxUltraBuffer: Boolean = true,
+        enableHwDecoding: Boolean = false,
+        enableRemuxUltraBuffer: Boolean = false,
         enableTunneling: Boolean = false
     ) {
         release()

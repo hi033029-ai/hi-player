@@ -60,9 +60,9 @@ fun VideoSettingsBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var hwDecodingEnabled by remember { mutableStateOf(true) }
-    var remuxUltraBufferEnabled by remember { mutableStateOf(true) }
-    var tunnelingEnabled by remember { mutableStateOf(true) }
+    var hwDecodingEnabled by remember { mutableStateOf(false) }
+    var remuxUltraBufferEnabled by remember { mutableStateOf(false) }
+    var tunnelingEnabled by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
