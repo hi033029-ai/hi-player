@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
@@ -58,6 +59,7 @@ fun GestureOverlay(
     isLocked: Boolean,
     onSingleTap: () -> Unit,
     onDoubleTapLeft: () -> Unit,
+    onDoubleTapCenter: () -> Unit,
     onDoubleTapRight: () -> Unit,
     onBrightnessDelta: (Float) -> Unit,
     onVolumeDelta: (Float) -> Unit,
@@ -99,13 +101,17 @@ fun GestureOverlay(
                         },
                         onDoubleTap = { offset ->
                             if (offset.y < topExclusionPx) return@detectTapGestures
-                            val isLeft = offset.x < size.width / 2
+                            val isLeft = offset.x < size.width / 3
+                            val isRight = offset.x > size.width * 2 / 3
                             if (isLeft) {
                                 onDoubleTapLeft()
                                 doubleTapSide = "left"
-                            } else {
+                            } else if (isRight) {
                                 onDoubleTapRight()
                                 doubleTapSide = "right"
+                            } else {
+                                onDoubleTapCenter()
+                                doubleTapSide = "center"
                             }
                             coroutineScope.launch {
                                 doubleTapAnim.snapTo(0.8f)
@@ -186,12 +192,20 @@ fun GestureOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.5f)
-                    .align(if (doubleTapSide == "left") Alignment.CenterStart else Alignment.CenterEnd)
+                    .fillMaxWidth(if (doubleTapSide == "center") 0.34f else 0.5f)
+                    .align(
+                        when (doubleTapSide) {
+                            "left" -> Alignment.CenterStart
+                            "right" -> Alignment.CenterEnd
+                            else -> Alignment.Center
+                        }
+                    )
                     .background(
                         Brush.horizontalGradient(
                             if (doubleTapSide == "left")
                                 listOf(Color(0x3300E5FF), Color.Transparent)
+                            else if (doubleTapSide == "center")
+                                listOf(Color.Transparent, Color(0x3300E5FF), Color.Transparent)
                             else
                                 listOf(Color.Transparent, Color(0x3300E5FF))
                         )
@@ -203,13 +217,21 @@ fun GestureOverlay(
                     modifier = Modifier.scale(doubleTapAnim.value)
                 ) {
                     Icon(
-                        imageVector = if (doubleTapSide == "left") Icons.Default.FastRewind else Icons.Default.FastForward,
+                        imageVector = when (doubleTapSide) {
+                            "left" -> Icons.Default.FastRewind
+                            "right" -> Icons.Default.FastForward
+                            else -> Icons.Default.PlayArrow
+                        },
                         contentDescription = null,
                         tint = HiPrimaryCyan,
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
-                        text = if (doubleTapSide == "left") "-10s" else "+10s",
+                        text = when (doubleTapSide) {
+                            "left" -> "-10s"
+                            "right" -> "+10s"
+                            else -> "Play / Pause"
+                        },
                         color = HiPrimaryCyan,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold

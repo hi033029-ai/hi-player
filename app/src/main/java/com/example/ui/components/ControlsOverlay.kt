@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -119,10 +120,12 @@ fun ControlsOverlay(
     onOpenVideoSettings: () -> Unit,
     onOpenTelemetry: () -> Unit,
     onCycleAspectRatio: () -> Unit,
+    onAspectRatioSelected: (AspectRatioMode) -> Unit = {},
     onCycleSpeed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
+    var resizeMenuVisible by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
             // Floating Unlock Button when locked
@@ -416,10 +419,42 @@ fun ControlsOverlay(
 
                         PlayerToolbarButton(
                             icon = Icons.Default.AspectRatio,
-                            label = "Crop",
-                            onClick = onCycleAspectRatio,
+                            label = aspectRatioMode.displayName,
+                            onClick = { resizeMenuVisible = !resizeMenuVisible },
                             testTag = "bottom_aspect_button"
                         )
+                    }
+                }
+
+                if (resizeMenuVisible) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 14.dp, bottom = 86.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xEE111624))
+                            .padding(vertical = 6.dp)
+                    ) {
+                        AspectRatioMode.values().forEach { mode ->
+                            val selected = mode == aspectRatioMode
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onAspectRatioSelected(mode)
+                                        resizeMenuVisible = false
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = mode.displayName,
+                                    color = if (selected) HiPrimaryCyan else Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
                     }
                 }
 

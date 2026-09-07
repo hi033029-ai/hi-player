@@ -277,6 +277,9 @@ fun PlayerScreen(
             onDoubleTapLeft = {
                 playerViewModel.seekRelative(-10_000L)
             },
+            onDoubleTapCenter = {
+                playerViewModel.togglePlayPause()
+            },
             onDoubleTapRight = {
                 playerViewModel.seekRelative(10_000L)
             },
@@ -355,6 +358,7 @@ fun PlayerScreen(
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
             onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
+            onAspectRatioSelected = { playerViewModel.setAspectRatio(it) },
             onCycleSpeed = {
                 val nextSpeed = when (playbackSpeed) {
                     0.5f -> 0.75f
