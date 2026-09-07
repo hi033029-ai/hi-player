@@ -72,6 +72,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlayerScreen(
     playerViewModel: PlayerViewModel,
+    videoQueue: List<VideoItem> = emptyList(),
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
     currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.CYAN_NEON_DARK,
@@ -136,6 +137,15 @@ fun PlayerScreen(
 
     var areControlsVisible by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
+
+    fun playAdjacentVideo(step: Int) {
+        val current = currentVideo ?: return
+        if (videoQueue.size < 2) return
+        val index = videoQueue.indexOfFirst { it.uri == current.uri }
+        if (index < 0) return
+        val nextIndex = (index + step + videoQueue.size) % videoQueue.size
+        playerViewModel.playVideo(videoQueue[nextIndex])
+    }
 
     // File picker for opening a local video.
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -329,6 +339,8 @@ fun PlayerScreen(
             onSeekTo = { playerViewModel.seekTo(it) },
             onRewind10 = { playerViewModel.seekRelative(-10_000L) },
             onFastForward10 = { playerViewModel.seekRelative(10_000L) },
+            onPrevious = { playAdjacentVideo(-1) },
+            onNext = { playAdjacentVideo(1) },
             onBack = onBack,
             onToggleLock = { playerViewModel.engine.setScreenLocked(!isScreenLocked) },
             onRotateScreen = { playerViewModel.cycleScreenOrientation() },

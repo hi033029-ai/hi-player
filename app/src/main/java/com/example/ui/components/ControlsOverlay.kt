@@ -31,7 +31,8 @@ import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
@@ -43,7 +44,6 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
@@ -103,6 +103,8 @@ fun ControlsOverlay(
     onSeekTo: (Long) -> Unit,
     onRewind10: () -> Unit,
     onFastForward10: () -> Unit,
+    onPrevious: () -> Unit = {},
+    onNext: () -> Unit = {},
     onBack: () -> Unit,
     onToggleLock: () -> Unit,
     onRotateScreen: () -> Unit,
@@ -262,7 +264,7 @@ fun ControlsOverlay(
                     HudSideAction(Icons.Default.AspectRatio, "Zoom  ${String.format("%.1fX", videoScale)}", onZoomIn, "right_zoom_button")
                 }
 
-                // 4. CENTER CONTROLS (Rewind 10s, Play/Pause/Buffer, Forward 10s)
+                // 4. CENTER CONTROLS (Previous, Play/Pause/Buffer, Next)
                 Row(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -271,14 +273,14 @@ fun ControlsOverlay(
                     horizontalArrangement = Arrangement.spacedBy(36.dp)
                 ) {
                     IconButton(
-                        onClick = onRewind10,
+                        onClick = onPrevious,
                         modifier = Modifier
                             .size(52.dp)
                             .background(Color(0x66000000), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Replay10,
-                            contentDescription = "Rewind 10s",
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous video",
                             tint = Color.White,
                             modifier = Modifier.size(32.dp)
                         )
@@ -318,14 +320,14 @@ fun ControlsOverlay(
                     }
 
                     IconButton(
-                        onClick = onFastForward10,
+                        onClick = onNext,
                         modifier = Modifier
                             .size(52.dp)
                             .background(Color(0x66000000), CircleShape)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Forward10,
-                            contentDescription = "Fast Forward 10s",
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next video",
                             tint = Color.White,
                             modifier = Modifier.size(32.dp)
                         )
@@ -396,9 +398,9 @@ fun ControlsOverlay(
                         )
 
                         PlayerToolbarButton(
-                            icon = Icons.Default.Replay10,
-                            label = "-10s",
-                            onClick = onRewind10,
+                            icon = Icons.Default.SkipPrevious,
+                            label = "Previous",
+                            onClick = onPrevious,
                             testTag = "bottom_rewind_button"
                         )
 
@@ -411,9 +413,9 @@ fun ControlsOverlay(
                         )
 
                         PlayerToolbarButton(
-                            icon = Icons.Default.Forward10,
-                            label = "+10s",
-                            onClick = onFastForward10,
+                            icon = Icons.Default.SkipNext,
+                            label = "Next",
+                            onClick = onNext,
                             testTag = "bottom_ff_button"
                         )
 

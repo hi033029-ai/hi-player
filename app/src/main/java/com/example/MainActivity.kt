@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
                             isPip || currentScreen == AppScreen.Player -> {
                                 PlayerScreen(
                                     playerViewModel = playerViewModel,
+                                    videoQueue = videos,
                                     currentThemeMode = settings.themeMode,
                                     onThemeSelected = { mode ->
                                         libraryViewModel.setThemeMode(mode)
