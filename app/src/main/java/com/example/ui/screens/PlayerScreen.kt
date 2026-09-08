@@ -247,6 +247,11 @@ fun PlayerScreen(
                     AspectRatioMode.ORIGINAL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     AspectRatioMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 }
+                // PlayerView keeps its measured surface between state changes on
+                // some devices; force a remeasure so the selected ratio applies
+                // immediately instead of appearing stuck.
+                playerView.requestLayout()
+                playerView.invalidate()
 
                 // Apply subtitle customization (size / color / background opacity).
                 // Previously SubtitleCustomizationBottomSheet updated this state but

@@ -262,9 +262,9 @@ class HiPlayerEngine(
     private val _abRepeatB = MutableStateFlow<Long?>(null)
     val abRepeatB = _abRepeatB.asStateFlow()
 
-    private val _playerError = MutableStateFlow<String?>(null)
+        private val _playerError = MutableStateFlow<String?>(null)
     val playerError = _playerError.asStateFlow()
-
+    private var dolbyVisionRetryAttempted = false
     var onVideoEnded: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
@@ -304,6 +304,31 @@ class HiPlayerEngine(
         override fun onPlayerError(error: PlaybackException) {
             _isBuffering.value = false
             _isPlaying.value = false
+            val details = buildString {
+                append(error.message.orEmpty())
+                append(' ')
+                append(error.cause?.message.orEmpty())
+            }.lowercase()
+            val isDolbyVisionDecoderFailure = details.contains("dolby-vision") ||
+                details.contains("dolby vision") ||
+                (details.contains("mediacodecvideorenderer") && details.contains("hevc"))
+            val retryUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
+            if (isDolbyVisionDecoderFailure && !dolbyVisionRetryAttempted && retryUri != null) {
+                dolbyVisionRetryAttempted = true
+                val retryPosition = exoPlayer?.currentPosition ?: 0L
+                viewModelScope.launch(Dispatchers.Main) {
+                    // Dolby Vision streams can fail when tunneling is enabled.
+                    // Recreate the player once without tunneling and resume at
+                    // the current position; do not loop on a second failure.
+                    initializePlayer(
+                        enableHwDecoding = false,
+                        enableRemuxUltraBuffer = true,
+                        enableTunneling = false
+                    )
+                    prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                }
+                return
+            }
             val cause = error.cause
             val msg = if (cause is HttpDataSource.InvalidResponseCodeException) {
                 "HTTP ${cause.responseCode} Forbidden: Video source requires explicit permissions or updated URL."
@@ -524,9 +549,11 @@ class HiPlayerEngine(
         startPositionMs: Long = 0L,
         autoPlay: Boolean = true,
         externalSubtitleUri: Uri? = null,
-        externalSubtitleMimeType: String? = null
+        externalSubtitleMimeType: String? = null,
+        resetDecoderRetry: Boolean = true
     ) {
         _playerError.value = null
+        if (resetDecoderRetry) dolbyVisionRetryAttempted = false
         // Do not show caption tracks from a previously played film while this
         // item is still being prepared. Fresh tracks are published on
         // onTracksChanged/STATE_READY.
