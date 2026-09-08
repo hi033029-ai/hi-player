@@ -316,7 +316,7 @@ class HiPlayerEngine(
             if (isDolbyVisionDecoderFailure && !dolbyVisionRetryAttempted && retryUri != null) {
                 dolbyVisionRetryAttempted = true
                 val retryPosition = exoPlayer?.currentPosition ?: 0L
-                viewModelScope.launch(Dispatchers.Main) {
+                coroutineScope.launch(Dispatchers.Main) {
                     // Dolby Vision streams can fail when tunneling is enabled.
                     // Recreate the player once without tunneling and resume at
                     // the current position; do not loop on a second failure.
