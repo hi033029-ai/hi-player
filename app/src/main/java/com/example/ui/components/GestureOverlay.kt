@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
@@ -44,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +61,7 @@ fun GestureOverlay(
     onDoubleTapLeft: () -> Unit,
     onDoubleTapCenter: () -> Unit,
     onDoubleTapRight: () -> Unit,
+    isPlaying: Boolean = true,
     onBrightnessDelta: (Float) -> Unit,
     onVolumeDelta: (Float) -> Unit,
     onScrubStart: () -> Unit,
@@ -191,8 +192,7 @@ fun GestureOverlay(
         if (doubleTapSide != null) {
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(if (doubleTapSide == "center") 0.34f else 0.5f)
+                    .size(if (doubleTapSide == "center") 112.dp else 96.dp)
                     .align(
                         when (doubleTapSide) {
                             "left" -> Alignment.CenterStart
@@ -200,41 +200,22 @@ fun GestureOverlay(
                             else -> Alignment.Center
                         }
                     )
-                    .background(
-                        Brush.horizontalGradient(
-                            if (doubleTapSide == "left")
-                                listOf(Color(0x3300E5FF), Color.Transparent)
-                            else if (doubleTapSide == "center")
-                                listOf(Color.Transparent, Color(0x3300E5FF), Color.Transparent)
-                            else
-                                listOf(Color.Transparent, Color(0x3300E5FF))
-                        )
-                    ),
+                    .background(Color(0xCC0A0E18), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.scale(doubleTapAnim.value)
+                Box(
+                    modifier = Modifier.scale(doubleTapAnim.value),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = when (doubleTapSide) {
                             "left" -> Icons.Default.FastRewind
                             "right" -> Icons.Default.FastForward
-                            else -> Icons.Default.PlayArrow
+                            else -> if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow
                         },
                         contentDescription = null,
                         tint = HiPrimaryCyan,
                         modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = when (doubleTapSide) {
-                            "left" -> "-10s"
-                            "right" -> "+10s"
-                            else -> "Play / Pause"
-                        },
-                        color = HiPrimaryCyan,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
                     )
                 }
             }

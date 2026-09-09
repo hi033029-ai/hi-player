@@ -57,6 +57,8 @@ class HiPlayerEngine(
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
     private var progressJob: Job? = null
+    private var audioSelectionRecoveryParameters: DefaultTrackSelector.Parameters? = null
+    private var audioSelectionRecoveryUri: Uri? = null
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -271,6 +273,8 @@ class HiPlayerEngine(
         override fun onPlaybackStateChanged(playbackState: Int) {
             _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
             if (playbackState == Player.STATE_READY) {
+                audioSelectionRecoveryParameters = null
+                audioSelectionRecoveryUri = null
                 _durationMs.value = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
                 _playerError.value = null
                 // Some containers publish their caption tracks only once they are
@@ -304,6 +308,22 @@ class HiPlayerEngine(
         override fun onPlayerError(error: PlaybackException) {
             _isBuffering.value = false
             _isPlaying.value = false
+            val recoveryParameters = audioSelectionRecoveryParameters
+            val recoveryUri = audioSelectionRecoveryUri
+            if (recoveryParameters != null && recoveryUri != null) {
+                // Some device decoders reject a newly selected language after
+                // the renderer has already been prepared. Restore the previous
+                // selection and re-prepare at the same position instead of
+                // exposing a fatal runtime error to the user.
+                audioSelectionRecoveryParameters = null
+                audioSelectionRecoveryUri = null
+                trackSelector?.parameters = recoveryParameters
+                val recoveryPosition = exoPlayer?.currentPosition ?: 0L
+                coroutineScope.launch(Dispatchers.Main) {
+                    prepareMedia(recoveryUri, recoveryPosition, autoPlay = true)
+                }
+                return
+            }
             val details = buildString {
                 append(error.message.orEmpty())
                 append(' ')
@@ -661,6 +681,8 @@ class HiPlayerEngine(
             if (group.type == C.TRACK_TYPE_AUDIO && groupIndex == track.trackGroupIndex) {
                 val mediaTrackGroup = group.mediaTrackGroup
                 if (mediaTrackGroup.length > track.trackIndex) {
+                    audioSelectionRecoveryParameters = selector.parameters
+                    audioSelectionRecoveryUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
                     val override = TrackSelectionOverride(mediaTrackGroup, listOf(track.trackIndex))
                     selector.parameters = selector.parameters.buildUpon()
                         .setOverrideForType(override)

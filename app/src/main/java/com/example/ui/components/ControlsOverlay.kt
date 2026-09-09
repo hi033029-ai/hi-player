@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -339,8 +340,40 @@ fun ControlsOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
+                    if (resizeMenuVisible) {
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(bottom = 8.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xEE111624))
+                                .padding(vertical = 6.dp)
+                        ) {
+                            AspectRatioMode.values().forEach { mode ->
+                                val selected = mode == aspectRatioMode
+                                Row(
+                                    modifier = Modifier
+                                        .clickable {
+                                            onAspectRatioSelected(mode)
+                                            resizeMenuVisible = false
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = mode.displayName,
+                                        color = if (selected) HiPrimaryCyan else Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // Timebar and Timestamps
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -425,38 +458,6 @@ fun ControlsOverlay(
                             onClick = { resizeMenuVisible = !resizeMenuVisible },
                             testTag = "bottom_aspect_button"
                         )
-                    }
-                }
-
-                if (resizeMenuVisible) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 14.dp, bottom = 86.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xEE111624))
-                            .padding(vertical = 6.dp)
-                    ) {
-                        AspectRatioMode.values().forEach { mode ->
-                            val selected = mode == aspectRatioMode
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onAspectRatioSelected(mode)
-                                        resizeMenuVisible = false
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = mode.displayName,
-                                    color = if (selected) HiPrimaryCyan else Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
                     }
                 }
 

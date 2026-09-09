@@ -45,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -247,6 +246,12 @@ fun PlayerScreen(
                     AspectRatioMode.ORIGINAL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
                     AspectRatioMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 }
+                // Keep zoom on the player surface itself so its bounds stay
+                // synchronized with rotation and aspect-ratio changes.
+                playerView.pivotX = playerView.width / 2f
+                playerView.pivotY = playerView.height / 2f
+                playerView.scaleX = videoScale
+                playerView.scaleY = videoScale
                 // PlayerView keeps its measured surface between state changes on
                 // some devices; force a remeasure so the selected ratio applies
                 // immediately instead of appearing stuck.
@@ -279,9 +284,7 @@ fun PlayerScreen(
                     )
                 }
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(scaleX = videoScale, scaleY = videoScale)
+            modifier = Modifier.fillMaxSize()
         )
 
         // 2. Gesture Handling Layer
@@ -293,9 +296,8 @@ fun PlayerScreen(
             onDoubleTapLeft = {
                 playerViewModel.seekRelative(-10_000L)
             },
-            onDoubleTapCenter = {
-                playerViewModel.togglePlayPause()
-            },
+            onDoubleTapCenter = { playerViewModel.togglePlayPause() },
+            isPlaying = isPlaying,
             onDoubleTapRight = {
                 playerViewModel.seekRelative(10_000L)
             },
