@@ -327,6 +327,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setAspectRatio(mode: AspectRatioMode) {
         engine.setAspectRatioMode(mode)
+        // Aspect-ratio selection is a screen-fit operation. Do not carry a
+        // previous manual zoom into Fill, otherwise the surface can remain
+        // oversized while the transport row stays correctly anchored.
+        if (mode == AspectRatioMode.FILL_CROP || mode == AspectRatioMode.FIT) {
+            _videoScale.value = 1.0f
+        }
         viewModelScope.launch {
             _currentVideo.value?.let { video ->
                 val record = videoDao.getVideoRecord(video.uri.toString())

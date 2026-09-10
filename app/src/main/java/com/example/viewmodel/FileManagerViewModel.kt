@@ -26,6 +26,7 @@ import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import java.util.concurrent.atomic.AtomicLong
 
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -101,6 +102,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _deleteResultMessage = MutableStateFlow<String?>(null)
     val deleteResultMessage = _deleteResultMessage.asStateFlow()
 
+    // Every directory/archive scan gets a monotonically increasing token. A
+    // slower scan started before a deletion must never publish stale entries.
+    private val directoryScanGeneration = AtomicLong(0L)
+    private val libraryScanGeneration = AtomicLong(0L)
+
     fun enterSelectionMode(item: FileItem) {
         _isSelectionMode.value = true
         _selectedPaths.value = setOf(item.path)
@@ -149,6 +155,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun confirmDelete() {
         val items = _deleteConfirmItems.value ?: return
         _deleteConfirmItems.value = null
+        val deletedPaths = items.map { it.path }.toSet()
         viewModelScope.launch(Dispatchers.IO) {
             var successCount = 0
             var failCount = 0
@@ -165,6 +172,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
             withContext(Dispatchers.Main) {
+                // Remove successful items from every visible tab immediately;
+                // the background refresh below is still needed for counters and
+                // to discover changes made outside this screen.
+                if (successCount > 0) {
+                    _folderFiles.value = _folderFiles.value.filterNot { it.path in deletedPaths }
+                    _allArchives.value = _allArchives.value.filterNot { it.path in deletedPaths }
+                    _allDocuments.value = _allDocuments.value.filterNot { it.path in deletedPaths }
+                    directoryScanGeneration.incrementAndGet()
+                    libraryScanGeneration.incrementAndGet()
+                }
                 _deleteResultMessage.value = when {
                     failCount == 0 -> "Deleted $successCount item${if (successCount == 1) "" else "s"}"
                     successCount == 0 -> "Couldn't delete $failCount item${if (failCount == 1) "" else "s"} - check storage permission"
@@ -194,6 +211,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (!dir.exists() || !dir.isDirectory) return
         _currentDirectory.value = dir
         _isLoading.value = true
+        val generation = directoryScanGeneration.incrementAndGet()
 
         viewModelScope.launch {
             val items = withContext(Dispatchers.IO) {
@@ -224,8 +242,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     emptyList()
                 }
             }
-            _folderFiles.value = items
-            _isLoading.value = false
+            if (generation == directoryScanGeneration.get() && _currentDirectory.value == dir) {
+                _folderFiles.value = items
+                _isLoading.value = false
+            }
         }
     }
 
@@ -304,6 +324,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun scanDeviceArchivesAndDocuments() {
+        val generation = libraryScanGeneration.incrementAndGet()
         viewModelScope.launch(Dispatchers.IO) {
             val archives = mutableListOf<FileItem>()
             val docs = mutableListOf<FileItem>()
@@ -375,8 +396,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             val distinctDocs = docs.distinctBy { it.path }
                 .sortedByDescending { it.lastModified }
 
-            _allArchives.value = distinctArchives
-            _allDocuments.value = distinctDocs
+            withContext(Dispatchers.Main) {
+                if (generation == libraryScanGeneration.get()) {
+                    _allArchives.value = distinctArchives
+                    _allDocuments.value = distinctDocs
+                }
+            }
         }
     }
 

@@ -60,7 +60,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -128,7 +127,6 @@ fun ControlsOverlay(
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
-    var resizeMenuVisible by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
             // Floating Unlock Button when locked
@@ -343,37 +341,6 @@ fun ControlsOverlay(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    if (resizeMenuVisible) {
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.End)
-                                .padding(bottom = 8.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xEE111624))
-                                .padding(vertical = 6.dp)
-                        ) {
-                            AspectRatioMode.values().forEach { mode ->
-                                val selected = mode == aspectRatioMode
-                                Row(
-                                    modifier = Modifier
-                                        .clickable {
-                                            onAspectRatioSelected(mode)
-                                            resizeMenuVisible = false
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 9.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = mode.displayName,
-                                        color = if (selected) HiPrimaryCyan else Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                     // Timebar and Timestamps
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -454,8 +421,8 @@ fun ControlsOverlay(
 
                         PlayerToolbarButton(
                             icon = Icons.Default.AspectRatio,
-                            label = aspectRatioMode.displayName,
-                            onClick = { resizeMenuVisible = !resizeMenuVisible },
+                            label = if (aspectRatioMode == AspectRatioMode.FILL_CROP) "Fill" else "Fill Screen",
+                            onClick = { onAspectRatioSelected(AspectRatioMode.FILL_CROP) },
                             testTag = "bottom_aspect_button"
                         )
                     }
