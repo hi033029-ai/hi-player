@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -98,6 +99,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,6 +165,8 @@ fun FileManagerScreen(
     val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
 
     var isSearchActive by remember { mutableStateOf(false) }
+    var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
+    var renameText by remember { mutableStateOf(TextFieldValue()) }
     val savedTab = remember { runCatching { FileViewTab.valueOf(fileManagerViewModel.preferredFileTab) }.getOrDefault(FileViewTab.ALL_MERGED) }
     var activeTab by remember { mutableStateOf(savedTab) }
     fun selectTab(tab: FileViewTab) {
@@ -187,7 +192,7 @@ fun FileManagerScreen(
     val canNavigateUp = currentDir.absolutePath != fileManagerViewModel.rootDir.absolutePath &&
         currentDir.parentFile?.canRead() == true
     val hasSelection = isSelectionMode || selectedPaths.isNotEmpty()
-    val backHandlerEnabled = selectedArchive != null || archiveAwaitingDestination != null || apkInstallCandidate != null || menuTargetItem != null ||
+    val backHandlerEnabled = selectedArchive != null || archiveAwaitingDestination != null || apkInstallCandidate != null || renameTargetItem != null || menuTargetItem != null ||
         detailsItem != null || deleteConfirmItems != null || selectedDocPreview != null ||
         hasSelection || canNavigateUp
     BackHandler(enabled = backHandlerEnabled) {
@@ -195,6 +200,7 @@ fun FileManagerScreen(
             selectedArchive != null -> fileManagerViewModel.dismissArchiveViewer()
             archiveAwaitingDestination != null -> fileManagerViewModel.cancelExtractTo()
             apkInstallCandidate != null -> apkInstallCandidate = null
+            renameTargetItem != null -> renameTargetItem = null
             menuTargetItem != null -> menuTargetItem = null
             detailsItem != null -> fileManagerViewModel.dismissDetails()
             deleteConfirmItems != null -> fileManagerViewModel.dismissDeleteConfirm()
@@ -753,6 +759,14 @@ fun FileManagerScreen(
                             fileManagerViewModel.beginExtractTo(item)
                         }
                     }
+                    MenuActionRow(icon = Icons.Default.Edit, label = "Rename") {
+                        menuTargetItem = null
+                        renameTargetItem = item
+                        renameText = TextFieldValue(
+                            text = item.name,
+                            selection = TextRange(item.name.length)
+                        )
+                    }
                     MenuActionRow(icon = Icons.Default.Delete, label = "Delete", tint = Color(0xFFEF4444)) {
                         menuTargetItem = null
                         fileManagerViewModel.requestDelete(listOf(item))
@@ -761,6 +775,56 @@ fun FileManagerScreen(
             },
             confirmButton = {
                 TextButton(onClick = { menuTargetItem = null }) {
+                    Text("Cancel", color = palette.textSecondary)
+                }
+            },
+            containerColor = palette.surfaceElevated
+        )
+    }
+
+    if (renameTargetItem != null) {
+        val item = renameTargetItem!!
+        AlertDialog(
+            onDismissRequest = { renameTargetItem = null },
+            title = {
+                Text(
+                    text = "Rename \"${item.name}\"",
+                    color = palette.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("New name") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("rename_file_input"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary,
+                        focusedBorderColor = palette.primary,
+                        unfocusedBorderColor = palette.textSecondary
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        fileManagerViewModel.renameItem(item, renameText.text)
+                        renameTargetItem = null
+                    }
+                ) {
+                    Text("Rename", color = palette.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameTargetItem = null }) {
                     Text("Cancel", color = palette.textSecondary)
                 }
             },

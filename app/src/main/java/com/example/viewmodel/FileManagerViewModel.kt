@@ -199,6 +199,32 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _deleteResultMessage.value = null
     }
 
+    fun renameItem(item: FileItem, requestedName: String) {
+        val newName = requestedName.trim()
+        if (newName.isBlank() || newName == "." || newName == ".." || newName.contains('/') || newName.contains('\\')) {
+            _deleteResultMessage.value = "Enter a valid file name"
+            return
+        }
+        if (newName == item.name) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val target = File(item.file.parentFile ?: return@launch, newName)
+            val renamed = try {
+                !target.exists() && item.file.renameTo(target)
+            } catch (_: Exception) {
+                false
+            }
+            withContext(Dispatchers.Main) {
+                _deleteResultMessage.value = if (renamed) {
+                    "Renamed to $newName"
+                } else {
+                    "Couldn't rename ${item.name}"
+                }
+                if (renamed) refreshAll()
+            }
+        }
+    }
+
     init {
         refreshAll()
     }
