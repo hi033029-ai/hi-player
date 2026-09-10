@@ -130,7 +130,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun selectAllInCurrentFolder() {
-        _selectedPaths.value = _folderFiles.value.map { it.path }.toSet()
+        val paths = _folderFiles.value.map { it.path }.toSet()
+        _selectedPaths.value = paths
+        _isSelectionMode.value = paths.isNotEmpty()
     }
 
     fun showDetails(item: FileItem) {

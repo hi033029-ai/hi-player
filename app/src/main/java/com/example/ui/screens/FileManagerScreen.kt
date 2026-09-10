@@ -186,9 +186,10 @@ fun FileManagerScreen(
     // handler ran, the archive extractor could reappear on the next screen visit.
     val canNavigateUp = currentDir.absolutePath != fileManagerViewModel.rootDir.absolutePath &&
         currentDir.parentFile?.canRead() == true
+    val hasSelection = isSelectionMode || selectedPaths.isNotEmpty()
     val backHandlerEnabled = selectedArchive != null || archiveAwaitingDestination != null || apkInstallCandidate != null || menuTargetItem != null ||
         detailsItem != null || deleteConfirmItems != null || selectedDocPreview != null ||
-        isSelectionMode || canNavigateUp
+        hasSelection || canNavigateUp
     BackHandler(enabled = backHandlerEnabled) {
         when {
             selectedArchive != null -> fileManagerViewModel.dismissArchiveViewer()
@@ -198,7 +199,7 @@ fun FileManagerScreen(
             detailsItem != null -> fileManagerViewModel.dismissDetails()
             deleteConfirmItems != null -> fileManagerViewModel.dismissDeleteConfirm()
             selectedDocPreview != null -> fileManagerViewModel.dismissDocumentPreview()
-            isSelectionMode -> fileManagerViewModel.clearSelection()
+            hasSelection -> fileManagerViewModel.clearSelection()
             canNavigateUp -> fileManagerViewModel.navigateUp()
         }
     }
