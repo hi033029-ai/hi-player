@@ -339,6 +339,9 @@ class HiPlayerEngine(
                 append(' ')
                 append(error.cause?.message.orEmpty())
             }.lowercase()
+            if (isUnsupportedAudioRendererFailure(details) && recoverWithPlayableAudioTrack()) {
+                return
+            }
             val isDolbyVisionDecoderFailure = details.contains("dolby-vision") ||
                 details.contains("dolby vision") ||
                 (details.contains("mediacodecvideorenderer") && details.contains("hevc"))
@@ -778,6 +781,58 @@ class HiPlayerEngine(
     fun clearAbRepeat() {
         _abRepeatA.value = null
         _abRepeatB.value = null
+    }
+
+    /**
+     * A phone often has no TrueHD/DTS hardware decoder even though another
+     * embedded track, such as E-AC3/DDP, is playable. When MediaCodec rejects
+     * the selected track, silently select the first supported alternative and
+     * resume at the same position instead of leaving playback on an error UI.
+     */
+    private fun isUnsupportedAudioRendererFailure(details: String): Boolean =
+        details.contains("mediacodecaudiorenderer") &&
+            (details.contains("no_unsupported_type") ||
+                details.contains("unsupported type") ||
+                details.contains("audio/true-hd") ||
+                details.contains("audio/vnd.dts"))
+
+    private fun recoverWithPlayableAudioTrack(): Boolean {
+        val player = exoPlayer ?: return false
+        val selector = trackSelector ?: return false
+        val tracks = player.currentTracks
+        var fallbackGroup: TrackGroup? = null
+        var fallbackTrackIndex = -1
+
+        for (group in tracks.groups) {
+            if (group.type != C.TRACK_TYPE_AUDIO) continue
+            for (trackIndex in 0 until group.length) {
+                if (group.isTrackSupported(trackIndex) && !group.isTrackSelected(trackIndex)) {
+                    fallbackGroup = group.mediaTrackGroup
+                    fallbackTrackIndex = trackIndex
+                    break
+                }
+            }
+            if (fallbackGroup != null) break
+        }
+
+        val fallback = fallbackGroup ?: return false
+        val uri = player.currentMediaItem?.localConfiguration?.uri ?: return false
+        val mimeType = player.currentMediaItem?.localConfiguration?.mimeType
+        val position = player.currentPosition.coerceAtLeast(0L)
+        selector.parameters = selector.parameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(fallback, listOf(fallbackTrackIndex)))
+            .build()
+        audioSelectionRecoveryParameters = null
+        audioSelectionRecoveryUri = null
+        coroutineScope.launch(Dispatchers.Main) {
+            prepareMedia(
+                uri = uri,
+                startPositionMs = position,
+                autoPlay = true,
+                mediaMimeType = mimeType
+            )
+        }
+        return true
     }
 
     fun selectAudioTrack(track: VideoTrackInfo) {

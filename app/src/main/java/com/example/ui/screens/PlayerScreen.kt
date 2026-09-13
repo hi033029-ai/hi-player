@@ -122,6 +122,12 @@ fun PlayerScreen(
     val currentRating by playerViewModel.currentRating.collectAsState()
     val sleepTimerMinutes by playerViewModel.sleepTimerMinutesLeft.collectAsState()
     val playerError by playerViewModel.engine.playerError.collectAsState()
+    // Use the scanned video dimensions for Fit and Original instead of
+    // leaving the surface full-screen. The transport overlay is a sibling
+    // layer, so it remains anchored while only this surface changes size.
+    val sourceWidth = (currentVideo?.width ?: 16).coerceAtLeast(1)
+    val sourceHeight = (currentVideo?.height ?: 9).coerceAtLeast(1)
+    val sourceAspectRatio = (sourceWidth.toFloat() / sourceHeight.toFloat()).coerceIn(0.25f, 4f)
 
     // New features state
     val videoScale by playerViewModel.videoScale.collectAsState()
@@ -290,17 +296,21 @@ fun PlayerScreen(
                     )
                 }
             },
-            modifier = Modifier
-                .then(
-                    if (aspectRatioMode == AspectRatioMode.CINEMA_21_9) {
-                        Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(21f / 9f)
-                            .align(Alignment.Center)
-                    } else {
-                        Modifier.fillMaxSize()
-                    }
-                )
+            modifier = when (aspectRatioMode) {
+                AspectRatioMode.FIT,
+                AspectRatioMode.ORIGINAL -> Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(sourceAspectRatio)
+                    .align(Alignment.Center)
+                AspectRatioMode.CINEMA_21_9 -> Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(21f / 9f)
+                    .align(Alignment.Center)
+                // These modes intentionally occupy the available video area;
+                // PlayerView's resizeMode determines crop or stretch inside it.
+                AspectRatioMode.FILL_CROP,
+                AspectRatioMode.STRETCH -> Modifier.fillMaxSize()
+            }
         )
 
         // 2. Gesture Handling Layer
