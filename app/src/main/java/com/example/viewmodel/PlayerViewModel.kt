@@ -141,7 +141,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val record = videoDao.getVideoRecord(video.uri.toString())
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
 
-            engine.prepareMedia(video.uri, startPos)
+            engine.prepareMedia(
+                uri = video.uri,
+                startPositionMs = startPos,
+                mediaMimeType = video.mimeType
+            )
 
             // Setup aspect ratio if saved
             record?.customAspectRatio?.let {

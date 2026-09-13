@@ -231,7 +231,11 @@ fun PlayerScreen(
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
+                    // PlayerView defaults to the recommended SurfaceView path for
+                    // video. Retaining the last surface frame prevents a black
+                    // flash while MediaCodec performs a short decoder reset.
                     useController = false
+                    setKeepContentOnPlayerReset(true)
                     player = playerViewModel.engine.getPlayer()
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,

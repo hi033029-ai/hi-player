@@ -1,6 +1,7 @@
 package com.example.player
 
 import android.content.Context
+import android.content.res.AssetFileDescriptor
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
@@ -17,7 +18,9 @@ import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.FileDescriptorDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -25,6 +28,9 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.example.model.AspectRatioMode
 import com.example.model.VideoTrackInfo
@@ -57,6 +63,10 @@ class HiPlayerEngine(
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
     private var progressJob: Job? = null
+    // Retained only while a content:// video is playing through Media3's
+    // FileDescriptorDataSource. This provides direct, seekable random access
+    // without copying the large file into app memory or cache.
+    private var activeVideoDescriptor: AssetFileDescriptor? = null
     private var audioSelectionRecoveryParameters: DefaultTrackSelector.Parameters? = null
     private var audioSelectionRecoveryUri: Uri? = null
 
@@ -451,7 +461,10 @@ class HiPlayerEngine(
             )
 
         val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            dataSourceFactory,
+            createOptimizedExtractorsFactory()
+        )
 
         exoPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -471,6 +484,16 @@ class HiPlayerEngine(
         setupEqualizer()
         startProgressTracker()
     }
+
+    /**
+     * Keeps progressive extraction lightweight for large local media while
+     * enabling fast approximate seeking when a container supports it. MIME
+     * types supplied by the library are still preferred, so this factory only
+     * falls back to its optimized extractor order when necessary.
+     */
+    private fun createOptimizedExtractorsFactory(): DefaultExtractorsFactory =
+        DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
 
     private fun setupLoudnessEnhancer() {
         try {
@@ -558,6 +581,7 @@ class HiPlayerEngine(
         tunneling: Boolean
     ) {
         val currentUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
+        val currentMimeType = exoPlayer?.currentMediaItem?.localConfiguration?.mimeType
         val currentPos = exoPlayer?.currentPosition ?: 0L
         val isCurrentlyPlaying = exoPlayer?.isPlaying ?: false
 
@@ -568,7 +592,12 @@ class HiPlayerEngine(
         )
 
         if (currentUri != null) {
-            prepareMedia(currentUri, currentPos, isCurrentlyPlaying)
+            prepareMedia(
+                uri = currentUri,
+                startPositionMs = currentPos,
+                autoPlay = isCurrentlyPlaying,
+                mediaMimeType = currentMimeType
+            )
         }
     }
 
@@ -578,6 +607,7 @@ class HiPlayerEngine(
         autoPlay: Boolean = true,
         externalSubtitleUri: Uri? = null,
         externalSubtitleMimeType: String? = null,
+        mediaMimeType: String? = null,
         resetDecoderRetry: Boolean = true
     ) {
         _playerError.value = null
@@ -589,6 +619,12 @@ class HiPlayerEngine(
         _availableSubtitleTracks.value = emptyList()
         _isHdrContent.value = false
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
+        if (!mediaMimeType.isNullOrBlank()) {
+            // Supplying the known MediaStore MIME type lets Media3 select the
+            // right progressive extractor immediately instead of relying only
+            // on broad container sniffing for every large local file.
+            mediaItemBuilder.setMimeType(mediaMimeType)
+        }
 
         if (externalSubtitleUri != null) {
             val mimeType = externalSubtitleMimeType ?: guessSubtitleMimeType(externalSubtitleUri.toString())
@@ -602,7 +638,20 @@ class HiPlayerEngine(
 
         val mediaItem = mediaItemBuilder.build()
         exoPlayer?.apply {
-            setMediaItem(mediaItem)
+            // A descriptor must remain open for the lifetime of the active
+            // progressive source. Stop the old source before releasing it.
+            stop()
+            closeActiveVideoDescriptor()
+            val directSource = if (externalSubtitleUri == null) {
+                createDirectFileDescriptorSource(uri, mediaItem)
+            } else {
+                null
+            }
+            if (directSource != null) {
+                setMediaSource(directSource)
+            } else {
+                setMediaItem(mediaItem)
+            }
             if (startPositionMs > 0) {
                 seekTo(startPositionMs)
             }
@@ -610,6 +659,61 @@ class HiPlayerEngine(
             prepare()
         }
         setupLoudnessEnhancer()
+    }
+
+    /**
+     * Uses Media3's seekable FileDescriptorDataSource for ordinary content
+     * provider video files. Providers that expose a pipe or unknown length
+     * remain on DefaultDataSource, preserving compatibility.
+     */
+    private fun createDirectFileDescriptorSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
+        if (uri.scheme != "content") return null
+        val descriptor = try {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")
+        } catch (_: Exception) {
+            null
+        } ?: return null
+
+        if (descriptor.length == AssetFileDescriptor.UNKNOWN_LENGTH) {
+            try {
+                descriptor.close()
+            } catch (_: Exception) {
+                // The standard DefaultDataSource path remains available.
+            }
+            return null
+        }
+
+        return try {
+            val sourceFactory = ProgressiveMediaSource.Factory(
+                DataSource.Factory {
+                    FileDescriptorDataSource(
+                        descriptor.fileDescriptor,
+                        descriptor.startOffset,
+                        descriptor.length
+                    )
+                },
+                createOptimizedExtractorsFactory()
+            )
+            activeVideoDescriptor = descriptor
+            sourceFactory.createMediaSource(mediaItem)
+        } catch (_: Exception) {
+            try {
+                descriptor.close()
+            } catch (_: Exception) {
+                // No-op: fall back to the standard source below.
+            }
+            null
+        }
+    }
+
+    private fun closeActiveVideoDescriptor() {
+        val descriptor = activeVideoDescriptor ?: return
+        activeVideoDescriptor = null
+        try {
+            descriptor.close()
+        } catch (_: Exception) {
+            // A provider may already have closed the descriptor after source release.
+        }
     }
 
     fun play() {
@@ -865,5 +969,6 @@ class HiPlayerEngine(
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
+        closeActiveVideoDescriptor()
     }
 }
