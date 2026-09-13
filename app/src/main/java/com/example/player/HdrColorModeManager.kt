@@ -19,8 +19,11 @@ import androidx.media3.common.util.UnstableApi
 @OptIn(UnstableApi::class)
 class HdrColorModeManager(private val activity: Activity) {
     private var appliedHdr = false
+    private var attachedPlayer: Player? = null
 
     fun attach(player: Player) {
+        attachedPlayer?.removeListener(listener)
+        attachedPlayer = player
         player.addListener(listener)
         applyFromTracks(player.currentTracks)
     }
@@ -61,6 +64,11 @@ class HdrColorModeManager(private val activity: Activity) {
     }
 
     fun release() {
+        // The manager owns this listener; detach it before resetting the window
+        // so repeated player entries do not accumulate callbacks.
+        // The attached player is released by the engine separately.
+        attachedPlayer?.removeListener(listener)
+        attachedPlayer = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.window.colorMode = android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT
         }

@@ -48,6 +48,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.animateFloatAsState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -159,6 +161,21 @@ fun PlayerScreen(
 
     var areControlsVisible by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
+    var firstFrameRendered by remember { mutableStateOf(false) }
+
+    // Keep the native surface path, but mask the initial surface/HDR negotiation
+    // until Media3 confirms that the first decoded frame is on screen.
+    DisposableEffect(playerViewModel.engine.getPlayer(), currentVideo?.uri) {
+        firstFrameRendered = false
+        val player = playerViewModel.engine.getPlayer()
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() {
+                firstFrameRendered = true
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
 
     fun playAdjacentVideo(step: Int) {
         val current = currentVideo ?: return
@@ -226,10 +243,14 @@ fun PlayerScreen(
     // safely fall back to their supported output mode.
     LaunchedEffect(activity, isHdrContent, is4kContent, wideColorGamutEnabled) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity?.window?.colorMode = when {
-                isHdrContent -> ActivityInfo.COLOR_MODE_HDR
-                wideColorGamutEnabled -> ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
-                else -> ActivityInfo.COLOR_MODE_DEFAULT
+            // HdrColorModeManager owns HDR transitions. This effect only applies
+            // the user's wide-gamut preference while the selected stream is SDR.
+            if (!isHdrContent) {
+                activity?.window?.colorMode = if (wideColorGamutEnabled) {
+                    ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
+                } else {
+                    ActivityInfo.COLOR_MODE_DEFAULT
+                }
             }
         }
     }
@@ -330,6 +351,20 @@ fun PlayerScreen(
                     .animateContentSize(tween(260, easing = FastOutSlowInEasing))
             }
         )
+
+        val surfaceMaskAlpha by animateFloatAsState(
+            targetValue = if (firstFrameRendered) 0f else 1f,
+            animationSpec = tween(150),
+            label = "firstFrameMaskAlpha"
+        )
+        if (surfaceMaskAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(surfaceMaskAlpha)
+                    .background(Color.Black)
+            )
+        }
 
         // 2. Gesture Handling Layer
         GestureOverlay(
