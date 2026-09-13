@@ -68,6 +68,7 @@ import com.example.ui.components.SubtitleSettingsBottomSheet
 import com.example.ui.components.VideoInfoDialog
 import com.example.ui.components.EqualizerBottomSheet
 import com.example.ui.components.VideoSettingsBottomSheet
+import com.example.player.HdrColorModeManager
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
@@ -141,6 +142,14 @@ fun PlayerScreen(
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
+
+    // Attach before the first selected HDR track reaches the surface so the
+    // window is already in HDR output mode when MediaCodec renders frame one.
+    DisposableEffect(activity, playerViewModel.engine.getPlayer()) {
+        val hdrColorModeManager = activity?.let { HdrColorModeManager(it) }
+        hdrColorModeManager?.attach(playerViewModel.engine.getPlayer())
+        onDispose { hdrColorModeManager?.release() }
+    }
 
     // HUD States
     val brightnessLevel by playerViewModel.brightnessLevel.collectAsState()

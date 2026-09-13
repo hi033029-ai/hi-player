@@ -30,6 +30,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:supportsPictureInPicture="true"
+            android:colorMode="hdr"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard"
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
