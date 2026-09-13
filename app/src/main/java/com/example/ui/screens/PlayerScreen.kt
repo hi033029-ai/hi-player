@@ -13,9 +13,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -52,9 +50,12 @@ import androidx.compose.animation.animateFloatAsState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.VideoSize
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.model.AspectRatioMode
@@ -129,13 +130,6 @@ fun PlayerScreen(
     val currentRating by playerViewModel.currentRating.collectAsState()
     val sleepTimerMinutes by playerViewModel.sleepTimerMinutesLeft.collectAsState()
     val playerError by playerViewModel.engine.playerError.collectAsState()
-    // Use the scanned video dimensions for Fit and Original instead of
-    // leaving the surface full-screen. The transport overlay is a sibling
-    // layer, so it remains anchored while only this surface changes size.
-    val sourceWidth = (currentVideo?.width ?: 16).coerceAtLeast(1)
-    val sourceHeight = (currentVideo?.height ?: 9).coerceAtLeast(1)
-    val sourceAspectRatio = (sourceWidth.toFloat() / sourceHeight.toFloat()).coerceIn(0.25f, 4f)
-
     // New features state
     val videoScale by playerViewModel.videoScale.collectAsState()
     val subtitleStyle by playerViewModel.subtitleStyle.collectAsState()
@@ -162,6 +156,23 @@ fun PlayerScreen(
     var areControlsVisible by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
+    var videoWidth by remember { mutableStateOf(0) }
+    var videoHeight by remember { mutableStateOf(0) }
+    var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
+    DisposableEffect(playerViewModel.engine.getPlayer()) {
+        val player = playerViewModel.engine.getPlayer()
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoWidth = videoSize.width
+                videoHeight = videoSize.height
+            }
+        }
+        player.addListener(listener)
+        videoWidth = player.videoSize.width
+        videoHeight = player.videoSize.height
+        onDispose { player.removeListener(listener) }
+    }
 
     // Keep the native surface path, but mask the initial surface/HDR negotiation
     // until Media3 confirms that the first decoded frame is on screen.
@@ -269,6 +280,13 @@ fun PlayerScreen(
             .background(Color.Black)
     ) {
         // 1. Video Surface Layer (PlayerView with scaling factor)
+        val ratioScale = computeVideoRatioScale(
+            surfaceSize,
+            videoWidth,
+            videoHeight,
+            aspectRatioMode
+        )
+
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -286,19 +304,14 @@ fun PlayerScreen(
             },
             update = { playerView ->
                 playerView.player = playerViewModel.engine.getPlayer()
-                playerView.resizeMode = when (aspectRatioMode) {
-                    AspectRatioMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    AspectRatioMode.FILL_CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    AspectRatioMode.CINEMA_21_9 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                    AspectRatioMode.ORIGINAL -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    AspectRatioMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                }
+                // Keep the PlayerView at a fixed full-screen layout size. The
+                // ratio change happens below as a graphics transform, so the
+                // sibling controls never get remeasured or repositioned.
+                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
                 // Keep zoom on the player surface itself so its bounds stay
                 // synchronized with rotation and aspect-ratio changes.
                 playerView.pivotX = playerView.width / 2f
                 playerView.pivotY = playerView.height / 2f
-                playerView.scaleX = videoScale
-                playerView.scaleY = videoScale
                 // PlayerView keeps its measured surface between state changes on
                 // some devices; force a remeasure so the selected ratio applies
                 // immediately instead of appearing stuck.
@@ -331,25 +344,13 @@ fun PlayerScreen(
                     )
                 }
             },
-            modifier = when (aspectRatioMode) {
-                AspectRatioMode.FIT,
-                AspectRatioMode.ORIGINAL -> Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(sourceAspectRatio)
-                    .align(Alignment.Center)
-                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
-                AspectRatioMode.CINEMA_21_9 -> Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(21f / 9f)
-                    .align(Alignment.Center)
-                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
-                // These modes intentionally occupy the available video area;
-                // PlayerView's resizeMode determines crop or stretch inside it.
-                AspectRatioMode.FILL_CROP,
-                AspectRatioMode.STRETCH -> Modifier
-                    .fillMaxSize()
-                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
-            }
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { surfaceSize = it }
+                .graphicsLayer {
+                    scaleX = ratioScale.first * videoScale
+                    scaleY = ratioScale.second * videoScale
+                }
         )
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -605,6 +606,41 @@ fun PlayerScreen(
                 )
             }
             else -> {}
+        }
+    }
+}
+
+private fun computeVideoRatioScale(
+    container: androidx.compose.ui.unit.IntSize,
+    videoWidth: Int,
+    videoHeight: Int,
+    mode: AspectRatioMode
+): Pair<Float, Float> {
+    if (container.width == 0 || container.height == 0 || videoWidth == 0 || videoHeight == 0) {
+        return 1f to 1f
+    }
+    val containerRatio = container.width.toFloat() / container.height.toFloat()
+    val videoRatio = videoWidth.toFloat() / videoHeight.toFloat()
+    return when (mode) {
+        AspectRatioMode.STRETCH -> 1f to 1f
+        AspectRatioMode.FIT,
+        AspectRatioMode.ORIGINAL -> if (videoRatio > containerRatio) {
+            1f to (containerRatio / videoRatio)
+        } else {
+            (videoRatio / containerRatio) to 1f
+        }
+        AspectRatioMode.FILL_CROP -> if (videoRatio > containerRatio) {
+            (videoRatio / containerRatio) to 1f
+        } else {
+            1f to (containerRatio / videoRatio)
+        }
+        AspectRatioMode.CINEMA_21_9 -> {
+            val targetRatio = 21f / 9f
+            if (targetRatio > containerRatio) {
+                (targetRatio / containerRatio) to 1f
+            } else {
+                1f to (containerRatio / targetRatio)
+            }
         }
     }
 }
