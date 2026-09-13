@@ -119,6 +119,7 @@ fun ControlsOverlay(
     onToggleHdrEnhance: () -> Unit = {},
     onToggleSubtitles: () -> Unit,
     onOpenAudioSettings: () -> Unit,
+    onOpenEqualizer: () -> Unit,
     onOpenVideoSettings: () -> Unit,
     onOpenTelemetry: () -> Unit,
     onCycleAspectRatio: () -> Unit,
@@ -219,22 +220,6 @@ fun ControlsOverlay(
                         )
                     }
 
-                    PlayerToolbarButton(
-                        icon = Icons.Default.Audiotrack,
-                        label = "Audio",
-                        onClick = onOpenAudioSettings,
-                        tint = Color.White,
-                        testTag = "top_audio_tracks_button"
-                    )
-
-                    PlayerToolbarButton(
-                        icon = Icons.Default.ClosedCaption,
-                        label = "CC",
-                        onClick = onToggleSubtitles,
-                        tint = Color.White,
-                        testTag = "top_subtitles_cc_button"
-                    )
-
                 }
 
                 // 2. LEFT EDGE CONTROLS: reference-style utility actions.
@@ -259,8 +244,8 @@ fun ControlsOverlay(
                 ) {
                     HudSideAction(Icons.Default.Speed, "Speed  ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, "right_speed_button")
                     HudSideAction(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, "right_audio_button", if (isBgPlayActive) HiPrimaryCyan else Color.White)
-                    HudSideAction(Icons.Default.Tune, "Equalizer", onOpenAudioSettings, "right_equalizer_button")
-                    HudSideAction(Icons.Default.AspectRatio, "Zoom  ${String.format("%.1fX", videoScale)}", onZoomIn, "right_zoom_button")
+                    HudSideAction(Icons.Default.Tune, "Equalizer", onOpenEqualizer, "right_equalizer_button")
+                    HudSideAction(Icons.Default.Tune, "Settings", onOpenVideoSettings, "right_player_settings_button")
                 }
 
                 // 4. CENTER CONTROLS (Previous, Play/Pause/Buffer, Next)
@@ -391,10 +376,10 @@ fun ControlsOverlay(
                         )
 
                         PlayerToolbarButton(
-                            icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                            label = if (isMuted) "Muted" else "Volume",
-                            onClick = onToggleMute,
-                            testTag = "bottom_audio_button"
+                            icon = Icons.Default.AspectRatio,
+                            label = aspectRatioMode.displayName,
+                            onClick = onCycleAspectRatio,
+                            testTag = "bottom_aspect_button"
                         )
 
                         PlayerToolbarButton(
@@ -420,10 +405,17 @@ fun ControlsOverlay(
                         )
 
                         PlayerToolbarButton(
-                            icon = Icons.Default.AspectRatio,
-                            label = if (aspectRatioMode == AspectRatioMode.FILL_CROP) "Fill" else "Fill Screen",
-                            onClick = { onAspectRatioSelected(AspectRatioMode.FILL_CROP) },
-                            testTag = "bottom_aspect_button"
+                            icon = Icons.Default.ClosedCaption,
+                            label = "CC",
+                            onClick = onToggleSubtitles,
+                            testTag = "bottom_subtitles_cc_button"
+                        )
+
+                        PlayerToolbarButton(
+                            icon = Icons.Default.Audiotrack,
+                            label = "Audio language",
+                            onClick = onOpenAudioSettings,
+                            testTag = "bottom_audio_tracks_button"
                         )
                     }
                 }

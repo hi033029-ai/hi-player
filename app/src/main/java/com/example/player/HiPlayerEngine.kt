@@ -836,6 +836,7 @@ class HiPlayerEngine(
     }
 
     fun selectAudioTrack(track: VideoTrackInfo) {
+        if (!track.isSupported) return
         val selector = trackSelector ?: return
         val currentTracks = exoPlayer?.currentTracks ?: return
 
@@ -927,6 +928,7 @@ class HiPlayerEngine(
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
+                            isSupported = group.isTrackSupported(trackIndex),
                             trackType = group.type,
                             trackGroupIndex = groupIndex,
                             trackIndex = trackIndex
@@ -946,6 +948,7 @@ class HiPlayerEngine(
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
+                            isSupported = group.isTrackSupported(trackIndex),
                             trackType = group.type,
                             trackGroupIndex = groupIndex,
                             trackIndex = trackIndex

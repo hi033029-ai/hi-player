@@ -168,7 +168,7 @@ fun SubtitleSettingsBottomSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Download Subtitles",
+                    text = "Download from OpenSubtitles",
                     color = HiPrimaryCyan,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold

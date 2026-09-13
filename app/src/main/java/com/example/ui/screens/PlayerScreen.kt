@@ -63,6 +63,8 @@ import com.example.ui.components.TmdbKeyDialog
 import com.example.ui.components.SubtitleCustomizationBottomSheet
 import com.example.ui.components.SubtitleSettingsBottomSheet
 import com.example.ui.components.VideoInfoDialog
+import com.example.ui.components.OpenSubtitlesCredentialsDialog
+import com.example.ui.components.EqualizerBottomSheet
 import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
@@ -401,6 +403,7 @@ fun PlayerScreen(
                 playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS)
             },
             onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
+            onOpenEqualizer = { playerViewModel.openSheet(ActiveSheet.EQUALIZER) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
             onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
@@ -484,11 +487,16 @@ fun PlayerScreen(
                     audioTracks = availableAudioTracks,
                     volumeBoostPercent = volumeBoostPercent,
                     audioDelayMs = audioDelayMs,
-                    equalizerPreset = equalizerPreset,
                     onSelectTrack = { playerViewModel.selectAudioTrack(it) },
                     onVolumeBoostChange = { playerViewModel.setVolumeBoost(it) },
                     onAudioDelayChange = { playerViewModel.setAudioDelay(it) },
-                    onEqualizerPresetChange = { playerViewModel.engine.setEqualizerPreset(it) },
+                    onDismiss = { playerViewModel.closeSheet() }
+                )
+            }
+            ActiveSheet.EQUALIZER -> {
+                EqualizerBottomSheet(
+                    selectedPreset = equalizerPreset,
+                    onSelectPreset = { playerViewModel.engine.setEqualizerPreset(it) },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }
@@ -546,6 +554,19 @@ fun PlayerScreen(
                 TmdbKeyDialog(
                     currentKey = savedKey,
                     onSaveKey = { playerViewModel.setTmdbApiKey(it) },
+                    onDismiss = { playerViewModel.closeSheet() }
+                )
+            }
+            ActiveSheet.OPENSUBTITLES_CREDENTIALS -> {
+                OpenSubtitlesCredentialsDialog(
+                    onSave = { apiKey, username, password ->
+                        playerViewModel.saveOpenSubtitlesCredentialsAndDownload(
+                            context = context,
+                            apiKey = apiKey,
+                            username = username,
+                            password = password
+                        )
+                    },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }

@@ -24,6 +24,8 @@ data class VideoTrackInfo(
     val language: String?,
     val mimeType: String?,
     val isSelected: Boolean,
+    /** Whether Media3 reports this embedded track as playable on this device. */
+    val isSupported: Boolean = true,
     /** Media3 track type (for example, text or image captions). */
     val trackType: Int,
     /** Index in Player.currentTracks.groups. */

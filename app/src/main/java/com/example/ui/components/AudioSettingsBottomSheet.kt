@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -57,11 +55,9 @@ fun AudioSettingsBottomSheet(
     audioTracks: List<VideoTrackInfo>,
     volumeBoostPercent: Int,
     audioDelayMs: Long,
-    equalizerPreset: String = "Flat",
     onSelectTrack: (VideoTrackInfo) -> Unit,
     onVolumeBoostChange: (Int) -> Unit,
     onAudioDelayChange: (Long) -> Unit,
-    onEqualizerPresetChange: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -94,39 +90,6 @@ fun AudioSettingsBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "Equalizer Preset",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = HiTextPrimary
-            )
-            Text(
-                text = "Applies real audio band gains to the current player",
-                fontSize = 11.sp,
-                color = HiTextSecondary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf("Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal")) { preset ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (preset == equalizerPreset) HiPrimaryCyan else HiSurfaceElevated)
-                            .clickable { onEqualizerPresetChange(preset) }
-                            .padding(horizontal = 13.dp, vertical = 9.dp)
-                    ) {
-                        Text(
-                            text = preset,
-                            color = if (preset == equalizerPreset) Color.Black else HiTextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = if (preset == equalizerPreset) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             // AUDIO LANGUAGE LIST - this is the primary purpose of the sheet,
             // so it leads and is no longer buried below decorative controls.
             if (audioTracks.isEmpty()) {
@@ -143,19 +106,38 @@ fun AudioSettingsBottomSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (track.isSelected) Color(0x3300E5FF) else HiSurfaceElevated)
-                                .clickable { onSelectTrack(track) }
+                                .background(
+                                    when {
+                                        track.isSelected -> Color(0x3300E5FF)
+                                        !track.isSupported -> HiSurfaceElevated.copy(alpha = 0.55f)
+                                        else -> HiSurfaceElevated
+                                    }
+                                )
+                                .clickable(enabled = track.isSupported) { onSelectTrack(track) }
                                 .padding(horizontal = 14.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = track.label,
-                                fontSize = 14.sp,
-                                fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (track.isSelected) HiPrimaryCyan else HiTextPrimary,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = track.label,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = when {
+                                        track.isSelected -> HiPrimaryCyan
+                                        !track.isSupported -> HiTextSecondary.copy(alpha = 0.65f)
+                                        else -> HiTextPrimary
+                                    }
+                                )
+                                if (!track.isSupported) {
+                                    Text(
+                                        text = "— unsupported on this device",
+                                        fontSize = 12.sp,
+                                        color = HiTextSecondary.copy(alpha = 0.72f),
+                                        modifier = Modifier.padding(top = 3.dp)
+                                    )
+                                }
+                            }
                             if (track.isSelected) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
