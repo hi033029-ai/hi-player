@@ -235,7 +235,6 @@ fun ControlsOverlay(
                         HudTopAction(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
                         HudTopAction(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
                         HudTopAction(Icons.Default.AutoAwesome, if (isHdrEnhanceActive) "HDR On" else "HDR Filters", onToggleHdrEnhance, if (isHdrEnhanceActive) HiAccentAmber else Color.White)
-                        HudTopAction(Icons.Default.Tune, "Settings", onOpenVideoSettings)
                     }
 
                 }
@@ -253,13 +252,14 @@ fun ControlsOverlay(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        rating?.let { RatingStarsBadge(it) }
-                        Spacer(modifier = Modifier.weight(1f))
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
+                        Spacer(modifier = Modifier.weight(1f))
+                        rating?.let { RatingStarsBadge(it) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     // Timebar and Timestamps
@@ -544,13 +544,8 @@ private fun PlayerToolbarTextButton(
     onClick: () -> Unit,
     tint: Color = Color.White
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 4.dp)
-    ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
     }
 }
 
@@ -562,26 +557,17 @@ private fun PlayerToolbarButton(
     tint: Color = Color.White,
     testTag: String = ""
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    IconButton(
+        onClick = onClick,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp, vertical = 4.dp)
+            .size(46.dp)
             .testTag(testTag)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            color = tint,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium
+            modifier = Modifier.size(24.dp)
         )
     }
 }

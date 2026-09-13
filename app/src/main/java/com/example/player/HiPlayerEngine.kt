@@ -69,6 +69,10 @@ class HiPlayerEngine(
     private var activeVideoDescriptor: AssetFileDescriptor? = null
     private var audioSelectionRecoveryParameters: DefaultTrackSelector.Parameters? = null
     private var audioSelectionRecoveryUri: Uri? = null
+    private var configuredHwDecoding: Boolean? = null
+    private var configuredRemuxUltraBuffer: Boolean? = null
+    private var configuredTunneling: Boolean? = null
+    private var hdrEffectUpdateInProgress = false
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -118,26 +122,42 @@ class HiPlayerEngine(
      * Color Gamut window mode - this is a user-toggleable enhancement.
      */
     fun setHdrEnhanceActive(enabled: Boolean) {
-        _hdrEnhanceActive.value = enabled
-        val player = exoPlayer ?: return
+        if (hdrEffectUpdateInProgress || _hdrEnhanceActive.value == enabled && exoPlayer != null) return
+        val player = exoPlayer ?: run {
+            _hdrEnhanceActive.value = enabled
+            return
+        }
+        hdrEffectUpdateInProgress = true
+        val position = player.currentPosition
+        val wasPlaying = player.isPlaying
         try {
+            // Media3 reconfigures the video renderer when effects change. Preserve
+            // the playhead and play state so HDR toggling never appears to freeze.
+            player.pause()
             if (enabled) {
                 player.setVideoEffects(
                     listOf(
+                        // 1.2x exposure/contrast and 1.2x saturation are represented
+                        // by Media3's normalized +0.2 adjustments.
                         androidx.media3.effect.Contrast(0.20f),
                         androidx.media3.effect.HslAdjustment.Builder()
-                            .adjustSaturation(0.30f)
-                            .adjustLightness(0.06f)
+                            .adjustSaturation(0.20f)
+                            .adjustLightness(0.0f)
                             .build()
                     )
                 )
             } else {
                 player.setVideoEffects(emptyList())
             }
-        } catch (e: Exception) {
-            // Effects pipeline can be unavailable on some devices/decoders -
-            // fail quietly rather than crash playback over a visual extra.
+            player.seekTo(position)
+            player.playWhenReady = wasPlaying
+            _hdrEnhanceActive.value = enabled
+        } catch (_: Exception) {
+            player.seekTo(position)
+            player.playWhenReady = wasPlaying
             _hdrEnhanceActive.value = false
+        } finally {
+            hdrEffectUpdateInProgress = false
         }
     }
 
@@ -411,8 +431,8 @@ class HiPlayerEngine(
                 .setBufferDurationsMs(
                     30_000,   // Min buffer: 30s
                     90_000,   // Max buffer: 90s (ultra smooth 4K playback)
-                    2_000,    // Buffer for playback start: 2s
-                    4_000     // Buffer after rebuffer: 4s
+                    750,      // Start quickly; local files do not need a long preroll.
+                    2_000     // Rebuffer recovery remains conservative.
                 )
                 .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB cache buffer
                 .setBackBuffer(10_000, true)
@@ -583,6 +603,9 @@ class HiPlayerEngine(
         remuxUltraBuffer: Boolean,
         tunneling: Boolean
     ) {
+        if (exoPlayer != null && configuredHwDecoding == hwDecoding && configuredRemuxUltraBuffer == remuxUltraBuffer && configuredTunneling == tunneling) {
+            return
+        }
         val currentUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
         val currentMimeType = exoPlayer?.currentMediaItem?.localConfiguration?.mimeType
         val currentPos = exoPlayer?.currentPosition ?: 0L
@@ -593,6 +616,9 @@ class HiPlayerEngine(
             enableRemuxUltraBuffer = remuxUltraBuffer,
             enableTunneling = tunneling
         )
+        configuredHwDecoding = hwDecoding
+        configuredRemuxUltraBuffer = remuxUltraBuffer
+        configuredTunneling = tunneling
 
         if (currentUri != null) {
             prepareMedia(

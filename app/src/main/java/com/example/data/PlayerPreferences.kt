@@ -46,11 +46,11 @@ enum class HwAccelerationMode(val id: String, val displayName: String, val descr
 data class AppPlayerSettings(
     val themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
     val isFirstLaunch: Boolean = true,
-    val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.SW,
-    val hardwareDecoding: Boolean = false,
+    val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.HW,
+    val hardwareDecoding: Boolean = true,
     val remuxUltraBufferMode: Boolean = false, // 128MB buffer for 4K UHD Blu-ray
     val enableTunneling: Boolean = false,
-    val enableWideColorGamut: Boolean = false, // Fix 4K dull colors
+    val enableWideColorGamut: Boolean = true, // Fix 4K dull colors
     val enableHdrEnhance: Boolean = false, // Fix 4K color washed out/distortion
     val backgroundPlayEnabled: Boolean = false,
     val autoPipEnabled: Boolean = false,
@@ -94,7 +94,7 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     val settingsFlow: Flow<AppPlayerSettings> = context.dataStore.data.map { prefs ->
         val themeStr = prefs[Keys.THEME_MODE] ?: AppThemeMode.WARM_SUNSET_LIGHT.id
-        val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.SW.id
+        val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.HW.id
         val isFirst = prefs[Keys.IS_FIRST_LAUNCH] ?: true
         val hwMode = HwAccelerationMode.fromId(hwStr)
 
