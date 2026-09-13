@@ -26,6 +26,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -439,8 +440,9 @@ class HiPlayerEngine(
                     2_000     // Rebuffer recovery remains conservative.
                 )
                 .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB cache buffer
-                .setBackBuffer(10_000, true)
+                .setBackBuffer(0, false)
                 .setPrioritizeTimeOverSizeThresholds(true)
+                .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
                 .build()
         } else {
             DefaultLoadControl.Builder()
@@ -456,8 +458,9 @@ class HiPlayerEngine(
                 .setTargetBufferBytes(128 * 1024 * 1024)
                 // Preserve a short decoded range behind the playhead so quick
                 // reverse seeks do not immediately trigger another disk read.
-                .setBackBuffer(10_000, true)
+                .setBackBuffer(0, false)
                 .setPrioritizeTimeOverSizeThresholds(true)
+                .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
                 .build()
         }
 
@@ -503,6 +506,8 @@ class HiPlayerEngine(
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_OFF
+                // Keep scaling in the native video pipeline for UHD surfaces.
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
                 addListener(playerListener)
             }
@@ -520,7 +525,9 @@ class HiPlayerEngine(
      */
     private fun createOptimizedExtractorsFactory(): DefaultExtractorsFactory =
         DefaultExtractorsFactory()
-            .setConstantBitrateSeekingEnabled(true)
+            // For multi-GB 4K MP4/MKV files, trust the container index instead of
+            // triggering constant-bitrate probing over the full file.
+            .setConstantBitrateSeekingEnabled(false)
 
     private fun setupLoudnessEnhancer() {
         try {
