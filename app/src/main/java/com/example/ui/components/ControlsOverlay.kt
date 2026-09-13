@@ -128,6 +128,13 @@ fun ControlsOverlay(
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
+    val referenceAspectLabel = when (aspectRatioMode) {
+        AspectRatioMode.FIT -> "IMAX Full (1.43:1)"
+        AspectRatioMode.STRETCH -> "Stretch"
+        AspectRatioMode.FILL_CROP -> "Crop / Fill (16:9)"
+        AspectRatioMode.CINEMA_21_9 -> "Cinema (21:9)"
+        AspectRatioMode.ORIGINAL -> "Original"
+    }
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
             // Floating Unlock Button when locked
@@ -365,7 +372,7 @@ fun ControlsOverlay(
                     // Reference-style bottom transport row.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PlayerToolbarButton(
@@ -377,7 +384,7 @@ fun ControlsOverlay(
 
                         PlayerToolbarButton(
                             icon = Icons.Default.AspectRatio,
-                            label = aspectRatioMode.displayName,
+                            label = referenceAspectLabel,
                             onClick = onCycleAspectRatio,
                             testTag = "bottom_aspect_button"
                         )
