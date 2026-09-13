@@ -228,15 +228,6 @@ fun ControlsOverlay(
                         rating?.let { RatingStarsBadge(it) }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        HudTopAction(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
-                        HudTopAction(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
-                        HudTopAction(Icons.Default.AutoAwesome, if (isHdrEnhanceActive) "HDR On" else "HDR Filters", onToggleHdrEnhance, if (isHdrEnhanceActive) HiAccentAmber else Color.White)
-                    }
-
                 }
 
                 // The reference keeps the main transport controls in the lower panel.
@@ -250,11 +241,16 @@ fun ControlsOverlay(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
+                    // Icon-only secondary row, above the seek bar. All actions are
+                    // local Hi Player callbacks; no separate decoder/settings menu.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
+                        PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
+                        PlayerToolbarTextButton(Icons.Default.AutoAwesome, "HDR Filters", onToggleHdrEnhance, if (isHdrEnhanceActive) HiAccentAmber else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
@@ -298,61 +294,26 @@ fun ControlsOverlay(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Reference-style bottom transport row.
+                    // Attached reference grouping: left utility, centered transport,
+                    // right caption/audio actions. Controls stay icon-only.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        PlayerToolbarButton(
-                            icon = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                            label = "Lock",
-                            onClick = onToggleLock,
-                            testTag = "bottom_lock_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = Icons.Default.AspectRatio,
-                            label = referenceAspectLabel,
-                            onClick = onCycleAspectRatio,
-                            testTag = "bottom_aspect_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = Icons.Default.SkipPrevious,
-                            label = "Previous",
-                            onClick = onPrevious,
-                            testTag = "bottom_rewind_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            label = if (isPlaying) "Stop" else "Play",
-                            onClick = onTogglePlayPause,
-                            tint = HiPrimaryCyan,
-                            testTag = "bottom_play_pause_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = Icons.Default.SkipNext,
-                            label = "Next",
-                            onClick = onNext,
-                            testTag = "bottom_ff_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = Icons.Default.ClosedCaption,
-                            label = "CC",
-                            onClick = onToggleSubtitles,
-                            testTag = "bottom_subtitles_cc_button"
-                        )
-
-                        PlayerToolbarButton(
-                            icon = Icons.Default.Audiotrack,
-                            label = "Audio language",
-                            onClick = onOpenAudioSettings,
-                            testTag = "bottom_audio_tracks_button"
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PlayerToolbarButton(if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock", onToggleLock, testTag = "bottom_lock_button")
+                            PlayerToolbarButton(Icons.Default.AspectRatio, referenceAspectLabel, onCycleAspectRatio, testTag = "bottom_aspect_button")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PlayerToolbarButton(Icons.Default.SkipPrevious, "Previous", onPrevious, testTag = "bottom_rewind_button")
+                            PlayerToolbarButton(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Stop" else "Play", onTogglePlayPause, HiPrimaryCyan, "bottom_play_pause_button")
+                            PlayerToolbarButton(Icons.Default.SkipNext, "Next", onNext, testTag = "bottom_ff_button")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")
+                            PlayerToolbarButton(Icons.Default.Audiotrack, "Audio language", onOpenAudioSettings, testTag = "bottom_audio_tracks_button")
+                        }
                     }
                 }
 
@@ -481,59 +442,6 @@ private fun HiVideoSeekBar(
                     .background(HiPrimaryCyan, CircleShape)
             )
         }
-    }
-}
-
-@Composable
-private fun HudTopAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color = Color.White
-) {
-    IconButton(onClick = onClick, modifier = Modifier.size(38.dp)) {
-        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
-    }
-}
-
-@Composable
-private fun HudSideAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    testTag: String,
-    tint: Color = Color.White,
-    labelBeforeIcon: Boolean = true
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.testTag(testTag)
-    ) {
-        if (!labelBeforeIcon) {
-            HudActionIcon(icon, label, onClick, tint)
-        }
-        Text(text = label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        if (labelBeforeIcon) {
-            HudActionIcon(icon, label, onClick, tint)
-        }
-    }
-}
-
-@Composable
-private fun HudActionIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color
-) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .size(48.dp)
-            .background(Color(0x991A1A1A), CircleShape)
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
     }
 }
 
