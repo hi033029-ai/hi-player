@@ -225,105 +225,23 @@ fun ControlsOverlay(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        rating?.let { RatingStarsBadge(it) }
                     }
 
-                }
-
-                // 2. LEFT EDGE CONTROLS: reference-style utility actions.
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    HudSideAction(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, "left_edge_rotate_button", labelBeforeIcon = false)
-                    HudSideAction(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip, "left_edge_pip_button", labelBeforeIcon = false)
-                    HudSideAction(Icons.Default.AutoAwesome, if (isHdrEnhanceActive) "HDR On" else "HDR Filters", onToggleHdrEnhance, "left_edge_hdr_button", HiAccentAmber, labelBeforeIcon = false)
-                }
-
-                // 3. RIGHT EDGE CONTROLS: speed, background audio, equalizer, and scale.
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    HudSideAction(Icons.Default.Speed, "Speed  ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, "right_speed_button")
-                    HudSideAction(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, "right_audio_button", if (isBgPlayActive) HiPrimaryCyan else Color.White)
-                    HudSideAction(Icons.Default.Tune, "Equalizer", onOpenEqualizer, "right_equalizer_button")
-                    HudSideAction(Icons.Default.Tune, "Settings", onOpenVideoSettings, "right_player_settings_button")
-                }
-
-                // 4. CENTER CONTROLS (Previous, Play/Pause/Buffer, Next)
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 32.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(36.dp)
-                ) {
-                    IconButton(
-                        onClick = onPrevious,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .background(Color(0x66000000), CircleShape)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous video",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
+                        HudTopAction(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
+                        HudTopAction(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
+                        HudTopAction(Icons.Default.AutoAwesome, if (isHdrEnhanceActive) "HDR On" else "HDR Filters", onToggleHdrEnhance, if (isHdrEnhanceActive) HiAccentAmber else Color.White)
+                        HudTopAction(Icons.Default.Tune, "Settings", onOpenVideoSettings)
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .background(
-                                Brush.radialGradient(listOf(HiPrimaryCyan.copy(alpha = 0.3f), Color.Transparent)),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isBuffering) {
-                            CircularProgressIndicator(
-                                color = HiPrimaryCyan,
-                                strokeWidth = 3.dp,
-                                modifier = Modifier.size(60.dp)
-                            )
-                        } else {
-                            IconButton(
-                                onClick = onTogglePlayPause,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .background(Color(0xEE111624), CircleShape)
-                                    .testTag("play_pause_button")
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "Pause" else "Play",
-                                    tint = HiPrimaryCyan,
-                                    modifier = Modifier.size(40.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onNext,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .background(Color(0x66000000), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next video",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
                 }
+
+                // The reference keeps the main transport controls in the lower panel.
+
 
                 // 6. BOTTOM CONTROLS & SEEK BAR
                 Column(
@@ -333,6 +251,17 @@ fun ControlsOverlay(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        rating?.let { RatingStarsBadge(it) }
+                        Spacer(modifier = Modifier.weight(1f))
+                        PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
+                        PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
+                        PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     // Timebar and Timestamps
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -372,7 +301,7 @@ fun ControlsOverlay(
                     // Reference-style bottom transport row.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PlayerToolbarButton(
@@ -398,7 +327,7 @@ fun ControlsOverlay(
 
                         PlayerToolbarButton(
                             icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            label = if (isPlaying) "Pause" else "Play",
+                            label = if (isPlaying) "Stop" else "Play",
                             onClick = onTogglePlayPause,
                             tint = HiPrimaryCyan,
                             testTag = "bottom_play_pause_button"
@@ -556,6 +485,18 @@ private fun HiVideoSeekBar(
 }
 
 @Composable
+private fun HudTopAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(38.dp)) {
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
 private fun HudSideAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
@@ -593,6 +534,23 @@ private fun HudActionIcon(
             .background(Color(0x991A1A1A), CircleShape)
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun PlayerToolbarTextButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 4.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
