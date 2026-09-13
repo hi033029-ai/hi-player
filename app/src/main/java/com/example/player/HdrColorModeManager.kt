@@ -1,27 +1,37 @@
 package com.example.player
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.os.Build
-import android.view.Window
-import androidx.annotation.OptIn
+import android.os.Handler
+import android.os.Looper
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.media3.common.C
 import androidx.media3.common.ColorInfo
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Applies HDR window output as soon as the selected track metadata is known,
- * before the first decoded frame reaches the video surface. This avoids the
- * first-play black flash and prevents HDR frames from being displayed through
- * an SDR window color mode on devices that do not auto-negotiate reliably.
- */
-@OptIn(UnstableApi::class)
+/** Single guarded owner of the HDR window mode and HDR grading effects. */
+@UnstableApi
 class HdrColorModeManager(private val activity: Activity) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val isApplying = AtomicBoolean(false)
     private var appliedHdr = false
-    private var attachedPlayer: Player? = null
+    private var attachedPlayer: ExoPlayer? = null
 
-    fun attach(player: Player) {
+    var isHdrActive by mutableStateOf(false)
+        private set
+    var isSwitching by mutableStateOf(false)
+        private set
+
+    fun attach(player: ExoPlayer) {
         attachedPlayer?.removeListener(listener)
         attachedPlayer = player
         player.addListener(listener)
@@ -30,7 +40,13 @@ class HdrColorModeManager(private val activity: Activity) {
 
     private val listener = object : Player.Listener {
         override fun onTracksChanged(tracks: Tracks) {
-            applyFromTracks(tracks)
+            val isHdr = tracks.groups.any { group ->
+                (0 until group.length).any { index ->
+                    group.isTrackSelected(index) &&
+                        isHdrColorInfo(group.getTrackFormat(index).colorInfo)
+                }
+            }
+            requestColorMode(isHdr)
         }
     }
 
@@ -41,37 +57,58 @@ class HdrColorModeManager(private val activity: Activity) {
                     isHdrColorInfo(group.getTrackFormat(index).colorInfo)
             }
         }
-        applyColorMode(isHdr)
+        requestColorMode(isHdr)
     }
 
-    private fun isHdrColorInfo(colorInfo: ColorInfo?): Boolean {
-        return colorInfo != null && (
-            colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
-                colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG
-            )
-    }
+    private fun isHdrColorInfo(colorInfo: ColorInfo?): Boolean = colorInfo != null && (
+        colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
+            colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG
+        )
 
-    private fun applyColorMode(isHdr: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isHdr == appliedHdr) return
-        appliedHdr = isHdr
-        activity.runOnUiThread {
-            activity.window.colorMode = if (isHdr) {
-                android.content.pm.ActivityInfo.COLOR_MODE_HDR
-            } else {
-                android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT
+    fun requestColorMode(hdrDesired: Boolean) {
+        if (hdrDesired == appliedHdr || !isApplying.compareAndSet(false, true)) return
+        isSwitching = true
+        mainHandler.post {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    activity.window.colorMode = if (hdrDesired) {
+                        ActivityInfo.COLOR_MODE_HDR
+                    } else {
+                        ActivityInfo.COLOR_MODE_DEFAULT
+                    }
+                }
+                attachedPlayer?.setVideoEffects(
+                    if (hdrDesired) HdrGradingEffects.buildHdrCompensationEffects() else emptyList()
+                )
+                appliedHdr = hdrDesired
+                isHdrActive = hdrDesired
+            } finally {
+                isSwitching = false
+                isApplying.set(false)
             }
         }
     }
 
     fun release() {
-        // The manager owns this listener; detach it before resetting the window
-        // so repeated player entries do not accumulate callbacks.
-        // The attached player is released by the engine separately.
         attachedPlayer?.removeListener(listener)
+        attachedPlayer?.setVideoEffects(emptyList())
         attachedPlayer = null
+        mainHandler.removeCallbacksAndMessages(null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            activity.window.colorMode = android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT
+            activity.window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         }
         appliedHdr = false
+        isHdrActive = false
+        isSwitching = false
+        isApplying.set(false)
     }
+}
+
+fun Context.findActivity(): Activity {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    throw IllegalStateException("Context is not an Activity and has no Activity in its chain")
 }

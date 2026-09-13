@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -52,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -71,7 +73,11 @@ import com.example.ui.components.SubtitleSettingsBottomSheet
 import com.example.ui.components.VideoInfoDialog
 import com.example.ui.components.EqualizerBottomSheet
 import com.example.ui.components.VideoSettingsBottomSheet
+import com.example.ui.components.AspectRatioPickerOverlay
+import com.example.ui.components.SpeedOverlayIndicator
 import com.example.player.HdrColorModeManager
+import com.example.player.formatSpeedLabel
+import com.example.player.nextPlaybackSpeed
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
@@ -159,6 +165,8 @@ fun PlayerScreen(
     var videoWidth by remember { mutableStateOf(0) }
     var videoHeight by remember { mutableStateOf(0) }
     var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var showAspectPicker by remember { mutableStateOf(false) }
+    var showSpeedOverlay by remember { mutableStateOf(false) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -214,6 +222,20 @@ fun PlayerScreen(
     // Handle orientation changes
     LaunchedEffect(screenOrientation) {
         activity?.requestedOrientation = screenOrientation
+    }
+
+    LaunchedEffect(showAspectPicker) {
+        if (showAspectPicker) {
+            delay(4000)
+            showAspectPicker = false
+        }
+    }
+
+    LaunchedEffect(showSpeedOverlay, playbackSpeed) {
+        if (showSpeedOverlay) {
+            delay(900)
+            showSpeedOverlay = false
+        }
     }
 
     // Keep screen on and restore the display state the activity had before
@@ -346,6 +368,9 @@ fun PlayerScreen(
             },
             modifier = Modifier
                 .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(onLongPress = { showAspectPicker = true })
+                }
                 .onSizeChanged { surfaceSize = it }
                 .graphicsLayer {
                     scaleX = ratioScale.first * videoScale
@@ -366,6 +391,22 @@ fun PlayerScreen(
                     .background(Color.Black)
             )
         }
+
+        AspectRatioPickerOverlay(
+            visible = showAspectPicker,
+            current = aspectRatioMode,
+            onSelect = {
+                playerViewModel.setAspectRatio(it)
+                showAspectPicker = false
+            },
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
+
+        SpeedOverlayIndicator(
+            visible = showSpeedOverlay,
+            speedLabel = formatSpeedLabel(playbackSpeed),
+            modifier = Modifier.align(Alignment.Center),
+        )
 
         // 2. Gesture Handling Layer
         GestureOverlay(
@@ -458,19 +499,12 @@ fun PlayerScreen(
             onOpenEqualizer = { playerViewModel.openSheet(ActiveSheet.EQUALIZER) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
-            onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
+            onCycleAspectRatio = { showAspectPicker = true },
             onAspectRatioSelected = { playerViewModel.setAspectRatio(it) },
             onCycleSpeed = {
-                val nextSpeed = when (playbackSpeed) {
-                    0.5f -> 0.75f
-                    0.75f -> 1.0f
-                    1.0f -> 1.25f
-                    1.25f -> 1.5f
-                    1.5f -> 2.0f
-                    2.0f -> 3.0f
-                    else -> 0.5f
-                }
+                val nextSpeed = nextPlaybackSpeed(playbackSpeed)
                 playerViewModel.setPlaybackSpeed(nextSpeed)
+                showSpeedOverlay = true
             }
         )
 
