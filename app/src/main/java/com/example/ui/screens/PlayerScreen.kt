@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -284,7 +285,17 @@ fun PlayerScreen(
                     )
                 }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .then(
+                    if (aspectRatioMode == AspectRatioMode.CINEMA_21_9) {
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(21f / 9f)
+                            .align(Alignment.Center)
+                    } else {
+                        Modifier.fillMaxSize()
+                    }
+                )
         )
 
         // 2. Gesture Handling Layer
