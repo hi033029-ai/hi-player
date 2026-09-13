@@ -402,16 +402,24 @@ class HiPlayerEngine(
                     4_000     // Buffer after rebuffer: 4s
                 )
                 .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB cache buffer
+                .setBackBuffer(10_000, true)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
         } else {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    15_000,   // Min buffer: 15s
-                    50_000,   // Max buffer: 50s
-                    1_500,    // Buffer for playback start
-                    3_000     // Buffer after rebuffer
+                    20_000,   // Min buffer: 20s for high-bitrate local 4K files
+                    60_000,   // Max buffer: 60s without the ultra-buffer option
+                    2_000,    // Buffer for playback start
+                    4_000     // Buffer after rebuffer
                 )
+                // Reserve a bounded allocator for high-bitrate local media.
+                // This improves 4K/HDR rebuffering without reading the full
+                // file into memory or changing any UI/player behavior.
+                .setTargetBufferBytes(64 * 1024 * 1024)
+                // Preserve a short decoded range behind the playhead so quick
+                // reverse seeks do not immediately trigger another disk read.
+                .setBackBuffer(10_000, true)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
         }
