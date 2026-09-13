@@ -114,6 +114,10 @@ class HiPlayerEngine(
     private val _isHdrContent = MutableStateFlow(false)
     val isHdrContent = _isHdrContent.asStateFlow()
 
+    /** True when the selected video stream is UHD 4K or larger. */
+    private val _is4kContent = MutableStateFlow(false)
+    val is4kContent = _is4kContent.asStateFlow()
+
     /**
      * Real-time picture boost applied directly to the decoded video frames
      * (not just screen brightness) using Media3's GPU effects pipeline:
@@ -404,7 +408,7 @@ class HiPlayerEngine(
     }
 
     private fun initializePlayer(
-        enableHwDecoding: Boolean = false,
+        enableHwDecoding: Boolean = true,
         enableRemuxUltraBuffer: Boolean = false,
         enableTunneling: Boolean = false
     ) {
@@ -443,13 +447,13 @@ class HiPlayerEngine(
                 .setBufferDurationsMs(
                     20_000,   // Min buffer: 20s for high-bitrate local 4K files
                     60_000,   // Max buffer: 60s without the ultra-buffer option
-                    2_000,    // Buffer for playback start
-                    4_000     // Buffer after rebuffer
+                    750,      // Fast start while MediaCodec fills the UHD pipeline
+                    2_000     // Buffer after rebuffer
                 )
                 // Reserve a bounded allocator for high-bitrate local media.
                 // This improves 4K/HDR rebuffering without reading the full
                 // file into memory or changing any UI/player behavior.
-                .setTargetBufferBytes(64 * 1024 * 1024)
+                .setTargetBufferBytes(128 * 1024 * 1024)
                 // Preserve a short decoded range behind the playhead so quick
                 // reverse seeks do not immediately trigger another disk read.
                 .setBackBuffer(10_000, true)
@@ -647,6 +651,7 @@ class HiPlayerEngine(
         _availableAudioTracks.value = emptyList()
         _availableSubtitleTracks.value = emptyList()
         _isHdrContent.value = false
+        _is4kContent.value = false
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
         if (!mediaMimeType.isNullOrBlank()) {
             // Supplying the known MediaStore MIME type lets Media3 select the
@@ -989,7 +994,9 @@ class HiPlayerEngine(
     }
 
     private fun updateVideoOutputInfo() {
-        _isHdrContent.value = ColorInfo.isTransferHdr(exoPlayer?.videoFormat?.colorInfo)
+        val format = exoPlayer?.videoFormat
+        _isHdrContent.value = ColorInfo.isTransferHdr(format?.colorInfo)
+        _is4kContent.value = (format?.width ?: 0) >= 3840 || (format?.height ?: 0) >= 2160
     }
 
     private fun updateTelemetry() {

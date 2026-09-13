@@ -138,6 +138,7 @@ fun PlayerScreen(
     val subtitleStyle by playerViewModel.subtitleStyle.collectAsState()
     val hdrEnhanceActive by playerViewModel.hdrEnhanceActive.collectAsState()
     val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
+    val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
 
@@ -214,7 +215,7 @@ fun PlayerScreen(
     // needs COLOR_MODE_HDR, while SDR material can use wide gamut only when the
     // user enabled that preference. Devices without an HDR-capable display
     // safely fall back to their supported output mode.
-    LaunchedEffect(activity, isHdrContent, wideColorGamutEnabled) {
+    LaunchedEffect(activity, isHdrContent, is4kContent, wideColorGamutEnabled) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity?.window?.colorMode = when {
                 isHdrContent -> ActivityInfo.COLOR_MODE_HDR
