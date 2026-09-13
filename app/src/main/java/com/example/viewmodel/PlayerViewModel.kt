@@ -15,7 +15,6 @@ import com.example.model.VideoTrackInfo
 import com.example.player.HiMediaSessionService
 import com.example.player.HiPlayerEngine
 import com.example.util.MediaRating
-import com.example.util.OpenSubtitlesHelper
 import com.example.util.TmdbRatingHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,8 +39,7 @@ enum class ActiveSheet {
     DECODER_TELEMETRY,
     SUBTITLE_CUSTOMIZATION,
     TMDB_KEY_DIALOG,
-    FETCH_SUBTITLE_URL_DIALOG,
-    OPENSUBTITLES_CREDENTIALS
+    FETCH_SUBTITLE_URL_DIALOG
 }
 
 data class SubtitleStyleConfig(
@@ -251,100 +249,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /**
-     * Uses the documented OpenSubtitles REST API rather than scraping the
-     * public website. Search needs an API key; download needs the same key and
-     * a free-account login so OpenSubtitles can issue a short-lived signed URL.
-     */
-    fun searchAndDownloadSubtitle(context: Context) {
-        viewModelScope.launch {
-            val settings = preferencesRepo.settingsFlow.first()
-            if (
-                settings.openSubtitlesApiKey.isBlank() ||
-                settings.openSubtitlesUsername.isBlank() ||
-                settings.openSubtitlesPassword.isBlank()
-            ) {
-                _activeSheet.value = ActiveSheet.OPENSUBTITLES_CREDENTIALS
-                return@launch
-            }
-            downloadFromOpenSubtitles(
-                context = context,
-                apiKey = settings.openSubtitlesApiKey,
-                username = settings.openSubtitlesUsername,
-                password = settings.openSubtitlesPassword
-            )
-        }
-    }
-
-    fun saveOpenSubtitlesCredentialsAndDownload(
-        context: Context,
-        apiKey: String,
-        username: String,
-        password: String
-    ) {
-        viewModelScope.launch {
-            preferencesRepo.setOpenSubtitlesCredentials(apiKey, username, password)
-            _activeSheet.value = ActiveSheet.NONE
-            downloadFromOpenSubtitles(context, apiKey, username, password)
-        }
-    }
-
-    private suspend fun downloadFromOpenSubtitles(
-        context: Context,
-        apiKey: String,
-        username: String,
-        password: String
-    ) {
-        val video = _currentVideo.value ?: return
-        val query = video.path.substringAfterLast('/').ifBlank { video.title }
-            .substringBeforeLast('.')
-            .replace(Regex("[._]+"), " ")
-            .replace(Regex("[\\[\\]()]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        try {
-            require(query.isNotBlank()) { "The video has no usable filename." }
-            val year = Regex("(?:19|20)\\d{2}").find(query)?.value
-            val token = OpenSubtitlesHelper.login(apiKey, username, password).getOrElse { throw it }
-            val results = OpenSubtitlesHelper.search(
-                apiKey = apiKey,
-                title = query,
-                year = year,
-                seasonNumber = null,
-                episodeNumber = null
-            ).getOrElse { throw it }
-            val candidate = results.firstOrNull { it.language.equals("en", ignoreCase = true) }
-                ?: results.firstOrNull()
-                ?: error("No OpenSubtitles result was found for $query")
-            val subtitleText = OpenSubtitlesHelper.download(apiKey, token, candidate.fileId)
-                .getOrElse { throw it }
-            require(subtitleText.isNotBlank()) { "OpenSubtitles returned an empty file." }
-            val extension = when {
-                subtitleText.trimStart().startsWith("WEBVTT", ignoreCase = true) -> ".vtt"
-                else -> ".srt"
-            }
-            val subtitleFile = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                java.io.File.createTempFile("hiplayer-opensubtitles-", extension, getApplication<Application>().cacheDir)
-                    .apply { writeText(subtitleText) }
-            }
-            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                loadExternalSubtitle(Uri.fromFile(subtitleFile))
-                android.widget.Toast.makeText(
-                    context,
-                    "Loaded ${candidate.languageName} subtitles from OpenSubtitles",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
-            }
-        } catch (error: Exception) {
-            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                android.widget.Toast.makeText(
-                    context,
-                    "OpenSubtitles failed: ${error.message ?: "check your account and try again"}",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
 
     fun togglePlayPause() {
         engine.togglePlayPause()

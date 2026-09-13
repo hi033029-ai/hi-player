@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.FormatColorText
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.ClosedCaptionDisabled
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,7 +57,6 @@ fun SubtitleSettingsBottomSheet(
     onSubtitleOffsetChange: (Long) -> Unit,
     onLoadExternalSubtitle: (android.net.Uri) -> Unit,
     onOpenCustomizeAppearance: () -> Unit = {},
-    onDownloadSubtitle: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -149,31 +147,6 @@ fun SubtitleSettingsBottomSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Button(
-                onClick = onDownloadSubtitle,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .testTag("download_subtitle_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = HiSurfaceElevated)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = null,
-                    tint = HiPrimaryCyan,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Download from OpenSubtitles",
-                    color = HiPrimaryCyan,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
 
             Spacer(modifier = Modifier.height(14.dp))
 

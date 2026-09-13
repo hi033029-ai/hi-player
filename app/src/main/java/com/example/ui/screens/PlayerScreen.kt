@@ -13,6 +13,9 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -63,7 +66,6 @@ import com.example.ui.components.TmdbKeyDialog
 import com.example.ui.components.SubtitleCustomizationBottomSheet
 import com.example.ui.components.SubtitleSettingsBottomSheet
 import com.example.ui.components.VideoInfoDialog
-import com.example.ui.components.OpenSubtitlesCredentialsDialog
 import com.example.ui.components.EqualizerBottomSheet
 import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.viewmodel.ActiveSheet
@@ -304,14 +306,18 @@ fun PlayerScreen(
                     .fillMaxWidth()
                     .aspectRatio(sourceAspectRatio)
                     .align(Alignment.Center)
+                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
                 AspectRatioMode.CINEMA_21_9 -> Modifier
                     .fillMaxWidth()
                     .aspectRatio(21f / 9f)
                     .align(Alignment.Center)
+                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
                 // These modes intentionally occupy the available video area;
                 // PlayerView's resizeMode determines crop or stretch inside it.
                 AspectRatioMode.FILL_CROP,
-                AspectRatioMode.STRETCH -> Modifier.fillMaxSize()
+                AspectRatioMode.STRETCH -> Modifier
+                    .fillMaxSize()
+                    .animateContentSize(tween(260, easing = FastOutSlowInEasing))
             }
         )
 
@@ -522,10 +528,6 @@ fun PlayerScreen(
                     onSubtitleOffsetChange = { playerViewModel.setSubtitleOffset(it) },
                     onLoadExternalSubtitle = { playerViewModel.loadExternalSubtitle(it) },
                     onOpenCustomizeAppearance = { playerViewModel.openSheet(ActiveSheet.SUBTITLE_CUSTOMIZATION) },
-                    onDownloadSubtitle = {
-                        playerViewModel.closeSheet()
-                        playerViewModel.searchAndDownloadSubtitle(context)
-                    },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }
@@ -554,19 +556,6 @@ fun PlayerScreen(
                 TmdbKeyDialog(
                     currentKey = savedKey,
                     onSaveKey = { playerViewModel.setTmdbApiKey(it) },
-                    onDismiss = { playerViewModel.closeSheet() }
-                )
-            }
-            ActiveSheet.OPENSUBTITLES_CREDENTIALS -> {
-                OpenSubtitlesCredentialsDialog(
-                    onSave = { apiKey, username, password ->
-                        playerViewModel.saveOpenSubtitlesCredentialsAndDownload(
-                            context = context,
-                            apiKey = apiKey,
-                            username = username,
-                            password = password
-                        )
-                    },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }
