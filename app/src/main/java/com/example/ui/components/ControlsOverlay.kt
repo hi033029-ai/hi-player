@@ -4,8 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -87,6 +89,7 @@ import com.example.ui.components.PlayPauseButton
 import com.example.ui.components.SkipButton
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ControlsOverlay(
     isVisible: Boolean,
@@ -127,6 +130,7 @@ fun ControlsOverlay(
     onOpenVideoSettings: () -> Unit,
     onOpenTelemetry: () -> Unit,
     onCycleAspectRatio: () -> Unit,
+    onLongPressAspectRatio: () -> Unit = {},
     onAspectRatioSelected: (AspectRatioMode) -> Unit = {},
     onCycleSpeed: () -> Unit,
     modifier: Modifier = Modifier
@@ -313,7 +317,13 @@ fun ControlsOverlay(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             PlayerToolbarButton(if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock", onToggleLock, testTag = "bottom_lock_button")
-                            PlayerToolbarButton(Icons.Default.AspectRatio, referenceAspectLabel, onCycleAspectRatio, testTag = "bottom_aspect_button")
+                            PlayerToolbarButton(
+                                Icons.Default.AspectRatio,
+                                referenceAspectLabel,
+                                onCycleAspectRatio,
+                                onLongClick = onLongPressAspectRatio,
+                                testTag = "bottom_aspect_button",
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             SkipButton(Icons.Default.SkipPrevious, onPrevious, modifier = Modifier.testTag("bottom_rewind_button"))
@@ -473,13 +483,18 @@ private fun PlayerToolbarButton(
     label: String,
     onClick: () -> Unit,
     tint: Color = Color.White,
-    testTag: String = ""
+    testTag: String = "",
+    onLongClick: (() -> Unit)? = null,
 ) {
-    IconButton(
-        onClick = onClick,
+    Box(
         modifier = Modifier
             .size(46.dp)
             .testTag(testTag)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,

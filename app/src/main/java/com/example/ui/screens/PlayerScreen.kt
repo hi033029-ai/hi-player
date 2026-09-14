@@ -506,7 +506,8 @@ fun PlayerScreen(
             onOpenEqualizer = { playerViewModel.openSheet(ActiveSheet.EQUALIZER) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
-            onCycleAspectRatio = { showAspectPicker = true },
+            onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
+            onLongPressAspectRatio = { showAspectPicker = true },
             onAspectRatioSelected = { playerViewModel.setAspectRatio(it) },
             onCycleSpeed = {
                 val nextSpeed = nextPlaybackSpeed(playbackSpeed)
