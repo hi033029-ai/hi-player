@@ -105,7 +105,12 @@ object OptimizedPlayerBuilder {
     fun build(context: Context): ExoPlayer {
         return ExoPlayer.Builder(context, renderersFactory(context))
             .setLoadControl(loadControl())
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setExtractorsFactory(extractorsFactory()))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                    DefaultDataSource.Factory(context),
+                    extractorsFactory(),
+                )
+            )
             // How long the renderer waits before it starts dropping frames instead of
             // stalling — keeps playback smooth on heavy 4K/HDR under decoder pressure.
             .setSeekBackIncrementMs(10_000)

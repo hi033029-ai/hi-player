@@ -695,7 +695,12 @@ class HiPlayerEngine(
             } else {
                 setMediaItem(mediaItem)
             }
-            configureResumeSeek(startPositionMs)
+            // Fast approximate seek is used only for one-time Continue Watching
+            // startup; interactive seeks remain EXACT on the player.
+            setSeekParameters(
+                if (startPositionMs > 0L) SeekParameters.CLOSEST_SYNC
+                else SeekParameters.EXACT
+            )
             if (startPositionMs > 0) {
                 seekTo(startPositionMs)
             }
