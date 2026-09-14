@@ -74,6 +74,7 @@ import com.example.ui.components.AspectRatioPickerOverlay
 import com.example.ui.components.SpeedOverlayIndicator
 import com.example.ui.ZoomOverlayIndicator
 import com.example.ui.HdrPresetMenu
+import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
 import com.example.player.HdrColorModeManager
 import com.example.player.ColorPresets
