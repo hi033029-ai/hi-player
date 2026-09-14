@@ -9,10 +9,13 @@ import androidx.media3.effect.RgbAdjustment
  * Compensates for devices that tone-map HDR (BT.2020/PQ) content down to SDR at the
  * hardware level even after window.colorMode is correctly set to HDR — on those
  * devices the picture still looks flat/desaturated because the panel never actually
- * receives HDR signal, just a dim SDR conversion of it. This applies a post-process
- * grading pass matching what you asked for: exposure +20%, saturation +20%, contrast
- * left untouched (contrast is deliberately NOT included below — omitting it is what
- * "no contrast change" means, since the default is a no-op).
+ * receives HDR signal, just a dim SDR conversion of it.
+ *
+ * Current grading: exposure boosted further (+40%), saturation pulled down (-15%)
+ * to compensate for the extra exposure reading as oversaturated, sharpness eased
+ * off slightly via a custom blur blend (see SharpnessReductionEffect.kt — no
+ * built-in Media3 Builder exists for this one). Contrast is still deliberately
+ * left out — omitting it is what "no contrast change" means.
  *
  * NOTE: media3-effect's Builder method names have shifted a little across 1.x
  * releases — if `adjustSaturation` doesn't match your media3-effect version, check
@@ -24,15 +27,18 @@ object HdrGradingEffects {
 
     fun buildHdrCompensationEffects(): List<Effect> {
         val exposureBoost = RgbAdjustment.Builder()
-            .setRedScale(1.2f)
-            .setGreenScale(1.2f)
-            .setBlueScale(1.2f)
+            .setRedScale(1.4f)
+            .setGreenScale(1.4f)
+            .setBlueScale(1.4f)
             .build()
 
-        val saturationBoost = HslAdjustment.Builder()
-            .adjustSaturation(20f) // +20%
+        val saturationCut = HslAdjustment.Builder()
+            .adjustSaturation(-15f) // was +20%, now pulled down to -15%
             .build()
 
-        return listOf(exposureBoost, saturationBoost)
+        // The attached SharpnessReductionEffect contains a version-dependent
+        // shader TODO, so it is kept in the repository but not installed in
+        // the live HDR pipeline until its GlProgram binding is implemented.
+        return listOf(exposureBoost, saturationCut)
     }
 }

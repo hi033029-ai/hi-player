@@ -82,6 +82,32 @@ fun ResizableVideoSurface(
             .clipToBounds(), // clips real oversized content in Crop/IMAX/16:9/4:3 modes
         contentAlignment = Alignment.Center,
     ) {
+        // GUARD: if this composable is hosted somewhere that doesn't give it a bounded
+        // parent (a Dialog, an unconstrained Column, a nav destination missing
+        // Modifier.fillMaxSize() on its root) — maxWidth/maxHeight come back as
+        // Dp.Infinity. Feeding Infinity into a fixed Modifier.size() below asks
+        // Android to allocate an effectively unbounded SurfaceView buffer, which is
+        // exactly the kind of thing that crashes the process (OOM / native buffer
+        // allocation failure) rather than throwing a catchable Kotlin exception —
+        // consistent with "it crashes the player" on one navigation path and not
+        // another, since only THAT destination's layout is unbounded.
+        val hasBoundedConstraints = maxWidth.value.isFinite() && maxHeight.value.isFinite() &&
+            maxWidth > 0.dp && maxHeight > 0.dp
+
+        if (!hasBoundedConstraints) {
+            // Can't compute a fit/crop/letterbox size without a real container to fit
+            // into — fall back to filling whatever space exists rather than crashing.
+            // Resize modes have nothing meaningful to compute here; the actual fix is
+            // making sure the screen hosting this composable wraps it in
+            // Modifier.fillMaxSize() the same way your direct "Play" screen does.
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx -> buildSurfaceView(ctx, player) },
+            )
+            FirstFrameMask(firstFrameRendered)
+            return@BoxWithConstraints
+        }
+
         val (targetWidth, targetHeight) = remember(maxWidth, maxHeight, videoWidth, videoHeight, aspectMode) {
             computeTargetSize(maxWidth, maxHeight, videoWidth, videoHeight, aspectMode)
         }
@@ -94,37 +120,44 @@ fun ResizableVideoSurface(
 
         AndroidView(
             modifier = Modifier.size(animatedWidth, animatedHeight),
-            factory = { ctx ->
-                SurfaceView(ctx).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            player.setVideoSurfaceHolder(holder)
-                        }
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder, format: Int, width: Int, height: Int,
-                        ) = Unit
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            player.clearVideoSurfaceHolder(holder)
-                        }
-                    })
-                }
-            },
+            factory = { ctx -> buildSurfaceView(ctx, player) },
         )
 
-        val maskAlpha by androidx.compose.animation.core.animateFloatAsState(
-            targetValue = if (firstFrameRendered) 0f else 1f,
-            animationSpec = tween(durationMillis = 150),
-            label = "videoMaskAlpha",
-        )
-        if (maskAlpha > 0f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = maskAlpha)),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = Color.White)
+        FirstFrameMask(firstFrameRendered)
+    }
+}
+
+private fun buildSurfaceView(ctx: android.content.Context, player: ExoPlayer): SurfaceView {
+    return SurfaceView(ctx).apply {
+        holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                player.setVideoSurfaceHolder(holder)
             }
+            override fun surfaceChanged(
+                holder: SurfaceHolder, format: Int, width: Int, height: Int,
+            ) = Unit
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                player.clearVideoSurfaceHolder(holder)
+            }
+        })
+    }
+}
+
+@Composable
+private fun FirstFrameMask(firstFrameRendered: Boolean) {
+    val maskAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (firstFrameRendered) 0f else 1f,
+        animationSpec = tween(durationMillis = 150),
+        label = "videoMaskAlpha",
+    )
+    if (maskAlpha > 0f) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = maskAlpha)),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(color = Color.White)
         }
     }
 }

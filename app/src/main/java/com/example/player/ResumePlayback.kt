@@ -1,4 +1,4 @@
-package com.example.player
+package com.example.playback
 
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -47,11 +47,17 @@ fun preparePlayerWithResume(
     player.setMediaItem(mediaItem, resumePositionMs)
     player.prepare()
 
-    player.addListener(object : Player.Listener {
+    // Self-removing listener — without this, repeated Continue Watching launches on
+    // a reused/singleton player instance would accumulate one listener per resume
+    // over the app's lifetime.
+    lateinit var resumeListener: Player.Listener
+    resumeListener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
             // Real playback has started — switch back to EXACT so any further
             // interactive seek (scrub, double-tap ±10s) stays desync-free.
             player.setSeekParameters(SeekParameters.EXACT)
+            player.removeListener(resumeListener)
         }
-    })
+    }
+    player.addListener(resumeListener)
 }
