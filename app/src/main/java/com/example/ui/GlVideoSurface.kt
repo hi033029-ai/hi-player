@@ -24,17 +24,32 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     init {
         setEGLContextClientVersion(2)
         setPreserveEGLContextOnPause(true)
+        // Gestures belong to the Compose GestureOverlay above the video.
+        // GLSurfaceView otherwise consumes vertical brightness/volume swipes
+        // and horizontal seek gestures before Compose can receive them.
+        isClickable = false
+        isFocusable = false
         setRenderer(renderer)
         renderMode = RENDERMODE_WHEN_DIRTY
         renderer.requestRender = { requestRender() }
     }
 
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean = false
+
     fun setPlayer(next: ExoPlayer) {
         if (player === next) return
-        player?.clearVideoSurface()
+        player?.let { oldPlayer ->
+            post { oldPlayer.clearVideoSurface() }
+        }
         player = next
-        renderer.onSurfaceReady = { surface -> next.setVideoSurface(surface) }
-        renderer.surface?.let { next.setVideoSurface(it) }
+        renderer.onSurfaceReady = { surface ->
+            // Renderer callbacks arrive on GLSurfaceView's GLThread, while
+            // ExoPlayer is owned by the app main thread.
+            post { next.setVideoSurface(surface) }
+        }
+        renderer.surface?.let { surface ->
+            post { next.setVideoSurface(surface) }
+        }
     }
 
     fun setColorPreset(preset: ColorPreset) {
@@ -43,7 +58,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     override fun onDetachedFromWindow() {
-        player?.clearVideoSurface()
+        player?.let { currentPlayer ->
+            post { currentPlayer.clearVideoSurface() }
+        }
         player = null
         renderer.releaseSurface()
         super.onDetachedFromWindow()
