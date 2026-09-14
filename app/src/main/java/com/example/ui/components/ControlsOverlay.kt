@@ -82,6 +82,9 @@ import com.example.ui.theme.HiAccentAmber
 import com.example.ui.theme.HiPrimaryCyan
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.util.MediaRating
+import com.example.ui.components.HdrIcon
+import com.example.ui.components.PlayPauseButton
+import com.example.ui.components.SkipButton
 import kotlin.math.roundToInt
 
 @Composable
@@ -99,6 +102,7 @@ fun ControlsOverlay(
     isBgPlayActive: Boolean,
     videoScale: Float = 1.0f,
     rating: MediaRating? = null,
+    isHdrSwitching: Boolean = false,
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onRewind10: () -> Unit,
@@ -250,7 +254,12 @@ fun ControlsOverlay(
                     ) {
                         PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
                         PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
-                        PlayerToolbarTextButton(Icons.Default.AutoAwesome, "HDR Filters", onToggleHdrEnhance, if (isHdrEnhanceActive) HiAccentAmber else Color.White)
+                        HdrIcon(
+                            isActive = isHdrEnhanceActive,
+                            isSwitching = isHdrSwitching,
+                            onClick = onToggleHdrEnhance,
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                        )
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
@@ -306,9 +315,9 @@ fun ControlsOverlay(
                             PlayerToolbarButton(Icons.Default.AspectRatio, referenceAspectLabel, onCycleAspectRatio, testTag = "bottom_aspect_button")
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PlayerToolbarButton(Icons.Default.SkipPrevious, "Previous", onPrevious, testTag = "bottom_rewind_button")
-                            PlayerToolbarButton(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Stop" else "Play", onTogglePlayPause, HiPrimaryCyan, "bottom_play_pause_button")
-                            PlayerToolbarButton(Icons.Default.SkipNext, "Next", onNext, testTag = "bottom_ff_button")
+                            SkipButton(Icons.Default.SkipPrevious, onPrevious, modifier = Modifier.testTag("bottom_rewind_button"))
+                            PlayPauseButton(isPlaying, onTogglePlayPause, tint = HiPrimaryCyan, modifier = Modifier.testTag("bottom_play_pause_button"))
+                            SkipButton(Icons.Default.SkipNext, onNext, modifier = Modifier.testTag("bottom_ff_button"))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")

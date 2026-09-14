@@ -78,6 +78,7 @@ import com.example.ui.components.SpeedOverlayIndicator
 import com.example.player.HdrColorModeManager
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
+import com.example.player.rememberSmoothSeekController
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
@@ -96,6 +97,10 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val hdrColorModeManager = remember(activity, playerViewModel.engine.getPlayer()) {
+        activity?.let { HdrColorModeManager(it) }
+    }
+    val smoothSeekController = rememberSmoothSeekController(playerViewModel.engine.getPlayer())
 
     // Immersive playback: hide the status bar (battery/network/notification
     // icons) and nav bar while the player is on screen so nothing but the
@@ -144,11 +149,12 @@ fun PlayerScreen(
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
+    val managedHdrActive = hdrColorModeManager?.isHdrActive ?: hdrEnhanceActive
+    val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
     // window is already in HDR output mode when MediaCodec renders frame one.
-    DisposableEffect(activity, playerViewModel.engine.getPlayer()) {
-        val hdrColorModeManager = activity?.let { HdrColorModeManager(it) }
+    DisposableEffect(hdrColorModeManager, playerViewModel.engine.getPlayer()) {
         hdrColorModeManager?.attach(playerViewModel.engine.getPlayer())
         onDispose { hdrColorModeManager?.release() }
     }
@@ -415,12 +421,12 @@ fun PlayerScreen(
                 areControlsVisible = !areControlsVisible
             },
             onDoubleTapLeft = {
-                playerViewModel.seekRelative(-10_000L)
+                smoothSeekController.seekBy(-10_000L)
             },
             onDoubleTapCenter = { playerViewModel.togglePlayPause() },
             isPlaying = isPlaying,
             onDoubleTapRight = {
-                playerViewModel.seekRelative(10_000L)
+                smoothSeekController.seekBy(10_000L)
             },
             onBrightnessDelta = { delta ->
                 activity?.let { act ->
@@ -483,9 +489,10 @@ fun PlayerScreen(
                 playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
             },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
-            isHdrEnhanceActive = hdrEnhanceActive,
+            isHdrEnhanceActive = managedHdrActive,
+            isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
-                playerViewModel.toggleHdrEnhance()
+                hdrColorModeManager?.requestColorMode(!(hdrColorModeManager?.isHdrActive ?: false))
                 areControlsVisible = false
             },
             onToggleSubtitles = {
