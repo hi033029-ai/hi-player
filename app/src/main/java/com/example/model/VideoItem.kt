@@ -10,11 +10,13 @@ enum class VideoResolutionBadge {
     SD
 }
 
-enum class AspectRatioMode(val displayName: String) {
+enum class AspectRatioMode(val displayName: String, val targetRatio: Float? = null) {
     FIT("Fit to Screen"),
+    IMAX_DIGITAL("IMAX Digital (1.90:1)", 1.90f),
+    IMAX_ORIGINAL("IMAX Original (1.43:1)", 1.43f),
     FILL_CROP("Crop / Fill (16:9)"),
-    CINEMA_21_9("Cinema (21:9)"),
-    ORIGINAL("Original (1:1)"),
+    CINEMA_21_9("Cinema (21:9)", 21f / 9f),
+    ORIGINAL("Original"),
     STRETCH("Stretch")
 }
 

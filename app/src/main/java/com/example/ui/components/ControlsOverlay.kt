@@ -136,13 +136,7 @@ fun ControlsOverlay(
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
-    val referenceAspectLabel = when (aspectRatioMode) {
-        AspectRatioMode.FIT -> "IMAX Full (1.43:1)"
-        AspectRatioMode.STRETCH -> "Stretch"
-        AspectRatioMode.FILL_CROP -> "Crop / Fill (16:9)"
-        AspectRatioMode.CINEMA_21_9 -> "Cinema (21:9)"
-        AspectRatioMode.ORIGINAL -> "Original"
-    }
+    val referenceAspectLabel = aspectRatioMode.displayName
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
             // Floating Unlock Button when locked

@@ -56,6 +56,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.VideoSize
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -199,7 +200,20 @@ fun PlayerScreen(
             }
         }
         player.addListener(listener)
+        // The listener can be registered after Media3 has already rendered the
+        // first frame when the screen is restored. Do not leave the video hidden
+        // in that case.
+        firstFrameRendered = player.videoSize.width > 0 &&
+            (player.playbackState == Player.STATE_READY || player.currentPosition > 0)
         onDispose { player.removeListener(listener) }
+    }
+
+    // Safety valve for devices/codecs that do not dispatch onRenderedFirstFrame
+    // after a surface hand-off. Audio may already be playing, so a permanent
+    // black mask is worse than revealing the surface while it finishes settling.
+    LaunchedEffect(currentVideo?.uri, playerViewModel.engine.getPlayer()) {
+        delay(2500)
+        if (!firstFrameRendered) firstFrameRendered = true
     }
 
     fun playAdjacentVideo(step: Int) {
@@ -675,8 +689,10 @@ private fun computeVideoRatioScale(
         } else {
             1f to (containerRatio / videoRatio)
         }
+        AspectRatioMode.IMAX_DIGITAL,
+        AspectRatioMode.IMAX_ORIGINAL,
         AspectRatioMode.CINEMA_21_9 -> {
-            val targetRatio = 21f / 9f
+            val targetRatio = mode.targetRatio ?: videoRatio
             if (targetRatio > containerRatio) {
                 (targetRatio / containerRatio) to 1f
             } else {

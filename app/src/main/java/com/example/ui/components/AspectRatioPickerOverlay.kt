@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AspectRatioMode
@@ -24,7 +25,7 @@ fun AspectRatioPickerOverlay(
     onSelect: (AspectRatioMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier.zIndex(10f)) {
         Column(
             modifier = Modifier
                 .padding(start = 16.dp)
