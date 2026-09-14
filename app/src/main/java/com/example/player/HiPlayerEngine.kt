@@ -110,7 +110,7 @@ class HiPlayerEngine(
     private val _hdrEnhanceActive = MutableStateFlow(false)
     val hdrEnhanceActive = _hdrEnhanceActive.asStateFlow()
 
-    private val _hdrColorPreset = MutableStateFlow(ColorPresets.NATURAL_HDR)
+    private val _hdrColorPreset = MutableStateFlow(ColorPresets.HDR_DISABLED)
     val hdrColorPreset = _hdrColorPreset.asStateFlow()
 
     /** True when the video decoder reports an HDR transfer function (HLG/PQ). */

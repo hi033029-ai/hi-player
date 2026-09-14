@@ -101,6 +101,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _scrubDeltaMs = MutableStateFlow<Long>(0L)
     val scrubDeltaMs = _scrubDeltaMs.asStateFlow()
+    private var scrubOriginMs = 0L
 
     private val _sleepTimerMinutesLeft = MutableStateFlow<Int?>(null)
     val sleepTimerMinutesLeft = _sleepTimerMinutesLeft.asStateFlow()
@@ -331,6 +332,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun disableHdrEnhance() {
+        engine.setHdrEnhanceActive(false)
+        viewModelScope.launch {
+            preferencesRepo.setHdrEnhance(false)
+        }
+    }
+
     fun loadExternalSubtitle(uri: Uri) {
         engine.loadExternalSubtitleFile(uri)
     }
@@ -380,14 +388,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onScrubStart() {
-        _scrubTimeMs.value = engine.currentPositionMs.value
+        scrubOriginMs = engine.currentPositionMs.value
+        _scrubTimeMs.value = scrubOriginMs
         _scrubDeltaMs.value = 0L
     }
 
     fun onScrubMove(deltaMs: Long) {
-        val base = _scrubTimeMs.value ?: engine.currentPositionMs.value
         val total = engine.durationMs.value
-        val target = (base + deltaMs).coerceIn(0L, total)
+        val target = (scrubOriginMs + deltaMs).coerceIn(0L, total)
         _scrubDeltaMs.value = deltaMs
         _scrubTimeMs.value = target
     }

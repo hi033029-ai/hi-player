@@ -439,6 +439,11 @@ class MainActivity : ComponentActivity() {
     // has actually turned it on.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // Do not leave the launcher inheriting the player's forced landscape
+        // transition when Home is invoked from the navigation edge.
+        if (!isInPictureInPictureMode) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
         val settings = libraryViewModel.playerSettings.value
         if (playerViewModel.engine.isPlaying.value && settings.autoPipEnabled) {
             enterPipMode()

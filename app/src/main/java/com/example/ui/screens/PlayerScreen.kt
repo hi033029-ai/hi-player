@@ -319,7 +319,7 @@ fun PlayerScreen(
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
             if (preset.name == ColorPresets.HDR_DISABLED.name) {
-                if (hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                playerViewModel.disableHdrEnhance()
             } else if (!hdrEnhanceActive) {
                 playerViewModel.toggleHdrEnhance()
             }
@@ -462,13 +462,21 @@ fun PlayerScreen(
             modifier = Modifier.align(Alignment.Center),
         )
 
+        SeekPreviewHud(
+            targetMs = scrubTimeMs,
+            deltaMs = scrubDeltaMs,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 70.dp),
+        )
+
         HdrPresetMenu(
             visible = showHdrPresetMenu,
             selected = hdrColorPreset,
             onSelect = { preset ->
                 playerViewModel.engine.setHdrColorPreset(preset)
                 if (preset.name == ColorPresets.HDR_DISABLED.name) {
-                    if (hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                    playerViewModel.disableHdrEnhance()
                 } else if (!hdrEnhanceActive) {
                     playerViewModel.toggleHdrEnhance()
                 }
