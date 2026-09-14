@@ -305,7 +305,11 @@ fun PlayerScreen(
         }
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
-            if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+            if (preset.name == ColorPresets.HDR_DISABLED.name) {
+                if (hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+            } else if (!hdrEnhanceActive) {
+                playerViewModel.toggleHdrEnhance()
+            }
         }
     }
 
@@ -450,7 +454,11 @@ fun PlayerScreen(
             selected = hdrColorPreset,
             onSelect = { preset ->
                 playerViewModel.engine.setHdrColorPreset(preset)
-                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                if (preset.name == ColorPresets.HDR_DISABLED.name) {
+                    if (hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                } else if (!hdrEnhanceActive) {
+                    playerViewModel.toggleHdrEnhance()
+                }
                 showHdrPresetMenu = false
             },
             modifier = Modifier

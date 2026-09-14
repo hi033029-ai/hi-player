@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -35,6 +36,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var leftSide = false
     private var pinchDistance = 0f
     private var presetPopup: PopupWindow? = null
+    private var hudPopup: PopupWindow? = null
+    private var brightnessLevel = 1f
+    private var volumeLevel = 1f // 1.0 = 100%, 2.0 = 200%
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
             if (!isHdrTap(e.x, e.y)) onSingleTap?.invoke()
@@ -129,7 +133,15 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     onScrubMove?.invoke(((event.x - lastX) * 120L).toLong())
                 } else if (verticalControl && height > 0) {
                     val delta = -(event.y - lastY) / height.toFloat()
-                    if (leftSide) onBrightnessDelta?.invoke(delta) else onVolumeDelta?.invoke(delta)
+                    if (leftSide) {
+                        brightnessLevel = (brightnessLevel + delta).coerceIn(0f, 1f)
+                        onBrightnessDelta?.invoke(delta)
+                        showHud("Brightness ${"%.0f".format(brightnessLevel * 100f)}%", brightnessLevel, false)
+                    } else {
+                        volumeLevel = (volumeLevel + delta).coerceIn(0f, 2f)
+                        onVolumeDelta?.invoke(delta)
+                        showHud("Volume ${"%.0f".format(volumeLevel * 100f)}%", volumeLevel / 2f, true)
+                    }
                 }
                 lastX = event.x
                 lastY = event.y
@@ -199,6 +211,48 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         presetPopup = null
     }
 
+    private fun showHud(label: String, normalizedProgress: Float, isVolume: Boolean) {
+        hudPopup?.dismiss()
+        val color = if (isVolume && volumeLevel > 1f) {
+            if (volumeLevel >= 1.8f) android.graphics.Color.RED else 0xFFFFA000.toInt()
+        } else {
+            android.graphics.Color.CYAN
+        }
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
+            setPadding(28, 16, 28, 16)
+        }
+        val text = TextView(context).apply {
+            this.text = label
+            textSize = 16f
+            setTextColor(color)
+            gravity = Gravity.CENTER
+        }
+        val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000
+            progress = (normalizedProgress.coerceIn(0f, 1f) * max).toInt()
+            progressTintList = android.content.res.ColorStateList.valueOf(color)
+            layoutParams = LinearLayout.LayoutParams(260, 10).apply {
+                topMargin = 10
+            }
+        }
+        container.addView(text)
+        container.addView(bar)
+        hudPopup = PopupWindow(
+            container,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            false,
+        ).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            isTouchable = false
+            elevation = 10f
+            showAtLocation(this@GlVideoSurface, Gravity.CENTER, 0, 0)
+        }
+        postDelayed({ hudPopup?.dismiss() }, 850L)
+    }
+
     fun setPlayer(next: ExoPlayer) {
         if (player === next) return
         player?.let { oldPlayer ->
@@ -222,6 +276,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     override fun onDetachedFromWindow() {
         dismissPresetPopup()
+        hudPopup?.dismiss()
+        hudPopup = null
         player?.let { currentPlayer ->
             post { currentPlayer.clearVideoSurface() }
         }
