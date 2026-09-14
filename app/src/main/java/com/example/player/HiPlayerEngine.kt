@@ -140,21 +140,7 @@ class HiPlayerEngine(
             // the playhead and play state so HDR toggling never appears to freeze.
             player.pause()
             if (enabled) {
-                player.setVideoEffects(
-                    listOf(
-                        // Apply the same requested grading when the HDR icon is
-                        // toggled: 1.1 exposure and 1.2 saturation.
-                        androidx.media3.effect.RgbAdjustment.Builder()
-                            .setRedScale(1.1f)
-                            .setGreenScale(1.1f)
-                            .setBlueScale(1.1f)
-                            .build(),
-                        androidx.media3.effect.HslAdjustment.Builder()
-                            .adjustSaturation(0.20f)
-                            .adjustLightness(0.0f)
-                            .build()
-                    )
-                )
+                player.setVideoEffects(HdrGradingEffects.buildHdrCompensationEffects())
             } else {
                 player.setVideoEffects(emptyList())
             }

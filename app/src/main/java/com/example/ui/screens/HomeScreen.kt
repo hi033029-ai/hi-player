@@ -193,7 +193,7 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             if (includeHeader) TopAppBar(
-                modifier = Modifier.height(uiMetrics.headerHeight),
+                modifier = Modifier.fillMaxWidth(),
                 title = {
                     if (isSearchActive) {
                         OutlinedTextField(
@@ -267,6 +267,9 @@ fun HomeScreen(
                         )
                     }
                 },
+                // Let Material3 consume the status-bar inset. The previous
+                // fixed-height modifier measured the app bar over the inset,
+                // which made the header merge into the notification area.
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = palette.surface
@@ -1137,4 +1140,3 @@ fun ContinueWatchingStrip(
         }
     }
 }
-
