@@ -6,6 +6,11 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.Surface
+import android.view.Gravity
+import android.view.MotionEvent
+import android.widget.LinearLayout
+import android.widget.PopupWindow
+import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.player.ColorPreset
@@ -20,6 +25,22 @@ import javax.microedition.khronos.opengles.GL10
 class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private val renderer = VideoGlRenderer()
     private var player: ExoPlayer? = null
+    private var downX = 0f
+    private var downY = 0f
+    private var lastX = 0f
+    private var lastY = 0f
+    private var horizontalScrub = false
+    private var verticalControl = false
+    private var leftSide = false
+    private var presetPopup: PopupWindow? = null
+
+    var onBrightnessDelta: ((Float) -> Unit)? = null
+    var onVolumeDelta: ((Float) -> Unit)? = null
+    var onScrubStart: (() -> Unit)? = null
+    var onScrubMove: ((Long) -> Unit)? = null
+    var onScrubEnd: (() -> Unit)? = null
+    var onHdrToggle: (() -> Unit)? = null
+    var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
 
     init {
         setEGLContextClientVersion(2)
@@ -42,7 +63,86 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         renderer.requestRender = { requestRender() }
     }
 
-    override fun onTouchEvent(event: android.view.MotionEvent): Boolean = false
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                lastX = event.x
+                lastY = event.y
+                horizontalScrub = false
+                verticalControl = false
+                leftSide = event.x < width / 2f
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (!horizontalScrub && !verticalControl) {
+                    if (kotlin.math.abs(dx) > 25f && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                        horizontalScrub = true
+                        onScrubStart?.invoke()
+                    } else if (kotlin.math.abs(dy) > 25f) {
+                        verticalControl = true
+                    }
+                }
+                if (horizontalScrub) {
+                    onScrubMove?.invoke(((event.x - lastX) * 120L).toLong())
+                } else if (verticalControl && height > 0) {
+                    val delta = -(event.y - lastY) / height.toFloat()
+                    if (leftSide) onBrightnessDelta?.invoke(delta) else onVolumeDelta?.invoke(delta)
+                }
+                lastX = event.x
+                lastY = event.y
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (horizontalScrub) onScrubEnd?.invoke()
+                if (!horizontalScrub && !verticalControl &&
+                    downY > height * 0.70f && downX < width * 0.28f
+                ) {
+                    onHdrToggle?.invoke()
+                }
+                horizontalScrub = false
+                verticalControl = false
+                return true
+            }
+        }
+        return true
+    }
+
+    fun showPresetPopup(selectedName: String) {
+        presetPopup?.dismiss()
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.argb(235, 0, 0, 0))
+            setPadding(16, 8, 16, 8)
+        }
+        ColorPresets.ALL.forEach { preset ->
+            val item = TextView(context).apply {
+                text = preset.name
+                textSize = 14f
+                setTextColor(if (preset.name == selectedName) android.graphics.Color.CYAN else android.graphics.Color.WHITE)
+                setPadding(20, 14, 20, 14)
+                setOnClickListener {
+                    onPresetSelected?.invoke(preset)
+                    presetPopup?.dismiss()
+                }
+            }
+            list.addView(item)
+        }
+        presetPopup = PopupWindow(list, 250, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            isOutsideTouchable = true
+            elevation = 12f
+            showAtLocation(this@GlVideoSurface, Gravity.BOTTOM or Gravity.START, 112, 150)
+        }
+    }
+
+    fun dismissPresetPopup() {
+        presetPopup?.dismiss()
+        presetPopup = null
+    }
 
     fun setPlayer(next: ExoPlayer) {
         if (player === next) return
@@ -66,6 +166,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     override fun onDetachedFromWindow() {
+        dismissPresetPopup()
         player?.let { currentPlayer ->
             post { currentPlayer.clearVideoSurface() }
         }

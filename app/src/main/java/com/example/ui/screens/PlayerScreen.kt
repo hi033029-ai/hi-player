@@ -276,6 +276,32 @@ fun PlayerScreen(
         }
     }
 
+    fun configureGlSurface(surface: GlVideoSurface) {
+        surface.onBrightnessDelta = { delta ->
+            activity?.let { act ->
+                val attributes = act.window.attributes
+                attributes.screenBrightness = playerViewModel.onBrightnessGesture(
+                    delta,
+                    attributes.screenBrightness,
+                )
+                act.window.attributes = attributes
+            }
+        }
+        surface.onVolumeDelta = { delta -> playerViewModel.onVolumeGesture(delta) }
+        surface.onScrubStart = { playerViewModel.onScrubStart() }
+        surface.onScrubMove = { delta -> playerViewModel.onScrubMove(delta) }
+        surface.onScrubEnd = { playerViewModel.onScrubEnd() }
+        surface.onHdrToggle = {
+            val enabling = !hdrEnhanceActive
+            playerViewModel.toggleHdrEnhance()
+            if (enabling) surface.showPresetPopup(hdrColorPreset.name)
+        }
+        surface.onPresetSelected = { preset ->
+            playerViewModel.engine.setHdrColorPreset(preset)
+            if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+        }
+    }
+
     // Keep screen on and restore the display state the activity had before
     // playback. Color mode updates themselves live in the LaunchedEffect below
     // so the original mode is not accidentally recaptured on every track or
@@ -350,11 +376,13 @@ fun PlayerScreen(
         AndroidView(
             factory = { ctx ->
                 GlVideoSurface(ctx).apply {
+                    configureGlSurface(this)
                     setPlayer(playerViewModel.engine.getPlayer())
                     setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 }
             },
             update = { videoSurface ->
+                configureGlSurface(videoSurface)
                 videoSurface.setPlayer(playerViewModel.engine.getPlayer())
                 videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 videoSurface.pivotX = videoSurface.width / 2f
