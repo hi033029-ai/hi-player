@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
-import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,8 +58,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.VideoSize
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.ui.components.AudioSettingsBottomSheet
@@ -77,7 +74,10 @@ import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.ui.components.AspectRatioPickerOverlay
 import com.example.ui.components.SpeedOverlayIndicator
 import com.example.ui.ZoomOverlayIndicator
+import com.example.ui.HdrPresetMenu
+import com.example.ui.GlVideoSurface
 import com.example.player.HdrColorModeManager
+import com.example.player.ColorPresets
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
 import com.example.player.rememberSmoothSeekController
@@ -147,6 +147,7 @@ fun PlayerScreen(
     val videoScale by playerViewModel.videoScale.collectAsState()
     val subtitleStyle by playerViewModel.subtitleStyle.collectAsState()
     val hdrEnhanceActive by playerViewModel.hdrEnhanceActive.collectAsState()
+    val hdrColorPreset by playerViewModel.engine.hdrColorPreset.collectAsState()
     val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
@@ -183,6 +184,7 @@ fun PlayerScreen(
     var showAspectPicker by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
+    var showHdrPresetMenu by remember { mutableStateOf(false) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -337,7 +339,7 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // 1. Video Surface Layer (PlayerView with scaling factor)
+        // 1. GLSL video surface layer with the selected HDR color preset.
         val ratioScale = computeVideoRatioScale(
             surfaceSize,
             videoWidth,
@@ -347,60 +349,18 @@ fun PlayerScreen(
 
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    // PlayerView defaults to the recommended SurfaceView path for
-                    // video. Retaining the last surface frame prevents a black
-                    // flash while MediaCodec performs a short decoder reset.
-                    useController = false
-                    setKeepContentOnPlayerReset(true)
-                    player = playerViewModel.engine.getPlayer()
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                GlVideoSurface(ctx).apply {
+                    setPlayer(playerViewModel.engine.getPlayer())
+                    setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 }
             },
-            update = { playerView ->
-                playerView.player = playerViewModel.engine.getPlayer()
-                // Keep the PlayerView at a fixed full-screen layout size. The
-                // ratio change happens below as a graphics transform, so the
-                // sibling controls never get remeasured or repositioned.
-                playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
-                // Keep zoom on the player surface itself so its bounds stay
-                // synchronized with rotation and aspect-ratio changes.
-                playerView.pivotX = playerView.width / 2f
-                playerView.pivotY = playerView.height / 2f
-                // PlayerView keeps its measured surface between state changes on
-                // some devices; force a remeasure so the selected ratio applies
-                // immediately instead of appearing stuck.
-                playerView.requestLayout()
-                playerView.invalidate()
-
-                // Apply subtitle customization (size / color / background opacity).
-                // Previously SubtitleCustomizationBottomSheet updated this state but
-                // nothing ever fed it into the actual rendered subtitle view, so the
-                // sliders visibly had no effect.
-                playerView.subtitleView?.let { subtitleView ->
-                    subtitleView.setFixedTextSize(
-                        android.util.TypedValue.COMPLEX_UNIT_SP,
-                        subtitleStyle.fontSizeSp.toFloat()
-                    )
-                    val bgAlpha = (subtitleStyle.bgOpacity.coerceIn(0f, 1f) * 255).toInt()
-                    val bgColor = (bgAlpha shl 24)
-                    subtitleView.setStyle(
-                        androidx.media3.ui.CaptionStyleCompat(
-                            subtitleStyle.textColorHex.toInt(),
-                            bgColor,
-                            android.graphics.Color.TRANSPARENT,
-                            androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                            android.graphics.Color.BLACK,
-                            null
-                        )
-                    )
-                    subtitleView.setBottomPaddingFraction(
-                        (subtitleStyle.verticalOffsetDp / 400f).coerceIn(0f, 0.3f)
-                    )
-                }
+            update = { videoSurface ->
+                videoSurface.setPlayer(playerViewModel.engine.getPlayer())
+                videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
+                videoSurface.pivotX = videoSurface.width / 2f
+                videoSurface.pivotY = videoSurface.height / 2f
+                videoSurface.requestLayout()
+                videoSurface.invalidate()
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -448,6 +408,19 @@ fun PlayerScreen(
             visible = showZoomOverlay,
             scale = videoScale,
             modifier = Modifier.align(Alignment.Center),
+        )
+
+        HdrPresetMenu(
+            visible = showHdrPresetMenu,
+            selected = hdrColorPreset,
+            onSelect = { preset ->
+                playerViewModel.engine.setHdrColorPreset(preset)
+                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                showHdrPresetMenu = false
+            },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 112.dp, bottom = 142.dp),
         )
 
         // 2. Gesture Handling Layer
@@ -532,7 +505,9 @@ fun PlayerScreen(
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
+                val enabling = !hdrEnhanceActive
                 playerViewModel.toggleHdrEnhance()
+                showHdrPresetMenu = enabling
             },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks

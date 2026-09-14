@@ -110,6 +110,9 @@ class HiPlayerEngine(
     private val _hdrEnhanceActive = MutableStateFlow(false)
     val hdrEnhanceActive = _hdrEnhanceActive.asStateFlow()
 
+    private val _hdrColorPreset = MutableStateFlow(ColorPresets.NATURAL_HDR)
+    val hdrColorPreset = _hdrColorPreset.asStateFlow()
+
     /** True when the video decoder reports an HDR transfer function (HLG/PQ). */
     private val _isHdrContent = MutableStateFlow(false)
     val isHdrContent = _isHdrContent.asStateFlow()
@@ -121,6 +124,10 @@ class HiPlayerEngine(
     /** HDR enhancement state. Native HDR output is managed by HdrColorModeManager. */
     fun setHdrEnhanceActive(enabled: Boolean) {
         _hdrEnhanceActive.value = enabled
+    }
+
+    fun setHdrColorPreset(preset: ColorPreset) {
+        _hdrColorPreset.value = preset
     }
 
     fun setAudioDelay(ms: Long) {
