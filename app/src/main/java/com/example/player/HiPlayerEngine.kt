@@ -142,9 +142,13 @@ class HiPlayerEngine(
             if (enabled) {
                 player.setVideoEffects(
                     listOf(
-                        // 1.2x exposure/contrast and 1.2x saturation are represented
-                        // by Media3's normalized +0.2 adjustments.
-                        androidx.media3.effect.Contrast(0.20f),
+                        // Apply the same requested grading when the HDR icon is
+                        // toggled: 1.1 exposure and 1.2 saturation.
+                        androidx.media3.effect.RgbAdjustment.Builder()
+                            .setRedScale(1.1f)
+                            .setGreenScale(1.1f)
+                            .setBlueScale(1.1f)
+                            .build(),
                         androidx.media3.effect.HslAdjustment.Builder()
                             .adjustSaturation(0.20f)
                             .adjustLightness(0.0f)
@@ -696,6 +700,7 @@ class HiPlayerEngine(
             } else {
                 setMediaItem(mediaItem)
             }
+            configureResumeSeek(startPositionMs)
             if (startPositionMs > 0) {
                 seekTo(startPositionMs)
             }

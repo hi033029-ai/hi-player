@@ -150,7 +150,10 @@ fun PlayerScreen(
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
-    val managedHdrActive = hdrColorModeManager?.isHdrActive ?: hdrEnhanceActive
+    // The window manager reports display HDR capability; the icon must reflect
+    // the user-controlled grading effect state so tapping it visibly changes
+    // exposure and saturation.
+    val managedHdrActive = hdrEnhanceActive
     val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
@@ -506,7 +509,7 @@ fun PlayerScreen(
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
-                hdrColorModeManager?.requestColorMode(!(hdrColorModeManager?.isHdrActive ?: false))
+                playerViewModel.toggleHdrEnhance()
             },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks

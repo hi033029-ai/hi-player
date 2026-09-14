@@ -77,9 +77,9 @@ class HdrColorModeManager(private val activity: Activity) {
                         ActivityInfo.COLOR_MODE_DEFAULT
                     }
                 }
-                attachedPlayer?.setVideoEffects(
-                    if (hdrDesired) HdrGradingEffects.buildHdrCompensationEffects() else emptyList()
-                )
+                // Media3 grading is owned by HiPlayerEngine.setHdrEnhanceActive.
+                // Keeping it out of the window-mode manager prevents track
+                // callbacks from overwriting the user's toggle immediately.
                 appliedHdr = hdrDesired
                 isHdrActive = hdrDesired
             } finally {
@@ -91,7 +91,6 @@ class HdrColorModeManager(private val activity: Activity) {
 
     fun release() {
         attachedPlayer?.removeListener(listener)
-        attachedPlayer?.setVideoEffects(emptyList())
         attachedPlayer = null
         mainHandler.removeCallbacksAndMessages(null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
