@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -52,7 +51,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -308,6 +306,7 @@ fun PlayerScreen(
         surface.onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) }
         surface.onDoubleTapCenter = { playerViewModel.togglePlayPause() }
         surface.onDoubleTapRight = { smoothSeekController.seekBy(10_000L) }
+        surface.onLongPressVideo = { showAspectPicker = true }
         surface.onPinchZoom = { zoomFactor ->
             playerViewModel.setVideoScale(videoScale * zoomFactor)
             showZoomOverlay = true
@@ -417,9 +416,6 @@ fun PlayerScreen(
             },
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures(onLongPress = { showAspectPicker = true })
-                }
                 .onSizeChanged { surfaceSize = it }
                 .graphicsLayer {
                     scaleX = ratioScale.first * videoScale

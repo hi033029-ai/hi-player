@@ -13,7 +13,6 @@ import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -56,6 +55,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             }
             return true
         }
+
+        override fun onLongPress(e: MotionEvent) {
+            onLongPressVideo?.invoke()
+        }
     })
 
     var onBrightnessDelta: ((Float) -> Unit)? = null
@@ -72,6 +75,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onDoubleTapLeft: (() -> Unit)? = null
     var onDoubleTapCenter: (() -> Unit)? = null
     var onDoubleTapRight: (() -> Unit)? = null
+    var onLongPressVideo: (() -> Unit)? = null
 
     init {
         setEGLContextClientVersion(2)
@@ -80,15 +84,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         // Without the media-overlay ordering, SurfaceView can visually and
         // interactively cover the HDR menu and gesture layer.
         setZOrderMediaOverlay(true)
-        // Gestures belong to the Compose GestureOverlay above the video.
-        // GLSurfaceView otherwise consumes vertical brightness/volume swipes
-        // and horizontal seek gestures before Compose can receive them.
-        isClickable = false
-        isFocusable = false
-        setOnTouchListener { _, _ ->
-            parent?.requestDisallowInterceptTouchEvent(false)
-            false
-        }
+        // This view is the single input owner for the player. A competing
+        // Compose pointer layer or OnTouchListener can cancel vertical swipes
+        // before ACTION_MOVE reaches the native gesture state machine.
+        isClickable = true
+        isFocusable = true
         setRenderer(renderer)
         renderMode = RENDERMODE_WHEN_DIRTY
         renderer.requestRender = { requestRender() }
@@ -209,47 +209,20 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             setBackgroundColor(android.graphics.Color.argb(235, 0, 0, 0))
             setPadding(16, 8, 16, 8)
         }
-        val header = TextView(context).apply {
-            text = "HDR  •  drag to browse"
-            textSize = 16f
-            setTextColor(android.graphics.Color.WHITE)
-            setPadding(20, 16, 20, 12)
-        }
-        list.addView(header)
         ColorPresets.ALL.forEach { preset ->
-            val item = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(20, 14, 14, 14)
-                isClickable = true
-                isFocusable = true
+            val item = TextView(context).apply {
+                text = preset.name
+                textSize = 14f
+                setTextColor(if (preset.name == selectedName) android.graphics.Color.CYAN else android.graphics.Color.WHITE)
+                setPadding(20, 14, 20, 14)
                 setOnClickListener {
                     onPresetSelected?.invoke(preset)
                     presetPopup?.dismiss()
                 }
             }
-            val label = TextView(context).apply {
-                text = preset.name
-                textSize = 14f
-                setTextColor(if (preset.name == selectedName) android.graphics.Color.CYAN else android.graphics.Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val arrow = TextView(context).apply {
-                text = if (preset.name == selectedName) "➤" else ""
-                textSize = 18f
-                setTextColor(android.graphics.Color.CYAN)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(36, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-            }
-            item.addView(label)
-            item.addView(arrow)
             list.addView(item)
         }
-        val scroll = ScrollView(context).apply {
-            addView(list)
-            isFillViewport = true
-        }
-        presetPopup = PopupWindow(scroll, 320, 560, true).apply {
+        presetPopup = PopupWindow(list, 250, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
             isOutsideTouchable = true
             elevation = 12f
