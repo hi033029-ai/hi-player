@@ -12,6 +12,13 @@ plugins {
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
+  // Native decoder extensions use the same toolchain locally and in CI.
+  ndkVersion = "26.1.10909125"
+  externalNativeBuild {
+    cmake {
+      version = "3.22.1"
+    }
+  }
 
   defaultConfig {
     applicationId = "com.aistudio.hiplayer.vdmk"
@@ -76,6 +83,9 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
+  // formats that may be unsupported by a device hardware decoder.
+  implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)

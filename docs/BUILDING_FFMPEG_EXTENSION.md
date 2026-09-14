@@ -1,6 +1,8 @@
 # Hi Player FFmpeg decoder extension
 
-Hi Player already enables Media3 extension renderers with `EXTENSION_RENDERER_MODE_ON` and decoder fallback in `HiPlayerEngine`. That means a locally built FFmpeg extension is selected only when the device has no usable hardware decoder.
+Hi Player already enables Media3 extension renderers with `EXTENSION_RENDERER_MODE_ON` and decoder fallback in `HiPlayerEngine`. The verified debug AAR is checked into `app/libs/media3-ffmpeg-decoder-debug.aar` and is wired from `app/build.gradle.kts`, so the fallback is available to the app build. It is selected only when the device has no usable hardware decoder.
+
+The repository also includes `test-media/hi-player-4k-hevc-test.mkv`, a 3840x2160 10-bit HEVC seek/decode validation clip.
 
 ## Build the extension
 
