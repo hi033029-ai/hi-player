@@ -7,6 +7,7 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.Surface
 import android.view.Gravity
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -32,7 +33,23 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var horizontalScrub = false
     private var verticalControl = false
     private var leftSide = false
+    private var pinchDistance = 0f
     private var presetPopup: PopupWindow? = null
+    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            if (!isHdrTap(e.x, e.y)) onSingleTap?.invoke()
+            return true
+        }
+
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            when {
+                e.x < width / 3f -> onDoubleTapLeft?.invoke()
+                e.x > width * 2f / 3f -> onDoubleTapRight?.invoke()
+                else -> onDoubleTapCenter?.invoke()
+            }
+            return true
+        }
+    })
 
     var onBrightnessDelta: ((Float) -> Unit)? = null
     var onVolumeDelta: ((Float) -> Unit)? = null
@@ -41,6 +58,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onScrubEnd: (() -> Unit)? = null
     var onHdrToggle: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
+    var onPinchZoom: ((Float) -> Unit)? = null
+    var onSingleTap: (() -> Unit)? = null
+    var onDoubleTapLeft: (() -> Unit)? = null
+    var onDoubleTapCenter: (() -> Unit)? = null
+    var onDoubleTapRight: (() -> Unit)? = null
 
     init {
         setEGLContextClientVersion(2)
@@ -64,6 +86,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        gestureDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
@@ -75,7 +98,23 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 leftSide = event.x < width / 2f
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount >= 2) {
+                    pinchDistance = pointerDistance(event)
+                    horizontalScrub = false
+                    verticalControl = false
+                }
+                return true
+            }
             MotionEvent.ACTION_MOVE -> {
+                if (event.pointerCount >= 2 && pinchDistance > 0f) {
+                    val distance = pointerDistance(event)
+                    if (distance > 0f) {
+                        onPinchZoom?.invoke((distance / pinchDistance).coerceIn(0.85f, 1.15f))
+                        pinchDistance = distance
+                    }
+                    return true
+                }
                 val dx = event.x - downX
                 val dy = event.y - downY
                 if (!horizontalScrub && !verticalControl) {
@@ -99,16 +138,32 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (horizontalScrub) onScrubEnd?.invoke()
                 if (!horizontalScrub && !verticalControl &&
-                    downY > height * 0.70f && downX < width * 0.28f
+                    isHdrTap(downX, downY)
                 ) {
                     onHdrToggle?.invoke()
                 }
+                pinchDistance = 0f
                 horizontalScrub = false
                 verticalControl = false
                 return true
             }
         }
         return true
+    }
+
+    private fun isHdrTap(x: Float, y: Float): Boolean {
+        val d = resources.displayMetrics.density
+        val rowBottom = height - 88f * d
+        val rowTop = height - 172f * d
+        // Rotate, PiP, HDR: the HDR icon is the third utility action from the left.
+        return y in rowTop..rowBottom && x in (80f * d)..(176f * d)
+    }
+
+    private fun pointerDistance(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        val dx = event.getX(0) - event.getX(1)
+        val dy = event.getY(0) - event.getY(1)
+        return kotlin.math.sqrt(dx * dx + dy * dy)
     }
 
     fun showPresetPopup(selectedName: String) {

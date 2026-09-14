@@ -63,7 +63,6 @@ import com.example.model.VideoItem
 import com.example.ui.components.AudioSettingsBottomSheet
 import com.example.ui.components.ControlsOverlay
 import com.example.ui.components.FetchSubtitleUrlDialog
-import com.example.ui.components.GestureOverlay
 import com.example.ui.components.TmdbKeyDialog
 
 import com.example.ui.components.SubtitleCustomizationBottomSheet
@@ -291,6 +290,14 @@ fun PlayerScreen(
         surface.onScrubStart = { playerViewModel.onScrubStart() }
         surface.onScrubMove = { delta -> playerViewModel.onScrubMove(delta) }
         surface.onScrubEnd = { playerViewModel.onScrubEnd() }
+        surface.onSingleTap = { areControlsVisible = !areControlsVisible }
+        surface.onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) }
+        surface.onDoubleTapCenter = { playerViewModel.togglePlayPause() }
+        surface.onDoubleTapRight = { smoothSeekController.seekBy(10_000L) }
+        surface.onPinchZoom = { zoomFactor ->
+            playerViewModel.setVideoScale(videoScale * zoomFactor)
+            showZoomOverlay = true
+        }
         surface.onHdrToggle = {
             val enabling = !hdrEnhanceActive
             playerViewModel.toggleHdrEnhance()
@@ -451,52 +458,7 @@ fun PlayerScreen(
                 .padding(start = 112.dp, bottom = 142.dp),
         )
 
-        // 2. Gesture Handling Layer
-        GestureOverlay(
-            isLocked = isScreenLocked,
-            onSingleTap = {
-                areControlsVisible = !areControlsVisible
-            },
-            onDoubleTapLeft = {
-                smoothSeekController.seekBy(-10_000L)
-            },
-            onDoubleTapCenter = { playerViewModel.togglePlayPause() },
-            isPlaying = isPlaying,
-            onDoubleTapRight = {
-                smoothSeekController.seekBy(10_000L)
-            },
-            onPinchZoom = { zoomFactor ->
-                playerViewModel.setVideoScale(videoScale * zoomFactor)
-                showZoomOverlay = true
-            },
-            onBrightnessDelta = { delta ->
-                activity?.let { act ->
-                    val cur = act.window.attributes.screenBrightness
-                    val newBri = playerViewModel.onBrightnessGesture(delta, cur)
-                    val lp = act.window.attributes
-                    lp.screenBrightness = newBri
-                    act.window.attributes = lp
-                }
-            },
-            onVolumeDelta = { delta ->
-                playerViewModel.onVolumeGesture(delta)
-            },
-            onScrubStart = {
-                playerViewModel.onScrubStart()
-            },
-            onScrubMove = { deltaMs ->
-                playerViewModel.onScrubMove(deltaMs)
-            },
-            onScrubEnd = {
-                playerViewModel.onScrubEnd()
-            },
-            brightnessLevel = brightnessLevel,
-            volumeLevel = volumeLevel,
-            scrubTimeMs = scrubTimeMs,
-            scrubDeltaMs = scrubDeltaMs
-        )
-
-        // 3. UI Controls Overlay Layer
+        // 2. UI Controls Overlay Layer
         ControlsOverlay(
             isVisible = areControlsVisible,
             isLocked = isScreenLocked,
