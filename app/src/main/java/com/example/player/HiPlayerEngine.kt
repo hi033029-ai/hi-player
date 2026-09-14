@@ -502,7 +502,10 @@ class HiPlayerEngine(
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true) // Auto handle audio focus
             .setHandleAudioBecomingNoisy(true)
-            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            // Exact seeking makes the video decode through the nearest keyframe
+            // to the requested timestamp before audio resumes, preventing the
+            // several-second picture-freeze/catch-up effect on long-GOP HEVC.
+            .setSeekParameters(SeekParameters.EXACT)
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_OFF
