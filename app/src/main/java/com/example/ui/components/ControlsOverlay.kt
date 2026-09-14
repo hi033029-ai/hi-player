@@ -477,6 +477,7 @@ private fun PlayerToolbarTextButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlayerToolbarButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
