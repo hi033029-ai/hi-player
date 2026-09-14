@@ -1,5 +1,6 @@
 package com.example.player
 
+import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
@@ -40,10 +41,10 @@ class SharpnessReductionEffect(private val strength: Float = 0.35f) : GlEffect {
         private var texelWidth = 0f
         private var texelHeight = 0f
 
-        override fun configure(inputWidth: Int, inputHeight: Int): android.util.Size {
+        override fun configure(inputWidth: Int, inputHeight: Int): Size {
             texelWidth = 1f / inputWidth
             texelHeight = 1f / inputHeight
-            return android.util.Size(inputWidth, inputHeight)
+            return Size(inputWidth, inputHeight)
         }
 
         // Fragment shader: samples a 3x3 neighborhood, averages it (box blur), then
