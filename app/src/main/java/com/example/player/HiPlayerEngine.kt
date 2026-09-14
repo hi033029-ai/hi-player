@@ -259,12 +259,19 @@ class HiPlayerEngine(
         private val _playerError = MutableStateFlow<String?>(null)
     val playerError = _playerError.asStateFlow()
     private var dolbyVisionRetryAttempted = false
+    private var pendingResumePositionMs: Long = 0L
     var onVideoEnded: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
             if (playbackState == Player.STATE_READY) {
+                val resumePosition = pendingResumePositionMs
+                if (resumePosition > 0L) {
+                    pendingResumePositionMs = 0L
+                    exoPlayer?.setSeekParameters(SeekParameters.EXACT)
+                    exoPlayer?.seekTo(resumePosition)
+                }
                 audioSelectionRecoveryParameters = null
                 audioSelectionRecoveryUri = null
                 _durationMs.value = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
@@ -652,15 +659,12 @@ class HiPlayerEngine(
             } else {
                 setMediaItem(mediaItem)
             }
-            // Fast approximate seek is used only for one-time Continue Watching
-            // startup; interactive seeks remain EXACT on the player.
-            setSeekParameters(
-                if (startPositionMs > 0L) SeekParameters.CLOSEST_SYNC
-                else SeekParameters.EXACT
-            )
-            if (startPositionMs > 0) {
-                seekTo(startPositionMs)
-            }
+            // Do not seek a newly-created decoder before it reaches READY.
+            // On some HEVC/HDR devices that starts audio while the video renderer
+            // remains on a black surface. Resume is applied once the first media
+            // timeline is ready in playerListener above.
+            setSeekParameters(SeekParameters.EXACT)
+            pendingResumePositionMs = startPositionMs.coerceAtLeast(0L)
             playWhenReady = autoPlay
             prepare()
         }

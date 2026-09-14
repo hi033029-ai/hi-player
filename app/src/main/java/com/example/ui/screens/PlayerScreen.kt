@@ -76,6 +76,7 @@ import com.example.ui.components.EqualizerBottomSheet
 import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.ui.components.AspectRatioPickerOverlay
 import com.example.ui.components.SpeedOverlayIndicator
+import com.example.ui.ZoomOverlayIndicator
 import com.example.player.HdrColorModeManager
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
@@ -163,6 +164,10 @@ fun PlayerScreen(
         onDispose { hdrColorModeManager?.release() }
     }
 
+    LaunchedEffect(hdrColorModeManager, hdrEnhanceActive) {
+        hdrColorModeManager?.setUserEnabled(hdrEnhanceActive)
+    }
+
     // HUD States
     val brightnessLevel by playerViewModel.brightnessLevel.collectAsState()
     val volumeLevel by playerViewModel.volumeLevel.collectAsState()
@@ -177,6 +182,7 @@ fun PlayerScreen(
     var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
+    var showZoomOverlay by remember { mutableStateOf(false) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -258,6 +264,13 @@ fun PlayerScreen(
         if (showSpeedOverlay) {
             delay(900)
             showSpeedOverlay = false
+        }
+    }
+
+    LaunchedEffect(showZoomOverlay, videoScale) {
+        if (showZoomOverlay) {
+            delay(900)
+            showZoomOverlay = false
         }
     }
 
@@ -431,6 +444,12 @@ fun PlayerScreen(
             modifier = Modifier.align(Alignment.Center),
         )
 
+        ZoomOverlayIndicator(
+            visible = showZoomOverlay,
+            scale = videoScale,
+            modifier = Modifier.align(Alignment.Center),
+        )
+
         // 2. Gesture Handling Layer
         GestureOverlay(
             isLocked = isScreenLocked,
@@ -447,6 +466,7 @@ fun PlayerScreen(
             },
             onPinchZoom = { zoomFactor ->
                 playerViewModel.setVideoScale(videoScale * zoomFactor)
+                showZoomOverlay = true
             },
             onBrightnessDelta = { delta ->
                 activity?.let { act ->

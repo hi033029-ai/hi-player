@@ -35,6 +35,7 @@ class HdrColorModeManager(private val activity: Activity) {
     private val isApplying = AtomicBoolean(false)
     private var appliedHdr = false
     private var attachedPlayer: ExoPlayer? = null
+    private var userEnabled = false
 
     var isHdrActive by mutableStateOf(false)
         private set
@@ -63,7 +64,21 @@ class HdrColorModeManager(private val activity: Activity) {
                     group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
             }
         }
-        requestColorMode(isHdr)
+        requestColorMode(isHdr && userEnabled)
+    }
+
+    /** Set the user preference without rebuilding or touching the decoder. */
+    fun setUserEnabled(enabled: Boolean) {
+        userEnabled = enabled
+        attachedPlayer?.let { player ->
+            val hdrTrackSelected = player.currentTracks.groups.any { group ->
+                (0 until group.length).any { i ->
+                    group.isTrackSelected(i) &&
+                        group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
+                }
+            }
+            requestColorMode(hdrTrackSelected && enabled)
+        }
     }
 
     private fun isHdrColorInfo(colorInfo: ColorInfo): Boolean {
@@ -101,6 +116,7 @@ class HdrColorModeManager(private val activity: Activity) {
             activity.window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         }
         attachedPlayer = null
+        userEnabled = false
         appliedHdr = false
         isHdrActive = false
         isSwitching = false
