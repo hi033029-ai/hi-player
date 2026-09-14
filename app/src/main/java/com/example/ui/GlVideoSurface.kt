@@ -24,11 +24,19 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     init {
         setEGLContextClientVersion(2)
         setPreserveEGLContextOnPause(true)
+        // Keep Compose controls and gesture overlays above the video surface.
+        // Without the media-overlay ordering, SurfaceView can visually and
+        // interactively cover the HDR menu and gesture layer.
+        setZOrderMediaOverlay(true)
         // Gestures belong to the Compose GestureOverlay above the video.
         // GLSurfaceView otherwise consumes vertical brightness/volume swipes
         // and horizontal seek gestures before Compose can receive them.
         isClickable = false
         isFocusable = false
+        setOnTouchListener { _, _ ->
+            parent?.requestDisallowInterceptTouchEvent(false)
+            false
+        }
         setRenderer(renderer)
         renderMode = RENDERMODE_WHEN_DIRTY
         renderer.requestRender = { requestRender() }
@@ -190,7 +198,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 varying vec2 vTexCoord;
                 void main() {
                     gl_Position = aPosition;
-                    vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
+                    // SurfaceTexture's transform is already applied; invert the
+                    // sampled Y coordinate once so decoded video is upright.
+                    vec2 transformed = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
+                    vTexCoord = vec2(transformed.x, 1.0 - transformed.y);
                 }
             """
             private const val FRAGMENT_SHADER = """
