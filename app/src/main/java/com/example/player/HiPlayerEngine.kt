@@ -73,8 +73,6 @@ class HiPlayerEngine(
     private var configuredHwDecoding: Boolean? = null
     private var configuredRemuxUltraBuffer: Boolean? = null
     private var configuredTunneling: Boolean? = null
-    private var hdrEffectUpdateInProgress = false
-    private var hdrEffectsPlayer: ExoPlayer? = null
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -120,48 +118,9 @@ class HiPlayerEngine(
     private val _is4kContent = MutableStateFlow(false)
     val is4kContent = _is4kContent.asStateFlow()
 
-    /**
-     * Real-time picture boost applied directly to the decoded video frames
-     * (not just screen brightness) using Media3's GPU effects pipeline:
-     * lifted contrast and richer color saturation, similar to a "Vivid" /
-     * "Dynamic" picture mode on a TV. Distinct from the always-on Wide
-     * Color Gamut window mode - this is a user-toggleable enhancement.
-     */
+    /** HDR enhancement state. Native HDR output is managed by HdrColorModeManager. */
     fun setHdrEnhanceActive(enabled: Boolean) {
-        val player = exoPlayer ?: run {
-            _hdrEnhanceActive.value = enabled
-            return
-        }
-        // Continue Watching recreates ExoPlayer during configuration. The
-        // boolean may already be true, but the replacement player has no
-        // effects yet; only short-circuit when this exact instance is graded.
-        if (hdrEffectUpdateInProgress ||
-            (hdrEffectsPlayer === player && _hdrEnhanceActive.value == enabled)
-        ) return
-        hdrEffectUpdateInProgress = true
-        val position = player.currentPosition
-        val wasPlaying = player.isPlaying
-        try {
-            // Media3 reconfigures the video renderer when effects change. Preserve
-            // the playhead and play state so HDR toggling never appears to freeze.
-            player.pause()
-            if (enabled) {
-                player.setVideoEffects(HdrGradingEffects.buildHdrCompensationEffects())
-            } else {
-                player.setVideoEffects(emptyList())
-            }
-            player.seekTo(position)
-            player.playWhenReady = wasPlaying
-            _hdrEnhanceActive.value = enabled
-            hdrEffectsPlayer = player
-        } catch (_: Exception) {
-            player.seekTo(position)
-            player.playWhenReady = wasPlaying
-            _hdrEnhanceActive.value = false
-            hdrEffectsPlayer = null
-        } finally {
-            hdrEffectUpdateInProgress = false
-        }
+        _hdrEnhanceActive.value = enabled
     }
 
     fun setAudioDelay(ms: Long) {
@@ -512,8 +471,6 @@ class HiPlayerEngine(
                 playWhenReady = true
                 addListener(playerListener)
             }
-        hdrEffectsPlayer = null
-
         setupLoudnessEnhancer()
         setupEqualizer()
         startProgressTracker()
@@ -1075,7 +1032,6 @@ class HiPlayerEngine(
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
-        hdrEffectsPlayer = null
         closeActiveVideoDescriptor()
     }
 }

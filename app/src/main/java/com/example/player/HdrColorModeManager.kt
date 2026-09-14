@@ -21,14 +21,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Single guarded owner of everything HDR-related for one player instance:
  *  - window.colorMode (fixes the color-distortion / black-flash issues)
- *  - the exposure+saturation grading pass (fixes residual washed-out colors on
- *    devices that tone-map HDR to SDR in hardware regardless of colorMode)
+ *  - the HDR display window mode
  *
- * Both are applied together inside the SAME guarded, main-thread-posted block —
- * this is what keeps this safe: nothing outside requestColorMode() may touch
- * window.colorMode OR player.setVideoEffects for this player, ever. Doing the
- * grading call from a second, uncoordinated place would reopen the exact
- * double-writer race that caused the earlier freeze.
+ * GPU grading is intentionally not installed here. Some decoder/surface
+ * combinations reject Media3 video effects and leave audio playing over a black
+ * surface or crash the renderer. Native HDR output remains enabled through
+ * window.colorMode without changing the decoder pipeline.
  */
 @UnstableApi
 class HdrColorModeManager(private val activity: Activity) {
@@ -81,7 +79,6 @@ class HdrColorModeManager(private val activity: Activity) {
         isSwitching = true
         mainHandler.post {
             applyColorModeInternal(hdrDesired)
-            applyGradingInternal(hdrDesired)
             appliedHdr = hdrDesired
             isHdrActive = hdrDesired
             isSwitching = false
@@ -99,18 +96,10 @@ class HdrColorModeManager(private val activity: Activity) {
         }
     }
 
-    private fun applyGradingInternal(isHdr: Boolean) {
-        val player = attachedPlayer ?: return
-        player.setVideoEffects(
-            if (isHdr) HdrGradingEffects.buildHdrCompensationEffects() else emptyList(),
-        )
-    }
-
     fun release() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         }
-        attachedPlayer?.setVideoEffects(emptyList())
         attachedPlayer = null
         appliedHdr = false
         isHdrActive = false
