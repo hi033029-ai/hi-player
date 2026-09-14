@@ -2,6 +2,7 @@ package com.example.filemanager
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -24,7 +25,11 @@ import java.util.Date
  * (cut-paste), properties, and zip extract/compose. Tap a zip file to extract it;
  * select one or more items and use "Compress" in the selection toolbar to zip them.
  */
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(
+    ExperimentalComposeUiApi::class,
+    ExperimentalMaterial3Api::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+)
 @Composable
 fun PortableFileManagerScreen(
     viewModel: PortableFileManagerViewModel,
@@ -239,7 +244,10 @@ private fun SelectionBottomBar(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(
+    ExperimentalComposeUiApi::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+)
 @Composable
 private fun FileListItem(
     entry: FileEntry,
