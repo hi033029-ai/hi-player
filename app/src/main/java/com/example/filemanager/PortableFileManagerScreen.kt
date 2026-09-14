@@ -2,7 +2,6 @@ package com.example.filemanager
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -211,6 +210,7 @@ fun PortableFileManagerScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTopBar(selectedCount: Int, onCancel: () -> Unit, onSelectAll: () -> Unit) {
     TopAppBar(
@@ -303,7 +303,6 @@ private fun OperationProgressOverlay(progress: OperationProgress) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .align(Alignment.BottomCenter)
             .background(Color.Black.copy(alpha = 0.85f))
             .padding(16.dp),
     ) {
