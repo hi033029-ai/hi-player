@@ -9,9 +9,9 @@ import androidx.media3.effect.RgbAdjustment
 object HdrGradingEffects {
     fun buildHdrCompensationEffects(): List<Effect> {
         val exposure = RgbAdjustment.Builder()
-            .setRedScale(1.2f)
-            .setGreenScale(1.2f)
-            .setBlueScale(1.2f)
+            .setRedScale(1.1f)
+            .setGreenScale(1.1f)
+            .setBlueScale(1.1f)
             .build()
         val saturation = HslAdjustment.Builder()
             .adjustSaturation(0.20f)

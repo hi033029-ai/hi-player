@@ -493,7 +493,6 @@ fun PlayerScreen(
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
                 hdrColorModeManager?.requestColorMode(!(hdrColorModeManager?.isHdrActive ?: false))
-                areControlsVisible = false
             },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
