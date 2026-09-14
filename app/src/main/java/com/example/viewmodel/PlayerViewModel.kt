@@ -142,20 +142,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val record = videoDao.getVideoRecord(video.uri.toString())
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
 
+            // Restore the saved ratio before preparing the new item. Previously
+            // this happened after prepareMedia, so a quick tap on resize could
+            // be overwritten by the Continue Watching restore callback.
+            val savedAspect = record?.customAspectRatio?.let {
+                runCatching { AspectRatioMode.valueOf(it) }.getOrNull()
+            } ?: AspectRatioMode.FIT
+            engine.setAspectRatioMode(savedAspect)
+
             engine.prepareMedia(
                 uri = video.uri,
                 startPositionMs = startPos,
                 mediaMimeType = video.mimeType
             )
 
-            // Setup aspect ratio if saved
-            record?.customAspectRatio?.let {
-                try {
-                    engine.setAspectRatioMode(AspectRatioMode.valueOf(it))
-                } catch (e: Exception) {
-                    // Ignore
-                }
-            }
         }
     }
 

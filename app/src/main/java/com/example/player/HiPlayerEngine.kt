@@ -74,6 +74,7 @@ class HiPlayerEngine(
     private var configuredRemuxUltraBuffer: Boolean? = null
     private var configuredTunneling: Boolean? = null
     private var hdrEffectUpdateInProgress = false
+    private var hdrEffectsPlayer: ExoPlayer? = null
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -127,11 +128,16 @@ class HiPlayerEngine(
      * Color Gamut window mode - this is a user-toggleable enhancement.
      */
     fun setHdrEnhanceActive(enabled: Boolean) {
-        if (hdrEffectUpdateInProgress || _hdrEnhanceActive.value == enabled && exoPlayer != null) return
         val player = exoPlayer ?: run {
             _hdrEnhanceActive.value = enabled
             return
         }
+        // Continue Watching recreates ExoPlayer during configuration. The
+        // boolean may already be true, but the replacement player has no
+        // effects yet; only short-circuit when this exact instance is graded.
+        if (hdrEffectUpdateInProgress ||
+            (hdrEffectsPlayer === player && _hdrEnhanceActive.value == enabled)
+        ) return
         hdrEffectUpdateInProgress = true
         val position = player.currentPosition
         val wasPlaying = player.isPlaying
@@ -147,10 +153,12 @@ class HiPlayerEngine(
             player.seekTo(position)
             player.playWhenReady = wasPlaying
             _hdrEnhanceActive.value = enabled
+            hdrEffectsPlayer = player
         } catch (_: Exception) {
             player.seekTo(position)
             player.playWhenReady = wasPlaying
             _hdrEnhanceActive.value = false
+            hdrEffectsPlayer = null
         } finally {
             hdrEffectUpdateInProgress = false
         }
@@ -504,6 +512,7 @@ class HiPlayerEngine(
                 playWhenReady = true
                 addListener(playerListener)
             }
+        hdrEffectsPlayer = null
 
         setupLoudnessEnhancer()
         setupEqualizer()
@@ -1061,6 +1070,7 @@ class HiPlayerEngine(
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null
+        hdrEffectsPlayer = null
         closeActiveVideoDescriptor()
     }
 }
