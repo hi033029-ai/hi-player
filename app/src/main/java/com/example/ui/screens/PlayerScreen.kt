@@ -445,6 +445,9 @@ fun PlayerScreen(
             onDoubleTapRight = {
                 smoothSeekController.seekBy(10_000L)
             },
+            onPinchZoom = { zoomFactor ->
+                playerViewModel.setVideoScale(videoScale * zoomFactor)
+            },
             onBrightnessDelta = { delta ->
                 activity?.let { act ->
                     val cur = act.window.attributes.screenBrightness

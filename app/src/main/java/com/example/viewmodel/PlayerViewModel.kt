@@ -174,6 +174,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun setVideoScale(scale: Float) {
+        _videoScale.value = scale.coerceIn(0.75f, 3.0f)
+    }
+
     fun resetZoom() {
         _videoScale.value = 1.0f
     }

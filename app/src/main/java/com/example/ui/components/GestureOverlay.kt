@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -71,6 +72,7 @@ fun GestureOverlay(
     volumeLevel: Float?,
     scrubTimeMs: Long?,
     scrubDeltaMs: Long,
+    onPinchZoom: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
     // The top control bar (back, bg-play, PiP, aspect-ratio buttons) sits
     // visually above this overlay, but this overlay still spans the full
@@ -185,6 +187,15 @@ fun GestureOverlay(
                             isVertical = false
                         }
                     )
+                }
+            }
+            .pointerInput(isLocked) {
+                if (!isLocked) {
+                    detectTransformGestures { _, _, zoom, _ ->
+                        if (zoom.isFinite() && zoom != 1f) {
+                            onPinchZoom(zoom)
+                        }
+                    }
                 }
             }
     ) {
