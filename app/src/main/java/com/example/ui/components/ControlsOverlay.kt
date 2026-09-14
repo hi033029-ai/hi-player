@@ -260,10 +260,11 @@ fun ControlsOverlay(
                             onClick = onToggleHdrEnhance,
                             modifier = Modifier.padding(horizontal = 10.dp),
                         )
+                        Spacer(modifier = Modifier.weight(1f))
+                        // Right-side group marked in the reference image.
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
-                        Spacer(modifier = Modifier.weight(1f))
                         rating?.let { RatingStarsBadge(it) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
