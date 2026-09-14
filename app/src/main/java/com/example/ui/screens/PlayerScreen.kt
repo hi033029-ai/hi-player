@@ -286,6 +286,19 @@ fun PlayerScreen(
                 act.window.attributes = attributes
             }
         }
+        surface.currentBrightnessLevel = {
+            val value = activity?.window?.attributes?.screenBrightness ?: -1f
+            if (value >= 0f) value else 0.5f
+        }
+        surface.currentVolumeLevel = {
+            val audio = activity?.getSystemService(android.content.Context.AUDIO_SERVICE)
+                as? android.media.AudioManager
+            val max = audio?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 15
+            val current = audio?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
+            val systemLevel = if (max > 0) current.toFloat() / max else 0f
+            val boostLevel = playerViewModel.engine.volumeBoostPercent.value / 100f
+            (systemLevel + boostLevel).coerceIn(0f, 2f)
+        }
         surface.onVolumeDelta = { delta -> playerViewModel.onVolumeGesture(delta) }
         surface.onScrubStart = { playerViewModel.onScrubStart() }
         surface.onScrubMove = { delta -> playerViewModel.onScrubMove(delta) }

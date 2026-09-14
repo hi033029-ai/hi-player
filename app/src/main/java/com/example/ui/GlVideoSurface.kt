@@ -57,6 +57,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     var onBrightnessDelta: ((Float) -> Unit)? = null
     var onVolumeDelta: ((Float) -> Unit)? = null
+    var currentBrightnessLevel: (() -> Float)? = null
+    var currentVolumeLevel: (() -> Float)? = null
     var onScrubStart: (() -> Unit)? = null
     var onScrubMove: ((Long) -> Unit)? = null
     var onScrubEnd: (() -> Unit)? = null
@@ -100,6 +102,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 horizontalScrub = false
                 verticalControl = false
                 leftSide = event.x < width / 2f
+                // Capture the real baseline at the beginning of every swipe;
+                // never restart a gesture from the hardcoded 100% default.
+                brightnessLevel = currentBrightnessLevel?.invoke()?.coerceIn(0f, 1f) ?: brightnessLevel
+                volumeLevel = currentVolumeLevel?.invoke()?.coerceIn(0f, 2f) ?: volumeLevel
                 return true
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
