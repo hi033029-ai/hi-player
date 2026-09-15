@@ -405,10 +405,10 @@ class HiPlayerEngine(
         val loadControl = if (enableRemuxUltraBuffer) {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    30_000,   // Min buffer: 30s
-                    90_000,   // Max buffer: 90s (ultra smooth 4K playback)
-                    750,      // Start quickly; local files do not need a long preroll.
-                    2_000     // Rebuffer recovery remains conservative.
+                    10_000,   // Keep a safety buffer without delaying first frame.
+                    60_000,   // Continue buffering in the background for 4K.
+                    250,      // Start local playback after a short preroll.
+                    1_000     // Recover quickly after a rebuffer.
                 )
                 .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB cache buffer
                 .setBackBuffer(0, false)
@@ -418,10 +418,10 @@ class HiPlayerEngine(
         } else {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    20_000,   // Min buffer: 20s for high-bitrate local 4K files
-                    60_000,   // Max buffer: 60s without the ultra-buffer option
-                    750,      // Fast start while MediaCodec fills the UHD pipeline
-                    2_000     // Buffer after rebuffer
+                    8_000,    // Avoid waiting for a long initial 4K buffer.
+                    45_000,   // Continue filling after playback begins.
+                    250,      // Fast first-frame startup for local media.
+                    1_000     // Quick recovery after a rebuffer.
                 )
                 // Reserve a bounded allocator for high-bitrate local media.
                 // This improves 4K/HDR rebuffering without reading the full

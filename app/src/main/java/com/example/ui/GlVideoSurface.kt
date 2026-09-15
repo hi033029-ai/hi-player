@@ -280,10 +280,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
-                setPadding(dp(14), dp(16), dp(14), dp(16))
+                setPadding(dp(8), dp(9), dp(8), dp(9))
             }
             hudText = TextView(context).apply {
-                textSize = 17f
+                textSize = 13f
                 gravity = Gravity.CENTER
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             }
@@ -300,7 +300,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 scaleLabels.addView(
                     TextView(context).apply {
                         text = scale
-                        textSize = 11f
+                        textSize = 9f
                         setTextColor(android.graphics.Color.LTGRAY)
                         gravity = Gravity.CENTER_VERTICAL
                     },
@@ -312,13 +312,13 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 )
             }
             hudBar = VerticalLevelBar(context).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(28), dp(250))
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(150))
             }
             container.addView(hudText)
             val meterRow = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(12), 0, 0)
+                setPadding(0, dp(6), 0, 0)
             }
             if (isVolume) {
                 meterRow.addView(hudBar)
@@ -326,16 +326,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     scaleLabels,
                     LinearLayout.LayoutParams(
                         android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(250),
-                    ).apply { marginStart = dp(8) },
+                        dp(150),
+                    ).apply { marginStart = dp(4) },
                 )
             } else {
                 meterRow.addView(
                     scaleLabels,
                     LinearLayout.LayoutParams(
                         android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(250),
-                    ).apply { marginEnd = dp(8) },
+                        dp(150),
+                    ).apply { marginEnd = dp(4) },
                 )
                 meterRow.addView(hudBar)
             }

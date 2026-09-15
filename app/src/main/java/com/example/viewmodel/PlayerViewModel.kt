@@ -17,6 +17,7 @@ import com.example.player.HiPlayerEngine
 import com.example.util.MediaRating
 import com.example.util.TmdbRatingHelper
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -129,7 +130,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         fetchRatingFor(video)
         viewModelScope.launch {
-            val settings = preferencesRepo.settingsFlow.first()
+            // These are independent local reads. Fetch them together so player
+            // preparation is not delayed by settings I/O followed by DAO I/O.
+            val settingsDeferred = async { preferencesRepo.settingsFlow.first() }
+            val recordDeferred = async { videoDao.getVideoRecord(video.uri.toString()) }
+            val settings = settingsDeferred.await()
             engine.applyConfiguration(
                 hwDecoding = settings.hardwareDecoding,
                 remuxUltraBuffer = settings.remuxUltraBufferMode,
@@ -140,7 +145,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             engine.setHdrEnhanceActive(settings.enableHdrEnhance)
             HiMediaSessionService.sharedPlayer = engine.getPlayer()
 
-            val record = videoDao.getVideoRecord(video.uri.toString())
+            val record = recordDeferred.await()
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
 
             // Restore the saved ratio before preparing the new item. Previously
