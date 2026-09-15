@@ -218,10 +218,10 @@ fun PlayerScreen(
     }
 
     // Safety valve for devices/codecs that do not dispatch onRenderedFirstFrame
-    // after a surface hand-off. Audio may already be playing, so a permanent
-    // black mask is worse than revealing the surface while it finishes settling.
+    // after a surface hand-off. Keep the mask brief: a 2.5-second fallback made
+    // every normal open look like an unnecessary long black loading screen.
     LaunchedEffect(currentVideo?.uri, playerViewModel.engine.getPlayer()) {
-        delay(2500)
+        delay(850)
         if (!firstFrameRendered) firstFrameRendered = true
     }
 

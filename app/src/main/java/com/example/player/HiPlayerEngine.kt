@@ -488,6 +488,12 @@ class HiPlayerEngine(
         setupLoudnessEnhancer()
         setupEqualizer()
         startProgressTracker()
+        // initializePlayer is also used for the engine's first default instance.
+        // Record that configuration immediately so the first playVideo call does
+        // not release and recreate the just-created player with identical values.
+        configuredHwDecoding = enableHwDecoding
+        configuredRemuxUltraBuffer = enableRemuxUltraBuffer
+        configuredTunneling = enableTunneling
     }
 
     /**
@@ -656,22 +662,23 @@ class HiPlayerEngine(
             // progressive source. Stop the old source before releasing it.
             stop()
             closeActiveVideoDescriptor()
+            val initialPositionMs = startPositionMs.coerceAtLeast(0L)
             val directSource = if (externalSubtitleUri == null) {
                 createDirectFileDescriptorSource(uri, mediaItem)
             } else {
                 null
             }
             if (directSource != null) {
-                setMediaSource(directSource)
+                setMediaSource(directSource, initialPositionMs)
             } else {
-                setMediaItem(mediaItem)
+                setMediaItem(mediaItem, initialPositionMs)
             }
-            // Do not seek a newly-created decoder before it reaches READY.
-            // On some HEVC/HDR devices that starts audio while the video renderer
-            // remains on a black surface. Resume is applied once the first media
-            // timeline is ready in playerListener above.
+            // Supplying the initial position to the source avoids a second
+            // STATE_READY-to-seek-to-buffer cycle on Continue Watching. This is
+            // still exact seeking, but the decoder resolves it during prepare
+            // instead of starting at zero and seeking only after audio is ready.
             setSeekParameters(SeekParameters.EXACT)
-            pendingResumePositionMs = startPositionMs.coerceAtLeast(0L)
+            pendingResumePositionMs = 0L
             playWhenReady = autoPlay
             prepare()
         }

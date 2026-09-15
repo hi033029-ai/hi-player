@@ -280,17 +280,66 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
-                setPadding(12, 16, 12, 16)
+                setPadding(dp(14), dp(16), dp(14), dp(16))
             }
             hudText = TextView(context).apply {
-                textSize = 16f
+                textSize = 17f
                 gravity = Gravity.CENTER
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            val scaleLabels = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val scaleValues = if (isVolume) {
+                arrayOf("200%", "100%", "0%")
+            } else {
+                arrayOf("100%", "50%", "0%")
+            }
+            scaleValues.forEach { scale ->
+                scaleLabels.addView(
+                    TextView(context).apply {
+                        text = scale
+                        textSize = 11f
+                        setTextColor(android.graphics.Color.LTGRAY)
+                        gravity = Gravity.CENTER_VERTICAL
+                    },
+                    LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        0,
+                        1f,
+                    ),
+                )
             }
             hudBar = VerticalLevelBar(context).apply {
-                layoutParams = LinearLayout.LayoutParams(18, 230).apply { topMargin = 12 }
+                layoutParams = LinearLayout.LayoutParams(dp(28), dp(250))
             }
             container.addView(hudText)
-            container.addView(hudBar)
+            val meterRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, 0)
+            }
+            if (isVolume) {
+                meterRow.addView(hudBar)
+                meterRow.addView(
+                    scaleLabels,
+                    LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(250),
+                    ).apply { marginStart = dp(8) },
+                )
+            } else {
+                meterRow.addView(
+                    scaleLabels,
+                    LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        dp(250),
+                    ).apply { marginEnd = dp(8) },
+                )
+                meterRow.addView(hudBar)
+            }
+            container.addView(meterRow)
             hudPopup = PopupWindow(
                 container,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -300,14 +349,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
                 isTouchable = false
                 elevation = 10f
-                val sideGravity = if (isVolume) Gravity.END else Gravity.START
+                // Use physical edges rather than relative START/END so volume
+                // remains on the right on every device/layout direction.
+                val sideGravity = if (isVolume) Gravity.RIGHT else Gravity.LEFT
                 val edgeOffset = (20f * resources.displayMetrics.density).toInt()
-                showAtLocation(this@GlVideoSurface, sideGravity or Gravity.CENTER_VERTICAL, edgeOffset, 0)
+                showAtLocation(this@GlVideoSurface.rootView, sideGravity or Gravity.CENTER_VERTICAL, edgeOffset, 0)
             }
             hudIsVolume = isVolume
         }
         hudText?.apply {
-            text = label
+            text = label.replace(" ", "\n")
             setTextColor(color)
         }
         hudBar?.apply {
@@ -322,14 +373,21 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             hudBar = null
             hudDismissRunnable = null
             hudIsVolume = null
-        }.also { postDelayed(it, 850L) }
+        }.also { postDelayed(it, 1_300L) }
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private class VerticalLevelBar(context: Context) : View(context) {
         private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.argb(100, 255, 255, 255)
         }
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            alpha = 175
+            strokeWidth = resources.displayMetrics.density
+        }
         private var level = 0f
 
         fun setLevel(nextLevel: Float) {
@@ -344,12 +402,17 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val radius = width / 2f
-            val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
+            val inset = width * 0.22f
+            val radius = (width - inset * 2f) / 2f
+            val bounds = RectF(inset, 0f, width - inset, height.toFloat())
             canvas.drawRoundRect(bounds, radius, radius, backgroundPaint)
             val fillTop = height * (1f - level)
-            val fillBounds = RectF(0f, fillTop, width.toFloat(), height.toFloat())
+            val fillBounds = RectF(inset, fillTop, width - inset, height.toFloat())
             canvas.drawRoundRect(fillBounds, radius, radius, fillPaint)
+            listOf(0f, 0.5f, 1f).forEach { fraction ->
+                val y = height * (1f - fraction)
+                canvas.drawLine(0f, y, width.toFloat(), y, tickPaint)
+            }
         }
     }
 
