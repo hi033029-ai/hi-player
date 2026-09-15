@@ -279,7 +279,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
-                setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
+                // Keep the meter floating over the video; the previous black
+                // panel obscured the picture during brightness/volume swipes.
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setPadding(dp(8), dp(9), dp(8), dp(9))
             }
             hudText = TextView(context).apply {
