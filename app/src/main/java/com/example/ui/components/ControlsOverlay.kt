@@ -124,6 +124,7 @@ fun ControlsOverlay(
     onOpenFile: () -> Unit,
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
+    onLongPressHdrEnhance: () -> Unit = {},
     onToggleSubtitles: () -> Unit,
     onOpenAudioSettings: () -> Unit,
     onOpenEqualizer: () -> Unit,
@@ -256,6 +257,7 @@ fun ControlsOverlay(
                             isActive = isHdrEnhanceActive,
                             isSwitching = isHdrSwitching,
                             onClick = onToggleHdrEnhance,
+                            onLongClick = onLongPressHdrEnhance,
                             modifier = Modifier.padding(horizontal = 10.dp),
                         )
                         Spacer(modifier = Modifier.weight(1f))

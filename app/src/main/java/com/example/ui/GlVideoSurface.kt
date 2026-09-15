@@ -37,6 +37,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var verticalControl = false
     private var leftSide = false
     private var pinchDistance = 0f
+    private var longPressHandled = false
     private var presetPopup: PopupWindow? = null
     private var hudPopup: PopupWindow? = null
     private var hudText: TextView? = null
@@ -60,7 +61,12 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         }
 
         override fun onLongPress(e: MotionEvent) {
-            onLongPressVideo?.invoke()
+            longPressHandled = true
+            if (isHdrTap(e.x, e.y)) {
+                onHdrLongPress?.invoke()
+            } else {
+                onLongPressVideo?.invoke()
+            }
         }
     })
 
@@ -72,6 +78,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onScrubMove: ((Long) -> Unit)? = null
     var onScrubEnd: (() -> Unit)? = null
     var onHdrToggle: (() -> Unit)? = null
+    var onHdrLongPress: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
     var onPinchZoom: ((Float) -> Unit)? = null
     var onSingleTap: (() -> Unit)? = null
@@ -118,6 +125,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 lastY = event.y
                 horizontalScrub = false
                 verticalControl = false
+                longPressHandled = false
                 leftSide = event.x < width / 2f
                 scrubDeltaMs = 0L
                 // Capture the real baseline at the beginning of every swipe;
@@ -175,7 +183,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (horizontalScrub) onScrubEnd?.invoke()
-                if (!horizontalScrub && !verticalControl &&
+                if (!longPressHandled && !horizontalScrub && !verticalControl &&
                     isHdrTap(downX, downY)
                 ) {
                     onHdrToggle?.invoke()

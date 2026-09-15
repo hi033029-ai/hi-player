@@ -312,10 +312,9 @@ fun PlayerScreen(
             showZoomOverlay = true
         }
         surface.onHdrToggle = {
-            val enabling = !hdrEnhanceActive
             playerViewModel.toggleHdrEnhance()
-            if (enabling) surface.showPresetPopup(hdrColorPreset.name)
         }
+        surface.onHdrLongPress = { surface.showPresetPopup(hdrColorPreset.name) }
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
             if (preset.name == ColorPresets.HDR_DISABLED.name) {
@@ -520,11 +519,8 @@ fun PlayerScreen(
             onOpenFile = { videoPickerLauncher.launch("video/*") },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
-            onToggleHdrEnhance = {
-                val enabling = !hdrEnhanceActive
-                playerViewModel.toggleHdrEnhance()
-                showHdrPresetMenu = enabling
-            },
+            onToggleHdrEnhance = { playerViewModel.toggleHdrEnhance() },
+            onLongPressHdrEnhance = { showHdrPresetMenu = true },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
                 // was undiscoverable and prevented users from seeing the embedded
