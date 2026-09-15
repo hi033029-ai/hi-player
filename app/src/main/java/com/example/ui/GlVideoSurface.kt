@@ -39,6 +39,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var pinchDistance = 0f
     private var presetPopup: PopupWindow? = null
     private var hudPopup: PopupWindow? = null
+    private var hudText: TextView? = null
+    private var hudBar: ProgressBar? = null
+    private var hudDismissRunnable: Runnable? = null
     private var brightnessLevel = 1f
     private var volumeLevel = 1f // 1.0 = 100%, 2.0 = 200%
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -236,45 +239,55 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     private fun showHud(label: String, normalizedProgress: Float, isVolume: Boolean) {
-        hudPopup?.dismiss()
         val color = if (isVolume && volumeLevel > 1f) {
             if (volumeLevel >= 1.8f) android.graphics.Color.RED else 0xFFFFA000.toInt()
         } else {
             android.graphics.Color.CYAN
         }
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
-            setPadding(28, 16, 28, 16)
-        }
-        val text = TextView(context).apply {
-            this.text = label
-            textSize = 16f
-            setTextColor(color)
-            gravity = Gravity.CENTER
-        }
-        val bar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 1000
-            progress = (normalizedProgress.coerceIn(0f, 1f) * max).toInt()
-            progressTintList = android.content.res.ColorStateList.valueOf(color)
-            layoutParams = LinearLayout.LayoutParams(260, 10).apply {
-                topMargin = 10
+        if (hudPopup == null) {
+            val container = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
+                setPadding(28, 16, 28, 16)
+            }
+            hudText = TextView(context).apply {
+                textSize = 16f
+                gravity = Gravity.CENTER
+            }
+            hudBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 1000
+                layoutParams = LinearLayout.LayoutParams(260, 10).apply { topMargin = 10 }
+            }
+            container.addView(hudText)
+            container.addView(hudBar)
+            hudPopup = PopupWindow(
+                container,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                false,
+            ).apply {
+                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                isTouchable = false
+                elevation = 10f
+                showAtLocation(this@GlVideoSurface, Gravity.CENTER, 0, 0)
             }
         }
-        container.addView(text)
-        container.addView(bar)
-        hudPopup = PopupWindow(
-            container,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            false,
-        ).apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            isTouchable = false
-            elevation = 10f
-            showAtLocation(this@GlVideoSurface, Gravity.CENTER, 0, 0)
+        hudText?.apply {
+            text = label
+            setTextColor(color)
         }
-        postDelayed({ hudPopup?.dismiss() }, 850L)
+        hudBar?.apply {
+            progress = (normalizedProgress.coerceIn(0f, 1f) * max).toInt()
+            progressTintList = android.content.res.ColorStateList.valueOf(color)
+        }
+        hudDismissRunnable?.let(::removeCallbacks)
+        hudDismissRunnable = Runnable {
+            hudPopup?.dismiss()
+            hudPopup = null
+            hudText = null
+            hudBar = null
+            hudDismissRunnable = null
+        }.also { postDelayed(it, 850L) }
     }
 
     fun setPlayer(next: ExoPlayer) {
@@ -300,8 +313,12 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     override fun onDetachedFromWindow() {
         dismissPresetPopup()
+        hudDismissRunnable?.let(::removeCallbacks)
+        hudDismissRunnable = null
         hudPopup?.dismiss()
         hudPopup = null
+        hudText = null
+        hudBar = null
         player?.let { currentPlayer ->
             post { currentPlayer.clearVideoSurface() }
         }
