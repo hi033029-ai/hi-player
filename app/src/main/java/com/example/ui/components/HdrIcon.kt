@@ -7,7 +7,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -26,11 +27,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HdrIcon(
     isActive: Boolean,
     isSwitching: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -59,14 +62,16 @@ fun HdrIcon(
             modifier = modifier
                 .size(22.dp)
                 .scale(pressScale)
-                .clickable(
+                .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     enabled = !isSwitching,
-                ) {
-                    pressed = true
-                    onClick()
-                },
+                    onClick = {
+                        pressed = true
+                        onClick()
+                    },
+                    onLongClick = onLongClick,
+                ),
         )
     }
     LaunchedEffect(pressed) {
