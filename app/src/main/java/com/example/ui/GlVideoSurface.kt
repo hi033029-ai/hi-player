@@ -1,6 +1,9 @@
 package com.example.ui
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.graphics.Rect
 import android.opengl.GLES11Ext
@@ -10,9 +13,10 @@ import android.view.Surface
 import android.view.Gravity
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.View
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -39,10 +43,12 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var pinchDistance = 0f
     private var longPressHandled = false
     private var presetPopup: PopupWindow? = null
+    private var presetDismissRunnable: Runnable? = null
     private var hudPopup: PopupWindow? = null
     private var hudText: TextView? = null
-    private var hudBar: ProgressBar? = null
+    private var hudBar: VerticalLevelBar? = null
     private var hudDismissRunnable: Runnable? = null
+    private var hudIsVolume: Boolean? = null
     private var brightnessLevel = 1f
     private var volumeLevel = 1f // 1.0 = 100%, 2.0 = 200%
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -214,9 +220,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     fun showPresetPopup(selectedName: String) {
-        presetPopup?.dismiss()
+        dismissPresetPopup()
         val list = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(android.graphics.Color.argb(235, 0, 0, 0))
             setPadding(16, 8, 16, 8)
         }
@@ -228,25 +234,42 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 setPadding(20, 14, 20, 14)
                 setOnClickListener {
                     onPresetSelected?.invoke(preset)
-                    presetPopup?.dismiss()
+                    dismissPresetPopup()
                 }
             }
             list.addView(item)
         }
-        presetPopup = PopupWindow(list, 250, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+        val scroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(list)
+        }
+        presetPopup = PopupWindow(scroll, 720, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
             isOutsideTouchable = true
             elevation = 12f
-            showAtLocation(this@GlVideoSurface, Gravity.BOTTOM or Gravity.START, 112, 150)
+            // The HDR icon is in the left utility group above the seek bar.
+            // Place the horizontal choices directly above it.
+            showAtLocation(this@GlVideoSurface, Gravity.BOTTOM or Gravity.START, 28, 205)
         }
+        presetDismissRunnable = Runnable { dismissPresetPopup() }
+            .also { postDelayed(it, 3_000L) }
     }
 
     fun dismissPresetPopup() {
+        presetDismissRunnable?.let(::removeCallbacks)
+        presetDismissRunnable = null
         presetPopup?.dismiss()
         presetPopup = null
     }
 
     private fun showHud(label: String, normalizedProgress: Float, isVolume: Boolean) {
+        if (hudPopup != null && hudIsVolume != isVolume) {
+            hudDismissRunnable?.let(::removeCallbacks)
+            hudPopup?.dismiss()
+            hudPopup = null
+            hudText = null
+            hudBar = null
+        }
         val color = if (isVolume && volumeLevel > 1f) {
             if (volumeLevel >= 1.8f) android.graphics.Color.RED else 0xFFFFA000.toInt()
         } else {
@@ -255,16 +278,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         if (hudPopup == null) {
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
                 setBackgroundColor(android.graphics.Color.argb(215, 0, 0, 0))
-                setPadding(28, 16, 28, 16)
+                setPadding(12, 16, 12, 16)
             }
             hudText = TextView(context).apply {
                 textSize = 16f
                 gravity = Gravity.CENTER
             }
-            hudBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-                max = 1000
-                layoutParams = LinearLayout.LayoutParams(260, 10).apply { topMargin = 10 }
+            hudBar = VerticalLevelBar(context).apply {
+                layoutParams = LinearLayout.LayoutParams(18, 230).apply { topMargin = 12 }
             }
             container.addView(hudText)
             container.addView(hudBar)
@@ -277,16 +300,19 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
                 isTouchable = false
                 elevation = 10f
-                showAtLocation(this@GlVideoSurface, Gravity.CENTER, 0, 0)
+                val sideGravity = if (isVolume) Gravity.END else Gravity.START
+                val edgeOffset = (20f * resources.displayMetrics.density).toInt()
+                showAtLocation(this@GlVideoSurface, sideGravity or Gravity.CENTER_VERTICAL, edgeOffset, 0)
             }
+            hudIsVolume = isVolume
         }
         hudText?.apply {
             text = label
             setTextColor(color)
         }
         hudBar?.apply {
-            progress = (normalizedProgress.coerceIn(0f, 1f) * max).toInt()
-            progressTintList = android.content.res.ColorStateList.valueOf(color)
+            setLevel(normalizedProgress)
+            setIndicatorColor(color)
         }
         hudDismissRunnable?.let(::removeCallbacks)
         hudDismissRunnable = Runnable {
@@ -295,7 +321,36 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             hudText = null
             hudBar = null
             hudDismissRunnable = null
+            hudIsVolume = null
         }.also { postDelayed(it, 850L) }
+    }
+
+    private class VerticalLevelBar(context: Context) : View(context) {
+        private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(100, 255, 255, 255)
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var level = 0f
+
+        fun setLevel(nextLevel: Float) {
+            level = nextLevel.coerceIn(0f, 1f)
+            invalidate()
+        }
+
+        fun setIndicatorColor(color: Int) {
+            fillPaint.color = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val radius = width / 2f
+            val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
+            canvas.drawRoundRect(bounds, radius, radius, backgroundPaint)
+            val fillTop = height * (1f - level)
+            val fillBounds = RectF(0f, fillTop, width.toFloat(), height.toFloat())
+            canvas.drawRoundRect(fillBounds, radius, radius, fillPaint)
+        }
     }
 
     fun setPlayer(next: ExoPlayer) {
@@ -327,6 +382,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         hudPopup = null
         hudText = null
         hudBar = null
+        hudIsVolume = null
         player?.let { currentPlayer ->
             post { currentPlayer.clearVideoSurface() }
         }

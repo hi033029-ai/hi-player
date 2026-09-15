@@ -166,6 +166,15 @@ class MainActivity : ComponentActivity() {
                     androidx.activity.compose.BackHandler(enabled = currentScreen != AppScreen.Main && !isPip) {
                         if (currentScreen == AppScreen.Player) {
                             playerViewModel.saveCurrentProgress()
+                            when {
+                                settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
+                                    enterPipMode()
+                                }
+                                playerViewModel.engine.isBackgroundPlayActive.value -> {
+                                    // The player utility action explicitly opted into audio-only playback.
+                                }
+                                else -> playerViewModel.engine.pause()
+                            }
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             currentScreen = AppScreen.Main
                         }
@@ -198,7 +207,7 @@ class MainActivity : ComponentActivity() {
                                             settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
                                                 enterPipMode()
                                             }
-                                            settings.backgroundPlayEnabled -> {
+                                            playerViewModel.engine.isBackgroundPlayActive.value -> {
                                                 // Intentionally left playing (audio-only is the point).
                                             }
                                             else -> {
@@ -459,8 +468,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (isInPictureInPictureMode || pipTransitionRequested) return
-        val settings = libraryViewModel.playerSettings.value
-        if (!settings.backgroundPlayEnabled) {
+        if (!playerViewModel.engine.isBackgroundPlayActive.value) {
             if (playerViewModel.engine.isPlaying.value) {
                 playerViewModel.engine.pause()
             }
@@ -475,7 +483,7 @@ class MainActivity : ComponentActivity() {
         _isInPipMode.value = isInPictureInPictureMode
         if (isInPictureInPictureMode) {
             pipTransitionRequested = false
-        } else if (!libraryViewModel.playerSettings.value.backgroundPlayEnabled) {
+        } else if (!playerViewModel.engine.isBackgroundPlayActive.value) {
             pipTransitionRequested = false
             playerViewModel.engine.pause()
         }

@@ -2,8 +2,10 @@ package com.example.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,10 +25,11 @@ fun HdrPresetMenu(
 ) {
     if (!visible) return
 
-    Column(
+    Row(
         modifier = modifier
             .background(Color.Black.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
-            .padding(vertical = 6.dp),
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
         ColorPresets.ALL.forEach { preset ->
             Text(
@@ -35,7 +38,7 @@ fun HdrPresetMenu(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .clickable { onSelect(preset) }
-                    .padding(horizontal = 20.dp, vertical = 11.dp),
+                    .padding(horizontal = 16.dp, vertical = 11.dp),
             )
         }
     }

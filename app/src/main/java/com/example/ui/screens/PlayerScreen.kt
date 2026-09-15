@@ -274,6 +274,13 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(showHdrPresetMenu) {
+        if (showHdrPresetMenu) {
+            delay(3_000)
+            showHdrPresetMenu = false
+        }
+    }
+
     fun configureGlSurface(surface: GlVideoSurface) {
         surface.onBrightnessDelta = { delta ->
             activity?.let { act ->
@@ -480,7 +487,7 @@ fun PlayerScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 112.dp, bottom = 142.dp),
+                .padding(start = 28.dp, bottom = 150.dp),
         )
 
         // 2. UI Controls Overlay Layer
