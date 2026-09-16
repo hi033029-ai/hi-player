@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 sealed class RecognitionState {
@@ -28,14 +30,16 @@ class SongRecognitionViewModel : ViewModel() {
 
     private val _state = MutableStateFlow<RecognitionState>(RecognitionState.Idle)
     val state: StateFlow<RecognitionState> = _state.asStateFlow()
+    private var recognitionJob: Job? = null
 
     fun startListening() {
         if (_state.value is RecognitionState.Listening || _state.value is RecognitionState.Recognizing) return
 
-        viewModelScope.launch {
+        recognitionJob = viewModelScope.launch {
             _state.value = RecognitionState.Listening
             val pcm = runCatching { AudioCapture.recordPcm() }
                 .getOrElse {
+                    if (it is CancellationException) throw it
                     _state.value = RecognitionState.Error(it.message ?: "Recording failed")
                     return@launch
                 }
@@ -44,6 +48,7 @@ class SongRecognitionViewModel : ViewModel() {
             val fingerprint = runCatching {
                 ChromaprintNative.fingerprint(pcm, AudioCapture.SAMPLE_RATE, AudioCapture.CHANNELS)
             }.getOrElse {
+                if (it is CancellationException) throw it
                 _state.value = RecognitionState.Error("Fingerprinting failed: ${it.message}")
                 return@launch
             }
@@ -59,12 +64,21 @@ class SongRecognitionViewModel : ViewModel() {
                     _state.value = if (song != null) RecognitionState.Found(song) else RecognitionState.NoMatch
                 }
                 .onFailure {
+                    if (it is CancellationException) throw it
                     _state.value = RecognitionState.Error(it.message ?: "Lookup failed")
                 }
         }
     }
 
     fun reset() {
+        recognitionJob?.cancel()
+        recognitionJob = null
         _state.value = RecognitionState.Idle
+    }
+
+    override fun onCleared() {
+        recognitionJob?.cancel()
+        recognitionJob = null
+        super.onCleared()
     }
 }

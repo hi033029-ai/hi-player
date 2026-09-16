@@ -25,13 +25,20 @@ object AudioCapture {
         )
         val totalSamples = SAMPLE_RATE * RECORD_SECONDS
         val buffer = ShortArray(totalSamples)
+        // AudioRecord's PCM-16 buffer size is measured in bytes and must be a
+        // multiple of the two-byte mono frame size. A 5-second sample count
+        // divided by four can be odd, which causes "Invalid audio buffer size"
+        // on some devices.
+        val recordBufferBytes = maxOf(minBufferSize, 4096).let { size ->
+            if (size % 2 == 0) size else size + 1
+        }
 
         val recorder = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
-            maxOf(minBufferSize, totalSamples / 4),
+            recordBufferBytes,
         )
 
         try {
