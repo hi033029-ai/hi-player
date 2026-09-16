@@ -31,9 +31,11 @@ class SongRecognitionViewModel : ViewModel() {
     private val _state = MutableStateFlow<RecognitionState>(RecognitionState.Idle)
     val state: StateFlow<RecognitionState> = _state.asStateFlow()
     private var recognitionJob: Job? = null
+    private var selectedMode: SongRecognitionMode = SongRecognitionMode.PLAYING
 
-    fun startListening() {
+    fun startListening(mode: SongRecognitionMode = selectedMode) {
         if (_state.value is RecognitionState.Listening || _state.value is RecognitionState.Recognizing) return
+        selectedMode = mode
 
         recognitionJob = viewModelScope.launch {
             _state.value = RecognitionState.Listening

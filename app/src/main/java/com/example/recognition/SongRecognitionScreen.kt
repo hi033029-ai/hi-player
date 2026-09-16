@@ -4,15 +4,41 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,10 +52,14 @@ import androidx.core.content.ContextCompat
 fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    var selectedModeName by rememberSaveable { mutableStateOf(SongRecognitionMode.PLAYING.name) }
+    val selectedMode = remember(selectedModeName) {
+        SongRecognitionMode.valueOf(selectedModeName)
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> if (granted) viewModel.startListening() }
+    ) { granted -> if (granted) viewModel.startListening(selectedMode) }
 
     fun requestAndStart() {
         val hasPermission = ContextCompat.checkSelfPermission(
@@ -37,24 +67,48 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            viewModel.startListening()
+            viewModel.startListening(selectedMode)
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             when (val s = state) {
                 is RecognitionState.Idle -> {
                     MicButton(pulsing = false, onClick = ::requestAndStart)
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
                     Text("Tap to identify a song")
+                    Spacer(Modifier.height(18.dp))
+                    RecognitionModeRow(
+                        selected = selectedMode,
+                        onSelected = { selectedModeName = it.name },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        selectedMode.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray,
+                    )
+                    if (selectedMode == SongRecognitionMode.HUMMING) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Humming and singing need melody matching; AcoustID is optimized for recorded songs.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
+                        )
+                    }
                 }
                 is RecognitionState.Listening -> {
                     MicButton(pulsing = true, onClick = {})
                     Spacer(Modifier.height(16.dp))
-                    Text("Listening…")
+                    Text("Listening for 5 seconds…")
+                    Spacer(Modifier.height(6.dp))
+                    Text(selectedMode.title, color = Color.Gray)
                 }
                 is RecognitionState.Recognizing -> {
                     CircularProgressIndicator()
@@ -94,8 +148,7 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
                     Text("No match found")
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "AcoustID's free database doesn't cover every track — " +
-                            "especially newer or less common releases.",
+                        "AcoustID's free database doesn't cover every track — especially newer or less common releases.",
                         color = Color.Gray,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -115,12 +168,35 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
 }
 
 @Composable
+private fun RecognitionModeRow(
+    selected: SongRecognitionMode,
+    onSelected: (SongRecognitionMode) -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SongRecognitionMode.entries.forEachIndexed { index, mode ->
+            FilterChip(
+                selected = selected == mode,
+                onClick = { onSelected(mode) },
+                label = { Text(mode.title) },
+            )
+            if (index < SongRecognitionMode.entries.lastIndex) Spacer(Modifier.width(6.dp))
+        }
+    }
+}
+
+@Composable
 private fun MicButton(pulsing: Boolean, onClick: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "micPulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = if (pulsing) 1.15f else 1f,
-        animationSpec = infiniteRepeatable(tween(600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(
+            tween(600, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+        ),
         label = "micScale",
     )
 
@@ -133,6 +209,11 @@ private fun MicButton(pulsing: Boolean, onClick: () -> Unit) {
             .clickable(enabled = !pulsing, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Mic, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+        Icon(
+            Icons.Filled.Mic,
+            contentDescription = "Start song recognition",
+            tint = Color.White,
+            modifier = Modifier.size(36.dp),
+        )
     }
 }
