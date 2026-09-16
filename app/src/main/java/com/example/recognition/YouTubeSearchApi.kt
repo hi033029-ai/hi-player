@@ -26,7 +26,7 @@ object YouTubeSearchApi {
             runCatching {
                 val apiKey = BuildConfig.YOUTUBE_DATA_API_KEY.trim()
                 if (apiKey.isBlank()) throw IOException("YouTube Data API key is not configured")
-                val query = URLEncoder.encode("$artist $title official audio", "UTF-8")
+                val query = URLEncoder.encode("$artist $title official music video", "UTF-8")
                 val url = "https://www.googleapis.com/youtube/v3/search" +
                     "?part=snippet&type=video&maxResults=1&q=$query&key=$apiKey"
 

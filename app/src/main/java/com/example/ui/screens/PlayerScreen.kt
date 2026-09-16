@@ -189,7 +189,8 @@ fun PlayerScreen(
     var showZoomOverlay by remember { mutableStateOf(false) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showSongRecognition by remember { mutableStateOf(false) }
-    val songRecognitionViewModel = remember { SongRecognitionViewModel() }
+    val appContext = LocalContext.current.applicationContext
+    val songRecognitionViewModel = remember { SongRecognitionViewModel(appContext) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -564,7 +565,7 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(Color(0xF20A0D14))
             ) {
-                SongRecognitionScreen(songRecognitionViewModel)
+                SongRecognitionScreen(songRecognitionViewModel, currentVideo?.uri)
                 IconButton(
                     onClick = { showSongRecognition = false },
                     modifier = Modifier

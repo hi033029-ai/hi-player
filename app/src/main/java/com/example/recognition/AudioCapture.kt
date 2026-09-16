@@ -19,7 +19,7 @@ object AudioCapture {
 
     const val SAMPLE_RATE = 44100
     const val CHANNELS = 1
-    private const val RECORD_SECONDS = 5 // matches short-form content (TikTok clips are often 6-7s)
+    private const val RECORD_SECONDS = 10 // longer samples are substantially more reliable for AcoustID
     private const val MIN_USABLE_SECONDS = 2 // below this, the fingerprint is too unreliable to bother sending
 
     /** Requires RECORD_AUDIO permission already granted — caller's responsibility. */
@@ -35,7 +35,7 @@ object AudioCapture {
             throw IOException("This device does not support 44.1 kHz mono recording")
         }
         // AudioRecord expects bytes, and PCM-16 mono frames are two bytes.
-        // 5 seconds / 4 produces 55,125, which is not frame-aligned and causes
+        // A duration-derived buffer must still be frame-aligned; odd byte sizes cause
         //: "Invalid audio buffer size 55125 (frame size 2)" on affected devices.
         val recordBufferBytes = maxOf(minBufferSize, 4096).let { size ->
             if (size % 2 == 0) size else size + 1

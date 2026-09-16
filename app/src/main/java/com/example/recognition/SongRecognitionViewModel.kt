@@ -1,6 +1,8 @@
 package com.example.recognition
 
 import androidx.lifecycle.ViewModel
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,20 +28,27 @@ sealed class RecognitionState {
  * 100% free-forever with no trial/paid tier anywhere in the pipeline — not a bug,
  * just the honest tradeoff of this path.
  */
-class SongRecognitionViewModel : ViewModel() {
+class SongRecognitionViewModel(private val appContext: Context) : ViewModel() {
 
     private val _state = MutableStateFlow<RecognitionState>(RecognitionState.Idle)
     val state: StateFlow<RecognitionState> = _state.asStateFlow()
     private var recognitionJob: Job? = null
     private var selectedMode: SongRecognitionMode = SongRecognitionMode.PLAYING
 
-    fun startListening(mode: SongRecognitionMode = selectedMode) {
+    fun startListening(mode: SongRecognitionMode = selectedMode, sourceUri: Uri? = null) {
         if (_state.value is RecognitionState.Listening || _state.value is RecognitionState.Recognizing) return
         selectedMode = mode
 
         recognitionJob = viewModelScope.launch {
             _state.value = RecognitionState.Listening
-            val pcm = runCatching { AudioCapture.recordPcm() }
+            val sample = runCatching {
+                if (sourceUri != null && sourceUri != Uri.EMPTY) {
+                    LocalAudioExtractor.extract(appContext, sourceUri)
+                } else {
+                    val pcm = AudioCapture.recordPcm()
+                    PcmSample(pcm, AudioCapture.SAMPLE_RATE, AudioCapture.CHANNELS)
+                }
+            }
                 .getOrElse {
                     if (it is CancellationException) throw it
                     _state.value = RecognitionState.Error(it.message ?: "Recording failed")
@@ -48,7 +57,7 @@ class SongRecognitionViewModel : ViewModel() {
 
             _state.value = RecognitionState.Recognizing
             val fingerprint = runCatching {
-                ChromaprintNative.fingerprint(pcm, AudioCapture.SAMPLE_RATE, AudioCapture.CHANNELS)
+                ChromaprintNative.fingerprint(sample.samples, sample.sampleRate, sample.channels)
             }.getOrElse {
                 if (it is CancellationException) throw it
                 _state.value = RecognitionState.Error("Fingerprinting failed: ${it.message}")
@@ -60,8 +69,7 @@ class SongRecognitionViewModel : ViewModel() {
                 return@launch
             }
 
-            val durationSeconds = pcm.size / AudioCapture.SAMPLE_RATE
-            AcoustIdApi.lookup(fingerprint, durationSeconds)
+            AcoustIdApi.lookup(fingerprint, sample.durationSeconds)
                 .onSuccess { song ->
                     _state.value = if (song != null) RecognitionState.Found(song) else RecognitionState.NoMatch
                 }

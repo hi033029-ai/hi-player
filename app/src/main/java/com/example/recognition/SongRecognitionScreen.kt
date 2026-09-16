@@ -2,6 +2,7 @@ package com.example.recognition
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -49,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
 @Composable
-fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
+fun SongRecognitionScreen(viewModel: SongRecognitionViewModel, sourceUri: Uri? = null) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var selectedModeName by rememberSaveable { mutableStateOf(SongRecognitionMode.PLAYING.name) }
@@ -59,15 +60,21 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted -> if (granted) viewModel.startListening(selectedMode) }
+        ) { granted -> if (granted) viewModel.startListening(selectedMode, sourceUri) }
 
     fun requestAndStart() {
+        // A local video is decoded directly; microphone permission is only needed
+        // when there is no local source and recognition must listen externally.
+        if (sourceUri != null && sourceUri != Uri.EMPTY) {
+            viewModel.startListening(selectedMode, sourceUri)
+            return
+        }
         val hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            viewModel.startListening(selectedMode)
+            viewModel.startListening(selectedMode, sourceUri)
         } else {
             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -106,14 +113,19 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
                 is RecognitionState.Listening -> {
                     MicButton(pulsing = true, onClick = {})
                     Spacer(Modifier.height(16.dp))
-                    Text("Listening for 5 seconds…")
+                    Text(
+                        if (sourceUri != null && sourceUri != Uri.EMPTY)
+                            "Extracting audio and recognising for 10 seconds…"
+                        else
+                            "Listening for 10 seconds…",
+                    )
                     Spacer(Modifier.height(6.dp))
                     Text(selectedMode.title, color = Color.Gray)
                 }
                 is RecognitionState.Recognizing -> {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(16.dp))
-                    Text("Identifying…")
+                    Text("Recognising song in the background…")
                 }
                 is RecognitionState.Found -> {
                     Text(s.song.title, style = MaterialTheme.typography.headlineSmall)
@@ -127,17 +139,45 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel) {
                     )
                     Spacer(Modifier.height(16.dp))
 
+                    var musicBrainzSong by remember(s.song) { mutableStateOf<MusicBrainzSong?>(null) }
+                    var musicBrainzFinished by remember(s.song) { mutableStateOf(false) }
                     var videoId by remember(s.song) { mutableStateOf<String?>(null) }
                     var searchFailed by remember(s.song) { mutableStateOf(false) }
                     LaunchedEffect(s.song) {
-                        YouTubeSearchApi.findVideoId(s.song.artist, s.song.title)
+                        // MusicBrainz supplies canonical title/artist metadata when
+                        // available; AcoustID remains the audio-identification source.
+                        val metadataResult = MusicBrainzApi.findRecording(s.song)
+                        musicBrainzSong = metadataResult.getOrNull()
+                        musicBrainzFinished = true
+                        val metadata = musicBrainzSong
+                        val artist = metadata?.artist ?: s.song.artist
+                        val title = metadata?.title ?: s.song.title
+                        YouTubeSearchApi.findVideoId(artist, title)
                             .onSuccess { videoId = it; searchFailed = (it == null) }
                             .onFailure { searchFailed = true }
+                    }
+
+                    if (musicBrainzSong != null) {
+                        val metadata = musicBrainzSong!!
+                        Text(
+                            "MusicBrainz: ${metadata.title} — ${metadata.artist}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                        )
+                        metadata.releaseTitle?.let { release ->
+                            Text(
+                                "Release: $release${metadata.releaseYear?.let { " ($it)" } ?: ""}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
                     }
 
                     when {
                         videoId != null -> YouTubeEmbedPlayer(videoId = videoId!!)
                         searchFailed -> Text("Couldn't find a video for this track", color = Color.Gray)
+                        !musicBrainzFinished -> Text("Loading music metadata…", color = Color.Gray)
                         else -> CircularProgressIndicator()
                     }
 

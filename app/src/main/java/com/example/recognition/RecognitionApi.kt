@@ -8,6 +8,7 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 
 data class RecognizedSong(
     val title: String,
@@ -16,7 +17,10 @@ data class RecognizedSong(
 )
 
 object AcoustIdApi {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     suspend fun lookup(fingerprint: String, durationSeconds: Int): Result<RecognizedSong?> =
         withContext(Dispatchers.IO) {
@@ -25,9 +29,13 @@ object AcoustIdApi {
                 if (clientId.isBlank()) throw IOException("AcoustID client ID is not configured")
                 val fp = URLEncoder.encode(fingerprint, "UTF-8")
                 val url = "https://api.acoustid.org/v2/lookup" +
-                    "?client=$clientId&meta=recordings+releasegroups" +
-                    "&duration=$durationSeconds&fingerprint=$fp"
-                val request = Request.Builder().url(url).build()
+                    "?client=$clientId&format=json&meta=recordings+releasegroups" +
+                    "&duration=${durationSeconds.coerceAtLeast(1)}&fingerprint=$fp"
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "HiPlayer/1.0 (Android music recognition)")
+                    .build()
                 client.newCall(request).execute().use { response ->
                     val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
@@ -40,7 +48,17 @@ object AcoustIdApi {
                         )
                     }
                     if (body.isBlank()) throw IOException("Empty AcoustID response")
-                    parse(JSONObject(body))
+                    val root = JSONObject(body)
+                    if (root.optString("status") != "ok") {
+                        val error = root.optJSONObject("error")
+                        val code = error?.optInt("code", -1) ?: -1
+                        val message = error?.optString("message").orEmpty()
+                        throw IOException(
+                            if (message.isNotBlank()) "AcoustID error $code: $message"
+                            else "AcoustID returned status ${root.optString("status", "unknown")}",
+                        )
+                    }
+                    parse(root)
                 }
             }
         }
