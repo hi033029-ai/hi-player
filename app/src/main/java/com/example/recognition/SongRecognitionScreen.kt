@@ -115,7 +115,7 @@ fun SongRecognitionScreen(viewModel: SongRecognitionViewModel, sourceUri: Uri? =
                     Spacer(Modifier.height(16.dp))
                     Text(
                         if (sourceUri != null && sourceUri != Uri.EMPTY)
-                            "Extracting audio and recognising for 10 seconds…"
+                            "Extracting audio and trying 10-second windows…"
                         else
                             "Listening for 10 seconds…",
                     )

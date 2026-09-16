@@ -21,7 +21,7 @@ object LocalAudioExtractor {
     private const val SAMPLE_SECONDS = 10
     private const val TIMEOUT_US = 20_000L
 
-    suspend fun extract(context: Context, uri: Uri): PcmSample = withContext(Dispatchers.Default) {
+    suspend fun extract(context: Context, uri: Uri, startSeconds: Long = 0L): PcmSample = withContext(Dispatchers.Default) {
         val extractor = MediaExtractor()
         var decoder: MediaCodec? = null
         try {
@@ -42,6 +42,9 @@ object LocalAudioExtractor {
             }
             check(trackIndex >= 0 && inputFormat != null) { "Video has no audio track" }
             extractor.selectTrack(trackIndex)
+            if (startSeconds > 0L) {
+                extractor.seekTo(startSeconds * 1_000_000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+            }
 
             val mime = inputFormat!!.getString(MediaFormat.KEY_MIME)!!
             decoder = MediaCodec.createDecoderByType(mime)

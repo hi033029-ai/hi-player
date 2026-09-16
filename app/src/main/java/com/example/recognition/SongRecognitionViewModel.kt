@@ -41,42 +41,61 @@ class SongRecognitionViewModel(private val appContext: Context) : ViewModel() {
 
         recognitionJob = viewModelScope.launch {
             _state.value = RecognitionState.Listening
-            val sample = runCatching {
+            val samples = runCatching {
                 if (sourceUri != null && sourceUri != Uri.EMPTY) {
-                    LocalAudioExtractor.extract(appContext, sourceUri)
+                    // TikTok-style clips often begin with speech or a sound effect.
+                    // Try overlapping windows so recognition is not decided by the
+                    // first ten seconds alone.
+                    listOf(0L, 5L, 10L).mapNotNull { offset ->
+                        runCatching { LocalAudioExtractor.extract(appContext, sourceUri, offset) }
+                            .getOrElse {
+                                if (it is CancellationException) throw it
+                                null
+                            }
+                    }
                 } else {
                     val pcm = AudioCapture.recordPcm()
-                    PcmSample(pcm, AudioCapture.SAMPLE_RATE, AudioCapture.CHANNELS)
+                    listOf(PcmSample(pcm, AudioCapture.SAMPLE_RATE, AudioCapture.CHANNELS))
                 }
-            }
-                .getOrElse {
+            }.getOrElse {
                     if (it is CancellationException) throw it
                     _state.value = RecognitionState.Error(it.message ?: "Recording failed")
                     return@launch
                 }
 
             _state.value = RecognitionState.Recognizing
-            val fingerprint = runCatching {
-                ChromaprintNative.fingerprint(sample.samples, sample.sampleRate, sample.channels)
-            }.getOrElse {
-                if (it is CancellationException) throw it
-                _state.value = RecognitionState.Error("Fingerprinting failed: ${it.message}")
-                return@launch
+            var recognized: RecognizedSong? = null
+            var lastFingerprintError: Throwable? = null
+            var lastLookupError: Throwable? = null
+            var hadSuccessfulLookup = false
+            for (sample in samples) {
+                val fingerprint = runCatching {
+                    ChromaprintNative.fingerprint(sample.samples, sample.sampleRate, sample.channels)
+                }.getOrElse {
+                    lastFingerprintError = it
+                    ""
+                }
+                if (fingerprint.isBlank()) continue
+                val result = AcoustIdApi.lookup(fingerprint, sample.durationSeconds)
+                result.onSuccess { song ->
+                    hadSuccessfulLookup = true
+                    if (recognized == null) recognized = song
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                    lastLookupError = error
+                }
+                if (recognized != null) break
             }
 
-            if (fingerprint.isBlank()) {
-                _state.value = RecognitionState.Error("Could not generate a fingerprint from that audio")
+            if (recognized == null && lastFingerprintError != null && samples.isEmpty()) {
+                _state.value = RecognitionState.Error("Fingerprinting failed: ${lastFingerprintError?.message}")
                 return@launch
             }
-
-            AcoustIdApi.lookup(fingerprint, sample.durationSeconds)
-                .onSuccess { song ->
-                    _state.value = if (song != null) RecognitionState.Found(song) else RecognitionState.NoMatch
-                }
-                .onFailure {
-                    if (it is CancellationException) throw it
-                    _state.value = RecognitionState.Error(it.message ?: "Lookup failed")
-                }
+            if (recognized == null && !hadSuccessfulLookup && lastLookupError != null) {
+                _state.value = RecognitionState.Error(lastLookupError?.message ?: "AcoustID lookup failed")
+                return@launch
+            }
+            _state.value = recognized?.let { RecognitionState.Found(it) } ?: RecognitionState.NoMatch
         }
     }
 
