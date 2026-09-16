@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
@@ -123,7 +122,6 @@ fun ControlsOverlay(
     isMuted: Boolean = false,
     onToggleMute: () -> Unit = {},
     onOpenFile: () -> Unit,
-    onOpenSongRecognition: () -> Unit = {},
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
     onLongPressHdrEnhance: () -> Unit = {},
@@ -231,18 +229,6 @@ fun ControlsOverlay(
                             overflow = TextOverflow.Ellipsis
                         )
                         rating?.let { RatingStarsBadge(it) }
-                    }
-
-                    IconButton(
-                        onClick = onOpenSongRecognition,
-                        modifier = Modifier.size(42.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Identify song",
-                            tint = Color.White,
-                            modifier = Modifier.size(23.dp),
-                        )
                     }
 
                 }

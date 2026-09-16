@@ -9,6 +9,7 @@ data class ColorPreset(
     val green: Float,
     val blue: Float,
     val vibrance: Float,
+    val sharpness: Float = 0.0f,
 )
 
 object ColorPresets {
@@ -20,6 +21,7 @@ object ColorPresets {
     val WARM = ColorPreset("Warm", 1.02f, 1.07f, 1.07f, 1.06f, 1.02f, 0.97f, 1.10f)
     val COOL = ColorPreset("Cool", 1.02f, 1.07f, 1.06f, 0.98f, 1.02f, 1.06f, 1.10f)
     val EYE_COMFORT = ColorPreset("Eye Comfort", 1.00f, 1.04f, 1.02f, 1.03f, 1.02f, 0.96f, 1.03f)
+    val CUSTOM = ColorPreset("Custom", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f)
 
     val ALL = listOf(HDR_DISABLED, NATURAL_HDR, VIVID_HDR, CINEMATIC, WARM, COOL, EYE_COMFORT)
 }

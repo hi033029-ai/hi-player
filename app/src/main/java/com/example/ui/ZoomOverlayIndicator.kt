@@ -3,13 +3,8 @@ package com.example.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,24 +25,15 @@ fun ZoomOverlayIndicator(
         exit = fadeOut(),
         modifier = modifier,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.width(190.dp),
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         ) {
             Text(
-                text = "Zoom ${"%.2f".format(scale)}×",
+                text = "${"%.2f".format(scale)}×",
                 color = Color.White,
                 fontSize = 14.sp,
-                modifier = Modifier
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-            )
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(Color.White.copy(alpha = 0.9f)),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
             )
         }
     }

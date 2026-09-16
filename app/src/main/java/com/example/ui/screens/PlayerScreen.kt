@@ -74,11 +74,11 @@ import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.ui.components.AspectRatioPickerOverlay
 import com.example.ui.components.SpeedOverlayIndicator
 import com.example.ui.ZoomOverlayIndicator
+import com.example.ui.HoldSeekOverlayIndicator
+import com.example.ui.HoldSeekSide
 import com.example.ui.HdrPresetMenu
 import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
-import com.example.recognition.SongRecognitionScreen
-import com.example.recognition.SongRecognitionViewModel
 import com.example.player.HdrColorModeManager
 import com.example.player.ColorPresets
 import com.example.player.formatSpeedLabel
@@ -187,10 +187,10 @@ fun PlayerScreen(
     var showAspectPicker by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
+    var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
-    var showSongRecognition by remember { mutableStateOf(false) }
-    val appContext = LocalContext.current.applicationContext
-    val songRecognitionViewModel = remember { SongRecognitionViewModel(appContext) }
+    var showHdrCustomizer by remember { mutableStateOf(false) }
+    var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -282,10 +282,11 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showHdrPresetMenu) {
-        if (showHdrPresetMenu) {
+    LaunchedEffect(showHdrPresetMenu, showHdrCustomizer) {
+        if (showHdrPresetMenu || showHdrCustomizer) {
             delay(3_000)
             showHdrPresetMenu = false
+            showHdrCustomizer = false
         }
     }
 
@@ -321,6 +322,10 @@ fun PlayerScreen(
         surface.onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) }
         surface.onDoubleTapCenter = { playerViewModel.togglePlayPause() }
         surface.onDoubleTapRight = { smoothSeekController.seekBy(10_000L) }
+        surface.onHoldSeekStart = { isForward ->
+            holdSeekSide = if (isForward) HoldSeekSide.FORWARD else HoldSeekSide.REWIND
+        }
+        surface.onHoldSeekEnd = { holdSeekSide = null }
         surface.onLongPressVideo = { showAspectPicker = true }
         surface.onPinchZoom = { zoomFactor ->
             playerViewModel.setVideoScale(videoScale * zoomFactor)
@@ -329,7 +334,7 @@ fun PlayerScreen(
         surface.onHdrToggle = {
             playerViewModel.toggleHdrEnhance()
         }
-        surface.onHdrLongPress = { surface.showPresetPopup(hdrColorPreset.name) }
+        surface.onHdrLongPress = { showHdrPresetMenu = true }
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
             if (preset.name == ColorPresets.HDR_DISABLED.name) {
@@ -470,7 +475,16 @@ fun PlayerScreen(
         ZoomOverlayIndicator(
             visible = showZoomOverlay,
             scale = videoScale,
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 58.dp),
+        )
+
+        HoldSeekOverlayIndicator(
+            side = holdSeekSide,
+            modifier = Modifier
+                .align(if (holdSeekSide == HoldSeekSide.REWIND) Alignment.CenterStart else Alignment.CenterEnd)
+                .padding(horizontal = 28.dp),
         )
 
         SeekPreviewHud(
@@ -482,8 +496,18 @@ fun PlayerScreen(
         )
 
         HdrPresetMenu(
-            visible = showHdrPresetMenu,
+            visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
+            customPreset = customHdrPreset,
+            customizing = showHdrCustomizer,
+            onCustomize = {
+                showHdrCustomizer = true
+            },
+            onCustomPresetChange = { preset ->
+                customHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
+                playerViewModel.engine.setHdrColorPreset(customHdrPreset)
+                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+            },
             onSelect = { preset ->
                 playerViewModel.engine.setHdrColorPreset(preset)
                 if (preset.name == ColorPresets.HDR_DISABLED.name) {
@@ -492,6 +516,7 @@ fun PlayerScreen(
                     playerViewModel.toggleHdrEnhance()
                 }
                 showHdrPresetMenu = false
+                showHdrCustomizer = false
             },
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -532,7 +557,6 @@ fun PlayerScreen(
                 playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
             },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
-            onOpenSongRecognition = { showSongRecognition = true },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = { playerViewModel.toggleHdrEnhance() },
@@ -557,30 +581,6 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
-
-        if (showSongRecognition) {
-            androidx.activity.compose.BackHandler { showSongRecognition = false }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xF20A0D14))
-            ) {
-                SongRecognitionScreen(songRecognitionViewModel, currentVideo?.uri)
-                IconButton(
-                    onClick = { showSongRecognition = false },
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(start = 8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Close song recognition",
-                        tint = Color.White,
-                    )
-                }
-            }
-        }
 
         // Error Card Overlay
         playerError?.let { err ->

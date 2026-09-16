@@ -42,6 +42,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var leftSide = false
     private var pinchDistance = 0f
     private var longPressHandled = false
+    private var holdSeekDirection = 0
+    private var holdSeekRunnable: Runnable? = null
     private var presetPopup: PopupWindow? = null
     private var presetDismissRunnable: Runnable? = null
     private var hudPopup: PopupWindow? = null
@@ -70,6 +72,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             longPressHandled = true
             if (isHdrTap(e.x, e.y)) {
                 onHdrLongPress?.invoke()
+            } else if (e.x < width / 3f) {
+                beginHoldSeek(-1)
+            } else if (e.x > width * 2f / 3f) {
+                beginHoldSeek(1)
             } else {
                 onLongPressVideo?.invoke()
             }
@@ -92,6 +98,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onDoubleTapCenter: (() -> Unit)? = null
     var onDoubleTapRight: (() -> Unit)? = null
     var onLongPressVideo: (() -> Unit)? = null
+    var onHoldSeekStart: ((Boolean) -> Unit)? = null
+    var onHoldSeekEnd: (() -> Unit)? = null
 
     init {
         setEGLContextClientVersion(2)
@@ -189,6 +197,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (horizontalScrub) onScrubEnd?.invoke()
+                endHoldSeek()
                 if (!longPressHandled && !horizontalScrub && !verticalControl &&
                     isHdrTap(downX, downY)
                 ) {
@@ -202,6 +211,33 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             }
         }
         return true
+    }
+
+    private fun beginHoldSeek(direction: Int) {
+        endHoldSeek()
+        holdSeekDirection = direction
+        player?.play()
+        onHoldSeekStart?.invoke(direction > 0)
+        val runner = object : Runnable {
+            override fun run() {
+                val current = player ?: return
+                val next = (current.currentPosition + direction * 400L).coerceAtLeast(0L)
+                current.seekTo(next)
+                postDelayed(this, 200L)
+            }
+        }
+        holdSeekRunnable = runner
+        post(runner)
+    }
+
+    private fun endHoldSeek() {
+        holdSeekRunnable?.let(::removeCallbacks)
+        holdSeekRunnable = null
+        if (holdSeekDirection != 0) {
+            player?.play()
+            onHoldSeekEnd?.invoke()
+        }
+        holdSeekDirection = 0
     }
 
     private fun isHdrTap(x: Float, y: Float): Boolean {
@@ -441,6 +477,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     override fun onDetachedFromWindow() {
         dismissPresetPopup()
+        endHoldSeek()
         hudDismissRunnable?.let(::removeCallbacks)
         hudDismissRunnable = null
         hudPopup?.dismiss()
@@ -476,6 +513,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         private var greenHandle = 0
         private var blueHandle = 0
         private var vibranceHandle = 0
+        private var sharpnessHandle = 0
         private var preset = ColorPresets.NATURAL_HDR
         var surface: Surface? = null
             private set
@@ -496,6 +534,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             greenHandle = GLES20.glGetUniformLocation(program, "uGreen")
             blueHandle = GLES20.glGetUniformLocation(program, "uBlue")
             vibranceHandle = GLES20.glGetUniformLocation(program, "uVibrance")
+            sharpnessHandle = GLES20.glGetUniformLocation(program, "uSharpness")
 
             val ids = IntArray(1)
             GLES20.glGenTextures(1, ids, 0)
@@ -530,6 +569,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             GLES20.glUniform1f(greenHandle, preset.green)
             GLES20.glUniform1f(blueHandle, preset.blue)
             GLES20.glUniform1f(vibranceHandle, preset.vibrance)
+            GLES20.glUniform1f(sharpnessHandle, preset.sharpness)
             vertexBuffer.position(0)
             GLES20.glEnableVertexAttribArray(positionHandle)
             GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
@@ -597,6 +637,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 uniform float uGreen;
                 uniform float uBlue;
                 uniform float uVibrance;
+                uniform float uSharpness;
                 varying vec2 vTexCoord;
                 void main() {
                     vec4 tex = texture2D(uTexture, vTexCoord);
@@ -609,6 +650,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     float minChannel = min(color.r, min(color.g, color.b));
                     float colorfulness = maxChannel - minChannel;
                     color += (color - vec3(luminance)) * (uVibrance - 1.0) * (1.0 - colorfulness);
+                    // A small four-tap unsharp mask keeps the control lightweight
+                    // while making the sharpness slider visibly affect the frame.
+                    vec2 pixel = vec2(0.0015, 0.0015);
+                    vec3 blur = (
+                        texture2D(uTexture, vTexCoord + vec2(pixel.x, 0.0)).rgb +
+                        texture2D(uTexture, vTexCoord - vec2(pixel.x, 0.0)).rgb +
+                        texture2D(uTexture, vTexCoord + vec2(0.0, pixel.y)).rgb +
+                        texture2D(uTexture, vTexCoord - vec2(0.0, pixel.y)).rgb
+                    ) * 0.25;
+                    color += (color - blur) * uSharpness;
                     gl_FragColor = vec4(clamp(color, 0.0, 1.0), tex.a);
                 }
             """
