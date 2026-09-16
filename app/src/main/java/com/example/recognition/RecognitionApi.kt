@@ -29,8 +29,18 @@ object AcoustIdApi {
                     "&duration=$durationSeconds&fingerprint=$fp"
                 val request = Request.Builder().url(url).build()
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IOException("AcoustID lookup failed: HTTP ${response.code}")
-                    parse(JSONObject(response.body?.string() ?: throw IOException("Empty AcoustID response")))
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        val message = runCatching {
+                            JSONObject(body).optJSONObject("error")?.optString("message")
+                        }.getOrNull().orEmpty()
+                        throw IOException(
+                            if (message.isNotBlank()) "AcoustID lookup failed: $message"
+                            else "AcoustID lookup failed: HTTP ${response.code}"
+                        )
+                    }
+                    if (body.isBlank()) throw IOException("Empty AcoustID response")
+                    parse(JSONObject(body))
                 }
             }
         }
