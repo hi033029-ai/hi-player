@@ -54,10 +54,8 @@ fun YouTubeEmbedPlayer(videoId: String, modifier: Modifier = Modifier) {
     AndroidView(
         modifier = modifier.fillMaxWidth().height(220.dp),
         factory = { webView },
-        update = { view ->
-            // Do not reload on every Compose recomposition; that interrupts playback.
-            if (view.url != embedUrl) view.loadUrl(embedUrl)
-            if (!view.isShown) view.onResume()
-        },
+        // The WebView is keyed by videoId above and loads exactly once. Do not
+        // reload or call onResume from update: both can interrupt playback.
+        update = {},
     )
 }

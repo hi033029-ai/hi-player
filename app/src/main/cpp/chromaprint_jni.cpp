@@ -20,15 +20,32 @@ Java_com_example_recognition_ChromaprintNative_fingerprint(
     jint sampleRate,
     jint numChannels) {
 
+    if (pcmData == nullptr || sampleRate <= 0 || numChannels <= 0) {
+        return env->NewStringUTF("");
+    }
     jsize numSamples = env->GetArrayLength(pcmData);
+    if (numSamples <= 0) {
+        return env->NewStringUTF("");
+    }
     jshort *samples = env->GetShortArrayElements(pcmData, nullptr);
+    if (samples == nullptr) {
+        return env->NewStringUTF("");
+    }
 
     ChromaprintContext *ctx = chromaprint_new(CHROMAPRINT_ALGORITHM_DEFAULT);
-    chromaprint_start(ctx, sampleRate, numChannels);
+    if (ctx == nullptr || chromaprint_start(ctx, sampleRate, numChannels) != 1) {
+        if (ctx != nullptr) chromaprint_free(ctx);
+        env->ReleaseShortArrayElements(pcmData, samples, JNI_ABORT);
+        return env->NewStringUTF("");
+    }
 
     // chromaprint_feed expects int16_t* — jshort is already 16-bit, safe direct cast.
-    chromaprint_feed(ctx, reinterpret_cast<const int16_t *>(samples), numSamples);
-    chromaprint_finish(ctx);
+    if (chromaprint_feed(ctx, reinterpret_cast<const int16_t *>(samples), numSamples) != 1 ||
+        chromaprint_finish(ctx) != 1) {
+        chromaprint_free(ctx);
+        env->ReleaseShortArrayElements(pcmData, samples, JNI_ABORT);
+        return env->NewStringUTF("");
+    }
 
     char *fingerprint = nullptr;
     jstring result = nullptr;

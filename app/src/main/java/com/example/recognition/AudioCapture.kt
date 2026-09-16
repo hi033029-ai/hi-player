@@ -4,6 +4,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -28,22 +31,46 @@ object AudioCapture {
         )
         val totalSamples = SAMPLE_RATE * RECORD_SECONDS
         val buffer = ShortArray(totalSamples)
+        if (minBufferSize <= 0) {
+            throw IOException("This device does not support 44.1 kHz mono recording")
+        }
+        // AudioRecord expects bytes, and PCM-16 mono frames are two bytes.
+        // 5 seconds / 4 produces 55,125, which is not frame-aligned and causes
+        //: "Invalid audio buffer size 55125 (frame size 2)" on affected devices.
+        val recordBufferBytes = maxOf(minBufferSize, 4096).let { size ->
+            if (size % 2 == 0) size else size + 1
+        }
 
         val recorder = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
-            maxOf(minBufferSize, totalSamples / 4),
+            recordBufferBytes,
         )
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            recorder.release()
+            throw IOException("Microphone could not be initialized")
+        }
 
+        var started = false
         try {
             recorder.startRecording()
+            started = true
             var offset = 0
             while (offset < totalSamples) {
-                val read = recorder.read(buffer, offset, totalSamples - offset)
-                if (read <= 0) break
-                offset += read
+                currentCoroutineContext().ensureActive()
+                val read = recorder.read(
+                    buffer,
+                    offset,
+                    minOf(totalSamples - offset, 4096),
+                    AudioRecord.READ_NON_BLOCKING,
+                )
+                if (read > 0) {
+                    offset += read
+                } else {
+                    delay(10)
+                }
             }
 
             // BUG FIX: previously always returned the full fixed-size `buffer`
@@ -66,7 +93,7 @@ object AudioCapture {
 
             actual
         } finally {
-            recorder.stop()
+            if (started) recorder.stop()
             recorder.release()
         }
     }
