@@ -39,6 +39,9 @@ jobs:
           -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Build debug APK
+        env:
+          ACOUSTID_CLIENT_ID: ${{ secrets.ACOUSTID_CLIENT_ID }}
+          YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
         run: gradle assembleDebug
 
       - name: Upload APK artifact

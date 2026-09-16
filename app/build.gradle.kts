@@ -17,6 +17,7 @@ android {
   externalNativeBuild {
     cmake {
       version = "3.22.1"
+      path = file("src/main/cpp/CMakeLists.txt")
     }
   }
 
@@ -52,8 +53,14 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      buildConfigField("String", "ACOUSTID_CLIENT_ID", "\"${System.getenv("ACOUSTID_CLIENT_ID") ?: ""}\"")
+      buildConfigField("String", "YOUTUBE_DATA_API_KEY", "\"${System.getenv("YOUTUBE_DATA_API_KEY") ?: ""}\"")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+      buildConfigField("String", "ACOUSTID_CLIENT_ID", "\"${System.getenv("ACOUSTID_CLIENT_ID") ?: ""}\"")
+      buildConfigField("String", "YOUTUBE_DATA_API_KEY", "\"${System.getenv("YOUTUBE_DATA_API_KEY") ?: ""}\"")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

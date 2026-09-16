@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +76,8 @@ import com.example.ui.ZoomOverlayIndicator
 import com.example.ui.HdrPresetMenu
 import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
+import com.example.recognition.SongRecognitionScreen
+import com.example.recognition.SongRecognitionViewModel
 import com.example.player.HdrColorModeManager
 import com.example.player.ColorPresets
 import com.example.player.formatSpeedLabel
@@ -183,6 +187,8 @@ fun PlayerScreen(
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
+    var showSongRecognition by remember { mutableStateOf(false) }
+    val songRecognitionViewModel = remember { SongRecognitionViewModel() }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -524,6 +530,7 @@ fun PlayerScreen(
                 playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
             },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
+            onOpenSongRecognition = { showSongRecognition = true },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = { playerViewModel.toggleHdrEnhance() },
@@ -548,6 +555,30 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
+
+        if (showSongRecognition) {
+            androidx.activity.compose.BackHandler { showSongRecognition = false }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xF20A0D14))
+            ) {
+                SongRecognitionScreen(songRecognitionViewModel)
+                IconButton(
+                    onClick = { showSongRecognition = false },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(start = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Close song recognition",
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
 
         // Error Card Overlay
         playerError?.let { err ->
