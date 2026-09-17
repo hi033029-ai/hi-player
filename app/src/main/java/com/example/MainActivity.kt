@@ -53,6 +53,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.HiPlayerTheme
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.getCustomPalette
 import com.example.viewmodel.FileManagerViewModel
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
@@ -89,7 +90,8 @@ class MainActivity : ComponentActivity() {
 
             HiPlayerTheme(
                 themeMode = settings.themeMode,
-                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(0.75f, 1.5f)
+                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(0.75f, 1.5f),
+                customPalette = getCustomPalette(settings),
             ) {
                 val palette = LocalHiPalette.current
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }

@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.CompositionLocalProvider
 import com.example.data.AppThemeMode
+import com.example.ui.theme.getCustomPalette
 
 /** Shared header geometry; dimensions scale with the persisted global text-size setting. */
 data class HiUiMetrics(
@@ -75,9 +76,14 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
 fun HiPlayerTheme(
     themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
     uiTextScale: Float = 1f,
+    customPalette: HiThemePalette? = null,
     content: @Composable () -> Unit
 ) {
-    val palette = getPaletteForTheme(themeMode)
+    val palette = if (themeMode == AppThemeMode.CUSTOM) {
+        customPalette ?: HiPlayerLogoPalette
+    } else {
+        getPaletteForTheme(themeMode)
+    }
     val colorScheme = createColorScheme(palette)
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
@@ -115,5 +121,4 @@ fun MyApplicationTheme(
         content = content
     )
 }
-
 

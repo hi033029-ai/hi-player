@@ -77,6 +77,7 @@ import com.example.ui.ZoomOverlayIndicator
 import com.example.ui.HoldSeekOverlayIndicator
 import com.example.ui.HoldSeekSide
 import com.example.ui.HdrPresetMenu
+import com.example.ui.HdrColor
 import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
 import com.example.player.HdrColorModeManager
@@ -191,6 +192,8 @@ fun PlayerScreen(
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
+    var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
+    var hdrColorIntensity by remember { mutableStateOf(0.5f) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -283,10 +286,9 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(showHdrPresetMenu, showHdrCustomizer) {
-        if (showHdrPresetMenu || showHdrCustomizer) {
+        if (showHdrPresetMenu && !showHdrCustomizer) {
             delay(3_000)
             showHdrPresetMenu = false
-            showHdrCustomizer = false
         }
     }
 
@@ -500,6 +502,21 @@ fun PlayerScreen(
             selected = hdrColorPreset,
             customPreset = customHdrPreset,
             customizing = showHdrCustomizer,
+            selectedColor = selectedHdrColor,
+            colorIntensity = hdrColorIntensity,
+            onColorSelected = { selectedHdrColor = it },
+            onColorIntensityChange = { intensity ->
+                hdrColorIntensity = intensity
+                val tint = selectedHdrColor.color
+                customHdrPreset = customHdrPreset.copy(
+                    name = ColorPresets.CUSTOM.name,
+                    red = (1f + (tint.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+                    green = (1f + (tint.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+                    blue = (1f + (tint.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+                )
+                playerViewModel.engine.setHdrColorPreset(customHdrPreset)
+                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+            },
             onCustomize = {
                 showHdrCustomizer = true
             },

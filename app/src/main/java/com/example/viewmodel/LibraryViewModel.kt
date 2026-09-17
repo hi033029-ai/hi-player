@@ -471,6 +471,24 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun setCustomThemeColors(
+        textHex: String,
+        backgroundHex: String,
+        primaryHex: String,
+        surfaceHex: String,
+        textOpacity: Int,
+        backgroundOpacity: Int,
+        primaryOpacity: Int,
+        surfaceOpacity: Int,
+    ) {
+        viewModelScope.launch {
+            preferencesRepo.setCustomThemeColors(
+                textHex, backgroundHex, primaryHex, surfaceHex,
+                textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity,
+            )
+        }
+    }
+
     fun setFirstLaunchCompleted() {
         viewModelScope.launch {
             preferencesRepo.setFirstLaunchCompleted()

@@ -17,7 +17,8 @@ enum class AppThemeMode(val id: String, val displayName: String, val description
     CYAN_NEON_DARK("CYAN_NEON_DARK", "Monochrome Dark", "Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF"),
     WARM_SUNSET_LIGHT("WARM_SUNSET_LIGHT", "Monochrome Light", "Background: #FFFFFF | Accent: #000000 | Text: #000000"),
     CLASSIC_RED_BLACK("CLASSIC_RED_BLACK", "Netflix Classic", "Background: #000000 | Accent: #E10600 | Text: #E10600"),
-    HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Hi Player Logo", "Background: Ice Blue | Accent: Deep Blue & Cyan | Text: Dark Slate");
+    HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Hi Player Logo", "Background: Ice Blue | Accent: Deep Blue & Cyan | Text: Dark Slate"),
+    CUSTOM("CUSTOM", "Custom", "Your colors and opacity");
 
     companion object {
         fun fromId(id: String?): AppThemeMode {
@@ -25,6 +26,7 @@ enum class AppThemeMode(val id: String, val displayName: String, val description
                 "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT", "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE" -> WARM_SUNSET_LIGHT
                 "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CLASSIC_RED_BLACK
                 "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
+                "CUSTOM" -> CUSTOM
                 else -> entries.find { it.id == id } ?: CYAN_NEON_DARK
             }
         }
@@ -60,6 +62,14 @@ data class AppPlayerSettings(
     val uiTextSizeSp: Int = 14,
     val subtitleTextColorHex: String = "#FFFFFF",
     val subtitleBackgroundHex: String = "#80000000",
+    val customThemeTextHex: String = "#0F172A",
+    val customThemeBackgroundHex: String = "#F8FAFC",
+    val customThemePrimaryHex: String = "#0056B3",
+    val customThemeSurfaceHex: String = "#FFFFFF",
+    val customThemeTextOpacity: Int = 100,
+    val customThemeBackgroundOpacity: Int = 100,
+    val customThemePrimaryOpacity: Int = 100,
+    val customThemeSurfaceOpacity: Int = 100,
     val nightAudioMode: Boolean = false,
     val volumeBoostPercent: Int = 0, // 0 to 100 boost on top of 100%
     val tmdbApiKey: String = "",
@@ -85,6 +95,14 @@ class PlayerPreferencesRepository(private val context: Context) {
         val SUBTITLE_SIZE = intPreferencesKey("subtitle_text_size")
         val UI_TEXT_SIZE = intPreferencesKey("ui_text_size_v2")
         val SUBTITLE_COLOR = stringPreferencesKey("subtitle_text_color")
+        val CUSTOM_TEXT = stringPreferencesKey("custom_theme_text")
+        val CUSTOM_BACKGROUND = stringPreferencesKey("custom_theme_background")
+        val CUSTOM_PRIMARY = stringPreferencesKey("custom_theme_primary")
+        val CUSTOM_SURFACE = stringPreferencesKey("custom_theme_surface")
+        val CUSTOM_TEXT_OPACITY = intPreferencesKey("custom_theme_text_opacity")
+        val CUSTOM_BACKGROUND_OPACITY = intPreferencesKey("custom_theme_background_opacity")
+        val CUSTOM_PRIMARY_OPACITY = intPreferencesKey("custom_theme_primary_opacity")
+        val CUSTOM_SURFACE_OPACITY = intPreferencesKey("custom_theme_surface_opacity")
         val NIGHT_AUDIO = booleanPreferencesKey("night_audio_mode")
         val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
         val OS_API_KEY = stringPreferencesKey("opensubtitles_api_key")
@@ -114,6 +132,14 @@ class PlayerPreferencesRepository(private val context: Context) {
             subtitleTextSizeSp = prefs[Keys.SUBTITLE_SIZE] ?: 18,
             uiTextSizeSp = prefs[Keys.UI_TEXT_SIZE] ?: 14,
             subtitleTextColorHex = prefs[Keys.SUBTITLE_COLOR] ?: "#FFFFFF",
+            customThemeTextHex = prefs[Keys.CUSTOM_TEXT] ?: "#0F172A",
+            customThemeBackgroundHex = prefs[Keys.CUSTOM_BACKGROUND] ?: "#F8FAFC",
+            customThemePrimaryHex = prefs[Keys.CUSTOM_PRIMARY] ?: "#0056B3",
+            customThemeSurfaceHex = prefs[Keys.CUSTOM_SURFACE] ?: "#FFFFFF",
+            customThemeTextOpacity = prefs[Keys.CUSTOM_TEXT_OPACITY] ?: 100,
+            customThemeBackgroundOpacity = prefs[Keys.CUSTOM_BACKGROUND_OPACITY] ?: 100,
+            customThemePrimaryOpacity = prefs[Keys.CUSTOM_PRIMARY_OPACITY] ?: 100,
+            customThemeSurfaceOpacity = prefs[Keys.CUSTOM_SURFACE_OPACITY] ?: 100,
             nightAudioMode = prefs[Keys.NIGHT_AUDIO] ?: false,
             tmdbApiKey = prefs[Keys.TMDB_API_KEY] ?: "",
             openSubtitlesApiKey = prefs[Keys.OS_API_KEY] ?: "",
@@ -187,6 +213,29 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     suspend fun setUiTextSize(sizeSp: Int) {
         context.dataStore.edit { it[Keys.UI_TEXT_SIZE] = sizeSp.coerceIn(12, 24) }
+    }
+
+    suspend fun setCustomThemeColors(
+        textHex: String,
+        backgroundHex: String,
+        primaryHex: String,
+        surfaceHex: String,
+        textOpacity: Int,
+        backgroundOpacity: Int,
+        primaryOpacity: Int,
+        surfaceOpacity: Int,
+    ) {
+        context.dataStore.edit {
+            it[Keys.THEME_MODE] = AppThemeMode.CUSTOM.id
+            it[Keys.CUSTOM_TEXT] = textHex
+            it[Keys.CUSTOM_BACKGROUND] = backgroundHex
+            it[Keys.CUSTOM_PRIMARY] = primaryHex
+            it[Keys.CUSTOM_SURFACE] = surfaceHex
+            it[Keys.CUSTOM_TEXT_OPACITY] = textOpacity.coerceIn(0, 100)
+            it[Keys.CUSTOM_BACKGROUND_OPACITY] = backgroundOpacity.coerceIn(0, 100)
+            it[Keys.CUSTOM_PRIMARY_OPACITY] = primaryOpacity.coerceIn(0, 100)
+            it[Keys.CUSTOM_SURFACE_OPACITY] = surfaceOpacity.coerceIn(0, 100)
+        }
     }
 
     suspend fun setNightAudioMode(enabled: Boolean) {

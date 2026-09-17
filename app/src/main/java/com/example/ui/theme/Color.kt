@@ -2,6 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.example.data.AppPlayerSettings
 import com.example.data.AppThemeMode
 
 // Base Defaults for Cinema Dark
@@ -121,7 +122,35 @@ fun getPaletteForTheme(mode: AppThemeMode): HiThemePalette {
         AppThemeMode.WARM_SUNSET_LIGHT -> MonochromeLightPalette
         AppThemeMode.CLASSIC_RED_BLACK -> ClassicRedBlackPalette
         AppThemeMode.HI_PLAYER_BLUE -> HiPlayerLogoPalette
+        AppThemeMode.CUSTOM -> HiPlayerLogoPalette
     }
+}
+
+private fun customColor(hex: String, opacity: Int): Color = try {
+    Color(android.graphics.Color.parseColor(hex)).copy(alpha = opacity.coerceIn(0, 100) / 100f)
+} catch (_: IllegalArgumentException) {
+    Color.White.copy(alpha = opacity.coerceIn(0, 100) / 100f)
+}
+
+fun getCustomPalette(settings: AppPlayerSettings): HiThemePalette {
+    val background = customColor(settings.customThemeBackgroundHex, settings.customThemeBackgroundOpacity)
+    val text = customColor(settings.customThemeTextHex, settings.customThemeTextOpacity)
+    val primary = customColor(settings.customThemePrimaryHex, settings.customThemePrimaryOpacity)
+    val surface = customColor(settings.customThemeSurfaceHex, settings.customThemeSurfaceOpacity)
+    val luminance = background.red * 0.2126f + background.green * 0.7152f + background.blue * 0.0722f
+    val isDark = luminance < 0.5f
+    return HiThemePalette(
+        background = background,
+        surface = surface,
+        surfaceElevated = surface.copy(alpha = (surface.alpha + 0.12f).coerceAtMost(1f)),
+        surfaceBorder = primary.copy(alpha = 0.35f),
+        primary = primary,
+        secondary = primary.copy(alpha = 0.72f),
+        textPrimary = text,
+        textSecondary = text.copy(alpha = (text.alpha * 0.68f).coerceIn(0f, 1f)),
+        textTertiary = text.copy(alpha = (text.alpha * 0.45f).coerceIn(0f, 1f)),
+        isDark = isDark,
+    )
 }
 
 val LocalHiPalette = staticCompositionLocalOf { MonochromeDarkPalette }

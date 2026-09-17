@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +31,10 @@ fun HdrPresetMenu(
     customizing: Boolean = false,
     onCustomize: () -> Unit = {},
     onCustomPresetChange: (ColorPreset) -> Unit = {},
+    selectedColor: HdrColor = HdrColor.RED,
+    colorIntensity: Float = 1f,
+    onColorSelected: (HdrColor) -> Unit = {},
+    onColorIntensityChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
@@ -60,6 +65,34 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(sharpness = it))
                 }
             }
+            Text("Color intensity", color = Color.White, fontSize = 12.sp)
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                HdrColor.entries.forEach { color ->
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(color.color, androidx.compose.foundation.shape.CircleShape)
+                            .clickable { onColorSelected(color) }
+                            .then(
+                                if (color == selectedColor) Modifier.border(2.dp, Color.White, androidx.compose.foundation.shape.CircleShape)
+                                else Modifier
+                            ),
+                    )
+                }
+            }
+            Slider(
+                value = colorIntensity,
+                onValueChange = onColorIntensityChange,
+                valueRange = 0f..1f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Light", color = Color.LightGray, fontSize = 10.sp)
+                Text("Dark", color = Color.LightGray, fontSize = 10.sp)
+            }
         }
     } else {
         Row(
@@ -88,6 +121,12 @@ fun HdrPresetMenu(
             )
         }
     }
+}
+
+enum class HdrColor(val color: Color) {
+    RED(Color(0xFFE53935)), ORANGE(Color(0xFFFB8C00)), YELLOW(Color(0xFFFDD835)),
+    GREEN(Color(0xFF43A047)), CYAN(Color(0xFF00ACC1)), BLUE(Color(0xFF1E88E5)),
+    PURPLE(Color(0xFF8E24AA)), PINK(Color(0xFFD81B60)),
 }
 
 @Composable

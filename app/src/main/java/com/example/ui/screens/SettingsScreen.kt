@@ -83,7 +83,9 @@ import com.example.data.AppThemeMode
 import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
+import com.example.ui.theme.getCustomPalette
 import com.example.ui.components.HiPlayerHeader
+import com.example.ui.components.ThemeCustomizationPanel
 import com.example.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -101,6 +103,7 @@ fun SettingsScreen(
     val uiMetrics = LocalHiUiMetrics.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showCustomTheme by remember { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -156,11 +159,35 @@ fun SettingsScreen(
                     // Horizontal Theme Selector
                     com.example.ui.components.HorizontalThemeSelector(
                         selectedTheme = settings.themeMode,
+                        customPalette = getCustomPalette(settings),
                         onThemeSelected = { mode ->
                             libraryViewModel.setThemeMode(mode)
+                            showCustomTheme = mode == AppThemeMode.CUSTOM
                         },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)
                     )
+
+                    Text(
+                        text = if (showCustomTheme) "Hide customization" else "Customize theme",
+                        color = palette.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                            .clickable { showCustomTheme = !showCustomTheme },
+                    )
+                    if (showCustomTheme) {
+                        ThemeCustomizationPanel(
+                            settings = settings,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            onChange = { text, background, primary, surface, textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity ->
+                                libraryViewModel.setCustomThemeColors(
+                                    text, background, primary, surface,
+                                    textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity,
+                                )
+                            },
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
                 }

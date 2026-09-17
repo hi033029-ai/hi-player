@@ -51,6 +51,7 @@ import com.example.ui.theme.getPaletteForTheme
 fun HorizontalThemeSelector(
     selectedTheme: AppThemeMode,
     onThemeSelected: (AppThemeMode) -> Unit,
+    customPalette: com.example.ui.theme.HiThemePalette? = null,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
 ) {
@@ -64,7 +65,7 @@ fun HorizontalThemeSelector(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         itemsIndexed(themes) { _, theme ->
-            val themePalette = getPaletteForTheme(theme)
+            val themePalette = if (theme == AppThemeMode.CUSTOM && customPalette != null) customPalette else getPaletteForTheme(theme)
             val isSelected = selectedTheme == theme
 
             RoundColorThemeItem(
