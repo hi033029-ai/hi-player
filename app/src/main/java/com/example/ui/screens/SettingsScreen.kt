@@ -104,6 +104,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showCustomTheme by remember { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
+    var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -311,7 +312,10 @@ fun SettingsScreen(
                         title = "Background Audio Playback",
                         subtitle = "Keep listening when app is minimized or screen locked",
                         checked = settings.backgroundPlayEnabled,
-                        onCheckedChange = { libraryViewModel.setBackgroundPlay(it) }
+                        onCheckedChange = { enabled ->
+                            if (enabled) pendingPlaybackPermission = "background"
+                            else libraryViewModel.setBackgroundPlay(false)
+                        }
                     )
                     HorizontalDivider(color = palette.surfaceBorder)
                     SettingsSwitchItem(
@@ -319,13 +323,40 @@ fun SettingsScreen(
                         title = "Auto Picture-in-Picture",
                         subtitle = "Enter PiP automatically when returning to Home screen",
                         checked = settings.autoPipEnabled,
-                        onCheckedChange = { libraryViewModel.setAutoPip(it) }
+                        onCheckedChange = { enabled ->
+                            if (enabled) pendingPlaybackPermission = "pip"
+                            else libraryViewModel.setAutoPip(false)
+                        }
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    pendingPlaybackPermission?.let { mode ->
+        val isBackground = mode == "background"
+        AlertDialog(
+            onDismissRequest = { pendingPlaybackPermission = null },
+            title = { Text(if (isBackground) "Allow Background Play?" else "Allow Picture-in-Picture?") },
+            text = {
+                Text(if (isBackground) {
+                    "Audio may continue when Hi Player is minimized or the screen is locked."
+                } else {
+                    "The video may appear in a floating window when you leave the player."
+                })
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (isBackground) libraryViewModel.setBackgroundPlay(true) else libraryViewModel.setAutoPip(true)
+                    pendingPlaybackPermission = null
+                }) { Text("Allow") }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingPlaybackPermission = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 

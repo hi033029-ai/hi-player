@@ -515,6 +515,7 @@ fun PlayerScreen(
                 )
                 customHdrPreset = nextPreset
                 playerViewModel.engine.setHdrColorPreset(nextPreset)
+                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
             },
             onColorIntensityChange = { intensity ->
                 hdrInteractionTick++

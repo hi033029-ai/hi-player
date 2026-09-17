@@ -2,6 +2,8 @@ package com.example
 
 import android.Manifest
 import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -10,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
+import android.graphics.drawable.Icon
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -67,6 +70,13 @@ sealed class AppScreen {
 }
 
 class MainActivity : ComponentActivity() {
+
+    private companion object {
+        const val PIP_ACTION_PLAY_PAUSE = "com.example.hiplayer.PIP_PLAY_PAUSE"
+        const val PIP_ACTION_PREVIOUS = "com.example.hiplayer.PIP_PREVIOUS"
+        const val PIP_ACTION_NEXT = "com.example.hiplayer.PIP_NEXT"
+        const val PIP_ACTION_CANCEL = "com.example.hiplayer.PIP_CANCEL"
+    }
 
     private val libraryViewModel: LibraryViewModel by viewModels()
     private val playerViewModel: PlayerViewModel by viewModels()
@@ -419,7 +429,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntent(intent)
+        setIntent(intent)
+        when (intent.action) {
+            PIP_ACTION_PLAY_PAUSE -> playerViewModel.togglePlayPause()
+            PIP_ACTION_PREVIOUS -> playerViewModel.playAdjacentVideo(libraryViewModel.allVideos.value, -1)
+            PIP_ACTION_NEXT -> playerViewModel.playAdjacentVideo(libraryViewModel.allVideos.value, 1)
+            PIP_ACTION_CANCEL -> finishAndRemoveTask()
+            else -> handleIntent(intent)
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -439,9 +456,28 @@ class MainActivity : ComponentActivity() {
             val aspectRatio = Rational(16, 9)
             val params = PictureInPictureParams.Builder()
                 .setAspectRatio(aspectRatio)
+                .setActions(buildPipActions())
                 .build()
             enterPictureInPictureMode(params)
         }
+    }
+
+    private fun buildPipActions(): List<RemoteAction> {
+        fun action(icon: Int, title: String, command: String, requestCode: Int) = RemoteAction(
+            Icon.createWithResource(this, icon), title, title,
+            PendingIntent.getActivity(
+                this, requestCode,
+                Intent(this, MainActivity::class.java).setAction(command),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        )
+        val playing = playerViewModel.engine.isPlaying.value
+        return listOf(
+            action(android.R.drawable.ic_media_previous, "Previous", PIP_ACTION_PREVIOUS, 21),
+            action(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (playing) "Pause" else "Play", PIP_ACTION_PLAY_PAUSE, 22),
+            action(android.R.drawable.ic_media_next, "Next", PIP_ACTION_NEXT, 23),
+            action(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", PIP_ACTION_CANCEL, 24),
+        )
     }
 
     // onUserLeaveHint previously entered PiP any time video was playing,

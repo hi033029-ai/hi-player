@@ -161,6 +161,7 @@ fun FileManagerScreen(
     val selectedPaths by fileManagerViewModel.selectedPaths.collectAsState()
     val detailsItem by fileManagerViewModel.detailsItem.collectAsState()
     var menuTargetItem by remember { mutableStateOf<FileItem?>(null) }
+    var showSelectionProperties by remember { mutableStateOf(false) }
     val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsState()
     val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
 
@@ -704,6 +705,50 @@ fun FileManagerScreen(
                 }
             }
         }
+    }
+
+    if (isSelectionMode) {
+        val selectedItems = selectedPaths.mapNotNull { path ->
+            folderFiles.find { it.path == path }
+                ?: allArchives.find { it.path == path }
+                ?: allDocuments.find { it.path == path }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = {
+                if (selectedItems.size == 1) selectedItems.firstOrNull()?.let { fileManagerViewModel.showDetails(it) }
+                else if (selectedItems.isNotEmpty()) showSelectionProperties = true
+            }) { Icon(Icons.Default.Info, contentDescription = "Properties", tint = palette.textPrimary) }
+            IconButton(onClick = { fileManagerViewModel.requestDelete(selectedItems) }) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
+            }
+            IconButton(onClick = { fileManagerViewModel.selectAllInCurrentFolder() }) {
+                Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
+            }
+        }
+    }
+
+    if (showSelectionProperties) {
+        val selectedItems = selectedPaths.mapNotNull { path ->
+            folderFiles.find { it.path == path }
+                ?: allArchives.find { it.path == path }
+                ?: allDocuments.find { it.path == path }
+        }
+        AlertDialog(
+            onDismissRequest = { showSelectionProperties = false },
+            title = { Text("${selectedItems.size} selected properties") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Files: ${selectedItems.joinToString(", ") { it.name }}", maxLines = 5, overflow = TextOverflow.Ellipsis)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Total size: ${formatFileSize(selectedItems.sumOf { it.sizeBytes })}")
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSelectionProperties = false }) { Text("Close") } }
+        )
     }
 
     // Modal Archive Inspector / Extraction Sheet

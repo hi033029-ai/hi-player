@@ -165,6 +165,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun playAdjacentVideo(queue: List<VideoItem>, step: Int) {
+        val current = _currentVideo.value ?: return
+        if (queue.size < 2) return
+        val index = queue.indexOfFirst { it.uri == current.uri }
+        if (index < 0) return
+        playVideo(queue[(index + step + queue.size) % queue.size])
+    }
+
     // Zoom Controls
     fun zoomIn() {
         val current = _videoScale.value

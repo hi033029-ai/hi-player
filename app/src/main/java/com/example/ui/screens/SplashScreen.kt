@@ -561,15 +561,15 @@ private fun ChooseThemeView(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(selectedPalette.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Palette,
-                    contentDescription = null,
-                    tint = selectedPalette.primary,
-                    modifier = Modifier.size(24.dp)
+                Image(
+                    painter = painterResource(id = R.drawable.hi_player_logo),
+                    contentDescription = "Hi Player Logo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(40.dp)
                 )
             }
 

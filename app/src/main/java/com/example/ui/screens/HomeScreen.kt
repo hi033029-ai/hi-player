@@ -847,6 +847,7 @@ fun HomeScreen(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = onVideoSelected,
+                                    onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
@@ -999,6 +1000,7 @@ private fun EmptyState(onBrowse: () -> Unit) {
 fun ContinueWatchingCard(
     item: LibraryViewModel.ContinueWatchingItem,
     onClick: () -> Unit,
+    onRemove: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1030,6 +1032,13 @@ fun ContinueWatchingCard(
                     shape = RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
                     contentScale = ContentScale.Crop
                 )
+
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
+                ) {
+                    Icon(Icons.Default.Clear, contentDescription = "Remove from Continue Watching", tint = Color.White)
+                }
 
                 // Dark gradient shade overlay
                 Box(
@@ -1102,6 +1111,7 @@ fun ContinueWatchingCard(
 fun ContinueWatchingStrip(
     items: List<LibraryViewModel.ContinueWatchingItem>,
     onVideoSelected: (VideoItem) -> Unit,
+    onRemove: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val palette = LocalHiPalette.current
@@ -1134,7 +1144,8 @@ fun ContinueWatchingStrip(
             items(items, key = { it.video.uri.toString() }) { item ->
                 ContinueWatchingCard(
                     item = item,
-                    onClick = { onVideoSelected(item.video) }
+                    onClick = { onVideoSelected(item.video) },
+                    onRemove = { onRemove(item.video.uri.toString()) }
                 )
             }
         }

@@ -465,6 +465,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun removeFromContinueWatching(uriString: String) {
+        viewModelScope.launch {
+            videoDao.deleteRecord(uriString)
+        }
+    }
+
     fun setThemeMode(mode: com.example.data.AppThemeMode) {
         viewModelScope.launch {
             preferencesRepo.setThemeMode(mode)
