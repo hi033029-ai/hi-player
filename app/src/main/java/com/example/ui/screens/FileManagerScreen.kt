@@ -744,7 +744,14 @@ fun FileManagerScreen(
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     Text("Files: ${selectedItems.joinToString(", ") { it.name }}", maxLines = 5, overflow = TextOverflow.Ellipsis)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Total size: ${formatFileSize(selectedItems.sumOf { it.sizeBytes })}")
+                    Text("Total size: ${selectedItems.sumOf { it.sizeBytes }.let { bytes ->
+                        when {
+                            bytes >= 1024L * 1024L * 1024L -> String.format(Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+                            bytes >= 1024L * 1024L -> String.format(Locale.US, "%.2f MB", bytes / (1024.0 * 1024.0))
+                            bytes >= 1024L -> String.format(Locale.US, "%.2f KB", bytes / 1024.0)
+                            else -> "$bytes B"
+                        }
+                    }}")
                 }
             },
             confirmButton = { TextButton(onClick = { showSelectionProperties = false }) { Text("Close") } }
