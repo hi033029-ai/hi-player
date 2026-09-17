@@ -179,6 +179,28 @@ fun RoundColorThemeItem(
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                palette.background,
+                palette.primary,
+                palette.surface,
+                palette.textPrimary,
+            ).forEach { color ->
+                Box(
+                    modifier = Modifier
+                        .size(13.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(0.75.dp, currentAppPalette.surfaceBorder, CircleShape),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
         // Lower Theme Name
         Text(
             text = theme.displayName,

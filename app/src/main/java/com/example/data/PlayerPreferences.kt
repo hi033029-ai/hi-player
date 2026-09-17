@@ -16,15 +16,15 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "hi
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
     CYAN_NEON_DARK("CYAN_NEON_DARK", "Monochrome Dark", "Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF"),
     WARM_SUNSET_LIGHT("WARM_SUNSET_LIGHT", "Monochrome Light", "Background: #FFFFFF | Accent: #000000 | Text: #000000"),
-    CLASSIC_RED_BLACK("CLASSIC_RED_BLACK", "Netflix Classic", "Background: #000000 | Accent: #E10600 | Text: #E10600"),
-    HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Hi Player Logo", "Background: Ice Blue | Accent: Deep Blue & Cyan | Text: Dark Slate"),
+    HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Ice Blue", "Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate"),
     CUSTOM("CUSTOM", "Custom", "Your colors and opacity");
 
     companion object {
         fun fromId(id: String?): AppThemeMode {
             return when (id) {
                 "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT", "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE" -> WARM_SUNSET_LIGHT
-                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CLASSIC_RED_BLACK
+                // Retain a safe fallback for installations that previously stored the removed theme.
+                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CYAN_NEON_DARK
                 "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
                 "CUSTOM" -> CUSTOM
                 else -> entries.find { it.id == id } ?: CYAN_NEON_DARK

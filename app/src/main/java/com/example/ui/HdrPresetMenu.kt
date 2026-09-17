@@ -44,7 +44,7 @@ fun HdrPresetMenu(
     if (customizing) {
         Column(
             modifier = modifier
-                .background(Color.Black.copy(alpha = 0.94f), RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.52f), RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text("Customize HDR", color = Color.White, fontSize = 13.sp)

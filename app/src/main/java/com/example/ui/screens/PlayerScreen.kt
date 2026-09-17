@@ -194,6 +194,7 @@ fun PlayerScreen(
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
     var hdrColorIntensity by remember { mutableStateOf(0.5f) }
+    var hdrInteractionTick by remember { mutableStateOf(0) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
         val player = playerViewModel.engine.getPlayer()
@@ -285,10 +286,11 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(showHdrPresetMenu, showHdrCustomizer) {
-        if (showHdrPresetMenu && !showHdrCustomizer) {
+    LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrInteractionTick) {
+        if (showHdrPresetMenu || showHdrCustomizer) {
             delay(3_000)
             showHdrPresetMenu = false
+            showHdrCustomizer = false
         }
     }
 
@@ -504,8 +506,12 @@ fun PlayerScreen(
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
             colorIntensity = hdrColorIntensity,
-            onColorSelected = { selectedHdrColor = it },
+            onColorSelected = {
+                selectedHdrColor = it
+                hdrInteractionTick++
+            },
             onColorIntensityChange = { intensity ->
+                hdrInteractionTick++
                 hdrColorIntensity = intensity
                 val tint = selectedHdrColor.color
                 customHdrPreset = customHdrPreset.copy(
@@ -519,13 +525,16 @@ fun PlayerScreen(
             },
             onCustomize = {
                 showHdrCustomizer = true
+                hdrInteractionTick++
             },
             onCustomPresetChange = { preset ->
+                hdrInteractionTick++
                 customHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
                 playerViewModel.engine.setHdrColorPreset(customHdrPreset)
                 if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
             },
             onSelect = { preset ->
+                hdrInteractionTick++
                 playerViewModel.engine.setHdrColorPreset(preset)
                 if (preset.name == ColorPresets.HDR_DISABLED.name) {
                     playerViewModel.disableHdrEnhance()

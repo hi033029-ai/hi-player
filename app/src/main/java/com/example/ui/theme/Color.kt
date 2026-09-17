@@ -87,22 +87,8 @@ val MonochromeLightPalette = HiThemePalette(
     isDark = false
 )
 
-// 3. Classic Red & Black: Background: #000000 | Accent: #E10600 | Text: #E10600 | Subtext: #6B6B6B
-val ClassicRedBlackPalette = HiThemePalette(
-    background = Color(0xFF000000),
-    surface = Color(0xFF000000),
-    surfaceElevated = Color(0xFF121212),
-    surfaceBorder = Color.Transparent,
-    primary = Color(0xFFE10600),
-    secondary = Color(0xFFB30500),
-    textPrimary = Color(0xFFE10600),
-    textSecondary = Color(0xFF6B6B6B),
-    textTertiary = Color(0xFF909090),
-    isDark = true
-)
-
-// 4. Hi Player Logo: Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate
-val HiPlayerLogoPalette = HiThemePalette(
+// 3. Ice Blue: Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate
+val IceBluePalette = HiThemePalette(
     background = Color(0xFFB5D8EB),
     backgroundGradient = listOf(Color(0xFFB5D8EB), Color(0xFFA5CCE2)),
     surface = Color(0xFFC7E3F2),
@@ -120,9 +106,8 @@ fun getPaletteForTheme(mode: AppThemeMode): HiThemePalette {
     return when (mode) {
         AppThemeMode.CYAN_NEON_DARK -> MonochromeDarkPalette
         AppThemeMode.WARM_SUNSET_LIGHT -> MonochromeLightPalette
-        AppThemeMode.CLASSIC_RED_BLACK -> ClassicRedBlackPalette
-        AppThemeMode.HI_PLAYER_BLUE -> HiPlayerLogoPalette
-        AppThemeMode.CUSTOM -> HiPlayerLogoPalette
+        AppThemeMode.HI_PLAYER_BLUE -> IceBluePalette
+        AppThemeMode.CUSTOM -> IceBluePalette
     }
 }
 

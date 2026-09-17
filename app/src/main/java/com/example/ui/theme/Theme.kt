@@ -80,7 +80,7 @@ fun HiPlayerTheme(
     content: @Composable () -> Unit
 ) {
     val palette = if (themeMode == AppThemeMode.CUSTOM) {
-        customPalette ?: HiPlayerLogoPalette
+        customPalette ?: IceBluePalette
     } else {
         getPaletteForTheme(themeMode)
     }
@@ -121,4 +121,3 @@ fun MyApplicationTheme(
         content = content
     )
 }
-
