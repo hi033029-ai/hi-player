@@ -52,10 +52,11 @@ fun HorizontalThemeSelector(
     selectedTheme: AppThemeMode,
     onThemeSelected: (AppThemeMode) -> Unit,
     customPalette: com.example.ui.theme.HiThemePalette? = null,
+    showCustom: Boolean = true,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
 ) {
-    val themes = AppThemeMode.entries
+    val themes = AppThemeMode.entries.filter { showCustom || it != AppThemeMode.CUSTOM }
 
     LazyRow(
         modifier = modifier
@@ -178,28 +179,6 @@ fun RoundColorThemeItem(
         }
 
         Spacer(modifier = Modifier.height(6.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            listOf(
-                palette.background,
-                palette.primary,
-                palette.surface,
-                palette.textPrimary,
-            ).forEach { color ->
-                Box(
-                    modifier = Modifier
-                        .size(13.dp)
-                        .clip(CircleShape)
-                        .background(color)
-                        .border(0.75.dp, currentAppPalette.surfaceBorder, CircleShape),
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
 
         // Lower Theme Name
         Text(

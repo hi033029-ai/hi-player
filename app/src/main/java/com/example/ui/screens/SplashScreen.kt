@@ -598,6 +598,7 @@ private fun ChooseThemeView(
             com.example.ui.components.HorizontalThemeSelector(
                 selectedTheme = selectedTheme,
                 onThemeSelected = onThemeSelected,
+                showCustom = false,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp)
             )
 

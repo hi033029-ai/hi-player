@@ -509,18 +509,26 @@ fun PlayerScreen(
             onColorSelected = {
                 selectedHdrColor = it
                 hdrInteractionTick++
+                val nextPreset = customHdrPreset.copy(
+                    name = ColorPresets.CUSTOM.name,
+                    targetHue = hdrColorHue(it.color),
+                )
+                customHdrPreset = nextPreset
+                playerViewModel.engine.setHdrColorPreset(nextPreset)
             },
             onColorIntensityChange = { intensity ->
                 hdrInteractionTick++
                 hdrColorIntensity = intensity
                 val tint = selectedHdrColor.color
-                customHdrPreset = customHdrPreset.copy(
+                val nextPreset = customHdrPreset.copy(
                     name = ColorPresets.CUSTOM.name,
+                    targetHue = hdrColorHue(selectedHdrColor.color),
                     red = (1f + (tint.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
                     green = (1f + (tint.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
                     blue = (1f + (tint.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
                 )
-                playerViewModel.engine.setHdrColorPreset(customHdrPreset)
+                customHdrPreset = nextPreset
+                playerViewModel.engine.setHdrColorPreset(nextPreset)
                 if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
             },
             onCustomize = {
@@ -779,4 +787,17 @@ private fun computeVideoRatioScale(
             }
         }
     }
+}
+
+private fun hdrColorHue(color: Color): Float {
+    val max = maxOf(color.red, color.green, color.blue)
+    val min = minOf(color.red, color.green, color.blue)
+    val chroma = max - min
+    if (chroma < 0.001f) return 0f
+    val raw = when (max) {
+        color.red -> ((color.green - color.blue) / chroma) % 6f
+        color.green -> ((color.blue - color.red) / chroma) + 2f
+        else -> ((color.red - color.green) / chroma) + 4f
+    }
+    return ((raw / 6f) + 1f) % 1f
 }

@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -48,22 +47,19 @@ fun HdrPresetMenu(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text("Customize HDR", color = Color.White, fontSize = 13.sp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                CustomSlider("Exposure", customPreset.brightness, 0.5f..1.5f) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
                 }
-                CustomSlider("Saturation", customPreset.saturation, 0f..2f) {
+                CustomSlider(Modifier.weight(1f), "Saturation", customPreset.saturation, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(saturation = it))
                 }
-                CustomSlider("Vibrance", customPreset.vibrance, 0f..2f) {
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CustomSlider(Modifier.weight(1f), "Vibrance", customPreset.vibrance, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(vibrance = it))
                 }
-                CustomSlider("Sharpness", customPreset.sharpness, 0f..2f) {
+                CustomSlider(Modifier.weight(1f), "Sharpness", customPreset.sharpness, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(sharpness = it))
                 }
             }
@@ -133,12 +129,13 @@ enum class HdrColor(val color: Color) {
 
 @Composable
 private fun CustomSlider(
+    modifier: Modifier,
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit,
 ) {
-    Column(modifier = Modifier.width(150.dp)) {
+    Column(modifier = modifier) {
         Text(
             text = "$label ${"%.2f".format(value)}",
             color = Color.White,
@@ -148,7 +145,7 @@ private fun CustomSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            modifier = Modifier.width(150.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

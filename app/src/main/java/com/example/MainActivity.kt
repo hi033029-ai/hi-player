@@ -172,10 +172,10 @@ class MainActivity : ComponentActivity() {
                                 settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
                                     enterPipMode()
                                 }
-                                playerViewModel.engine.isBackgroundPlayActive.value -> {
+                                settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value -> {
                                     // The player utility action explicitly opted into audio-only playback.
                                 }
-                                else -> playerViewModel.engine.pause()
+                                else -> playerViewModel.engine.stopForNavigation()
                             }
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             currentScreen = AppScreen.Main
@@ -209,11 +209,11 @@ class MainActivity : ComponentActivity() {
                                             settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
                                                 enterPipMode()
                                             }
-                                            playerViewModel.engine.isBackgroundPlayActive.value -> {
+                                            settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value -> {
                                                 // Intentionally left playing (audio-only is the point).
                                             }
                                             else -> {
-                                                playerViewModel.engine.pause()
+                                                playerViewModel.engine.stopForNavigation()
                                             }
                                         }
                                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -470,10 +470,9 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (isInPictureInPictureMode || pipTransitionRequested) return
-        if (!playerViewModel.engine.isBackgroundPlayActive.value) {
-            if (playerViewModel.engine.isPlaying.value) {
-                playerViewModel.engine.pause()
-            }
+        val settings = libraryViewModel.playerSettings.value
+        if (!(settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
+            playerViewModel.engine.stopForNavigation()
         }
     }
 
@@ -485,9 +484,9 @@ class MainActivity : ComponentActivity() {
         _isInPipMode.value = isInPictureInPictureMode
         if (isInPictureInPictureMode) {
             pipTransitionRequested = false
-        } else if (!playerViewModel.engine.isBackgroundPlayActive.value) {
+        } else if (!(libraryViewModel.playerSettings.value.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
             pipTransitionRequested = false
-            playerViewModel.engine.pause()
+            playerViewModel.engine.stopForNavigation()
         }
         // Tapping the PiP window's own close/"cancel" control finishes the
         // activity, which triggers onStop() above and pauses playback there

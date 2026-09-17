@@ -512,6 +512,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         private var redHandle = 0
         private var greenHandle = 0
         private var blueHandle = 0
+        private var targetHueHandle = 0
         private var vibranceHandle = 0
         private var sharpnessHandle = 0
         private var preset = ColorPresets.NATURAL_HDR
@@ -533,6 +534,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             redHandle = GLES20.glGetUniformLocation(program, "uRed")
             greenHandle = GLES20.glGetUniformLocation(program, "uGreen")
             blueHandle = GLES20.glGetUniformLocation(program, "uBlue")
+            targetHueHandle = GLES20.glGetUniformLocation(program, "uTargetHue")
             vibranceHandle = GLES20.glGetUniformLocation(program, "uVibrance")
             sharpnessHandle = GLES20.glGetUniformLocation(program, "uSharpness")
 
@@ -568,6 +570,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             GLES20.glUniform1f(redHandle, preset.red)
             GLES20.glUniform1f(greenHandle, preset.green)
             GLES20.glUniform1f(blueHandle, preset.blue)
+            GLES20.glUniform1f(targetHueHandle, preset.targetHue)
             GLES20.glUniform1f(vibranceHandle, preset.vibrance)
             GLES20.glUniform1f(sharpnessHandle, preset.sharpness)
             vertexBuffer.position(0)
@@ -636,6 +639,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 uniform float uRed;
                 uniform float uGreen;
                 uniform float uBlue;
+                uniform float uTargetHue;
                 uniform float uVibrance;
                 uniform float uSharpness;
                 varying vec2 vTexCoord;
@@ -643,12 +647,29 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     vec4 tex = texture2D(uTexture, vTexCoord);
                     vec3 color = tex.rgb * uBrightness;
                     color = (color - 0.5) * uContrast + 0.5;
-                    color.r *= uRed; color.g *= uGreen; color.b *= uBlue;
-                    float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
-                    color = mix(vec3(luminance), color, uSaturation);
+                    vec3 originalColor = color;
+                    vec3 adjustedColor = color;
+                    adjustedColor.r *= uRed; adjustedColor.g *= uGreen; adjustedColor.b *= uBlue;
                     float maxChannel = max(color.r, max(color.g, color.b));
                     float minChannel = min(color.r, min(color.g, color.b));
-                    float colorfulness = maxChannel - minChannel;
+                    float chroma = maxChannel - minChannel;
+                    float hue = 0.0;
+                    if (chroma > 0.001) {
+                        if (maxChannel == color.r) hue = mod((color.g - color.b) / chroma, 6.0);
+                        else if (maxChannel == color.g) hue = ((color.b - color.r) / chroma) + 2.0;
+                        else hue = ((color.r - color.g) / chroma) + 4.0;
+                        hue /= 6.0;
+                        if (hue < 0.0) hue += 1.0;
+                    }
+                    float hueDistance = abs(hue - uTargetHue);
+                    hueDistance = min(hueDistance, 1.0 - hueDistance);
+                    float hueMask = uTargetHue < 0.0 ? 1.0 : (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
+                    color = mix(originalColor, adjustedColor, hueMask);
+                    float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+                    color = mix(vec3(luminance), color, uSaturation);
+                    float adjustedMaxChannel = max(color.r, max(color.g, color.b));
+                    float adjustedMinChannel = min(color.r, min(color.g, color.b));
+                    float colorfulness = adjustedMaxChannel - adjustedMinChannel;
                     color += (color - vec3(luminance)) * (uVibrance - 1.0) * (1.0 - colorfulness);
                     // A small four-tap unsharp mask keeps the control lightweight
                     // while making the sharpness slider visibly affect the frame.

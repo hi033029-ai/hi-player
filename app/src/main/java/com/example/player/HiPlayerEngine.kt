@@ -748,6 +748,14 @@ class HiPlayerEngine(
         exoPlayer?.pause()
     }
 
+    /** Prevents playback from resuming after leaving the player screen. */
+    fun stopForNavigation() {
+        exoPlayer?.let {
+            it.playWhenReady = false
+            it.pause()
+        }
+    }
+
     fun togglePlayPause() {
         exoPlayer?.let {
             if (it.isPlaying) it.pause() else it.play()

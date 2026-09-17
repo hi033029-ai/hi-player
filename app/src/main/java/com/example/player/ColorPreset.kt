@@ -10,6 +10,7 @@ data class ColorPreset(
     val blue: Float,
     val vibrance: Float,
     val sharpness: Float = 0.0f,
+    val targetHue: Float = -1.0f,
 )
 
 object ColorPresets {
