@@ -74,6 +74,7 @@ import com.example.ui.components.VideoSettingsBottomSheet
 import com.example.ui.components.AspectRatioPickerOverlay
 import com.example.ui.components.SpeedOverlayIndicator
 import com.example.ui.ZoomOverlayIndicator
+import com.example.ui.AspectRatioOverlayIndicator
 import com.example.ui.HoldSeekOverlayIndicator
 import com.example.ui.HoldSeekSide
 import com.example.ui.HdrPresetMenu
@@ -186,6 +187,7 @@ fun PlayerScreen(
     var videoHeight by remember { mutableStateOf(0) }
     var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
+    var showAspectRatioIndicator by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
@@ -407,6 +409,13 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(showAspectRatioIndicator, aspectRatioMode) {
+        if (showAspectRatioIndicator) {
+            delay(1400)
+            showAspectRatioIndicator = false
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -466,8 +475,17 @@ fun PlayerScreen(
             onSelect = {
                 playerViewModel.setAspectRatio(it)
                 showAspectPicker = false
+                showAspectRatioIndicator = true
             },
             modifier = Modifier.align(Alignment.CenterStart),
+        )
+
+        AspectRatioOverlayIndicator(
+            visible = showAspectRatioIndicator,
+            mode = aspectRatioMode,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 58.dp),
         )
 
         SpeedOverlayIndicator(
@@ -607,9 +625,15 @@ fun PlayerScreen(
             onOpenEqualizer = { playerViewModel.openSheet(ActiveSheet.EQUALIZER) },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
-            onCycleAspectRatio = { playerViewModel.cycleAspectRatio() },
+            onCycleAspectRatio = {
+                playerViewModel.cycleAspectRatio()
+                showAspectRatioIndicator = true
+            },
             onLongPressAspectRatio = { showAspectPicker = true },
-            onAspectRatioSelected = { playerViewModel.setAspectRatio(it) },
+            onAspectRatioSelected = {
+                playerViewModel.setAspectRatio(it)
+                showAspectRatioIndicator = true
+            },
             onCycleSpeed = {
                 val nextSpeed = nextPlaybackSpeed(playbackSpeed)
                 playerViewModel.setPlaybackSpeed(nextSpeed)
@@ -700,6 +724,7 @@ fun PlayerScreen(
                     currentAspectRatio = aspectRatioMode,
                     onAspectRatioSelected = {
                         playerViewModel.setAspectRatio(it)
+                        showAspectRatioIndicator = true
                         playerViewModel.closeSheet()
                     },
                     sleepTimerMinutes = sleepTimerMinutes,

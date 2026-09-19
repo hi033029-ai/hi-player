@@ -22,7 +22,8 @@ data class FileItem(
     val lastModified: Long = 0L,
     val childCount: Int = 0,
     val fileType: FileType = FileType.OTHER,
-    val extension: String = file.extension.lowercase(Locale.ROOT)
+    val extension: String = file.extension.lowercase(Locale.ROOT),
+    val hasNewVideo: Boolean = false
 ) {
     val formattedSize: String
         get() {

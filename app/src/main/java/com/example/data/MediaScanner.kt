@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import com.example.model.VideoItem
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 object MediaScanner {
+
+    private val partialDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
+    private val videoExtensions = setOf("mp4", "mkv", "webm", "mov", "avi", "ts", "m4v", "3gp", "flv", "wmv", "vob")
 
     suspend fun scanLocalVideos(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
         val videoList = mutableListOf<VideoItem>()
@@ -104,12 +108,46 @@ object MediaScanner {
             e.printStackTrace()
         }
 
+        videoList += scanPartialDownloadVideos(videoList)
+
         // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
         if (videoList.isEmpty()) {
             videoList.addAll(getDemoRemuxVideos())
         }
 
         videoList
+    }
+
+    private fun scanPartialDownloadVideos(existing: List<VideoItem>): List<VideoItem> {
+        val knownPaths = existing.mapNotNull { it.path.takeIf(String::isNotEmpty) }.toMutableSet()
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloadDir.isDirectory) return emptyList()
+
+        return runCatching {
+            downloadDir.walkTopDown()
+                .maxDepth(3)
+                .filter { it.isFile }
+                .mapNotNull { file ->
+                    val lowerName = file.name.lowercase()
+                    val suffix = partialDownloadSuffixes.firstOrNull { lowerName.endsWith(it) } ?: return@mapNotNull null
+                    val originalName = file.name.dropLast(suffix.length)
+                    val extension = originalName.substringAfterLast('.', "").lowercase()
+                    if (extension !in videoExtensions || !knownPaths.add(file.absolutePath)) return@mapNotNull null
+
+                    VideoItem(
+                        id = file.absolutePath.hashCode().toLong(),
+                        uri = Uri.fromFile(file),
+                        title = originalName,
+                        sizeBytes = file.length(),
+                        mimeType = "video/$extension",
+                        dateAdded = file.lastModified() / 1000L,
+                        folderName = file.parentFile?.name ?: "Downloads",
+                        path = file.absolutePath,
+                        codec = "Downloading video"
+                    )
+                }
+                .toList()
+        }.getOrDefault(emptyList())
     }
 
     fun getDemoRemuxVideos(): List<VideoItem> {

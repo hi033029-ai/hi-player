@@ -47,6 +47,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _folderFiles = MutableStateFlow<List<FileItem>>(emptyList())
     val folderFiles = _folderFiles.asStateFlow()
 
+    private val _newFolderPaths = MutableStateFlow<Set<String>>(emptySet())
+    val newFolderPaths = _newFolderPaths.asStateFlow()
+
     private val _allArchives = MutableStateFlow<List<FileItem>>(emptyList())
     val allArchives = _allArchives.asStateFlow()
 
@@ -235,6 +238,34 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         scanDeviceArchivesAndDocuments()
     }
 
+    private fun isVideoFile(file: File): Boolean = determineFileType(file) == FileType.VIDEO
+
+    private fun folderSignature(dir: File): String {
+        val children = dir.listFiles()?.asSequence()
+            ?.filter { !it.isDirectory && isVideoFile(it) }
+            ?.sortedBy { it.name }
+            ?.joinToString(";") { child ->
+                "${child.name}|${child.length()}|${child.lastModified()}|${child.isDirectory}"
+            }
+            ?: ""
+        return children.hashCode().toString()
+    }
+
+    private fun observeFolder(dir: File): Boolean {
+        val key = "video_folder_signature_v2_${dir.absolutePath}"
+        val current = folderSignature(dir)
+        val previous = fileManagerPrefs.getString(key, null)
+        fileManagerPrefs.edit().putString(key, current).apply()
+        return previous != null && previous != current
+    }
+
+    private fun markFolderSeen(dir: File) {
+        fileManagerPrefs.edit()
+            .putString("video_folder_signature_v2_${dir.absolutePath}", folderSignature(dir))
+            .apply()
+        _newFolderPaths.value = _newFolderPaths.value - dir.absolutePath
+    }
+
     fun loadDirectory(dir: File) {
         if (!dir.exists() || !dir.isDirectory) return
         _currentDirectory.value = dir
@@ -259,7 +290,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                                 sizeBytes = if (isDir) 0L else file.length(),
                                 lastModified = file.lastModified(),
                                 childCount = count,
-                                fileType = determineFileType(file)
+                                fileType = determineFileType(file),
+                                hasNewVideo = isDir && observeFolder(file)
                             )
                         }
                         .sortedWith(
@@ -272,6 +304,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             }
             if (generation == directoryScanGeneration.get() && _currentDirectory.value == dir) {
                 _folderFiles.value = items
+                _newFolderPaths.value = _newFolderPaths.value + items.filter { it.hasNewVideo }.map { it.path }
                 _isLoading.value = false
             }
         }
@@ -279,6 +312,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun navigateTo(item: FileItem) {
         if (item.isDirectory) {
+            clearSelection()
+            markFolderSeen(item.file)
             // Any leftover archive-inspector / menu state from the previous
             // folder must not carry into the new one, or it can silently
             // reappear the next time selectedArchive is read (e.g. on back).
@@ -291,6 +326,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val current = _currentDirectory.value
         val parent = current.parentFile
         if (parent != null && parent.canRead() && current.absolutePath != rootDir.absolutePath) {
+            clearSelection()
             dismissArchiveViewer()
             loadDirectory(parent)
             return true
@@ -309,8 +345,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _searchQuery.value = query
     }
 
-    private fun isVideoOrAudio(file: File): Boolean {
+    private fun normalizedDownloadName(file: File): String {
         val name = file.name.lowercase(Locale.ROOT)
+        return listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
+            .firstOrNull { name.endsWith(it) }
+            ?.let { name.removeSuffix(it) }
+            ?: name
+    }
+
+    private fun isVideoOrAudio(file: File): Boolean {
+        val name = normalizedDownloadName(file)
         return name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".webm") ||
                 name.endsWith(".mov") || name.endsWith(".avi") || name.endsWith(".ts") ||
                 name.endsWith(".m4v") || name.endsWith(".3gp") || name.endsWith(".flv") ||
@@ -321,7 +365,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun determineFileType(file: File): FileType {
         if (file.isDirectory) return FileType.DIRECTORY
-        val name = file.name.lowercase(Locale.ROOT)
+        val name = normalizedDownloadName(file)
         return when {
             name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".webm") ||
                     name.endsWith(".mov") || name.endsWith(".avi") || name.endsWith(".ts") ||

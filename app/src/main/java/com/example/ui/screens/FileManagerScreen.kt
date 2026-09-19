@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import com.example.model.FileType
@@ -69,8 +72,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,6 +86,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +98,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -118,6 +121,8 @@ import com.example.ui.theme.HiTextPrimary
 import com.example.ui.theme.HiTextSecondary
 import com.example.viewmodel.FileManagerViewModel
 import com.example.ui.components.HiPlayerHeader
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -136,12 +141,18 @@ fun FileManagerScreen(
     fileManagerViewModel: FileManagerViewModel,
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
-    onSearchRequested: (() -> Unit)? = null
+    onSearchRequested: (() -> Unit)? = null,
+    onOpenVideo: ((FileItem) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasFullStorageAccess by remember {
+        mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager())
+    }
     val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
     val currentDir by fileManagerViewModel.currentDirectory.collectAsState()
     val folderFiles by fileManagerViewModel.folderFiles.collectAsState()
+    val newFolderPaths by fileManagerViewModel.newFolderPaths.collectAsState()
     val allArchives by fileManagerViewModel.allArchives.collectAsState()
     val allDocuments by fileManagerViewModel.allDocuments.collectAsState()
     val usedStorage by fileManagerViewModel.storageUsedBytes.collectAsState()
@@ -168,20 +179,33 @@ fun FileManagerScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by remember { mutableStateOf(TextFieldValue()) }
-    val savedTab = remember { runCatching { FileViewTab.valueOf(fileManagerViewModel.preferredFileTab) }.getOrDefault(FileViewTab.ALL_MERGED) }
-    var activeTab by remember { mutableStateOf(savedTab) }
-    fun selectTab(tab: FileViewTab) {
-        activeTab = tab
-        fileManagerViewModel.setPreferredFileTab(tab.name)
-    }
+    val activeTab = FileViewTab.ALL_MERGED
     var apkInstallCandidate by remember { mutableStateOf<FileItem?>(null) }
     var showQuickPanels by remember { mutableStateOf(true) }
+    fun openFile(item: FileItem) {
+        when {
+            item.isVideo && onOpenVideo != null -> onOpenVideo(item)
+            item.isApk -> apkInstallCandidate = item
+            else -> fileManagerViewModel.openWithExternalApp(item, context)
+        }
+    }
 
     // Upper quick panels are restored whenever Files is revisited or navigation changes.
     // Scrolling must not permanently hide them; the user can dismiss them only through
     // an explicit UI action, and returning to Files always restores the default view.
-    LaunchedEffect(activeTab, currentDir.absolutePath) {
+    LaunchedEffect(currentDir.absolutePath) {
         showQuickPanels = true
+        fileManagerViewModel.clearSelection()
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasFullStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+                fileManagerViewModel.refreshAll()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Single back handler with an explicit priority order: any open dialog/sheet
@@ -263,31 +287,6 @@ fun FileManagerScreen(
                 navigationIcon = {
                     IconButton(onClick = { fileManagerViewModel.clearSelection() }) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = palette.textPrimary)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { fileManagerViewModel.selectAllInCurrentFolder() }) {
-                        Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
-                    }
-                    if (selectedPaths.size == 1) {
-                        IconButton(onClick = {
-                            val item = folderFiles.find { it.path == selectedPaths.first() }
-                                ?: allArchives.find { it.path == selectedPaths.first() }
-                                ?: allDocuments.find { it.path == selectedPaths.first() }
-                            if (item != null) fileManagerViewModel.showDetails(item)
-                        }) {
-                            Icon(Icons.Default.Info, contentDescription = "Details", tint = palette.textPrimary)
-                        }
-                    }
-                    IconButton(onClick = {
-                        val items = selectedPaths.mapNotNull { path ->
-                            folderFiles.find { it.path == path }
-                                ?: allArchives.find { it.path == path }
-                                ?: allDocuments.find { it.path == path }
-                        }
-                        fileManagerViewModel.requestDelete(items)
-                    }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
                     }
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
@@ -389,6 +388,38 @@ fun FileManagerScreen(
         }
 
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullStorageAccess) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D6))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF9A6700))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow full storage access", fontWeight = FontWeight.Bold, color = Color(0xFF5F4300), fontSize = 13.sp)
+                        Text("Required to delete and manage files reliably.", color = Color(0xFF7A5A12), fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) { Text("Allow", fontSize = 12.sp) }
+                }
+            }
+        }
+
         // Quick sections are hidden after the file list is scrolled to preserve space.
         if (!isInsideFolder && showQuickPanels) {
             Card(
@@ -476,7 +507,6 @@ fun FileManagerScreen(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(palette.secondary.copy(alpha = 0.15f))
-                                .clickable { selectTab(FileViewTab.ARCHIVES_ONLY) }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -502,7 +532,6 @@ fun FileManagerScreen(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0x223B82F6))
-                                .clickable { selectTab(FileViewTab.DOCUMENTS_ONLY) }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -528,7 +557,6 @@ fun FileManagerScreen(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0x2210B981))
-                                .clickable { selectTab(FileViewTab.FOLDERS_BROWSER) }
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -552,68 +580,8 @@ fun FileManagerScreen(
                 }
             }
 
-            // Filter chips bar
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = activeTab == FileViewTab.ALL_MERGED,
-                        onClick = { selectTab(FileViewTab.ALL_MERGED) },
-                        label = { Text("Merged View", fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = palette.primary,
-                            selectedLabelColor = if (palette.isDark) Color.Black else Color.White,
-                            containerColor = palette.surfaceElevated,
-                            labelColor = palette.textSecondary
-                        ),
-                        border = null
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = activeTab == FileViewTab.ARCHIVES_ONLY,
-                        onClick = { selectTab(FileViewTab.ARCHIVES_ONLY) },
-                        label = { Text("Archives (${filteredArchives.size})", fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = palette.secondary,
-                            selectedLabelColor = Color.Black,
-                            containerColor = palette.surfaceElevated,
-                            labelColor = palette.textSecondary
-                        ),
-                        border = null
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = activeTab == FileViewTab.DOCUMENTS_ONLY,
-                        onClick = { selectTab(FileViewTab.DOCUMENTS_ONLY) },
-                        label = { Text("Documents (${filteredDocuments.size})", fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF3B82F6),
-                            selectedLabelColor = Color.White,
-                            containerColor = palette.surfaceElevated,
-                            labelColor = palette.textSecondary
-                        ),
-                        border = null
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = activeTab == FileViewTab.FOLDERS_BROWSER,
-                        onClick = { selectTab(FileViewTab.FOLDERS_BROWSER) },
-                        label = { Text("Android Folders", fontSize = 12.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFF10B981),
-                            selectedLabelColor = Color.Black,
-                            containerColor = palette.surfaceElevated,
-                            labelColor = palette.textSecondary
-                        ),
-                        border = null
-                    )
-                }
-                        }
+            // The file list now stays in one stable view; archive/document/folder
+            // categories remain available through the content and context actions.
         }
         // Main Content Area
 
@@ -632,15 +600,13 @@ fun FileManagerScreen(
                     onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
                     onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                     onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
-                    onOpenFile = {
-                        if (it.isApk) apkInstallCandidate = it
-                        else fileManagerViewModel.openWithExternalApp(it, context)
-                    },
+                    onOpenFile = { openFile(it) },
                     isSelectionMode = isSelectionMode,
                     selectedPaths = selectedPaths,
                     onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                     onItemTap = { fileManagerViewModel.toggleSelection(it) },
-                    onItemMenuClick = { menuTargetItem = it }
+                    onItemMenuClick = { menuTargetItem = it },
+                    newFolderPaths = newFolderPaths
                 )
             } else {
                 when (activeTab) {
@@ -656,16 +622,14 @@ fun FileManagerScreen(
                             onInstallApk = { apkInstallCandidate = it },
                             onNavigateFolder = { fileManagerViewModel.navigateTo(it) },
                             onNavigateUp = { fileManagerViewModel.navigateUp() },
-                            onOpenFile = {
-                        if (it.isApk) apkInstallCandidate = it
-                        else fileManagerViewModel.openWithExternalApp(it, context)
-                    },
+                            onOpenFile = { openFile(it) },
                             onContentScrolled = { atTop -> showQuickPanels = atTop },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
-                            onItemMenuClick = { menuTargetItem = it }
+                            onItemMenuClick = { menuTargetItem = it },
+                            newFolderPaths = newFolderPaths
                         )
                     }
                     FileViewTab.ARCHIVES_ONLY -> {
@@ -690,16 +654,14 @@ fun FileManagerScreen(
                             onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
                             onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                             onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
-                            onOpenFile = {
-                        if (it.isApk) apkInstallCandidate = it
-                        else fileManagerViewModel.openWithExternalApp(it, context)
-                    },
+                            onOpenFile = { openFile(it) },
                             onContentScrolled = { atTop -> showQuickPanels = atTop },
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
-                            onItemMenuClick = { menuTargetItem = it }
+                            onItemMenuClick = { menuTargetItem = it },
+                            newFolderPaths = newFolderPaths
                         )
                     }
                 }
@@ -1065,6 +1027,7 @@ fun MergedFilesView(
     onItemLongClick: (FileItem) -> Unit = {},
     onItemTap: (FileItem) -> Unit = {},
     onItemMenuClick: (FileItem) -> Unit = {},
+    newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
@@ -1330,6 +1293,7 @@ fun MergedFilesView(
                         onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
                         onLongClick = { onItemLongClick(item) },
                         isSelected = selectedPaths.contains(item.path),
+                        isNew = newFolderPaths.contains(item.path),
                         onMenuClick = { onItemMenuClick(item) }
                     )
                 } else if (item.isApk) {
@@ -1471,6 +1435,7 @@ fun FoldersBrowserView(
     onItemLongClick: (FileItem) -> Unit = {},
     onItemTap: (FileItem) -> Unit = {},
         onItemMenuClick: (FileItem) -> Unit = {},
+    newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
@@ -1554,6 +1519,7 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            isNew = newFolderPaths.contains(item.path),
                             onMenuClick = { onItemMenuClick(item) }
                         )
                     } else if (item.isApk) {
@@ -1990,6 +1956,7 @@ fun FolderItemCard(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
+    isNew: Boolean = false,
     onMenuClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -2047,6 +2014,16 @@ fun FolderItemCard(
                     color = palette.primary,
                     fontWeight = FontWeight.Normal
                 )
+            }
+
+            if (isNew) {
+                Icon(
+                    imageVector = Icons.Default.NewReleases,
+                    contentDescription = "New files in folder",
+                    tint = Color(0xFF16A34A),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
             }
 
             if (onMenuClick != null) {

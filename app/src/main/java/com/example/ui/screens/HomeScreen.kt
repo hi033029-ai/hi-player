@@ -658,6 +658,7 @@ fun HomeScreen(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = onVideoSelected,
+                                    onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
@@ -681,6 +682,7 @@ fun HomeScreen(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = onVideoSelected,
+                                    onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
@@ -713,6 +715,7 @@ fun HomeScreen(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = onVideoSelected,
+                                    onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
@@ -812,6 +815,7 @@ fun HomeScreen(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = onVideoSelected,
+                                    onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
                             }
@@ -1033,13 +1037,6 @@ fun ContinueWatchingCard(
                     contentScale = ContentScale.Crop
                 )
 
-                IconButton(
-                    onClick = onRemove,
-                    modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
-                ) {
-                    Icon(Icons.Default.Clear, contentDescription = "Remove from Continue Watching", tint = Color.White)
-                }
-
                 // Dark gradient shade overlay
                 Box(
                     modifier = Modifier
@@ -1050,6 +1047,13 @@ fun ContinueWatchingCard(
                             )
                         )
                 )
+
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
+                ) {
+                    Icon(Icons.Default.Clear, contentDescription = "Remove from Continue Watching", tint = Color.White)
+                }
 
                 // Play Button in Center
                 Box(

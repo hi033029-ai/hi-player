@@ -320,7 +320,26 @@ class MainActivity : ComponentActivity() {
                                             NavTab.FILE_MANAGER -> {
                                                 FileManagerScreen(
                                                     fileManagerViewModel = fileManagerViewModel,
-                                                    includeHeader = false
+                                                    includeHeader = false,
+                                                    onOpenVideo = { file ->
+                                                        val title = file.name
+                                                            .removeSuffix(".crdownload")
+                                                            .removeSuffix(".download")
+                                                            .removeSuffix(".part")
+                                                            .removeSuffix(".tmp")
+                                                        playerViewModel.playVideo(
+                                                            VideoItem(
+                                                                id = file.path.hashCode().toLong(),
+                                                                uri = Uri.fromFile(file.file),
+                                                                title = title,
+                                                                sizeBytes = file.sizeBytes,
+                                                                mimeType = "video/*",
+                                                                path = file.path,
+                                                                folderName = file.file.parentFile?.name ?: "Files"
+                                                            )
+                                                        )
+                                                        currentScreen = AppScreen.Player
+                                                    }
                                                 )
                                             }
                                             NavTab.SETTINGS -> {

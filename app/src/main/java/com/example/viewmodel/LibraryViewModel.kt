@@ -2,6 +2,8 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.os.Environment
+import android.os.FileObserver
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.MediaScanner
@@ -73,6 +75,7 @@ data class TreeFolderNode(
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
+    private var downloadsObserver: FileObserver? = null
     private val database = HiPlayerDatabase.getInstance(application)
     private val videoDao = database.videoDao()
     private val preferencesRepo = PlayerPreferencesRepository(application)
@@ -292,6 +295,30 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         refreshVideos()
+        startDownloadsObserver()
+    }
+
+    private fun startDownloadsObserver() {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloads.isDirectory) return
+        downloadsObserver = object : FileObserver(
+            downloads,
+            FileObserver.CREATE or FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE
+        ) {
+            override fun onEvent(event: Int, path: String?) {
+                val name = path?.lowercase() ?: return
+                if (name.endsWith(".mp4") || name.endsWith(".mkv") ||
+                    name.endsWith(".webm") || name.endsWith(".mov") ||
+                    name.endsWith(".avi") || name.endsWith(".ts") ||
+                    name.endsWith(".m4v") || name.endsWith(".3gp") ||
+                    name.endsWith(".crdownload") || name.endsWith(".download") ||
+                    name.endsWith(".part") || name.endsWith(".partial") ||
+                    name.endsWith(".tmp")
+                ) {
+                    refreshVideos()
+                }
+            }
+        }.also { it.startWatching() }
     }
 
     fun refreshVideos() {
@@ -541,5 +568,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             preferencesRepo.setUiTextSize(sizeSp)
         }
+    }
+
+    override fun onCleared() {
+        downloadsObserver?.stopWatching()
+        downloadsObserver = null
+        super.onCleared()
     }
 }
