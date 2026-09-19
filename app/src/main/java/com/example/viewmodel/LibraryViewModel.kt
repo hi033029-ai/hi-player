@@ -57,7 +57,8 @@ enum class LibraryNavMode(val displayName: String) {
 data class VideoFolder(
     val name: String,
     val videoCount: Int,
-    val sampleVideo: VideoItem?
+    val sampleVideo: VideoItem?,
+    val hasNewVideo: Boolean = false
 )
 
 /**
@@ -71,7 +72,8 @@ data class TreeFolderNode(
     val dirPath: String,
     val childFolders: List<TreeFolderNode>,
     val directVideos: List<VideoItem>,
-    val totalVideoCount: Int
+    val totalVideoCount: Int,
+    val hasNewVideo: Boolean = false
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -288,7 +290,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 VideoFolder(
                     name = name,
                     videoCount = group.size,
-                    sampleVideo = group.firstOrNull()
+                    sampleVideo = group.firstOrNull(),
+                    hasNewVideo = group.any { it.isPartialDownload }
                 )
             }.sortedBy { it.name.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -396,7 +399,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 dirPath = node.dirPath,
                 childFolders = children,
                 directVideos = node.directVideos.sortedBy { it.title.lowercase() },
-                totalVideoCount = total
+                totalVideoCount = total,
+                hasNewVideo = node.directVideos.any { it.isPartialDownload } || children.any { it.hasNewVideo }
             )
         }
 

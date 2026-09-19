@@ -667,6 +667,7 @@ fun HomeScreen(
                             FolderGridCard(
                                 name = folder.name,
                                 videoCount = folder.videoCount,
+                                hasNewVideo = folder.hasNewVideo,
                                 isSelected = selectedFolder == folder.name,
                                 onClick = { libraryViewModel.selectFolder(folder.name) }
                             )
@@ -688,9 +689,9 @@ fun HomeScreen(
                             }
                         }
                         itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
-                            FolderItemRow(
-                                folder = folder,
-                                isSelected = selectedFolder == folder.name,
+                                    FolderItemRow(
+                                        folder = folder,
+                                        isSelected = selectedFolder == folder.name,
                                 onClick = {
                                     libraryViewModel.selectFolder(folder.name)
                                 }
@@ -744,6 +745,7 @@ fun HomeScreen(
                                                 FolderGridCard(
                                                     name = child.name,
                                                     videoCount = child.totalVideoCount,
+                                                    hasNewVideo = child.hasNewVideo,
                                                     onClick = { libraryViewModel.navigateTreeInto(child.dirPath) }
                                                 )
                                             }
@@ -759,7 +761,8 @@ fun HomeScreen(
                                         folder = com.example.viewmodel.VideoFolder(
                                             name = child.name,
                                             videoCount = child.totalVideoCount,
-                                            sampleVideo = null
+                                            sampleVideo = null,
+                                            hasNewVideo = child.hasNewVideo
                                         ),
                                         onClick = { libraryViewModel.navigateTreeInto(child.dirPath) }
                                     )

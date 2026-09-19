@@ -33,6 +33,7 @@ import com.example.viewmodel.VideoFolder
 fun FolderItemRow(
     folder: VideoFolder,
     isSelected: Boolean = false,
+    hasNewVideo: Boolean = folder.hasNewVideo,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -88,13 +89,24 @@ fun FolderItemRow(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
-            Text(
-                text = countText,
-                fontSize = 13.sp,
-                color = palette.textSecondary,
-                fontWeight = FontWeight.Normal
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
+                Text(
+                    text = countText,
+                    fontSize = 13.sp,
+                    color = palette.textSecondary,
+                    fontWeight = FontWeight.Normal
+                )
+                if (hasNewVideo) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "NEW",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF16A34A)
+                    )
+                }
+            }
         }
     }
 }
@@ -108,6 +120,7 @@ fun FolderGridCard(
     name: String,
     videoCount: Int,
     isSelected: Boolean = false,
+    hasNewVideo: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -152,5 +165,13 @@ fun FolderGridCard(
             fontSize = 11.5.sp,
             color = palette.textSecondary
         )
+        if (hasNewVideo) {
+            Text(
+                text = "NEW",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF16A34A)
+            )
+        }
     }
 }

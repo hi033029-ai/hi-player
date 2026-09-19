@@ -1293,6 +1293,7 @@ fun MergedFilesView(
                         onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
                         onLongClick = { onItemLongClick(item) },
                         isSelected = selectedPaths.contains(item.path),
+                        showSelectionControl = isSelectionMode,
                         isNew = newFolderPaths.contains(item.path),
                         onMenuClick = { onItemMenuClick(item) }
                     )
@@ -1519,6 +1520,7 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            showSelectionControl = isSelectionMode,
                             isNew = newFolderPaths.contains(item.path),
                             onMenuClick = { onItemMenuClick(item) }
                         )
@@ -1956,6 +1958,7 @@ fun FolderItemCard(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
+    showSelectionControl: Boolean = false,
     isNew: Boolean = false,
     onMenuClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -1974,16 +1977,17 @@ fun FolderItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 0.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onLongClick != null) {
+            if (showSelectionControl) {
                 SelectionCheckCircle(isSelected = isSelected)
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .width(48.dp)
+                    .height(40.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(palette.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
@@ -1992,11 +1996,11 @@ fun FolderItemCard(
                     imageVector = Icons.Default.Folder,
                     contentDescription = null,
                     tint = palette.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(18.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(

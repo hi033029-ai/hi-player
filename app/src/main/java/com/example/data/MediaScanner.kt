@@ -143,7 +143,8 @@ object MediaScanner {
                         dateAdded = file.lastModified() / 1000L,
                         folderName = file.parentFile?.name ?: "Downloads",
                         path = file.absolutePath,
-                        codec = "Downloading video"
+                        codec = "Downloading video",
+                        isPartialDownload = true
                     )
                 }
                 .toList()
