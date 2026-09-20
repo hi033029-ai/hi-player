@@ -344,6 +344,7 @@ fun HomeScreen(
                             Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
                         }
                     },
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
                 )
             }
@@ -896,6 +897,7 @@ fun HomeScreen(
                             VideoGridCard(
                                 video = video.copy(isFavorite = record?.isFavorite ?: false),
                                 progressFraction = progressFraction,
+                                isSelected = selectedVideoPaths.contains(videoKey(video)),
                                 onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                 onLongClick = { toggleVideoSelection(video) },
                                 onFavoriteToggle = { isFav ->
@@ -942,6 +944,7 @@ fun HomeScreen(
                             VideoItemCard(
                                 video = video.copy(isFavorite = record?.isFavorite ?: false),
                                 progressFraction = progressFraction,
+                                isSelected = selectedVideoPaths.contains(videoKey(video)),
                                 onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                 onLongClick = { toggleVideoSelection(video) },
                                 onFavoriteToggle = { isFav ->

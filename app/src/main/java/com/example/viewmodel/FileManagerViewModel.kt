@@ -242,7 +242,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         periodicRefreshJob = viewModelScope.launch {
             while (isActive) {
                 delay(5_000L)
-                refreshAll()
+                refreshAll(silent = true)
             }
         }
     }
@@ -253,9 +253,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         super.onCleared()
     }
 
-    fun refreshAll() {
+    fun refreshAll(silent: Boolean = false) {
         calculateStorageInfo()
-        loadDirectory(_currentDirectory.value)
+        loadDirectory(_currentDirectory.value, showLoading = !silent)
         scanDeviceArchivesAndDocuments()
     }
 
@@ -287,10 +287,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _newFolderPaths.value = _newFolderPaths.value - dir.absolutePath
     }
 
-    fun loadDirectory(dir: File) {
+    fun loadDirectory(dir: File, showLoading: Boolean = true) {
         if (!dir.exists() || !dir.isDirectory) return
         _currentDirectory.value = dir
-        _isLoading.value = true
+        if (showLoading) _isLoading.value = true
         val generation = directoryScanGeneration.incrementAndGet()
 
         viewModelScope.launch {

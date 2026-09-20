@@ -64,6 +64,7 @@ fun VideoItemCard(
     video: VideoItem,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    isSelected: Boolean = false,
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
     onShowDetails: () -> Unit,
@@ -83,9 +84,9 @@ fun VideoItemCard(
             .testTag("video_card_${video.id}"),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.Transparent
+            containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent
         ),
-        border = null,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, palette.primary) else null,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
@@ -382,6 +383,7 @@ fun VideoGridCard(
     video: VideoItem,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
+    isSelected: Boolean = false,
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
     onShowDetails: () -> Unit,
@@ -401,9 +403,9 @@ fun VideoGridCard(
             .testTag("video_grid_card_${video.id}"),
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.Transparent
+            containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent
         ),
-        border = null,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, palette.primary) else null,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(

@@ -71,13 +71,6 @@ data class VideoFolder(
     val hasNewVideo: Boolean = false
 )
 
-private const val NEW_VIDEO_WINDOW_MILLIS = 24L * 60L * 60L * 1000L
-
-private fun VideoItem.isRecentlyAdded(nowMillis: Long = System.currentTimeMillis()): Boolean {
-    val addedMillis = dateAdded * 1000L
-    return isNewVideo || (addedMillis > 0L && nowMillis - addedMillis in 0..NEW_VIDEO_WINDOW_MILLIS)
-}
-
 /**
  * One directory in the real nested folder tree, built from each video's
  * absolute file [VideoItem.path]. [dirPath] is the full directory path this
@@ -98,7 +91,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private var periodicRefreshJob: Job? = null
     private val mediaStoreObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
-            refreshVideos()
+            refreshVideos(silent = true)
         }
     }
     private val database = HiPlayerDatabase.getInstance(application)
@@ -108,6 +101,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _allVideos = MutableStateFlow<List<VideoItem>>(emptyList())
     val allVideos = _allVideos.asStateFlow()
+    private val _hiddenContinueUris = MutableStateFlow<Set<String>>(emptySet())
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
@@ -158,10 +152,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     val continueWatchingVideos = combine(
         _allVideos,
-        historyRecords
-    ) { allVideos, history ->
+        historyRecords,
+        _hiddenContinueUris
+    ) { allVideos, history, hiddenUris ->
         val videoMap = allVideos.associateBy { it.uri.toString() }
-        history.mapNotNull { entity ->
+        history.filterNot { it.uriString in hiddenUris }.mapNotNull { entity ->
             val baseVideo = videoMap[entity.uriString] ?: VideoItem(
                 id = entity.uriString.hashCode().toLong(),
                 uri = Uri.parse(entity.uriString),
@@ -308,14 +303,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folders = _allVideos.map { videos ->
-        val now = System.currentTimeMillis()
         videos.groupBy { it.folderName }
             .map { (name, group) ->
                 VideoFolder(
                     name = name,
                     videoCount = group.size,
                     sampleVideo = group.firstOrNull(),
-                    hasNewVideo = group.any { it.isPartialDownload || it.isRecentlyAdded(now) }
+                    hasNewVideo = group.any { it.isNewVideo }
                 )
             }.sortedBy { it.name.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -326,7 +320,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         periodicRefreshJob = viewModelScope.launch {
             while (isActive) {
                 delay(5_000L)
-                refreshVideos()
+                refreshVideos(silent = true)
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -354,21 +348,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     name.endsWith(".part") || name.endsWith(".partial") ||
                     name.endsWith(".tmp")
                 ) {
-                    refreshVideos()
+                    refreshVideos(silent = true)
                 }
             }
         }.also { it.startWatching() }
     }
 
-    fun refreshVideos() {
+    fun refreshVideos(silent: Boolean = false) {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
-            _isLoading.value = true
+            if (!silent) _isLoading.value = true
             try {
                 val scanned = MediaScanner.scanLocalVideos(getApplication())
-                _allVideos.value = scanned
+                val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
+                _allVideos.value = scanned.map { video ->
+                    if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) {
+                        video.copy(isNewVideo = false)
+                    } else video
+                }
             } finally {
-                _isLoading.value = false
+                if (!silent) _isLoading.value = false
             }
         }
     }
@@ -534,9 +533,22 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeFromContinueWatching(uriString: String) {
+        _hiddenContinueUris.value = _hiddenContinueUris.value + uriString
         viewModelScope.launch {
             videoDao.deleteRecord(uriString)
         }
+    }
+
+    fun markVideoOpened(video: VideoItem) {
+        val key = video.path.ifBlank { video.uri.toString() }
+        val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty().toMutableSet()
+        if (seen.add(key)) {
+            libraryPrefs.edit().putStringSet("seen_video_new_paths", seen).apply()
+            _allVideos.value = _allVideos.value.map {
+                if (it.path.ifBlank { it.uri.toString() } == key) it.copy(isNewVideo = false) else it
+            }
+        }
+        _hiddenContinueUris.value = _hiddenContinueUris.value - video.uri.toString()
     }
 
     fun setThemeMode(mode: com.example.data.AppThemeMode) {

@@ -292,6 +292,7 @@ class MainActivity : ComponentActivity() {
                                                 HomeScreen(
                                                     libraryViewModel = libraryViewModel,
                                                     onVideoSelected = { video ->
+                                                        libraryViewModel.markVideoOpened(video)
                                                         playerViewModel.playVideo(video)
                                                         currentScreen = AppScreen.Player
                                                     },
@@ -309,6 +310,7 @@ class MainActivity : ComponentActivity() {
                                                             val video = com.example.data.MediaScanner.createVideoItemFromUri(
                                                                 libraryViewModel.getApplication(), uri
                                                             )
+                                                            libraryViewModel.markVideoOpened(video)
                                                             playerViewModel.playVideo(video)
                                                             currentScreen = AppScreen.Player
                                                         }
@@ -327,8 +329,7 @@ class MainActivity : ComponentActivity() {
                                                             .removeSuffix(".download")
                                                             .removeSuffix(".part")
                                                             .removeSuffix(".tmp")
-                                                        playerViewModel.playVideo(
-                                                            VideoItem(
+                                                        val video = VideoItem(
                                                                 id = file.path.hashCode().toLong(),
                                                                 uri = Uri.fromFile(file.file),
                                                                 title = title,
@@ -337,7 +338,8 @@ class MainActivity : ComponentActivity() {
                                                                 path = file.path,
                                                                 folderName = file.file.parentFile?.name ?: "Files"
                                                             )
-                                                        )
+                                                        libraryViewModel.markVideoOpened(video)
+                                                        playerViewModel.playVideo(video)
                                                         currentScreen = AppScreen.Player
                                                     },
                                                     onFilesChanged = { libraryViewModel.refreshVideos() }
