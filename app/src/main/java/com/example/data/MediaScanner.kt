@@ -13,6 +13,7 @@ import java.io.File
 
 object MediaScanner {
 
+    private const val NEW_VIDEO_WINDOW_SECONDS = 24L * 60L * 60L
     private val partialDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
     private val videoExtensions = setOf("mp4", "mkv", "webm", "mov", "avi", "ts", "m4v", "3gp", "flv", "wmv", "vob")
 
@@ -99,7 +100,9 @@ object MediaScanner {
                             isHdr = is4k,
                             hdrFormat = if (is4k) "HDR10 / Dolby Vision" else null,
                             codec = codec,
-                            bitrate = if (duration > 0) (size * 8000L / duration) else 0L
+                            bitrate = if (duration > 0) (size * 8000L / duration) else 0L,
+                            isNewVideo = dateAdded > 0L &&
+                                (System.currentTimeMillis() / 1000L - dateAdded) in 0..NEW_VIDEO_WINDOW_SECONDS
                         )
                     )
                 }
@@ -144,7 +147,8 @@ object MediaScanner {
                         folderName = file.parentFile?.name ?: "Downloads",
                         path = file.absolutePath,
                         codec = "Downloading video",
-                        isPartialDownload = true
+                        isPartialDownload = true,
+                        isNewVideo = true
                     )
                 }
                 .toList()

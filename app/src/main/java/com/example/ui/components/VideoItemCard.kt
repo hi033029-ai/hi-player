@@ -2,7 +2,8 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -55,13 +58,17 @@ import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
 import com.example.ui.theme.LocalHiPalette
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoItemCard(
     video: VideoItem,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
     onShowDetails: () -> Unit,
+    onRename: () -> Unit = {},
+    onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     modifier: Modifier = Modifier
 ) {
@@ -72,7 +79,7 @@ fun VideoItemCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video_card_${video.id}"),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
@@ -164,6 +171,18 @@ fun VideoItemCard(
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                if (video.isNewVideo || video.isPartialDownload) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(3.dp)
+                            .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -332,10 +351,20 @@ fun VideoItemCard(
                         }
                     )
                     DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp)) },
+                        text = { Text("Rename", color = palette.textPrimary, fontSize = 13.sp) },
+                        onClick = { menuExpanded = false; onRename() }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp)) },
+                        text = { Text("Delete", color = Color(0xFFEF4444), fontSize = 13.sp) },
+                        onClick = { menuExpanded = false; onDelete() }
+                    )
+                    DropdownMenuItem(
                         leadingIcon = {
                             Icon(Icons.Default.Info, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
                         },
-                        text = { Text("Media Technical Details", color = palette.textPrimary, fontSize = 13.sp) },
+                        text = { Text("Properties", color = palette.textPrimary, fontSize = 13.sp) },
                         onClick = {
                             menuExpanded = false
                             onShowDetails()
@@ -347,13 +376,17 @@ fun VideoItemCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoGridCard(
     video: VideoItem,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
     onShowDetails: () -> Unit,
+    onRename: () -> Unit = {},
+    onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     modifier: Modifier = Modifier
 ) {
@@ -364,7 +397,7 @@ fun VideoGridCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("video_grid_card_${video.id}"),
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(
@@ -452,6 +485,18 @@ fun VideoGridCard(
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                if (video.isNewVideo || video.isPartialDownload) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -547,7 +592,15 @@ fun VideoGridCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Media Technical Details", color = palette.textPrimary, fontSize = 12.sp) },
+                                text = { Text("Rename", color = palette.textPrimary, fontSize = 12.sp) },
+                                onClick = { menuExpanded = false; onRename() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp) },
+                                onClick = { menuExpanded = false; onDelete() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Properties", color = palette.textPrimary, fontSize = 12.sp) },
                                 onClick = {
                                     menuExpanded = false
                                     onShowDetails()

@@ -142,7 +142,8 @@ fun FileManagerScreen(
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null,
-    onOpenVideo: ((FileItem) -> Unit)? = null
+    onOpenVideo: ((FileItem) -> Unit)? = null,
+    onFilesChanged: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -240,6 +241,7 @@ fun FileManagerScreen(
         val msg = deleteResultMessage
         if (msg != null) {
             android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            onFilesChanged()
             fileManagerViewModel.dismissDeleteResult()
         }
     }

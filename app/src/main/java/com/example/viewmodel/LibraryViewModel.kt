@@ -1,9 +1,15 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.ContentValues
+import android.database.ContentObserver
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.FileObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.MediaScanner
@@ -20,7 +26,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class LibraryTab {
     ALL_VIDEOS,
@@ -61,6 +71,13 @@ data class VideoFolder(
     val hasNewVideo: Boolean = false
 )
 
+private const val NEW_VIDEO_WINDOW_MILLIS = 24L * 60L * 60L * 1000L
+
+private fun VideoItem.isRecentlyAdded(nowMillis: Long = System.currentTimeMillis()): Boolean {
+    val addedMillis = dateAdded * 1000L
+    return isNewVideo || (addedMillis > 0L && nowMillis - addedMillis in 0..NEW_VIDEO_WINDOW_MILLIS)
+}
+
 /**
  * One directory in the real nested folder tree, built from each video's
  * absolute file [VideoItem.path]. [dirPath] is the full directory path this
@@ -78,6 +95,12 @@ data class TreeFolderNode(
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private var downloadsObserver: FileObserver? = null
+    private var periodicRefreshJob: Job? = null
+    private val mediaStoreObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean, uri: Uri?) {
+            refreshVideos()
+        }
+    }
     private val database = HiPlayerDatabase.getInstance(application)
     private val videoDao = database.videoDao()
     private val preferencesRepo = PlayerPreferencesRepository(application)
@@ -285,13 +308,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folders = _allVideos.map { videos ->
+        val now = System.currentTimeMillis()
         videos.groupBy { it.folderName }
             .map { (name, group) ->
                 VideoFolder(
                     name = name,
                     videoCount = group.size,
                     sampleVideo = group.firstOrNull(),
-                    hasNewVideo = group.any { it.isPartialDownload }
+                    hasNewVideo = group.any { it.isPartialDownload || it.isRecentlyAdded(now) }
                 )
             }.sortedBy { it.name.lowercase() }
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -299,6 +323,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     init {
         refreshVideos()
         startDownloadsObserver()
+        periodicRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(5_000L)
+                refreshVideos()
+            }
+        }
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        }
+        application.contentResolver.registerContentObserver(collection, true, mediaStoreObserver)
     }
 
     private fun startDownloadsObserver() {
@@ -394,13 +430,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         fun freeze(node: MutableNode): TreeFolderNode {
             val children = node.children.values.map { freeze(it) }.sortedBy { it.name.lowercase() }
             val total = node.directVideos.size + children.sumOf { it.totalVideoCount }
+            val now = System.currentTimeMillis()
             return TreeFolderNode(
                 name = node.name,
                 dirPath = node.dirPath,
                 childFolders = children,
                 directVideos = node.directVideos.sortedBy { it.title.lowercase() },
                 totalVideoCount = total,
-                hasNewVideo = node.directVideos.any { it.isPartialDownload } || children.any { it.hasNewVideo }
+                hasNewVideo = node.directVideos.any { it.isPartialDownload || it.isRecentlyAdded(now) } || children.any { it.hasNewVideo }
             )
         }
 
@@ -574,9 +611,56 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun deleteVideos(videos: Collection<VideoItem>) {
+        if (videos.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            videos.forEach { video ->
+                runCatching {
+                    if (video.path.isNotBlank() && File(video.path).exists()) {
+                        File(video.path).delete()
+                    }
+                    if (video.uri != Uri.EMPTY && video.uri.scheme == "content") {
+                        getApplication<Application>().contentResolver.delete(video.uri, null, null)
+                    }
+                    videoDao.deleteRecord(video.uri.toString())
+                }
+            }
+            refreshVideos()
+        }
+    }
+
+    fun renameVideo(video: VideoItem, requestedName: String) {
+        val cleanName = requestedName.trim()
+        if (cleanName.isBlank() || cleanName.contains('/') || cleanName.contains('\\')) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val originalExtension = File(video.title).extension.ifBlank { File(video.path).extension }
+            val finalName = if (originalExtension.isNotBlank() && !cleanName.endsWith(".$originalExtension", ignoreCase = true)) {
+                "$cleanName.$originalExtension"
+            } else cleanName
+            runCatching {
+                if (video.path.isNotBlank() && File(video.path).exists()) {
+                    val parent = File(video.path).parentFile ?: return@runCatching
+                    val target = File(parent, finalName)
+                    if (!target.exists()) File(video.path).renameTo(target)
+                } else if (video.uri != Uri.EMPTY) {
+                    getApplication<Application>().contentResolver.update(
+                        video.uri,
+                        ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, finalName) },
+                        null,
+                        null
+                    )
+                }
+            }
+            refreshVideos()
+        }
+    }
+
     override fun onCleared() {
+        periodicRefreshJob?.cancel()
+        periodicRefreshJob = null
         downloadsObserver?.stopWatching()
         downloadsObserver = null
+        getApplication<Application>().contentResolver.unregisterContentObserver(mediaStoreObserver)
         super.onCleared()
     }
 }

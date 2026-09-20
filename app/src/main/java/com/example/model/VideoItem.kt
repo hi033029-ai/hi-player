@@ -57,7 +57,8 @@ data class VideoItem(
     val lastPositionMs: Long = 0L,
     val isFavorite: Boolean = false,
     val thumbnailUrl: String? = null,
-    val isPartialDownload: Boolean = false
+    val isPartialDownload: Boolean = false,
+    val isNewVideo: Boolean = false
 ) {
     val resolutionBadge: VideoResolutionBadge
         get() {

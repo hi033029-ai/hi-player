@@ -13,8 +13,11 @@ import com.example.model.ArchiveEntryInfo
 import com.example.model.FileItem
 import com.example.model.FileType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
@@ -29,6 +32,8 @@ import java.util.zip.ZipInputStream
 import java.util.concurrent.atomic.AtomicLong
 
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
+
+    private var periodicRefreshJob: Job? = null
 
     val rootDir: File = Environment.getExternalStorageDirectory() ?: File("/storage/emulated/0")
 
@@ -211,7 +216,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (newName == item.name) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            val target = File(item.file.parentFile ?: return@launch, newName)
+            val extension = item.file.extension
+            val finalName = if (extension.isNotBlank() && !newName.endsWith(".$extension", ignoreCase = true)) {
+                "$newName.$extension"
+            } else newName
+            val target = File(item.file.parentFile ?: return@launch, finalName)
             val renamed = try {
                 !target.exists() && item.file.renameTo(target)
             } catch (_: Exception) {
@@ -219,7 +228,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             }
             withContext(Dispatchers.Main) {
                 _deleteResultMessage.value = if (renamed) {
-                    "Renamed to $newName"
+                    "Renamed to $finalName"
                 } else {
                     "Couldn't rename ${item.name}"
                 }
@@ -230,6 +239,18 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     init {
         refreshAll()
+        periodicRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(5_000L)
+                refreshAll()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        periodicRefreshJob?.cancel()
+        periodicRefreshJob = null
+        super.onCleared()
     }
 
     fun refreshAll() {

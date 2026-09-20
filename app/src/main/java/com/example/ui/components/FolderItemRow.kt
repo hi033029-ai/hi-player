@@ -101,9 +101,12 @@ fun FolderItemRow(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "NEW",
-                        fontSize = 10.sp,
+                        modifier = Modifier
+                            .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF16A34A)
+                        color = Color.White
                     )
                 }
             }
@@ -168,7 +171,10 @@ fun FolderGridCard(
         if (hasNewVideo) {
             Text(
                 text = "NEW",
-                fontSize = 10.sp,
+                modifier = Modifier
+                    .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 7.dp, vertical = 2.dp),
+                fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF16A34A)
             )

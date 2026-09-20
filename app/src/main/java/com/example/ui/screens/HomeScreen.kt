@@ -44,6 +44,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
@@ -54,12 +56,14 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +79,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -154,7 +159,21 @@ fun HomeScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
     var inspectVideo by remember { mutableStateOf<VideoItem?>(null) }
+    var selectedVideoPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var renameTarget by remember { mutableStateOf<VideoItem?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    val selectionMode = selectedVideoPaths.isNotEmpty()
+    val selectedVideos = remember(selectedVideoPaths, allVideos) {
+        allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
+    }
+    fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
+    fun toggleVideoSelection(video: VideoItem) {
+        val key = videoKey(video)
+        selectedVideoPaths = if (key in selectedVideoPaths) selectedVideoPaths - key else selectedVideoPaths + key
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -180,6 +199,9 @@ fun HomeScreen(
     BackHandler(enabled = selectedFolder != null) {
         libraryViewModel.selectFolder(null)
     }
+    BackHandler(enabled = selectionMode) {
+        selectedVideoPaths = emptySet()
+    }
 
     // Back handler for Tree Folders: step up one directory level at a time
     // instead of exiting the tree entirely.
@@ -192,10 +214,19 @@ fun HomeScreen(
         containerColor = palette.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            if (includeHeader) TopAppBar(
+            if (includeHeader && !selectionMode) TopAppBar(
                 modifier = Modifier.fillMaxWidth(),
+                navigationIcon = {
+                    if (selectionMode) {
+                        IconButton(onClick = { selectedVideoPaths = emptySet() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
+                        }
+                    }
+                },
                 title = {
-                    if (isSearchActive) {
+                    if (selectionMode) {
+                        Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+                    } else if (isSearchActive) {
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { libraryViewModel.setSearchQuery(it) },
@@ -243,28 +274,36 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    // Search Button
-                    IconButton(
-                        onClick = { onSearchRequested?.invoke() ?: run { isSearchActive = !isSearchActive } },
-                        modifier = Modifier.testTag("toggle_search_button")
-                    ) {
-                        Icon(
-                            imageVector = if (isSearchActive) Icons.Default.Clear else Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = palette.textPrimary
-                        )
-                    }
-
-                    // Refresh Button
-                    IconButton(
-                        onClick = { libraryViewModel.refreshVideos() },
-                        modifier = Modifier.testTag("refresh_videos_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = palette.textPrimary
-                        )
+                    if (selectionMode) {
+                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
+                            Text("Select all", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { selectedVideoPaths = emptySet() }) {
+                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showSelectionProperties = true }) {
+                            Text("Properties", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showDeleteConfirm = true }) {
+                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { onSearchRequested?.invoke() ?: run { isSearchActive = !isSearchActive } },
+                            modifier = Modifier.testTag("toggle_search_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Default.Clear else Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = palette.textPrimary
+                            )
+                        }
+                        IconButton(
+                            onClick = { libraryViewModel.refreshVideos() },
+                            modifier = Modifier.testTag("refresh_videos_button")
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = palette.textPrimary)
+                        }
                     }
                 },
                 // Let Material3 consume the status-bar inset. The previous
@@ -283,6 +322,31 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedVideoPaths = emptySet() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
+                            Text("Select all", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { selectedVideoPaths = emptySet() }) {
+                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showSelectionProperties = true }) {
+                            Text("Properties", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showDeleteConfirm = true }) {
+                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
+                )
+            }
             // UNIFIED PLAN SHEET HEADER & HORIZONTAL FILTER TABS
             Column(
                 modifier = Modifier
@@ -832,12 +896,21 @@ fun HomeScreen(
                             VideoGridCard(
                                 video = video.copy(isFavorite = record?.isFavorite ?: false),
                                 progressFraction = progressFraction,
-                                onClick = { onVideoSelected(video) },
+                                onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
+                                onLongClick = { toggleVideoSelection(video) },
                                 onFavoriteToggle = { isFav ->
                                     libraryViewModel.toggleFavorite(video, isFav)
                                 },
                                 onPlayInBackground = { onVideoSelected(video) },
-                                onShowDetails = { inspectVideo = video }
+                                onShowDetails = { inspectVideo = video },
+                                onRename = {
+                                    renameTarget = video
+                                    renameText = video.title.substringBeforeLast('.', video.title)
+                                },
+                                onDelete = {
+                                    selectedVideoPaths = setOf(videoKey(video))
+                                    showDeleteConfirm = true
+                                }
                             )
                         }
                     }
@@ -869,12 +942,21 @@ fun HomeScreen(
                             VideoItemCard(
                                 video = video.copy(isFavorite = record?.isFavorite ?: false),
                                 progressFraction = progressFraction,
-                                onClick = { onVideoSelected(video) },
+                                onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
+                                onLongClick = { toggleVideoSelection(video) },
                                 onFavoriteToggle = { isFav ->
                                     libraryViewModel.toggleFavorite(video, isFav)
                                 },
                                 onPlayInBackground = { onVideoSelected(video) },
-                                onShowDetails = { inspectVideo = video }
+                                onShowDetails = { inspectVideo = video },
+                                onRename = {
+                                    renameTarget = video
+                                    renameText = video.title.substringBeforeLast('.', video.title)
+                                },
+                                onDelete = {
+                                    selectedVideoPaths = setOf(videoKey(video))
+                                    showDeleteConfirm = true
+                                }
                             )
                         }
                     }
@@ -898,6 +980,68 @@ fun HomeScreen(
             onDismiss = { inspectVideo = null }
         )
     }
+
+    renameTarget?.let { video ->
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            title = { Text("Rename video") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("File name") },
+                    supportingText = { Text("The original .${video.title.substringAfterLast('.', "video")} extension is kept") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    libraryViewModel.renameVideo(video, renameText)
+                    renameTarget = null
+                }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (showSelectionProperties) {
+        val totalBytes = selectedVideos.sumOf { it.sizeBytes }
+        AlertDialog(
+            onDismissRequest = { showSelectionProperties = false },
+            title = { Text("Video properties") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${selectedVideos.size} video${if (selectedVideos.size == 1) "" else "s"}")
+                    Text("Total size: ${formatVideoBytes(totalBytes)}")
+                    Text(selectedVideos.joinToString("\n") { it.title }.take(1200), maxLines = 12, overflow = TextOverflow.Ellipsis)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSelectionProperties = false }) { Text("Close") } }
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete selected video${if (selectedVideos.size == 1) "" else "s"}?") },
+            text = { Text("This permanently deletes ${selectedVideos.size} file${if (selectedVideos.size == 1) "" else "s"} from storage.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    libraryViewModel.deleteVideos(selectedVideos)
+                    selectedVideoPaths = emptySet()
+                    showDeleteConfirm = false
+                }) { Text("Delete", color = Color(0xFFEF4444)) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+private fun formatVideoBytes(bytes: Long): String = when {
+    bytes >= 1_000_000_000L -> String.format("%.2f GB", bytes / 1_000_000_000.0)
+    bytes >= 1_000_000L -> String.format("%.2f MB", bytes / 1_000_000.0)
+    bytes >= 1_000L -> String.format("%.2f KB", bytes / 1_000.0)
+    else -> "$bytes B"
 }
 
 @Composable

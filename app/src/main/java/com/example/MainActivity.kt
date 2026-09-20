@@ -339,7 +339,8 @@ class MainActivity : ComponentActivity() {
                                                             )
                                                         )
                                                         currentScreen = AppScreen.Player
-                                                    }
+                                                    },
+                                                    onFilesChanged = { libraryViewModel.refreshVideos() }
                                                 )
                                             }
                                             NavTab.SETTINGS -> {
