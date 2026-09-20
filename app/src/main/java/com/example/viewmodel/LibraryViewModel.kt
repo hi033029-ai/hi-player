@@ -429,14 +429,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         fun freeze(node: MutableNode): TreeFolderNode {
             val children = node.children.values.map { freeze(it) }.sortedBy { it.name.lowercase() }
             val total = node.directVideos.size + children.sumOf { it.totalVideoCount }
-            val now = System.currentTimeMillis()
             return TreeFolderNode(
                 name = node.name,
                 dirPath = node.dirPath,
                 childFolders = children,
                 directVideos = node.directVideos.sortedBy { it.title.lowercase() },
                 totalVideoCount = total,
-                hasNewVideo = node.directVideos.any { it.isPartialDownload || it.isRecentlyAdded(now) } || children.any { it.hasNewVideo }
+                hasNewVideo = node.directVideos.any { it.isNewVideo } || children.any { it.hasNewVideo }
             )
         }
 
