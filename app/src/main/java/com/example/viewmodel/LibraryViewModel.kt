@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -87,8 +88,10 @@ data class TreeFolderNode(
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
+    data class DeleteProgress(val total: Int, val completed: Int, val failed: Int)
     private var downloadsObserver: FileObserver? = null
     private var periodicRefreshJob: Job? = null
+    private var deleteVideosJob: Job? = null
     private val mediaStoreObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             refreshVideos(silent = true)
@@ -101,6 +104,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _allVideos = MutableStateFlow<List<VideoItem>>(emptyList())
     val allVideos = _allVideos.asStateFlow()
+    private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
+    val deleteProgress = _deleteProgress.asStateFlow()
     private val _hiddenContinueUris = MutableStateFlow<Set<String>>(emptySet())
 
     private val _isLoading = MutableStateFlow(true)
@@ -624,9 +629,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteVideos(videos: Collection<VideoItem>) {
         if (videos.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            videos.forEach { video ->
-                runCatching {
+        val items = videos.toList()
+        deleteVideosJob?.cancel()
+        _deleteProgress.value = DeleteProgress(items.size, 0, 0)
+        deleteVideosJob = viewModelScope.launch(Dispatchers.IO) {
+            var completed = 0
+            var failed = 0
+            for (video in items) {
+                try {
                     if (video.path.isNotBlank() && File(video.path).exists()) {
                         File(video.path).delete()
                     }
@@ -634,10 +644,28 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         getApplication<Application>().contentResolver.delete(video.uri, null, null)
                     }
                     videoDao.deleteRecord(video.uri.toString())
+                    completed++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed++
+                }
+                withContext(Dispatchers.Main) {
+                    _deleteProgress.value = DeleteProgress(items.size, completed, failed)
                 }
             }
-            refreshVideos()
+            withContext(Dispatchers.Main) {
+                _deleteProgress.value = null
+                refreshVideos(silent = true)
+            }
         }
+    }
+
+    fun cancelDeleteVideos() {
+        deleteVideosJob?.cancel()
+        deleteVideosJob = null
+        _deleteProgress.value = null
+        refreshVideos(silent = true)
     }
 
     fun renameVideo(video: VideoItem, requestedName: String) {

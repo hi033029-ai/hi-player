@@ -13,6 +13,7 @@ import com.example.model.ArchiveEntryInfo
 import com.example.model.FileItem
 import com.example.model.FileType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
 
+    data class DeleteProgress(val total: Int, val completed: Int, val failed: Int)
+
     private var periodicRefreshJob: Job? = null
+    private var deleteJob: Job? = null
 
     val rootDir: File = Environment.getExternalStorageDirectory() ?: File("/storage/emulated/0")
 
@@ -110,6 +114,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _deleteResultMessage = MutableStateFlow<String?>(null)
     val deleteResultMessage = _deleteResultMessage.asStateFlow()
 
+    private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
+    val deleteProgress = _deleteProgress.asStateFlow()
+
     // Every directory/archive scan gets a monotonically increasing token. A
     // slower scan started before a deletion must never publish stale entries.
     private val directoryScanGeneration = AtomicLong(0L)
@@ -173,25 +180,26 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val items = _deleteConfirmItems.value ?: return
         _deleteConfirmItems.value = null
         val deletedPaths = items.map { it.path }.toSet()
-        viewModelScope.launch(Dispatchers.IO) {
+        deleteJob?.cancel()
+        _deleteProgress.value = DeleteProgress(items.size, 0, 0)
+        deleteJob = viewModelScope.launch(Dispatchers.IO) {
             var successCount = 0
             var failCount = 0
             for (item in items) {
                 try {
-                    val deleted = if (item.file.isDirectory) {
-                        item.file.deleteRecursively()
-                    } else {
-                        item.file.delete()
-                    }
+                    val deleted = if (item.file.isDirectory) item.file.deleteRecursively() else item.file.delete()
                     if (deleted) successCount++ else failCount++
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     failCount++
                 }
+                withContext(Dispatchers.Main) {
+                    _deleteProgress.value = DeleteProgress(items.size, successCount, failCount)
+                }
             }
             withContext(Dispatchers.Main) {
-                // Remove successful items from every visible tab immediately;
-                // the background refresh below is still needed for counters and
-                // to discover changes made outside this screen.
+                _deleteProgress.value = null
                 if (successCount > 0) {
                     _folderFiles.value = _folderFiles.value.filterNot { it.path in deletedPaths }
                     _allArchives.value = _allArchives.value.filterNot { it.path in deletedPaths }
@@ -208,6 +216,14 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 refreshAll()
             }
         }
+    }
+
+    fun cancelDelete() {
+        deleteJob?.cancel()
+        deleteJob = null
+        _deleteProgress.value = null
+        _deleteResultMessage.value = "Deletion cancelled"
+        refreshAll(silent = true)
     }
 
     fun dismissDeleteResult() {

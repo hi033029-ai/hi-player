@@ -144,6 +144,7 @@ fun HomeScreen(
     val historyRecords by libraryViewModel.historyRecords.collectAsState()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsState()
     val playerSettings by libraryViewModel.playerSettings.collectAsState()
+    val deleteProgress by libraryViewModel.deleteProgress.collectAsState()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
         if (viewMode == LibraryViewMode.GRADLE_GRID && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             libraryViewModel.setGridMinSize((gridMinSize / zoomChange).roundToInt())
@@ -160,12 +161,13 @@ fun HomeScreen(
     var showFolders by remember { mutableStateOf(false) }
     var inspectVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isVideoSelectionMode by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<VideoItem?>(null) }
     var renameText by remember { mutableStateOf("") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    val selectionMode = selectedVideoPaths.isNotEmpty()
+    val selectionMode = isVideoSelectionMode
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
     }
@@ -173,6 +175,12 @@ fun HomeScreen(
     fun toggleVideoSelection(video: VideoItem) {
         val key = videoKey(video)
         selectedVideoPaths = if (key in selectedVideoPaths) selectedVideoPaths - key else selectedVideoPaths + key
+        isVideoSelectionMode = true
+    }
+
+    fun exitVideoSelectionMode() {
+        selectedVideoPaths = emptySet()
+        isVideoSelectionMode = false
     }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -200,7 +208,7 @@ fun HomeScreen(
         libraryViewModel.selectFolder(null)
     }
     BackHandler(enabled = selectionMode) {
-        selectedVideoPaths = emptySet()
+        exitVideoSelectionMode()
     }
 
     // Back handler for Tree Folders: step up one directory level at a time
@@ -218,7 +226,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 navigationIcon = {
                     if (selectionMode) {
-                        IconButton(onClick = { selectedVideoPaths = emptySet() }) {
+                        IconButton(onClick = { exitVideoSelectionMode() }) {
                             Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
                         }
                     }
@@ -278,7 +286,7 @@ fun HomeScreen(
                         TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
                             Text("Select all", color = palette.primary, fontSize = 12.sp)
                         }
-                        TextButton(onClick = { selectedVideoPaths = emptySet() }) {
+                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
                             Text("Deselect", color = palette.primary, fontSize = 12.sp)
                         }
                         TextButton(onClick = { showSelectionProperties = true }) {
@@ -326,7 +334,7 @@ fun HomeScreen(
                 TopAppBar(
                     title = { Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
                     navigationIcon = {
-                        IconButton(onClick = { selectedVideoPaths = emptySet() }) {
+                        IconButton(onClick = { exitVideoSelectionMode() }) {
                             Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
                         }
                     },
@@ -334,7 +342,7 @@ fun HomeScreen(
                         TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
                             Text("Select all", color = palette.primary, fontSize = 12.sp)
                         }
-                        TextButton(onClick = { selectedVideoPaths = emptySet() }) {
+                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
                             Text("Deselect", color = palette.primary, fontSize = 12.sp)
                         }
                         TextButton(onClick = { showSelectionProperties = true }) {
@@ -910,7 +918,7 @@ fun HomeScreen(
                                     renameText = video.title.substringBeforeLast('.', video.title)
                                 },
                                 onDelete = {
-                                    selectedVideoPaths = setOf(videoKey(video))
+                                    selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
                                     showDeleteConfirm = true
                                 }
                             )
@@ -957,7 +965,7 @@ fun HomeScreen(
                                     renameText = video.title.substringBeforeLast('.', video.title)
                                 },
                                 onDelete = {
-                                    selectedVideoPaths = setOf(videoKey(video))
+                                    selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
                                     showDeleteConfirm = true
                                 }
                             )
@@ -1020,6 +1028,31 @@ fun HomeScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { showSelectionProperties = false }) { Text("Close") } }
+        )
+    }
+
+    deleteProgress?.let { progress ->
+        val remaining = (progress.total - progress.completed - progress.failed).coerceAtLeast(0)
+        AlertDialog(
+            onDismissRequest = { libraryViewModel.cancelDeleteVideos() },
+            title = { Text("Deleting videos", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Deleted ${progress.completed} of ${progress.total}", color = palette.textPrimary)
+                    Text("Remaining: $remaining", color = palette.textSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { if (progress.total == 0) 1f else (progress.completed + progress.failed).toFloat() / progress.total },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = palette.primary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { libraryViewModel.cancelDeleteVideos() }) {
+                    Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            }
         )
     }
 

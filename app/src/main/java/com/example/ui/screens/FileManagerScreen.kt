@@ -176,6 +176,7 @@ fun FileManagerScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsState()
     val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
+    val deleteProgress by fileManagerViewModel.deleteProgress.collectAsState()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
@@ -275,7 +276,7 @@ fun FileManagerScreen(
             .background(palette.background)
     ) {
         // Local header can be disabled when the root shell owns the global header.
-        if (includeHeader && isSelectionMode) {
+        if (isSelectionMode) {
             TopAppBar(
                 modifier = Modifier.height(uiMetrics.headerHeight),
                 title = {
@@ -289,6 +290,11 @@ fun FileManagerScreen(
                 navigationIcon = {
                     IconButton(onClick = { fileManagerViewModel.clearSelection() }) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = palette.textPrimary)
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { fileManagerViewModel.deselectAll() }) {
+                        Text("Deselect", color = palette.primary, fontSize = 12.sp)
                     }
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
@@ -671,12 +677,11 @@ fun FileManagerScreen(
         }
     }
 
+    val visibleSelectableItems = (filteredFolderItems + filteredArchives + filteredDocuments).distinctBy { it.path }
+
     if (isSelectionMode) {
-        val selectableItems = (folderFiles + allArchives + allDocuments).distinctBy { it.path }
         val selectedItems = selectedPaths.mapNotNull { path ->
-            folderFiles.find { it.path == path }
-                ?: allArchives.find { it.path == path }
-                ?: allDocuments.find { it.path == path }
+            visibleSelectableItems.find { it.path == path }
         }
         Row(
             modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 6.dp),
@@ -690,20 +695,20 @@ fun FileManagerScreen(
             IconButton(onClick = { fileManagerViewModel.requestDelete(selectedItems) }) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
             }
-            IconButton(onClick = { fileManagerViewModel.selectAll(selectableItems.map { it.path }.toSet()) }) {
+            IconButton(onClick = { fileManagerViewModel.selectAll(visibleSelectableItems.map { it.path }.toSet()) }) {
                 Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
             }
-            IconButton(onClick = { fileManagerViewModel.deselectAll() }) {
-                Icon(Icons.Default.Clear, contentDescription = "Deselect all", tint = palette.textPrimary)
+            TextButton(onClick = { fileManagerViewModel.deselectAll() }) {
+                Icon(Icons.Default.Clear, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Deselect", color = palette.primary, fontSize = 12.sp)
             }
         }
     }
 
     if (showSelectionProperties) {
         val selectedItems = selectedPaths.mapNotNull { path ->
-            folderFiles.find { it.path == path }
-                ?: allArchives.find { it.path == path }
-                ?: allDocuments.find { it.path == path }
+            visibleSelectableItems.find { it.path == path }
         }
         AlertDialog(
             onDismissRequest = { showSelectionProperties = false },
@@ -925,6 +930,32 @@ fun FileManagerScreen(
             confirmButton = {
                 TextButton(onClick = { fileManagerViewModel.dismissDetails() }) {
                     Text("Close", color = palette.primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = palette.surfaceElevated
+        )
+    }
+
+    deleteProgress?.let { progress ->
+        val remaining = (progress.total - progress.completed - progress.failed).coerceAtLeast(0)
+        AlertDialog(
+            onDismissRequest = { fileManagerViewModel.cancelDelete() },
+            title = { Text("Deleting files", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Deleted ${progress.completed} of ${progress.total}", color = palette.textPrimary)
+                    Text("Remaining: $remaining", color = palette.textSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { if (progress.total == 0) 1f else (progress.completed + progress.failed).toFloat() / progress.total },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = palette.primary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { fileManagerViewModel.cancelDelete() }) {
+                    Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = palette.surfaceElevated
