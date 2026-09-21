@@ -329,12 +329,21 @@ class MainActivity : ComponentActivity() {
                                                             .removeSuffix(".download")
                                                             .removeSuffix(".part")
                                                             .removeSuffix(".tmp")
+                                                        val extension = title.substringAfterLast('.', "mp4").lowercase()
+                                                        val mimeType = when (extension) {
+                                                            "mkv" -> "video/x-matroska"
+                                                            "webm" -> "video/webm"
+                                                            "mov" -> "video/quicktime"
+                                                            "avi" -> "video/x-msvideo"
+                                                            "ts" -> "video/mp2t"
+                                                            else -> "video/mp4"
+                                                        }
                                                         val video = VideoItem(
                                                                 id = file.path.hashCode().toLong(),
                                                                 uri = Uri.fromFile(file.file),
                                                                 title = title,
                                                                 sizeBytes = file.sizeBytes,
-                                                                mimeType = "video/*",
+                                                                mimeType = mimeType,
                                                                 path = file.path,
                                                                 folderName = file.file.parentFile?.name ?: "Files"
                                                             )

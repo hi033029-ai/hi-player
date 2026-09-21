@@ -19,6 +19,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDescriptorDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -43,6 +44,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.RandomAccessFile
 
 data class DecoderTelemetry(
     val codecName: String = "HEVC (H.265 HW)",
@@ -53,6 +55,8 @@ data class DecoderTelemetry(
     val colorSpace: String = "BT.2020 / HDR10",
     val audioFormat: String = "DTS-HD MA 7.1 / TrueHD"
 )
+
+private val growingDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
 
 @OptIn(UnstableApi::class)
 class HiPlayerEngine(
@@ -267,6 +271,9 @@ class HiPlayerEngine(
     val playerError = _playerError.asStateFlow()
     private var dolbyVisionRetryAttempted = false
     private var pendingResumePositionMs: Long = 0L
+    private var activeGrowingUri: Uri? = null
+    private var growingRetryJob: Job? = null
+    private var growingRetryAttempts = 0
     var onVideoEnded: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
@@ -354,6 +361,15 @@ class HiPlayerEngine(
                         enableRemuxUltraBuffer = true,
                         enableTunneling = false
                     )
+                    prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                }
+                return
+            }
+            if (retryUri != null && isGrowingDownloadUri(retryUri) && growingRetryAttempts < 30) {
+                growingRetryAttempts += 1
+                val retryPosition = exoPlayer?.currentPosition ?: 0L
+                growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
+                    delay(1500L)
                     prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
                 }
                 return
@@ -630,6 +646,12 @@ class HiPlayerEngine(
         resetDecoderRetry: Boolean = true
     ) {
         _playerError.value = null
+        if (uri != activeGrowingUri) {
+            growingRetryJob?.cancel()
+            growingRetryJob = null
+            growingRetryAttempts = 0
+            activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
+        }
         if (resetDecoderRetry) dolbyVisionRetryAttempted = false
         // Do not show caption tracks from a previously played film while this
         // item is still being prepared. Fresh tracks are published on
@@ -664,7 +686,8 @@ class HiPlayerEngine(
             closeActiveVideoDescriptor()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
             val directSource = if (externalSubtitleUri == null) {
-                createDirectFileDescriptorSource(uri, mediaItem)
+                if (isGrowingDownloadUri(uri)) createGrowingFileSource(uri, mediaItem)
+                else createDirectFileDescriptorSource(uri, mediaItem)
             } else {
                 null
             }
@@ -727,6 +750,65 @@ class HiPlayerEngine(
                 // No-op: fall back to the standard source below.
             }
             null
+        }
+    }
+
+    private fun createGrowingFileSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
+        val path = uri.path ?: return null
+        if (!java.io.File(path).isFile) return null
+        return ProgressiveMediaSource.Factory(
+            DataSource.Factory { GrowingFileDataSource(path) },
+            createOptimizedExtractorsFactory()
+        ).createMediaSource(mediaItem)
+    }
+
+    private fun isGrowingDownloadUri(uri: Uri): Boolean {
+        if (uri.scheme != "file") return false
+        val name = uri.lastPathSegment?.lowercase() ?: return false
+        return growingDownloadSuffixes.any { name.endsWith(it) }
+    }
+
+    private class GrowingFileDataSource(private val path: String) : DataSource {
+        private var file: RandomAccessFile? = null
+        private var position = 0L
+        private var opened = false
+
+        override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) = Unit
+
+        override fun open(dataSpec: DataSpec): Long {
+            file = RandomAccessFile(path, "r")
+            position = dataSpec.position
+            file?.seek(position)
+            opened = true
+            return dataSpec.length
+        }
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            if (!opened) return C.RESULT_END_OF_INPUT
+            if (length == 0) return 0
+            val deadline = System.currentTimeMillis() + 45_000L
+            while (true) {
+                val currentLength = file?.length() ?: return C.RESULT_END_OF_INPUT
+                if (position < currentLength) {
+                    file?.seek(position)
+                    val available = minOf(length.toLong(), currentLength - position).toInt()
+                    val read = file?.read(buffer, offset, available) ?: -1
+                    if (read > 0) {
+                        position += read
+                        return read
+                    }
+                }
+                if (System.currentTimeMillis() >= deadline) return C.RESULT_END_OF_INPUT
+                Thread.sleep(250L)
+            }
+        }
+
+        override fun getUri(): Uri = Uri.fromFile(java.io.File(path))
+
+        override fun close() {
+            opened = false
+            file?.close()
+            file = null
         }
     }
 

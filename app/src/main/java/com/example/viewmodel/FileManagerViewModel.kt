@@ -127,9 +127,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         } else {
             current + item.path
         }
-        if (_selectedPaths.value.isEmpty()) {
-            _isSelectionMode.value = false
-        }
     }
 
     fun clearSelection() {
@@ -140,7 +137,17 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun selectAllInCurrentFolder() {
         val paths = _folderFiles.value.map { it.path }.toSet()
         _selectedPaths.value = paths
-        _isSelectionMode.value = paths.isNotEmpty()
+        _isSelectionMode.value = true
+    }
+
+    fun selectAll(paths: Set<String>) {
+        _selectedPaths.value = paths
+        _isSelectionMode.value = true
+    }
+
+    fun deselectAll() {
+        _selectedPaths.value = emptySet()
+        _isSelectionMode.value = true
     }
 
     fun showDetails(item: FileItem) {

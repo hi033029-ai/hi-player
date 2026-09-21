@@ -175,7 +175,7 @@ fun VideoItemCard(
                     }
                 }
 
-                if (video.isNewVideo || video.isPartialDownload) {
+                if (video.isNewVideo) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -490,7 +490,7 @@ fun VideoGridCard(
                     }
                 }
 
-                if (video.isNewVideo || video.isPartialDownload) {
+                if (video.isNewVideo) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)

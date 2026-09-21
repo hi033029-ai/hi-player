@@ -672,6 +672,7 @@ fun FileManagerScreen(
     }
 
     if (isSelectionMode) {
+        val selectableItems = (folderFiles + allArchives + allDocuments).distinctBy { it.path }
         val selectedItems = selectedPaths.mapNotNull { path ->
             folderFiles.find { it.path == path }
                 ?: allArchives.find { it.path == path }
@@ -689,8 +690,11 @@ fun FileManagerScreen(
             IconButton(onClick = { fileManagerViewModel.requestDelete(selectedItems) }) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
             }
-            IconButton(onClick = { fileManagerViewModel.selectAllInCurrentFolder() }) {
+            IconButton(onClick = { fileManagerViewModel.selectAll(selectableItems.map { it.path }.toSet()) }) {
                 Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
+            }
+            IconButton(onClick = { fileManagerViewModel.deselectAll() }) {
+                Icon(Icons.Default.Clear, contentDescription = "Deselect all", tint = palette.textPrimary)
             }
         }
     }
