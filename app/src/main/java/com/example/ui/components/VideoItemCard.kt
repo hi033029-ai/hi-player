@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Card
@@ -333,7 +334,7 @@ fun VideoItemCard(
                     )
                     DropdownMenuItem(
                         leadingIcon = {
-                            Icon(Icons.Default.RestartAlt, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Replay, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
                         },
                         text = { Text("Play from start", color = palette.textPrimary, fontSize = 13.sp) },
                         onClick = {
