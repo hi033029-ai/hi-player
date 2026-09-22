@@ -296,6 +296,11 @@ class MainActivity : ComponentActivity() {
                                                         playerViewModel.playVideo(video)
                                                         currentScreen = AppScreen.Player
                                                     },
+                                                    onPlayFromStart = { video ->
+                                                        libraryViewModel.markVideoOpened(video)
+                                                        playerViewModel.playVideo(video, startPositionOverride = 0L)
+                                                        currentScreen = AppScreen.Player
+                                                    },
                                                     onOpenSettings = {
                                                         currentTab = NavTab.SETTINGS
                                                     },
@@ -517,11 +522,6 @@ class MainActivity : ComponentActivity() {
     // has actually turned it on.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        // Do not leave the launcher inheriting the player's forced landscape
-        // transition when Home is invoked from the navigation edge.
-        if (!isInPictureInPictureMode) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
         val settings = libraryViewModel.playerSettings.value
         if (playerViewModel.engine.isPlaying.value && settings.autoPipEnabled) {
             enterPipMode()
@@ -537,6 +537,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (isInPictureInPictureMode || pipTransitionRequested) return
+        // Persist the current resume position and aspect mode before the app is
+        // backgrounded. Do not reset requestedOrientation here: changing it
+        // while entering Recents can recreate the activity and leave the GL
+        // surface with a mismatched aspect transform when the app returns.
+        playerViewModel.saveCurrentProgress()
         val settings = libraryViewModel.playerSettings.value
         if (!(settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
             playerViewModel.engine.stopForNavigation()

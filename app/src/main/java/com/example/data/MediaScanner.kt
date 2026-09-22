@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.example.model.VideoItem
+import com.example.player.DownloadingFilesRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -67,6 +68,7 @@ object MediaScanner {
                     val mime = cursor.getString(mimeCol) ?: "video/mp4"
                     val dateAdded = cursor.getLong(dateCol)
                     val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
+                    if (dataPath.isNotBlank()) DownloadingFilesRegistry.markComplete(dataPath)
 
                     val contentUri = ContentUris.withAppendedId(collection, id)
                     val folderName = if (dataPath.isNotEmpty()) {
@@ -136,6 +138,8 @@ object MediaScanner {
                     val originalName = file.name.dropLast(suffix.length)
                     val extension = originalName.substringAfterLast('.', "").lowercase()
                     if (extension !in videoExtensions || !knownPaths.add(file.absolutePath)) return@mapNotNull null
+
+                    DownloadingFilesRegistry.markDownloading(file.absolutePath)
 
                     VideoItem(
                         id = file.absolutePath.hashCode().toLong(),

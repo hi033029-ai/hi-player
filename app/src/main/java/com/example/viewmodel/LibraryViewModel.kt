@@ -539,9 +539,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeFromContinueWatching(uriString: String) {
         _hiddenContinueUris.value = _hiddenContinueUris.value + uriString
-        viewModelScope.launch {
-            videoDao.deleteRecord(uriString)
-        }
+        // Removing an item from this strip only hides it from Continue Watching.
+        // Keep its VideoEntity so opening it from the Videos library can resume
+        // from the saved position.
     }
 
     fun markVideoOpened(video: VideoItem) {

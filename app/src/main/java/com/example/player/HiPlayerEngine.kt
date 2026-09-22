@@ -780,7 +780,7 @@ class HiPlayerEngine(
             position = dataSpec.position
             file?.seek(position)
             opened = true
-            return dataSpec.length
+            return C.LENGTH_UNSET.toLong()
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -798,7 +798,9 @@ class HiPlayerEngine(
                         return read
                     }
                 }
-                if (System.currentTimeMillis() >= deadline) return C.RESULT_END_OF_INPUT
+                val stillWriting = DownloadingFilesRegistry.isDownloading(path) ||
+                    growingDownloadSuffixes.any { path.lowercase().endsWith(it) }
+                if (!stillWriting || System.currentTimeMillis() >= deadline) return C.RESULT_END_OF_INPUT
                 Thread.sleep(250L)
             }
         }

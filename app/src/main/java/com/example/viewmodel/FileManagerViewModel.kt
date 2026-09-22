@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.os.Build
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
@@ -183,11 +185,20 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         deleteJob?.cancel()
         _deleteProgress.value = DeleteProgress(items.size, 0, 0)
         deleteJob = viewModelScope.launch(Dispatchers.IO) {
+            val targets = items.flatMap { item ->
+                if (item.file.isDirectory) {
+                    item.file.walkBottomUp().map { it to Uri.EMPTY }.toList()
+                } else listOf(item.file to Uri.EMPTY)
+            }.distinctBy { it.first.absolutePath }
+            val total = targets.size.coerceAtLeast(items.size)
             var successCount = 0
             var failCount = 0
-            for (item in items) {
+            withContext(Dispatchers.Main) {
+                _deleteProgress.value = DeleteProgress(total, 0, 0)
+            }
+            for ((target, contentUri) in targets) {
                 try {
-                    val deleted = if (item.file.isDirectory) item.file.deleteRecursively() else item.file.delete()
+                    val deleted = deletePath(target, contentUri)
                     if (deleted) successCount++ else failCount++
                 } catch (e: CancellationException) {
                     throw e
@@ -195,7 +206,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     failCount++
                 }
                 withContext(Dispatchers.Main) {
-                    _deleteProgress.value = DeleteProgress(items.size, successCount, failCount)
+                    _deleteProgress.value = DeleteProgress(total, successCount, failCount)
                 }
             }
             withContext(Dispatchers.Main) {
@@ -224,6 +235,33 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         _deleteProgress.value = null
         _deleteResultMessage.value = "Deletion cancelled"
         refreshAll(silent = true)
+    }
+
+    private fun deletePath(file: File, contentUri: Uri = Uri.EMPTY): Boolean {
+        if (file.isDirectory) return !file.exists() || file.delete()
+        if (!file.exists()) return true
+        if (file.delete() && !file.exists()) return true
+        val resolver = getApplication<Application>().contentResolver
+        if (contentUri != Uri.EMPTY && contentUri.scheme == "content") {
+            runCatching { resolver.delete(contentUri, null, null) }
+            if (!file.exists()) return true
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            resolver.query(
+                collection,
+                arrayOf(MediaStore.Files.FileColumns._ID),
+                "${MediaStore.Files.FileColumns.DATA}=?",
+                arrayOf(file.absolutePath),
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(0)
+                    resolver.delete(Uri.withAppendedPath(collection, id.toString()), null, null)
+                }
+            }
+        }
+        return !file.exists()
     }
 
     fun dismissDeleteResult() {

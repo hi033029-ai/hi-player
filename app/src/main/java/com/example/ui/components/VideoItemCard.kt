@@ -67,6 +67,7 @@ fun VideoItemCard(
     isSelected: Boolean = false,
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
+    onPlayFromStart: () -> Unit = {},
     onShowDetails: () -> Unit,
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -332,6 +333,16 @@ fun VideoItemCard(
                     )
                     DropdownMenuItem(
                         leadingIcon = {
+                            Icon(Icons.Default.RestartAlt, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                        },
+                        text = { Text("Play from start", color = palette.textPrimary, fontSize = 13.sp) },
+                        onClick = {
+                            menuExpanded = false
+                            onPlayFromStart()
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = {
                             Icon(
                                 if (video.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                                 contentDescription = null,
@@ -386,6 +397,7 @@ fun VideoGridCard(
     isSelected: Boolean = false,
     onFavoriteToggle: (Boolean) -> Unit,
     onPlayInBackground: () -> Unit,
+    onPlayFromStart: () -> Unit = {},
     onShowDetails: () -> Unit,
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
@@ -578,6 +590,13 @@ fun VideoGridCard(
                                 onClick = {
                                     menuExpanded = false
                                     onPlayInBackground()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Play from start", color = palette.textPrimary, fontSize = 12.sp) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onPlayFromStart()
                                 }
                             )
                             DropdownMenuItem(

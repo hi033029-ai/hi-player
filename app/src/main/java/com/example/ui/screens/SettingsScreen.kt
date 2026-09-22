@@ -344,7 +344,7 @@ fun SettingsScreen(
                 Text(if (isBackground) {
                     "Audio may continue when Hi Player is minimized or the screen is locked."
                 } else {
-                    "The video may appear in a floating window when you leave the player."
+                    "Allow Hi Player to enter a floating video window automatically when you leave the player? Android has no separate runtime PiP permission; tapping Allow is your consent."
                 })
             },
             confirmButton = {

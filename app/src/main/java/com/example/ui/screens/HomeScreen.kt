@@ -126,6 +126,7 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     libraryViewModel: LibraryViewModel,
     onVideoSelected: (VideoItem) -> Unit,
+    onPlayFromStart: (VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
@@ -867,6 +868,7 @@ fun HomeScreen(
                                         libraryViewModel.toggleFavorite(video, isFav)
                                     },
                                     onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video }
                                 )
                             }
@@ -912,6 +914,7 @@ fun HomeScreen(
                                     libraryViewModel.toggleFavorite(video, isFav)
                                 },
                                 onPlayInBackground = { onVideoSelected(video) },
+                                onPlayFromStart = { onPlayFromStart(video) },
                                 onShowDetails = { inspectVideo = video },
                                 onRename = {
                                     renameTarget = video
@@ -959,6 +962,7 @@ fun HomeScreen(
                                     libraryViewModel.toggleFavorite(video, isFav)
                                 },
                                 onPlayInBackground = { onVideoSelected(video) },
+                                onPlayFromStart = { onPlayFromStart(video) },
                                 onShowDetails = { inspectVideo = video },
                                 onRename = {
                                     renameTarget = video

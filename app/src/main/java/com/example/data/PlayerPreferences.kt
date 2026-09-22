@@ -90,6 +90,7 @@ class PlayerPreferencesRepository(private val context: Context) {
         val HDR_ENHANCE = booleanPreferencesKey("hdr_enhance")
         val BG_PLAY = booleanPreferencesKey("background_play")
         val AUTO_PIP = booleanPreferencesKey("auto_pip")
+        val PIP_CONSENT = booleanPreferencesKey("auto_pip_consent")
         val SEEK_STEP = intPreferencesKey("seek_step_seconds")
         val ASPECT_RATIO = stringPreferencesKey("default_aspect_ratio")
         val SUBTITLE_SIZE = intPreferencesKey("subtitle_text_size")
@@ -126,7 +127,10 @@ class PlayerPreferencesRepository(private val context: Context) {
             enableWideColorGamut = prefs[Keys.WIDE_COLOR_GAMUT] ?: false,
             enableHdrEnhance = prefs[Keys.HDR_ENHANCE] ?: false,
             backgroundPlayEnabled = prefs[Keys.BG_PLAY] ?: false,
-            autoPipEnabled = prefs[Keys.AUTO_PIP] ?: false,
+            // Auto PiP is usable only after the user explicitly confirms it
+            // in Settings. This also invalidates any legacy enabled flag that
+            // may have been written before the consent dialog existed.
+            autoPipEnabled = (prefs[Keys.AUTO_PIP] ?: false) && (prefs[Keys.PIP_CONSENT] ?: false),
             seekStepSeconds = prefs[Keys.SEEK_STEP] ?: 10,
             defaultAspectRatio = prefs[Keys.ASPECT_RATIO] ?: "FIT",
             subtitleTextSizeSp = prefs[Keys.SUBTITLE_SIZE] ?: 18,
@@ -196,7 +200,10 @@ class PlayerPreferencesRepository(private val context: Context) {
     }
 
     suspend fun setAutoPip(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.AUTO_PIP] = enabled }
+        context.dataStore.edit {
+            it[Keys.AUTO_PIP] = enabled
+            it[Keys.PIP_CONSENT] = enabled
+        }
     }
 
     suspend fun setSeekStepSeconds(seconds: Int) {
