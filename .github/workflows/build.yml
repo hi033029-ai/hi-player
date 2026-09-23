@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -43,6 +46,16 @@ jobs:
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: hi-player-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Publish APK release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_id }}
+          name: Hi Player APK ${{ github.run_id }}
+          generate_release_notes: false
+          body: "Debug APK built from commit ${{ github.sha }}."
+          files: app/build/outputs/apk/debug/*.apk
