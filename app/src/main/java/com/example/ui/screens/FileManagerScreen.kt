@@ -286,7 +286,7 @@ fun FileManagerScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        if (!includeHeader && !isSelectionMode && !showRecycleBin) {
+        if (!includeHeader && !showRecycleBin) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
