@@ -275,7 +275,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     completed == 0 -> "Couldn't move items to Recycle Bin"
                     else -> "Moved $completed to Recycle Bin, failed $failed"
                 }
-                clearSelection()
+                deselectAll()
                 refreshAll()
                 refreshRecycleBin()
             }

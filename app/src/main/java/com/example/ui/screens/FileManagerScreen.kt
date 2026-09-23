@@ -201,7 +201,6 @@ fun FileManagerScreen(
     // an explicit UI action, and returning to Files always restores the default view.
     LaunchedEffect(currentDir.absolutePath) {
         showQuickPanels = true
-        fileManagerViewModel.clearSelection()
     }
     LaunchedEffect(showRecycleBin) {
         if (showRecycleBin) fileManagerViewModel.refreshRecycleBin()
