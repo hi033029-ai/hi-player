@@ -177,8 +177,12 @@ fun FileManagerScreen(
     val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsState()
     val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
     val deleteProgress by fileManagerViewModel.deleteProgress.collectAsState()
+    val recycleBinItems by fileManagerViewModel.recycleBinItems.collectAsState()
+    val selectedRecycleBinIds by fileManagerViewModel.selectedRecycleBinIds.collectAsState()
 
     var isSearchActive by remember { mutableStateOf(false) }
+    var showRecycleBin by remember { mutableStateOf(false) }
+    var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by remember { mutableStateOf(TextFieldValue()) }
     val activeTab = FileViewTab.ALL_MERGED
@@ -198,6 +202,9 @@ fun FileManagerScreen(
     LaunchedEffect(currentDir.absolutePath) {
         showQuickPanels = true
         fileManagerViewModel.clearSelection()
+    }
+    LaunchedEffect(showRecycleBin) {
+        if (showRecycleBin) fileManagerViewModel.refreshRecycleBin()
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -221,7 +228,7 @@ fun FileManagerScreen(
     val hasSelection = isSelectionMode || selectedPaths.isNotEmpty()
     val backHandlerEnabled = selectedArchive != null || archiveAwaitingDestination != null || apkInstallCandidate != null || renameTargetItem != null || menuTargetItem != null ||
         detailsItem != null || deleteConfirmItems != null || selectedDocPreview != null ||
-        hasSelection || canNavigateUp
+        hasSelection || canNavigateUp || showRecycleBin
     BackHandler(enabled = backHandlerEnabled) {
         when {
             selectedArchive != null -> fileManagerViewModel.dismissArchiveViewer()
@@ -233,6 +240,10 @@ fun FileManagerScreen(
             deleteConfirmItems != null -> fileManagerViewModel.dismissDeleteConfirm()
             selectedDocPreview != null -> fileManagerViewModel.dismissDocumentPreview()
             hasSelection -> fileManagerViewModel.clearSelection()
+            showRecycleBin -> {
+                showRecycleBin = false
+                fileManagerViewModel.clearRecycleBinSelection()
+            }
             canNavigateUp -> fileManagerViewModel.navigateUp()
         }
     }
@@ -388,6 +399,9 @@ fun FileManagerScreen(
                         contentDescription = "Refresh",
                         tint = palette.textPrimary
                     )
+                }
+                IconButton(onClick = { showRecycleBin = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
                 }
             },
             windowInsets = TopAppBarDefaults.windowInsets,
@@ -594,7 +608,17 @@ fun FileManagerScreen(
         // Main Content Area
 
         Box(modifier = Modifier.weight(1f)) {
-            if (isLoading) {
+            if (showRecycleBin) {
+                RecycleBinView(
+                    items = recycleBinItems,
+                    selectedIds = selectedRecycleBinIds,
+                    onSelectAll = { fileManagerViewModel.selectAllRecycleBin() },
+                    onDeselectAll = { fileManagerViewModel.clearRecycleBinSelection() },
+                    onToggle = { fileManagerViewModel.toggleRecycleBinSelection(it) },
+                    onRestore = { fileManagerViewModel.restoreRecycleBinItems() },
+                    onDeletePermanently = { showPermanentDeleteConfirm = true }
+                )
+            } else if (isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = palette.primary)
                 }
@@ -695,7 +719,9 @@ fun FileManagerScreen(
             IconButton(onClick = { fileManagerViewModel.requestDelete(selectedItems) }) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
             }
-            IconButton(onClick = { fileManagerViewModel.selectAll(visibleSelectableItems.map { it.path }.toSet()) }) {
+            IconButton(onClick = {
+                fileManagerViewModel.selectAll(filteredFolderItems.map { it.path }.toSet())
+            }) {
                 Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
             }
             TextButton(onClick = { fileManagerViewModel.deselectAll() }) {
@@ -977,9 +1003,13 @@ fun FileManagerScreen(
             text = {
                 Text(
                     text = if (items.size == 1) {
-                        "\"${items.first().name}\" will be permanently deleted. This can't be undone."
+                        "\"${items.first().name}\" will be moved to Recycle Bin. You can restore it later."
                     } else {
-                        "These ${items.size} items will be permanently deleted. This can't be undone."
+                        val folderCount = items.count { it.isDirectory }
+                        val folderWarning = if (folderCount > 0) {
+                            " This includes $folderCount folder${if (folderCount == 1) "" else "s"} and all of its contents."
+                        } else ""
+                        "These ${items.size} items will be moved to Recycle Bin and can be restored later.$folderWarning"
                     },
                     color = palette.textSecondary,
                     fontSize = 13.sp
@@ -987,11 +1017,36 @@ fun FileManagerScreen(
             },
             confirmButton = {
                 TextButton(onClick = { fileManagerViewModel.confirmDelete() }) {
-                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    Text("Move to Recycle Bin", color = palette.primary, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { fileManagerViewModel.dismissDeleteConfirm() }) {
+                    Text("Cancel", color = palette.textSecondary)
+                }
+            },
+            containerColor = palette.surfaceElevated
+        )
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPermanentDeleteConfirm = false },
+            title = { Text("Delete permanently?", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "The selected Recycle Bin items will be erased permanently and cannot be restored.",
+                    color = palette.textSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPermanentDeleteConfirm = false
+                    fileManagerViewModel.permanentlyDeleteRecycleBinItems()
+                }) { Text("Delete permanently", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
                     Text("Cancel", color = palette.textSecondary)
                 }
             },
@@ -2478,4 +2533,99 @@ private fun FileTypeBadge(item: FileItem) {
         Icon(fileTypeIcon(item), contentDescription = fileTypeLabel(item), tint = palette.primary, modifier = Modifier.size(26.dp))
         Text(fileTypeLabel(item), color = palette.textSecondary, fontSize = 10.sp)
     }
+}
+
+
+@Composable
+private fun RecycleBinView(
+    items: List<FileManagerViewModel.RecycleBinItem>,
+    selectedIds: Set<String>,
+    onSelectAll: () -> Unit,
+    onDeselectAll: () -> Unit,
+    onToggle: (String) -> Unit,
+    onRestore: () -> Unit,
+    onDeletePermanently: () -> Unit
+) {
+    val palette = com.example.ui.theme.LocalHiPalette.current
+    val selectedCount = selectedIds.size
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Recycle Bin", color = palette.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Deleted files stay here until you restore them or permanently delete them.",
+                    color = palette.textSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onSelectAll, enabled = items.isNotEmpty()) { Text("Select all") }
+                    TextButton(onClick = onDeselectAll, enabled = selectedCount > 0) { Text("Deselect") }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        if (selectedCount > 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onRestore, modifier = Modifier.weight(1f)) { Text("Restore to device") }
+                TextButton(onClick = onDeletePermanently, modifier = Modifier.weight(1f)) {
+                    Text("Delete permanently", color = Color(0xFFEF4444))
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+        if (items.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Recycle Bin is empty", color = palette.textSecondary, fontSize = 14.sp)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(items, key = { it.id }) { item ->
+                    val selected = item.id in selectedIds
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggle(item.id) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) palette.primary.copy(alpha = 0.16f) else palette.surface
+                        ),
+                        border = if (selected) BorderStroke(1.dp, palette.primary) else null
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (item.isDirectory) Icons.Default.Folder else Icons.AutoMirrored.Filled.InsertDriveFile,
+                                contentDescription = null,
+                                tint = palette.primary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.name, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("Original: ${item.originalPath}", color = palette.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(formatRecycleBinSize(item.sizeBytes), color = palette.textSecondary, fontSize = 10.sp)
+                            }
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "Selected", tint = palette.primary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatRecycleBinSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> String.format(Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> String.format(Locale.US, "%.2f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> String.format(Locale.US, "%.2f KB", bytes / 1024.0)
+    else -> "$bytes B"
 }
