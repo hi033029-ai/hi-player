@@ -286,6 +286,21 @@ fun FileManagerScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
+        if (!includeHeader && !isSelectionMode && !showRecycleBin) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(palette.surface)
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("File Manager", color = palette.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                IconButton(onClick = { showRecycleBin = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
+                }
+            }
+        }
         // Local header can be disabled when the root shell owns the global header.
         if (isSelectionMode) {
             TopAppBar(
