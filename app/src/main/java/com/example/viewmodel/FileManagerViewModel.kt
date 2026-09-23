@@ -378,8 +378,6 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         ?.toList()
         ?: emptyList()
 
-    }
-
     private fun recycleBinPayload(item: RecycleBinItem): File = File(File(recycleBinRoot, item.id), "payload")
 
     private fun restoreRecycleBinItem(item: RecycleBinItem): Boolean {
