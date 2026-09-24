@@ -1558,7 +1558,7 @@ fun FoldersBrowserView(
         onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {},
-    onReorder: (String, String) -> Unit = {}
+    onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
