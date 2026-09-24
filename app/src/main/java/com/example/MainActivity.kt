@@ -24,9 +24,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -109,6 +113,7 @@ class MainActivity : ComponentActivity() {
                 var showHubBottomSheet by remember { mutableStateOf(false) }
                 var showGlobalSearchDialog by remember { mutableStateOf(false) }
                 var showStreamUrlDialog by remember { mutableStateOf(false) }
+                var recycleBinOpenRequest by remember { mutableStateOf(0) }
                 var globalSearchQuery by remember { mutableStateOf("") }
                 var streamUrl by remember { mutableStateOf("") }
                 var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
@@ -246,7 +251,14 @@ class MainActivity : ComponentActivity() {
                                                 musicViewModel.loadAudioTracks()
                                                 fileManagerViewModel.refreshAll()
                                             },
-                                            onStreamClick = { showStreamUrlDialog = true }
+                                            onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
+                                            extraActions = if (currentTab == NavTab.FILE_MANAGER) {
+                                                {
+                                                    IconButton(onClick = { recycleBinOpenRequest++ }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
+                                                    }
+                                                }
+                                            } else null
                                         )
                                     },
                                     bottomBar = {
@@ -356,7 +368,8 @@ class MainActivity : ComponentActivity() {
                                                         playerViewModel.playVideo(video)
                                                         currentScreen = AppScreen.Player
                                                     },
-                                                    onFilesChanged = { libraryViewModel.refreshVideos() }
+                                                    onFilesChanged = { libraryViewModel.refreshVideos() },
+                                                    recycleBinOpenRequest = recycleBinOpenRequest
                                                 )
                                             }
                                             NavTab.SETTINGS -> {

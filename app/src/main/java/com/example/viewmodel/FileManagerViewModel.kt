@@ -169,11 +169,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun selectAll(paths: Set<String>) {
-        val currentPaths = _folderFiles.value
-            .filter { isDirectChildOfCurrentDirectory(it.file) }
-            .map { it.path }
+        _selectedPaths.value = paths
+            .asSequence()
+            .map { path -> path to File(path) }
+            .filter { (_, file) -> isSafeStorageItem(file) }
+            .map { (path, _) -> path }
             .toSet()
-        _selectedPaths.value = paths.intersect(currentPaths)
         _isSelectionMode.value = true
     }
 
@@ -193,7 +194,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     /** Opens a confirmation prompt before deleting; nothing is deleted until [confirmDelete]. */
     fun requestDelete(items: List<FileItem>) {
         val safeItems = items
-            .filter { isDirectChildOfCurrentDirectory(it.file) }
+            .filter { isSafeStorageItem(it.file) }
             .distinctBy { it.file.canonicalPathOrAbsolute() }
         if (safeItems.isNotEmpty()) {
             if (safeItems.size > 1 && safeItems.any { it.isDirectory }) {
@@ -236,7 +237,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun confirmDelete() {
         val items = (_deleteConfirmItems.value ?: return)
-            .filter { isDirectChildOfCurrentDirectory(it.file) }
+            .filter { isSafeStorageItem(it.file) }
             .distinctBy { it.file.canonicalPathOrAbsolute() }
         _deleteConfirmItems.value = null
         if (items.isEmpty()) return
@@ -249,7 +250,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun moveToRecycleBin(items: List<FileItem>) {
         val safeItems = items
-            .filter { isDirectChildOfCurrentDirectory(it.file) }
+            .filter { isSafeStorageItem(it.file) }
             .distinctBy { it.file.canonicalPathOrAbsolute() }
         if (safeItems.isEmpty()) return
         deleteJob?.cancel()
@@ -420,6 +421,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val current = runCatching { _currentDirectory.value.canonicalFile }.getOrNull() ?: return false
         val candidate = runCatching { file.canonicalFile }.getOrNull() ?: return false
         return candidate.parentFile?.canonicalFile == current && candidate != current
+    }
+
+    private fun isSafeStorageItem(file: File): Boolean {
+        val root = runCatching { rootDir.canonicalFile }.getOrNull() ?: return false
+        val candidate = runCatching { file.canonicalFile }.getOrNull() ?: return false
+        return candidate != root && candidate.path.startsWith(root.path + File.separator) && candidate.exists()
     }
 
     private fun File.canonicalPathOrAbsolute(): String =

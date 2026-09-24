@@ -135,6 +135,12 @@ enum class FileViewTab {
     FOLDERS_BROWSER
 }
 
+enum class SelectAllScope {
+    ARCHIVES,
+    DOCUMENTS,
+    FOLDERS
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FileManagerScreen(
@@ -143,7 +149,8 @@ fun FileManagerScreen(
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null,
     onOpenVideo: ((FileItem) -> Unit)? = null,
-    onFilesChanged: () -> Unit = {}
+    onFilesChanged: () -> Unit = {},
+    recycleBinOpenRequest: Int = 0
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -183,6 +190,7 @@ fun FileManagerScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var showRecycleBin by remember { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
+    var selectAllScope by remember { mutableStateOf(SelectAllScope.FOLDERS) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by remember { mutableStateOf(TextFieldValue()) }
     val activeTab = FileViewTab.ALL_MERGED
@@ -204,6 +212,9 @@ fun FileManagerScreen(
     }
     LaunchedEffect(showRecycleBin) {
         if (showRecycleBin) fileManagerViewModel.refreshRecycleBin()
+    }
+    LaunchedEffect(recycleBinOpenRequest) {
+        if (recycleBinOpenRequest > 0) showRecycleBin = true
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -285,21 +296,6 @@ fun FileManagerScreen(
             .fillMaxSize()
             .background(palette.background)
     ) {
-        if (!includeHeader && !showRecycleBin) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(palette.surface)
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("File Manager", color = palette.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                IconButton(onClick = { showRecycleBin = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
-                }
-            }
-        }
         // Local header can be disabled when the root shell owns the global header.
         if (isSelectionMode) {
             TopAppBar(
@@ -675,7 +671,8 @@ fun FileManagerScreen(
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
                             onItemMenuClick = { menuTargetItem = it },
-                            newFolderPaths = newFolderPaths
+                            newFolderPaths = newFolderPaths,
+                            onSelectionScopeChanged = { selectAllScope = it }
                         )
                     }
                     FileViewTab.ARCHIVES_ONLY -> {
@@ -734,7 +731,12 @@ fun FileManagerScreen(
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
             }
             IconButton(onClick = {
-                fileManagerViewModel.selectAll(filteredFolderItems.map { it.path }.toSet())
+                val items = when (selectAllScope) {
+                    SelectAllScope.ARCHIVES -> filteredArchives
+                    SelectAllScope.DOCUMENTS -> filteredDocuments
+                    SelectAllScope.FOLDERS -> filteredFolderItems
+                }
+                fileManagerViewModel.selectAll(items.map { it.path }.toSet())
             }) {
                 Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
             }
@@ -1134,7 +1136,8 @@ fun MergedFilesView(
     onItemTap: (FileItem) -> Unit = {},
     onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
-    onContentScrolled: (Boolean) -> Unit = {}
+    onContentScrolled: (Boolean) -> Unit = {},
+    onSelectionScopeChanged: (SelectAllScope) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     var isArchivesExpanded by remember { mutableStateOf(false) }
@@ -1161,7 +1164,10 @@ fun MergedFilesView(
                 isCollapsible = true,
                 isExpanded = isArchivesExpanded,
                 itemCount = archives.size,
-                onToggle = { isArchivesExpanded = !isArchivesExpanded }
+                onToggle = {
+                    isArchivesExpanded = !isArchivesExpanded
+                    if (isArchivesExpanded) onSelectionScopeChanged(SelectAllScope.ARCHIVES)
+                }
             )
         }
 
@@ -1247,7 +1253,10 @@ fun MergedFilesView(
                 isCollapsible = true,
                 isExpanded = isDocumentsExpanded,
                 itemCount = documents.size,
-                onToggle = { isDocumentsExpanded = !isDocumentsExpanded }
+                onToggle = {
+                    isDocumentsExpanded = !isDocumentsExpanded
+                    if (isDocumentsExpanded) onSelectionScopeChanged(SelectAllScope.DOCUMENTS)
+                }
             )
         }
 
