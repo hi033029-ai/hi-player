@@ -95,6 +95,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,6 +113,7 @@ import com.example.ui.components.VideoGridCard
 import com.example.ui.components.VideoInfoDialog
 import com.example.ui.components.VideoItemCard
 import com.example.ui.components.VideoThumbnail
+import com.example.ui.components.reorderableDrag
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.components.HiPlayerHeader
@@ -128,6 +130,7 @@ fun HomeScreen(
     onVideoSelected: (VideoItem) -> Unit,
     onPlayFromStart: (VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
+    onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null
@@ -172,6 +175,10 @@ fun HomeScreen(
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
     }
+    val orderedFilteredVideos = remember(filteredVideos, allVideos) {
+        libraryViewModel.applySavedVideoOrder(filteredVideos)
+    }
+    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
     fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     fun toggleVideoSelection(video: VideoItem) {
         val key = videoKey(video)
@@ -898,7 +905,7 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        itemsIndexed(filteredVideos, key = { _, video -> video.id }) { _, video ->
+                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { index, video ->
                             val record = historyMap[video.uri.toString()]
                             val progressFraction = if (record != null && record.durationMs > 0) {
                                 (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -923,7 +930,18 @@ fun HomeScreen(
                                 onDelete = {
                                     selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
                                     showDeleteConfirm = true
-                                }
+                                },
+                                modifier = Modifier.reorderableDrag(
+                                    itemIndex = index,
+                                    itemCount = orderedFilteredVideos.size,
+                                    thresholdPx = reorderThresholdPx,
+                                    onMove = { from, to ->
+                                        libraryViewModel.moveVideoKeysInDisplayOrder(
+                                            videoKey(orderedFilteredVideos[from]),
+                                            videoKey(orderedFilteredVideos[to])
+                                        )
+                                    }
+                                )
                             )
                         }
                     }
@@ -946,7 +964,7 @@ fun HomeScreen(
                             }
                         }
                         // Video item rows
-                        items(filteredVideos, key = { it.id }) { video ->
+                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { index, video ->
                             val record = historyMap[video.uri.toString()]
                             val progressFraction = if (record != null && record.durationMs > 0) {
                                 (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -971,7 +989,18 @@ fun HomeScreen(
                                 onDelete = {
                                     selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
                                     showDeleteConfirm = true
-                                }
+                                },
+                                modifier = Modifier.reorderableDrag(
+                                    itemIndex = index,
+                                    itemCount = orderedFilteredVideos.size,
+                                    thresholdPx = reorderThresholdPx,
+                                    onMove = { from, to ->
+                                        libraryViewModel.moveVideoKeysInDisplayOrder(
+                                            videoKey(orderedFilteredVideos[from]),
+                                            videoKey(orderedFilteredVideos[to])
+                                        )
+                                    }
+                                )
                             )
                         }
                     }
@@ -1064,10 +1093,10 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             title = { Text("Delete selected video${if (selectedVideos.size == 1) "" else "s"}?") },
-            text = { Text("This permanently deletes ${selectedVideos.size} file${if (selectedVideos.size == 1) "" else "s"} from storage.") },
+            text = { Text("This moves ${selectedVideos.size} file${if (selectedVideos.size == 1) "" else "s"} to Recycle Bin. You can restore them or permanently delete them later.") },
             confirmButton = {
                 TextButton(onClick = {
-                    libraryViewModel.deleteVideos(selectedVideos)
+                    onMoveVideosToRecycleBin(selectedVideos)
                     selectedVideoPaths = emptySet()
                     showDeleteConfirm = false
                 }) { Text("Delete", color = Color(0xFFEF4444)) }

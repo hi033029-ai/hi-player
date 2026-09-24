@@ -248,25 +248,35 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         moveToRecycleBin(items)
     }
 
-    fun moveToRecycleBin(items: List<FileItem>) {
+    fun moveToRecycleBin(items: List<FileItem>, onComplete: (Set<String>) -> Unit = {}) {
         val safeItems = items
             .filter { isSafeStorageItem(it.file) }
             .distinctBy { it.file.canonicalPathOrAbsolute() }
-        if (safeItems.isEmpty()) return
+        if (safeItems.isEmpty()) {
+            onComplete(emptySet())
+            return
+        }
         deleteJob?.cancel()
         _deleteProgress.value = DeleteProgress(safeItems.size, 0, 0)
         deleteJob = viewModelScope.launch(Dispatchers.IO) {
             recycleBinRoot.mkdirs()
             var completed = 0
             var failed = 0
+            val movedPaths = mutableSetOf<String>()
             safeItems.forEach { item ->
                 try {
-                    if (moveItemToRecycleBin(item)) completed++ else failed++
+                    if (moveItemToRecycleBin(item)) {
+                        completed++
+                        movedPaths += item.path
+                    } else failed++
                 } catch (_: Exception) {
                     failed++
                 }
-                withContext(Dispatchers.Main) {
-                    _deleteProgress.value = DeleteProgress(safeItems.size, completed, failed)
+                val processed = completed + failed
+                if (processed == safeItems.size || processed % 4 == 0) {
+                    withContext(Dispatchers.Main) {
+                        _deleteProgress.value = DeleteProgress(safeItems.size, completed, failed)
+                    }
                 }
             }
             withContext(Dispatchers.Main) {
@@ -279,8 +289,26 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 deselectAll()
                 refreshAll()
                 refreshRecycleBin()
+                onComplete(movedPaths)
             }
         }
+    }
+
+    fun moveVideosToRecycleBin(videos: Collection<com.example.model.VideoItem>, onComplete: (Set<String>) -> Unit = {}) {
+        val items = videos.mapNotNull { video ->
+            val file = video.path.takeIf { it.isNotBlank() }?.let(::File)
+            if (file == null || !file.exists() || !file.isFile) return@mapNotNull null
+            FileItem(
+                file = file,
+                name = file.name,
+                path = file.path,
+                isDirectory = false,
+                sizeBytes = file.length(),
+                lastModified = file.lastModified(),
+                fileType = com.example.model.FileType.VIDEO,
+            )
+        }
+        moveToRecycleBin(items, onComplete)
     }
 
     fun restoreRecycleBinItems() {
@@ -549,6 +577,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                             compareByDescending<FileItem> { it.isDirectory }
                                 .thenBy { it.name.lowercase(Locale.ROOT) }
                         )
+                        .let { applySavedDirectoryOrder(dir, it) }
                 } catch (e: Exception) {
                     emptyList()
                 }
@@ -559,6 +588,29 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _isLoading.value = false
             }
         }
+    }
+
+    private fun directoryOrderKey(dir: File): String = "display_order_${dir.absolutePath}"
+
+    private fun applySavedDirectoryOrder(dir: File, items: List<FileItem>): List<FileItem> {
+        val positions = fileManagerPrefs.getString(directoryOrderKey(dir), "")
+            .orEmpty().split("\u0001").filter(String::isNotBlank)
+            .withIndex().associate { it.value to it.index }
+        if (positions.isEmpty()) return items
+        return items.sortedWith(compareBy<FileItem> { positions[it.path] ?: Int.MAX_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
+    }
+
+    fun moveCurrentDirectoryItem(fromPath: String, toPath: String) {
+        val current = _folderFiles.value.toMutableList()
+        val from = current.indexOfFirst { it.path == fromPath }
+        val to = current.indexOfFirst { it.path == toPath }
+        if (from < 0 || to < 0 || from == to) return
+        val item = current.removeAt(from)
+        current.add(to, item)
+        _folderFiles.value = current
+        fileManagerPrefs.edit()
+            .putString(directoryOrderKey(_currentDirectory.value), current.joinToString("\u0001") { it.path })
+            .apply()
     }
 
     fun navigateTo(item: FileItem) {

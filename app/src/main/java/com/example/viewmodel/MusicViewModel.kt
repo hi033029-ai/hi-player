@@ -26,6 +26,37 @@ import kotlinx.coroutines.withContext
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val musicPrefs = application.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
+
+    private fun trackKey(track: AudioItem): String = track.path.ifBlank { track.uri.toString() }
+
+    private fun applySavedTrackOrder(tracks: List<AudioItem>): List<AudioItem> {
+        val positions = musicPrefs.getString("track_display_order", "")
+            .orEmpty()
+            .split("\u0001")
+            .filter(String::isNotBlank)
+            .withIndex()
+            .associate { it.value to it.index }
+        if (positions.isEmpty()) return tracks
+        return tracks.sortedWith(
+            compareBy<AudioItem> { positions[trackKey(it)] ?: Int.MAX_VALUE }
+                .thenBy { it.title.lowercase() }
+        )
+    }
+
+    fun moveTrackInDisplayOrder(fromKey: String, toKey: String) {
+        val current = _audioList.value.toMutableList()
+        val from = current.indexOfFirst { trackKey(it) == fromKey }
+        val to = current.indexOfFirst { trackKey(it) == toKey }
+        if (from < 0 || to < 0 || from == to) return
+        val item = current.removeAt(from)
+        current.add(to, item)
+        _audioList.value = current
+        musicPrefs.edit()
+            .putString("track_display_order", current.joinToString("\u0001", transform = ::trackKey))
+            .apply()
+    }
+
     private val _audioList = MutableStateFlow<List<AudioItem>>(emptyList())
     val audioList = _audioList.asStateFlow()
 
@@ -311,7 +342,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             val tracks = withContext(Dispatchers.IO) {
                 queryDeviceAudio()
             }
-            _audioList.value = tracks
+            _audioList.value = applySavedTrackOrder(tracks)
         }
     }
 

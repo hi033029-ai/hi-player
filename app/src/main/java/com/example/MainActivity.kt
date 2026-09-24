@@ -316,6 +316,12 @@ class MainActivity : ComponentActivity() {
                                                     onOpenSettings = {
                                                         currentTab = NavTab.SETTINGS
                                                     },
+                                                    onMoveVideosToRecycleBin = { selectedVideos ->
+                                                        fileManagerViewModel.moveVideosToRecycleBin(selectedVideos) { movedPaths ->
+                                                            val moved = selectedVideos.filter { it.path in movedPaths }
+                                                            libraryViewModel.removeVideoRecords(moved)
+                                                        }
+                                                    },
                                                     includeHeader = false
                                                 )
                                             }

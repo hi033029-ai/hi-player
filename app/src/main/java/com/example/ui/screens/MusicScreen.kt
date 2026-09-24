@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -84,6 +85,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
@@ -97,6 +99,7 @@ import com.example.R
 import com.example.model.AudioItem
 import com.example.model.VideoItem
 import com.example.ui.components.AudioTrackThumbnail
+import com.example.ui.components.reorderableDrag
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
@@ -152,6 +155,7 @@ fun MusicScreen(
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
     var audioSort by remember { mutableStateOf("Name") }
+    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
 
     val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
         if (compactAudioView && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
@@ -187,6 +191,7 @@ fun MusicScreen(
             matchesQuery && matchesFilter && matchesLibrary
         }.let { list ->
             when (audioSort) {
+                "Custom" -> list
                 "Artist" -> list.sortedBy { it.artist.lowercase() }
                 "Duration" -> list.sortedByDescending { it.durationMs }
                 "Newest" -> list.sortedByDescending { it.dateAdded }
@@ -302,7 +307,7 @@ fun MusicScreen(
                             Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
                         }
                         DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
-                            listOf("Name", "Artist", "Duration", "Newest").forEach { option ->
+                            listOf("Custom", "Name", "Artist", "Duration", "Newest").forEach { option ->
                                 DropdownMenuItem(text = { Text(option) }, onClick = {
                                     audioSort = option
                                     sortMenuExpanded = false
@@ -363,7 +368,20 @@ fun MusicScreen(
                                 isSelected = isSelected,
                                 isPlaying = isSelected && isPlaying,
                                 onClick = { musicViewModel.playTrack(track) },
-                                modifier = Modifier.padding(4.dp)
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .reorderableDrag(
+                                        itemIndex = filteredList.indexOf(track),
+                                        itemCount = filteredList.size,
+                                        thresholdPx = reorderThresholdPx,
+                                        onMove = { from, to ->
+                                            audioSort = "Custom"
+                                            musicViewModel.moveTrackInDisplayOrder(
+                                                filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
+                                                filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
+                                            )
+                                        }
+                                    )
                             )
                         }
                     }
@@ -372,13 +390,25 @@ fun MusicScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(filteredList, key = { it.id }) { track ->
+                        itemsIndexed(filteredList, key = { _, it -> it.id }) { index, track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
                                 track = track,
                                 isSelected = isSelected,
                                 isPlaying = isSelected && isPlaying,
-                                onClick = { musicViewModel.playTrack(track) }
+                                onClick = { musicViewModel.playTrack(track) },
+                                modifier = Modifier.reorderableDrag(
+                                    itemIndex = index,
+                                    itemCount = filteredList.size,
+                                    thresholdPx = reorderThresholdPx,
+                                    onMove = { from, to ->
+                                        audioSort = "Custom"
+                                        musicViewModel.moveTrackInDisplayOrder(
+                                            filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
+                                            filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
+                                        )
+                                    }
+                                )
                             )
                         }
                     }

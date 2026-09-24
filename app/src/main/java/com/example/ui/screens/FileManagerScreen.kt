@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +99,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -119,6 +121,7 @@ import com.example.ui.theme.HiSurfaceDark
 import com.example.ui.theme.HiSurfaceElevated
 import com.example.ui.theme.HiTextPrimary
 import com.example.ui.theme.HiTextSecondary
+import com.example.ui.components.reorderableDrag
 import com.example.viewmodel.FileManagerViewModel
 import com.example.ui.components.HiPlayerHeader
 import androidx.lifecycle.Lifecycle
@@ -648,7 +651,8 @@ fun FileManagerScreen(
                     onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                     onItemTap = { fileManagerViewModel.toggleSelection(it) },
                     onItemMenuClick = { menuTargetItem = it },
-                    newFolderPaths = newFolderPaths
+                    newFolderPaths = newFolderPaths,
+                    onReorder = { fromPath, toPath -> fileManagerViewModel.moveCurrentDirectoryItem(fromPath, toPath) }
                 )
             } else {
                 when (activeTab) {
@@ -704,7 +708,8 @@ fun FileManagerScreen(
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
                             onItemMenuClick = { menuTargetItem = it },
-                            newFolderPaths = newFolderPaths
+                            newFolderPaths = newFolderPaths,
+                            onReorder = { fromPath, toPath -> fileManagerViewModel.moveCurrentDirectoryItem(fromPath, toPath) }
                         )
                     }
                 }
@@ -1552,9 +1557,11 @@ fun FoldersBrowserView(
     onItemTap: (FileItem) -> Unit = {},
         onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
-    onContentScrolled: (Boolean) -> Unit = {}
+    onContentScrolled: (Boolean) -> Unit = {},
+    onReorder: (String, String) -> Unit = {}
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
+    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
     val folderListState = rememberLazyListState()
     LaunchedEffect(folderListState.firstVisibleItemIndex, folderListState.firstVisibleItemScrollOffset) {
         val atTop = folderListState.firstVisibleItemIndex == 0 && folderListState.firstVisibleItemScrollOffset <= 48
@@ -1628,7 +1635,13 @@ fun FoldersBrowserView(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(items, key = { it.path }) { item ->
+                itemsIndexed(items, key = { _, it -> it.path }) { index, item ->
+                    val dragModifier = Modifier.reorderableDrag(
+                        itemIndex = index,
+                        itemCount = items.size,
+                        thresholdPx = reorderThresholdPx,
+                        onMove = { from, to -> onReorder(items[from].path, items[to].path) }
+                    )
                     if (item.isDirectory) {
                         FolderItemCard(
                             folder = item,
@@ -1637,7 +1650,8 @@ fun FoldersBrowserView(
                             isSelected = selectedPaths.contains(item.path),
                             showSelectionControl = isSelectionMode,
                             isNew = newFolderPaths.contains(item.path),
-                            onMenuClick = { onItemMenuClick(item) }
+                            onMenuClick = { onItemMenuClick(item) },
+                            modifier = dragModifier
                         )
                     } else if (item.isApk) {
                         GenericFileItemCard(
@@ -1645,7 +1659,8 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
-                            onMenuClick = { onItemMenuClick(item) }
+                            onMenuClick = { onItemMenuClick(item) },
+                            modifier = dragModifier
                         )
                     } else if (item.isArchive) {
                         ArchiveItemCard(
@@ -1654,7 +1669,8 @@ fun FoldersBrowserView(
                             onExtract = { onExtractArchive(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
-                            onMenuClick = { onItemMenuClick(item) }
+                            onMenuClick = { onItemMenuClick(item) },
+                            modifier = dragModifier
                         )
                     } else if (item.isDocument) {
                         DocumentItemCard(
@@ -1662,7 +1678,8 @@ fun FoldersBrowserView(
                             onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
-                            onMenuClick = { onItemMenuClick(item) }
+                            onMenuClick = { onItemMenuClick(item) },
+                            modifier = dragModifier
                         )
                     } else {
                         GenericFileItemCard(
@@ -1670,7 +1687,8 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
-                            onMenuClick = { onItemMenuClick(item) }
+                            onMenuClick = { onItemMenuClick(item) },
+                            modifier = dragModifier
                         )
                     }
                 }

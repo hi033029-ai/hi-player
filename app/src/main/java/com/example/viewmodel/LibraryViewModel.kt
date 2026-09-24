@@ -103,6 +103,47 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val preferencesRepo = PlayerPreferencesRepository(application)
     private val libraryPrefs = application.getSharedPreferences("library_preferences", android.content.Context.MODE_PRIVATE)
 
+    private fun readVideoOrder(): List<String> = libraryPrefs
+        .getString("video_display_order", "")
+        .orEmpty()
+        .split("\u0001")
+        .filter(String::isNotBlank)
+
+    fun applySavedVideoOrder(videos: List<VideoItem>): List<VideoItem> {
+        val positions = readVideoOrder().withIndex().associate { it.value to it.index }
+        if (positions.isEmpty()) return videos
+        return videos.sortedWith(
+            compareBy<VideoItem> { positions[it.path.ifBlank { it.uri.toString() }] ?: Int.MAX_VALUE }
+                .thenBy { it.title.lowercase() }
+        )
+    }
+
+    fun saveVideoOrder(videos: List<VideoItem>) {
+        libraryPrefs.edit()
+            .putString("video_display_order", videos.map { it.path.ifBlank { it.uri.toString() } }.joinToString("\u0001"))
+            .apply()
+    }
+
+    fun moveVideoInDisplayOrder(from: Int, to: Int) {
+        val current = _allVideos.value.toMutableList()
+        if (from !in current.indices || to !in current.indices || from == to) return
+        val item = current.removeAt(from)
+        current.add(to, item)
+        _allVideos.value = current
+        saveVideoOrder(current)
+    }
+
+    fun moveVideoKeysInDisplayOrder(fromKey: String, toKey: String) {
+        val current = _allVideos.value.toMutableList()
+        val from = current.indexOfFirst { it.path.ifBlank { it.uri.toString() } == fromKey }
+        val to = current.indexOfFirst { it.path.ifBlank { it.uri.toString() } == toKey }
+        if (from < 0 || to < 0 || from == to) return
+        val item = current.removeAt(from)
+        current.add(to, item)
+        _allVideos.value = current
+        saveVideoOrder(current)
+    }
+
     private val _allVideos = MutableStateFlow<List<VideoItem>>(emptyList())
     val allVideos = _allVideos.asStateFlow()
     private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
@@ -367,11 +408,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val scanned = MediaScanner.scanLocalVideos(getApplication())
                 val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
-                _allVideos.value = scanned.map { video ->
+                _allVideos.value = applySavedVideoOrder(scanned.map { video ->
                     if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) {
                         video.copy(isNewVideo = false)
                     } else video
-                }
+                })
             } finally {
                 if (!silent) _isLoading.value = false
             }
@@ -657,6 +698,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
             withContext(Dispatchers.Main) {
                 _deleteProgress.value = null
+                refreshVideos(silent = true)
+            }
+        }
+    }
+
+    fun removeVideoRecords(videos: Collection<VideoItem>) {
+        if (videos.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            videos.forEach { video ->
+                videoDao.deleteRecord(video.uri.toString())
+            }
+            withContext(Dispatchers.Main) {
                 refreshVideos(silent = true)
             }
         }
