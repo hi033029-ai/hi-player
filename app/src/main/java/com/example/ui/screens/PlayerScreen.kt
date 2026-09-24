@@ -196,6 +196,9 @@ fun PlayerScreen(
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
     var hdrColorIntensity by remember { mutableStateOf(0.5f) }
+    var hdrColorIntensities by remember {
+        mutableStateOf(HdrColor.entries.associateWith { 0.5f })
+    }
     var hdrInteractionTick by remember { mutableStateOf(0) }
 
     DisposableEffect(playerViewModel.engine.getPlayer()) {
@@ -526,10 +529,16 @@ fun PlayerScreen(
             colorIntensity = hdrColorIntensity,
             onColorSelected = {
                 selectedHdrColor = it
+                val savedIntensity = hdrColorIntensities[it] ?: 0.5f
+                hdrColorIntensity = savedIntensity
                 hdrInteractionTick++
+                val channels = hdrColorChannelMultipliers(it.color, savedIntensity)
                 val nextPreset = customHdrPreset.copy(
                     name = ColorPresets.CUSTOM.name,
                     targetHue = hdrColorHue(it.color),
+                    red = channels.first,
+                    green = channels.second,
+                    blue = channels.third,
                 )
                 customHdrPreset = nextPreset
                 playerViewModel.engine.setHdrColorPreset(nextPreset)
@@ -538,13 +547,15 @@ fun PlayerScreen(
             onColorIntensityChange = { intensity ->
                 hdrInteractionTick++
                 hdrColorIntensity = intensity
+                hdrColorIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 val tint = selectedHdrColor.color
+                val channels = hdrColorChannelMultipliers(tint, intensity)
                 val nextPreset = customHdrPreset.copy(
                     name = ColorPresets.CUSTOM.name,
                     targetHue = hdrColorHue(selectedHdrColor.color),
-                    red = (1f + (tint.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-                    green = (1f + (tint.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-                    blue = (1f + (tint.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+                    red = channels.first,
+                    green = channels.second,
+                    blue = channels.third,
                 )
                 customHdrPreset = nextPreset
                 playerViewModel.engine.setHdrColorPreset(nextPreset)
@@ -813,6 +824,14 @@ private fun computeVideoRatioScale(
             }
         }
     }
+}
+
+private fun hdrColorChannelMultipliers(color: Color, intensity: Float): Triple<Float, Float, Float> {
+    return Triple(
+        (1f + (color.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+        (1f + (color.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+        (1f + (color.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
+    )
 }
 
 private fun hdrColorHue(color: Color): Float {

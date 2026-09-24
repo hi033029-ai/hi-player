@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
+import com.example.ui.theme.LocalHiPalette
 
 @Composable
 fun HdrPresetMenu(
@@ -39,6 +41,7 @@ fun HdrPresetMenu(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
+    val palette = LocalHiPalette.current
 
     if (customizing) {
         Column(
@@ -86,6 +89,13 @@ fun HdrPresetMenu(
                 onValueChange = onColorIntensityChange,
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth(),
+                colors = SliderDefaults.colors(
+                    thumbColor = palette.primary,
+                    activeTrackColor = palette.primary,
+                    inactiveTrackColor = palette.primary.copy(alpha = 0.28f),
+                    activeTickColor = palette.primary,
+                    inactiveTickColor = palette.primary.copy(alpha = 0.38f),
+                ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Light", color = Color.LightGray, fontSize = 10.sp)
@@ -146,6 +156,13 @@ private fun CustomSlider(
             onValueChange = onValueChange,
             valueRange = range,
             modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = LocalHiPalette.current.primary,
+                activeTrackColor = LocalHiPalette.current.primary,
+                inactiveTrackColor = LocalHiPalette.current.primary.copy(alpha = 0.28f),
+                activeTickColor = LocalHiPalette.current.primary,
+                inactiveTickColor = LocalHiPalette.current.primary.copy(alpha = 0.38f),
+            ),
         )
     }
 }
