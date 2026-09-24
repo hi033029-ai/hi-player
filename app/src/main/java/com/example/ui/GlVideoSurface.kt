@@ -515,6 +515,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         private var targetHueHandle = 0
         private var vibranceHandle = 0
         private var sharpnessHandle = 0
+        private var targetCountHandle = 0
+        private var targetHuesHandle = 0
+        private var targetRedsHandle = 0
+        private var targetGreensHandle = 0
+        private var targetBluesHandle = 0
         private var preset = ColorPresets.NATURAL_HDR
         var surface: Surface? = null
             private set
@@ -537,6 +542,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             targetHueHandle = GLES20.glGetUniformLocation(program, "uTargetHue")
             vibranceHandle = GLES20.glGetUniformLocation(program, "uVibrance")
             sharpnessHandle = GLES20.glGetUniformLocation(program, "uSharpness")
+            targetCountHandle = GLES20.glGetUniformLocation(program, "uTargetCount")
+            targetHuesHandle = GLES20.glGetUniformLocation(program, "uTargetHues[0]")
+            targetRedsHandle = GLES20.glGetUniformLocation(program, "uTargetReds[0]")
+            targetGreensHandle = GLES20.glGetUniformLocation(program, "uTargetGreens[0]")
+            targetBluesHandle = GLES20.glGetUniformLocation(program, "uTargetBlues[0]")
 
             val ids = IntArray(1)
             GLES20.glGenTextures(1, ids, 0)
@@ -573,6 +583,14 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             GLES20.glUniform1f(targetHueHandle, preset.targetHue)
             GLES20.glUniform1f(vibranceHandle, preset.vibrance)
             GLES20.glUniform1f(sharpnessHandle, preset.sharpness)
+            val adjustments = preset.targetAdjustments.take(MAX_TARGET_ADJUSTMENTS)
+            GLES20.glUniform1i(targetCountHandle, adjustments.size)
+            if (adjustments.isNotEmpty()) {
+                GLES20.glUniform1fv(targetHuesHandle, adjustments.size, adjustments.map { it.hue }.toFloatArray(), 0)
+                GLES20.glUniform1fv(targetRedsHandle, adjustments.size, adjustments.map { it.red }.toFloatArray(), 0)
+                GLES20.glUniform1fv(targetGreensHandle, adjustments.size, adjustments.map { it.green }.toFloatArray(), 0)
+                GLES20.glUniform1fv(targetBluesHandle, adjustments.size, adjustments.map { it.blue }.toFloatArray(), 0)
+            }
             vertexBuffer.position(0)
             GLES20.glEnableVertexAttribArray(positionHandle)
             GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 16, vertexBuffer)
@@ -616,6 +634,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         }
 
         companion object {
+            private const val MAX_TARGET_ADJUSTMENTS = 8
             private const val VERTEX_SHADER = """
                 attribute vec4 aPosition;
                 attribute vec2 aTexCoord;
@@ -642,14 +661,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 uniform float uTargetHue;
                 uniform float uVibrance;
                 uniform float uSharpness;
+                uniform int uTargetCount;
+                uniform float uTargetHues[8];
+                uniform float uTargetReds[8];
+                uniform float uTargetGreens[8];
+                uniform float uTargetBlues[8];
                 varying vec2 vTexCoord;
                 void main() {
                     vec4 tex = texture2D(uTexture, vTexCoord);
                     vec3 color = tex.rgb * uBrightness;
                     color = (color - 0.5) * uContrast + 0.5;
-                    vec3 originalColor = color;
-                    vec3 adjustedColor = color;
-                    adjustedColor.r *= uRed; adjustedColor.g *= uGreen; adjustedColor.b *= uBlue;
                     float maxChannel = max(color.r, max(color.g, color.b));
                     float minChannel = min(color.r, min(color.g, color.b));
                     float chroma = maxChannel - minChannel;
@@ -661,10 +682,27 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                         hue /= 6.0;
                         if (hue < 0.0) hue += 1.0;
                     }
-                    float hueDistance = abs(hue - uTargetHue);
-                    hueDistance = min(hueDistance, 1.0 - hueDistance);
-                    float hueMask = uTargetHue < 0.0 ? 1.0 : (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
-                    color = mix(originalColor, adjustedColor, hueMask);
+                    if (uTargetCount > 0) {
+                        for (int i = 0; i < 8; i++) {
+                            if (i >= uTargetCount) break;
+                            float hueDistance = abs(hue - uTargetHues[i]);
+                            hueDistance = min(hueDistance, 1.0 - hueDistance);
+                            float hueMask = (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
+                            vec3 adjustedColor = color;
+                            adjustedColor.r *= uTargetReds[i];
+                            adjustedColor.g *= uTargetGreens[i];
+                            adjustedColor.b *= uTargetBlues[i];
+                            color = mix(color, adjustedColor, hueMask);
+                        }
+                    } else {
+                        vec3 originalColor = color;
+                        vec3 adjustedColor = color;
+                        adjustedColor.r *= uRed; adjustedColor.g *= uGreen; adjustedColor.b *= uBlue;
+                        float hueDistance = abs(hue - uTargetHue);
+                        hueDistance = min(hueDistance, 1.0 - hueDistance);
+                        float hueMask = uTargetHue < 0.0 ? 1.0 : (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
+                        color = mix(originalColor, adjustedColor, hueMask);
+                    }
                     float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
                     color = mix(vec3(luminance), color, uSaturation);
                     float adjustedMaxChannel = max(color.r, max(color.g, color.b));

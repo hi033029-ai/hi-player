@@ -1,5 +1,12 @@
 package com.example.player
 
+data class ColorTargetAdjustment(
+    val hue: Float,
+    val red: Float,
+    val green: Float,
+    val blue: Float,
+)
+
 data class ColorPreset(
     val name: String,
     val brightness: Float,
@@ -11,6 +18,7 @@ data class ColorPreset(
     val vibrance: Float,
     val sharpness: Float = 0.0f,
     val targetHue: Float = -1.0f,
+    val targetAdjustments: List<ColorTargetAdjustment> = emptyList(),
 )
 
 object ColorPresets {
