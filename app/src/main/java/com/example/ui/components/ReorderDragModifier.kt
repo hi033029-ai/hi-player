@@ -1,6 +1,9 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.abs
@@ -13,12 +16,16 @@ fun Modifier.reorderableDrag(
     onMove: (from: Int, to: Int) -> Unit,
     onDrop: () -> Unit = {},
 ): Modifier = pointerInput(itemCount, thresholdPx) {
-    var accumulated = 0f
-    var currentIndex = itemIndex
-    detectDragGesturesAfterLongPress(
-        onDrag = { change, dragAmount ->
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+        var accumulated = 0f
+        var currentIndex = itemIndex
+        var moved = false
+
+        drag(longPress.id) { change ->
             change.consume()
-            accumulated += dragAmount.y
+            accumulated += change.positionChange().y
             while (abs(accumulated) >= thresholdPx) {
                 val direction = if (accumulated > 0f) 1 else -1
                 val nextIndex = (currentIndex + direction).coerceIn(0, itemCount - 1)
@@ -29,9 +36,9 @@ fun Modifier.reorderableDrag(
                 onMove(currentIndex, nextIndex)
                 currentIndex = nextIndex
                 accumulated -= direction * thresholdPx
+                moved = true
             }
-        },
-        onDragEnd = onDrop,
-        onDragCancel = onDrop,
-    )
+        }
+        if (moved) onDrop()
+    }
 }
