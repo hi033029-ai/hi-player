@@ -25,7 +25,7 @@ fun Modifier.reorderableDrag(
 
         drag(longPress.id) { change ->
             change.consume()
-            accumulated += change.positionChange().y
+            accumulated += (change.position - change.previousPosition).y
             while (abs(accumulated) >= thresholdPx) {
                 val direction = if (accumulated > 0f) 1 else -1
                 val nextIndex = (currentIndex + direction).coerceIn(0, itemCount - 1)
