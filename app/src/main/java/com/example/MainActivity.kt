@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity() {
                                             extraActions = if (currentTab == NavTab.FILE_MANAGER) {
                                                 {
                                                     IconButton(onClick = { recycleBinOpenRequest++ }) {
-                                                        Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
+                                                        Icon(Icons.Default.DeleteSweep, contentDescription = "Recycle Bin", tint = palette.textPrimary)
                                                     }
                                                 }
                                             } else null
@@ -375,7 +375,8 @@ class MainActivity : ComponentActivity() {
                                                         currentScreen = AppScreen.Player
                                                     },
                                                     onFilesChanged = { libraryViewModel.refreshVideos() },
-                                                    recycleBinOpenRequest = recycleBinOpenRequest
+                                                    recycleBinOpenRequest = recycleBinOpenRequest,
+                                                    onRecycleBinRequestConsumed = { recycleBinOpenRequest = 0 }
                                                 )
                                             }
                                             NavTab.SETTINGS -> {

@@ -153,7 +153,8 @@ fun FileManagerScreen(
     onSearchRequested: (() -> Unit)? = null,
     onOpenVideo: ((FileItem) -> Unit)? = null,
     onFilesChanged: () -> Unit = {},
-    recycleBinOpenRequest: Int = 0
+    recycleBinOpenRequest: Int = 0,
+    onRecycleBinRequestConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -217,7 +218,10 @@ fun FileManagerScreen(
         if (showRecycleBin) fileManagerViewModel.refreshRecycleBin()
     }
     LaunchedEffect(recycleBinOpenRequest) {
-        if (recycleBinOpenRequest > 0) showRecycleBin = true
+        if (recycleBinOpenRequest > 0) {
+            showRecycleBin = true
+            onRecycleBinRequestConsumed()
+        }
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
