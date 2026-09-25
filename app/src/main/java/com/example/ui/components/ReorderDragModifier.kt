@@ -12,7 +12,7 @@ fun Modifier.reorderableDrag(
     thresholdPx: Float,
     onMove: (from: Int, to: Int) -> Unit,
     onDrop: () -> Unit = {},
-): Modifier = pointerInput(itemIndex, itemCount, thresholdPx) {
+): Modifier = pointerInput(itemCount, thresholdPx) {
     var accumulated = 0f
     var currentIndex = itemIndex
     detectDragGesturesAfterLongPress(

@@ -600,6 +600,40 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         return items.sortedWith(compareBy<FileItem> { positions[it.path] ?: Int.MAX_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
     }
 
+    private fun categoryOrderKey(category: String): String = "display_order_category_$category"
+
+    private fun applySavedCategoryOrder(category: String, items: List<FileItem>): List<FileItem> {
+        val positions = fileManagerPrefs.getString(categoryOrderKey(category), "")
+            .orEmpty().split("\u0001").filter(String::isNotBlank)
+            .withIndex().associate { it.value to it.index }
+        if (positions.isEmpty()) return items
+        return items.sortedWith(compareBy<FileItem> { positions[it.path] ?: Int.MAX_VALUE }.thenBy { it.name.lowercase(Locale.ROOT) })
+    }
+
+    fun moveMergedItem(fromPath: String, toPath: String) {
+        val category = when {
+            _folderFiles.value.any { it.path == fromPath || it.path == toPath } -> "folders_${_currentDirectory.value.absolutePath}"
+            _allArchives.value.any { it.path == fromPath || it.path == toPath } -> "archives"
+            _allDocuments.value.any { it.path == fromPath || it.path == toPath } -> "documents"
+            else -> return
+        }
+        val source = when (category.substringBefore('_')) {
+            "folders" -> _folderFiles.value
+            "archives" -> _allArchives.value
+            else -> _allDocuments.value
+        }.toMutableList()
+        val from = source.indexOfFirst { it.path == fromPath }
+        val to = source.indexOfFirst { it.path == toPath }
+        if (from < 0 || to < 0 || from == to) return
+        source.add(to, source.removeAt(from))
+        when (category.substringBefore('_')) {
+            "folders" -> _folderFiles.value = source
+            "archives" -> _allArchives.value = source
+            else -> _allDocuments.value = source
+        }
+        fileManagerPrefs.edit().putString(categoryOrderKey(category), source.joinToString("\u0001") { it.path }).apply()
+    }
+
     fun moveCurrentDirectoryItem(fromPath: String, toPath: String) {
         val current = _folderFiles.value.toMutableList()
         val from = current.indexOfFirst { it.path == fromPath }
@@ -766,10 +800,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             // Deduplicate by absolute path and sort by recent
-            val distinctArchives = archives.distinctBy { it.path }
-                .sortedByDescending { it.lastModified }
-            val distinctDocs = docs.distinctBy { it.path }
-                .sortedByDescending { it.lastModified }
+            val distinctArchives = applySavedCategoryOrder("archives", archives.distinctBy { it.path }
+                .sortedByDescending { it.lastModified })
+            val distinctDocs = applySavedCategoryOrder("documents", docs.distinctBy { it.path }
+                .sortedByDescending { it.lastModified })
 
             withContext(Dispatchers.Main) {
                 if (generation == libraryScanGeneration.get()) {

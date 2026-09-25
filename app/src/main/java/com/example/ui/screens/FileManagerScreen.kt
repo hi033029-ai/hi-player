@@ -676,7 +676,8 @@ fun FileManagerScreen(
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
                             onItemMenuClick = { menuTargetItem = it },
                             newFolderPaths = newFolderPaths,
-                            onSelectionScopeChanged = { selectAllScope = it }
+                            onSelectionScopeChanged = { selectAllScope = it },
+                            onReorder = { fromPath, toPath -> fileManagerViewModel.moveMergedItem(fromPath, toPath) }
                         )
                     }
                     FileViewTab.ARCHIVES_ONLY -> {
@@ -1142,9 +1143,11 @@ fun MergedFilesView(
     onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {},
-    onSelectionScopeChanged: (SelectAllScope) -> Unit = {}
+    onSelectionScopeChanged: (SelectAllScope) -> Unit = {},
+    onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
+    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
     var isArchivesExpanded by remember { mutableStateOf(false) }
     val mergedListState = rememberLazyListState()
     LaunchedEffect(mergedListState.firstVisibleItemIndex, mergedListState.firstVisibleItemScrollOffset) {
@@ -1204,14 +1207,16 @@ fun MergedFilesView(
                     }
                 }
             } else {
-                items(archives, key = { "arch_${it.path}" }) { archive ->
+                itemsIndexed(archives, key = { _, it -> "arch_${it.path}" }) { index, archive ->
+                    val dragModifier = Modifier.reorderableDrag(index, archives.size, reorderThresholdPx, { from, to -> onReorder(archives[from].path, archives[to].path) })
                     if (archive.isApk) {
                         GenericFileItemCard(
                             item = archive,
                             onClick = { if (isSelectionMode) onItemTap(archive) else onInstallApk(archive) },
                             onLongClick = { onItemLongClick(archive) },
                             isSelected = selectedPaths.contains(archive.path),
-                            onMenuClick = { onItemMenuClick(archive) }
+                            onMenuClick = { onItemMenuClick(archive) },
+                            modifier = dragModifier
                         )
                     } else {
                         ArchiveItemCard(
@@ -1220,7 +1225,8 @@ fun MergedFilesView(
                             onExtract = { onExtractArchive(archive) },
                             onLongClick = { onItemLongClick(archive) },
                             isSelected = selectedPaths.contains(archive.path),
-                            onMenuClick = { onItemMenuClick(archive) }
+                            onMenuClick = { onItemMenuClick(archive) },
+                            modifier = dragModifier
                         )
                     }
                 }
@@ -1293,13 +1299,15 @@ fun MergedFilesView(
                     }
                 }
             } else {
-                items(documents, key = { "doc_${it.path}" }) { doc ->
+                itemsIndexed(documents, key = { _, it -> "doc_${it.path}" }) { index, doc ->
+                    val dragModifier = Modifier.reorderableDrag(index, documents.size, reorderThresholdPx, { from, to -> onReorder(documents[from].path, documents[to].path) })
                     DocumentItemCard(
                         doc = doc,
                         onOpen = { if (isSelectionMode) onItemTap(doc) else onOpenDocument(doc) },
                         onLongClick = { onItemLongClick(doc) },
                         isSelected = selectedPaths.contains(doc.path),
-                        onMenuClick = { onItemMenuClick(doc) }
+                        onMenuClick = { onItemMenuClick(doc) },
+                        modifier = dragModifier
                     )
                 }
                 item {
@@ -1406,7 +1414,8 @@ fun MergedFilesView(
                 }
             }
         } else {
-            items(folderItems, key = { "folder_${it.path}" }) { item ->
+            itemsIndexed(folderItems, key = { _, it -> "folder_${it.path}" }) { index, item ->
+                val dragModifier = Modifier.reorderableDrag(index, folderItems.size, reorderThresholdPx, { from, to -> onReorder(folderItems[from].path, folderItems[to].path) })
                 if (item.isDirectory) {
                     FolderItemCard(
                         folder = item,
@@ -1415,7 +1424,8 @@ fun MergedFilesView(
                         isSelected = selectedPaths.contains(item.path),
                         showSelectionControl = isSelectionMode,
                         isNew = newFolderPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) }
+                        onMenuClick = { onItemMenuClick(item) },
+                        modifier = dragModifier
                     )
                 } else if (item.isApk) {
                     GenericFileItemCard(
@@ -1423,7 +1433,8 @@ fun MergedFilesView(
                         onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
                         onLongClick = { onItemLongClick(item) },
                         isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) }
+                        onMenuClick = { onItemMenuClick(item) },
+                        modifier = dragModifier
                     )
                 } else if (item.isArchive) {
                     ArchiveItemCard(
@@ -1432,7 +1443,8 @@ fun MergedFilesView(
                         onExtract = { onExtractArchive(item) },
                         onLongClick = { onItemLongClick(item) },
                         isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) }
+                        onMenuClick = { onItemMenuClick(item) },
+                        modifier = dragModifier
                     )
                 } else if (item.isDocument) {
                     DocumentItemCard(
@@ -1440,7 +1452,8 @@ fun MergedFilesView(
                         onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
                         onLongClick = { onItemLongClick(item) },
                         isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) }
+                        onMenuClick = { onItemMenuClick(item) },
+                        modifier = dragModifier
                     )
                 } else {
                     GenericFileItemCard(
