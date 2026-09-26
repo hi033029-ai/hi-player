@@ -125,7 +125,6 @@ import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.VideoSortOption
 import kotlin.math.roundToInt
 import sh.calvin.reorderable.ReorderableItem
-import sh.calvin.reorderable.longPressDraggableHandle
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -178,6 +177,7 @@ fun HomeScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
+    fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
     }
@@ -212,7 +212,6 @@ fun HomeScreen(
             )
         }
     }
-    fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     fun toggleVideoSelection(video: VideoItem) {
         val key = videoKey(video)
         selectedVideoPaths = if (key in selectedVideoPaths) selectedVideoPaths - key else selectedVideoPaths + key
