@@ -23,7 +23,7 @@ data class ColorPreset(
 
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
-    val HDR_DISABLED = ColorPreset("HDR Disabled (Normal)", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
+    val HDR_DISABLED = ColorPreset("Off", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
     val NATURAL_HDR = ColorPreset("Natural HDR", 1.02f, 1.08f, 1.06f, 1.02f, 1.01f, 1.03f, 1.12f)
     val VIVID_HDR = ColorPreset("Vivid HDR", 1.02f, 1.12f, 1.14f, 1.03f, 1.05f, 1.08f, 1.20f)
     val CINEMATIC = ColorPreset("Cinematic", 1.00f, 1.15f, 1.04f, 1.03f, 1.00f, 1.04f, 1.08f)

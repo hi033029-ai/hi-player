@@ -31,9 +31,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -87,15 +89,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -113,7 +116,6 @@ import com.example.ui.components.VideoGridCard
 import com.example.ui.components.VideoInfoDialog
 import com.example.ui.components.VideoItemCard
 import com.example.ui.components.VideoThumbnail
-import com.example.ui.components.reorderableDrag
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.components.HiPlayerHeader
@@ -122,6 +124,10 @@ import com.example.viewmodel.LibraryViewMode
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.VideoSortOption
 import kotlin.math.roundToInt
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.longPressDraggableHandle
+import sh.calvin.reorderable.rememberReorderableLazyGridState
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,7 +184,34 @@ fun HomeScreen(
     val orderedFilteredVideos = remember(filteredVideos, allVideos) {
         libraryViewModel.applySavedVideoOrder(filteredVideos)
     }
-    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
+    val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
+    val currentVideoHeaderOffset = rememberUpdatedState(
+        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) 1 else 0
+    )
+    val videoListState = rememberLazyListState()
+    val reorderableVideoListState = rememberReorderableLazyListState(videoListState) { from, to ->
+        val items = currentOrderedVideos.value
+        val fromIndex = from.index - currentVideoHeaderOffset.value
+        val toIndex = to.index - currentVideoHeaderOffset.value
+        if (fromIndex in items.indices && toIndex in items.indices) {
+            libraryViewModel.moveVideoKeysInDisplayOrder(
+                videoKey(items[fromIndex]),
+                videoKey(items[toIndex])
+            )
+        }
+    }
+    val videoGridState = rememberLazyGridState()
+    val reorderableVideoGridState = rememberReorderableLazyGridState(videoGridState) { from, to ->
+        val items = currentOrderedVideos.value
+        val fromIndex = from.index - currentVideoHeaderOffset.value
+        val toIndex = to.index - currentVideoHeaderOffset.value
+        if (fromIndex in items.indices && toIndex in items.indices) {
+            libraryViewModel.moveVideoKeysInDisplayOrder(
+                videoKey(items[fromIndex]),
+                videoKey(items[toIndex])
+            )
+        }
+    }
     fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     fun toggleVideoSelection(video: VideoItem) {
         val key = videoKey(video)
@@ -890,6 +923,7 @@ fun HomeScreen(
                 if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
+                        state = videoGridState,
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -905,50 +939,47 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { index, video ->
-                            val record = historyMap[video.uri.toString()]
-                            val progressFraction = if (record != null && record.durationMs > 0) {
-                                (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-
-                            VideoGridCard(
-                                video = video.copy(isFavorite = record?.isFavorite ?: false),
-                                progressFraction = progressFraction,
-                                isSelected = selectedVideoPaths.contains(videoKey(video)),
-                                onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
-                                onLongClick = { toggleVideoSelection(video) },
-                                onFavoriteToggle = { isFav ->
-                                    libraryViewModel.toggleFavorite(video, isFav)
-                                },
-                                onPlayInBackground = { onVideoSelected(video) },
-                                onPlayFromStart = { onPlayFromStart(video) },
-                                onShowDetails = { inspectVideo = video },
-                                onRename = {
-                                    renameTarget = video
-                                    renameText = video.title.substringBeforeLast('.', video.title)
-                                },
-                                onDelete = {
-                                    selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
-                                    showDeleteConfirm = true
-                                },
-                                modifier = Modifier.reorderableDrag(
-                                    itemIndex = index,
-                                    itemCount = orderedFilteredVideos.size,
-                                    thresholdPx = reorderThresholdPx,
-                                    onMove = { from, to ->
-                                        libraryViewModel.moveVideoKeysInDisplayOrder(
-                                            videoKey(orderedFilteredVideos[from]),
-                                            videoKey(orderedFilteredVideos[to])
-                                        )
+                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { _, video ->
+                            ReorderableItem(reorderableVideoGridState, key = video.id) { isDragging ->
+                                val record = historyMap[video.uri.toString()]
+                                val progressFraction = if (record != null && record.durationMs > 0) {
+                                    (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
+                                } else 0f
+                                VideoGridCard(
+                                    video = video.copy(isFavorite = record?.isFavorite ?: false),
+                                    progressFraction = progressFraction,
+                                    isSelected = selectedVideoPaths.contains(videoKey(video)),
+                                    onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
+                                    onLongClick = { toggleVideoSelection(video) },
+                                    onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
+                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayFromStart = { onPlayFromStart(video) },
+                                    onShowDetails = { inspectVideo = video },
+                                    onRename = {
+                                        renameTarget = video
+                                        renameText = video.title.substringBeforeLast('.', video.title)
+                                    },
+                                    onDelete = {
+                                        selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
+                                        showDeleteConfirm = true
+                                    },
+                                    modifier = with(this) {
+                                        Modifier
+                                            .longPressDraggableHandle()
+                                            .graphicsLayer {
+                                                scaleX = if (isDragging) 1.03f else 1f
+                                                scaleY = if (isDragging) 1.03f else 1f
+                                            }
                                     }
                                 )
-                            )
+                            }
                         }
                     }
                 } else {
                                             // Video rows
 
                     LazyColumn(
+                        state = videoListState,
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
@@ -964,44 +995,40 @@ fun HomeScreen(
                             }
                         }
                         // Video item rows
-                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { index, video ->
-                            val record = historyMap[video.uri.toString()]
-                            val progressFraction = if (record != null && record.durationMs > 0) {
-                                (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
-                            } else 0f
-
-                            VideoItemCard(
-                                video = video.copy(isFavorite = record?.isFavorite ?: false),
-                                progressFraction = progressFraction,
-                                isSelected = selectedVideoPaths.contains(videoKey(video)),
-                                onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
-                                onLongClick = { toggleVideoSelection(video) },
-                                onFavoriteToggle = { isFav ->
-                                    libraryViewModel.toggleFavorite(video, isFav)
-                                },
-                                onPlayInBackground = { onVideoSelected(video) },
-                                onPlayFromStart = { onPlayFromStart(video) },
-                                onShowDetails = { inspectVideo = video },
-                                onRename = {
-                                    renameTarget = video
-                                    renameText = video.title.substringBeforeLast('.', video.title)
-                                },
-                                onDelete = {
-                                    selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
-                                    showDeleteConfirm = true
-                                },
-                                modifier = Modifier.reorderableDrag(
-                                    itemIndex = index,
-                                    itemCount = orderedFilteredVideos.size,
-                                    thresholdPx = reorderThresholdPx,
-                                    onMove = { from, to ->
-                                        libraryViewModel.moveVideoKeysInDisplayOrder(
-                                            videoKey(orderedFilteredVideos[from]),
-                                            videoKey(orderedFilteredVideos[to])
-                                        )
+                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { _, video ->
+                            ReorderableItem(reorderableVideoListState, key = video.id) { isDragging ->
+                                val record = historyMap[video.uri.toString()]
+                                val progressFraction = if (record != null && record.durationMs > 0) {
+                                    (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
+                                } else 0f
+                                VideoItemCard(
+                                    video = video.copy(isFavorite = record?.isFavorite ?: false),
+                                    progressFraction = progressFraction,
+                                    isSelected = selectedVideoPaths.contains(videoKey(video)),
+                                    onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
+                                    onLongClick = { toggleVideoSelection(video) },
+                                    onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
+                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayFromStart = { onPlayFromStart(video) },
+                                    onShowDetails = { inspectVideo = video },
+                                    onRename = {
+                                        renameTarget = video
+                                        renameText = video.title.substringBeforeLast('.', video.title)
+                                    },
+                                    onDelete = {
+                                        selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
+                                        showDeleteConfirm = true
+                                    },
+                                    modifier = with(this) {
+                                        Modifier
+                                            .longPressDraggableHandle()
+                                            .graphicsLayer {
+                                                scaleX = if (isDragging) 1.03f else 1f
+                                                scaleY = if (isDragging) 1.03f else 1f
+                                            }
                                     }
                                 )
-                            )
+                            }
                         }
                     }
                 }

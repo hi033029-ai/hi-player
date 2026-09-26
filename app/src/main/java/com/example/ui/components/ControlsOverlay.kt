@@ -253,13 +253,24 @@ fun ControlsOverlay(
                     ) {
                         PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
                         PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
-                        HdrIcon(
-                            isActive = isHdrEnhanceActive,
-                            isSwitching = isHdrSwitching,
-                            onClick = onToggleHdrEnhance,
-                            onLongClick = onLongPressHdrEnhance,
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                        )
+                        Column(
+                            modifier = Modifier.width(58.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            HdrIcon(
+                                isActive = isHdrEnhanceActive,
+                                isSwitching = isHdrSwitching,
+                                onClick = onToggleHdrEnhance,
+                                onLongClick = onLongPressHdrEnhance,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = "HDR",
+                                color = Color.White.copy(alpha = 0.86f),
+                                fontSize = 8.sp,
+                                maxLines = 1,
+                            )
+                        }
                         Spacer(modifier = Modifier.weight(1f))
                         // Right-side group marked in the reference image.
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
@@ -468,8 +479,21 @@ private fun PlayerToolbarTextButton(
     onClick: () -> Unit,
     tint: Color = Color.White
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
+    Column(
+        modifier = Modifier.width(58.dp).height(44.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        IconButton(onClick = onClick, modifier = Modifier.size(25.dp)) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
+        }
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.86f),
+            fontSize = 7.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
