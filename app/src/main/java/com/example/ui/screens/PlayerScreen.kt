@@ -143,6 +143,7 @@ fun PlayerScreen(
     val telemetry by playerViewModel.engine.telemetry.collectAsState()
     val volumeBoostPercent by playerViewModel.engine.volumeBoostPercent.collectAsState()
     val equalizerPreset by playerViewModel.engine.equalizerPreset.collectAsState()
+    val equalizerBandsDb by playerViewModel.engine.equalizerBandsDb.collectAsState()
     val audioDelayMs by playerViewModel.engine.audioDelayMs.collectAsState()
     val subtitleOffsetMs by playerViewModel.engine.subtitleOffsetMs.collectAsState()
     val activeSheet by playerViewModel.activeSheet.collectAsState()
@@ -734,7 +735,11 @@ fun PlayerScreen(
             ActiveSheet.EQUALIZER -> {
                 EqualizerBottomSheet(
                     selectedPreset = equalizerPreset,
+                    customBandsDb = equalizerBandsDb,
                     onSelectPreset = { playerViewModel.engine.setEqualizerPreset(it) },
+                    onCustomBandChange = { index, gainDb ->
+                        playerViewModel.engine.setCustomEqualizerBand(index, gainDb)
+                    },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }

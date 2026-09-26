@@ -10,7 +10,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -25,25 +31,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.example.playback.VideoAspectRatioMode
 
 /**
- * Fixes: black screen during / after resize (Fit / Crop / IMAX / 16:9 / 4:3 / Stretch).
- *
- * ROOT CAUSE: the previous version resized the video with a Compose `graphicsLayer`
- * scale on the AndroidView wrapping the SurfaceView. SurfaceView does NOT composite
- * through Compose's normal RenderNode/layer pipeline — it "hole-punches" through the
- * window and is positioned/sized directly by the OS compositor based on the View's
- * real measured layout bounds, tracked via SurfaceHolder callbacks. A `graphicsLayer`
- * transform is a compositor-side visual effect on top of that — it doesn't trigger a
- * real layout pass, so it doesn't tell the OS where the actual surface should be. That
- * mismatch between "what Compose is visually drawing" and "where the real surface
- * actually lives" is what caused the black screen — on some devices/mid-animation,
- * this state is invalid enough that the surface gets torn down.
- *
- * FIX: resize the video by changing the SurfaceView's REAL layout size (an actual
- * Modifier.size(width, height) with animated Dp values), the same way classic
- * Android's AspectRatioFrameLayout (used inside Media3's own PlayerView) does it —
- * a genuine measure/layout pass, so SurfaceHolder.Callback and the OS compositor stay
- * in sync throughout the animation. Cropped/oversized modes rely on the outer Box's
- * clipToBounds() to clip real, correctly-sized content — not a scaled transform.
+ * Resizes the real SurfaceView layout instead of applying a Compose graphics
+ * transform. This keeps SurfaceHolder and the OS compositor synchronized while
+ * changing Fit/Crop/fixed-ratio modes.
  */
 @UnstableApi
 @Composable
@@ -52,54 +42,43 @@ fun ResizableVideoSurface(
     aspectMode: VideoAspectRatioMode,
     modifier: Modifier = Modifier,
 ) {
-    var videoWidth by remember { mutableStateOf(0) }
-    var videoHeight by remember { mutableStateOf(0) }
+    var videoGeometry by remember { mutableStateOf(VideoGeometry()) }
     var firstFrameRendered by remember { mutableStateOf(false) }
 
-    LaunchedEffect(player.currentMediaItem) { firstFrameRendered = false }
+    LaunchedEffect(player.currentMediaItem) {
+        firstFrameRendered = false
+        videoGeometry = VideoGeometry()
+    }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                videoWidth = videoSize.width
-                videoHeight = videoSize.height
+                videoGeometry = videoSize.toVideoGeometry()
             }
+
             override fun onRenderedFirstFrame() {
                 firstFrameRendered = true
             }
         }
         player.addListener(listener)
-        player.videoSize.let {
-            videoWidth = it.width
-            videoHeight = it.height
-        }
+        videoGeometry = player.videoSize.toVideoGeometry()
         onDispose { player.removeListener(listener) }
     }
 
     BoxWithConstraints(
         modifier = modifier
             .background(Color.Black)
-            .clipToBounds(), // clips real oversized content in Crop/IMAX/16:9/4:3 modes
+            .clipToBounds(),
         contentAlignment = Alignment.Center,
     ) {
-        // GUARD: if this composable is hosted somewhere that doesn't give it a bounded
-        // parent (a Dialog, an unconstrained Column, a nav destination missing
-        // Modifier.fillMaxSize() on its root) — maxWidth/maxHeight come back as
-        // Dp.Infinity. Feeding Infinity into a fixed Modifier.size() below asks
-        // Android to allocate an effectively unbounded SurfaceView buffer, which is
-        // exactly the kind of thing that crashes the process (OOM / native buffer
-        // allocation failure) rather than throwing a catchable Kotlin exception —
-        // consistent with "it crashes the player" on one navigation path and not
-        // another, since only THAT destination's layout is unbounded.
-        val hasBoundedConstraints = maxWidth.value.isFinite() && maxHeight.value.isFinite() &&
-            maxWidth > 0.dp && maxHeight > 0.dp
+        // A bounded parent is required to calculate a meaningful display size.
+        // Falling back to fill avoids invalid/unbounded SurfaceView allocation.
+        val hasBoundedConstraints = maxWidth.value.isFinite() &&
+            maxHeight.value.isFinite() &&
+            maxWidth > 0.dp &&
+            maxHeight > 0.dp
 
         if (!hasBoundedConstraints) {
-            // Can't compute a fit/crop/letterbox size without a real container to fit
-            // into — fall back to filling whatever space exists rather than crashing.
-            // Resize modes have nothing meaningful to compute here; the actual fix is
-            // making sure the screen hosting this composable wraps it in
-            // Modifier.fillMaxSize() the same way your direct "Play" screen does.
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx -> buildSurfaceView(ctx, player) },
@@ -108,15 +87,20 @@ fun ResizableVideoSurface(
             return@BoxWithConstraints
         }
 
-        val (targetWidth, targetHeight) = remember(maxWidth, maxHeight, videoWidth, videoHeight, aspectMode) {
-            computeTargetSize(maxWidth, maxHeight, videoWidth, videoHeight, aspectMode)
+        val (targetWidth, targetHeight) = remember(maxWidth, maxHeight, videoGeometry, aspectMode) {
+            computeTargetSize(maxWidth, maxHeight, videoGeometry, aspectMode)
         }
 
-        // Animating real Dp size values (not a scale factor) — this drives genuine
-        // Compose measure/layout passes each frame, which is what keeps SurfaceView
-        // correctly in sync with the OS compositor throughout the transition.
-        val animatedWidth by animateDpAsState(targetWidth, tween(260), label = "videoWidth")
-        val animatedHeight by animateDpAsState(targetHeight, tween(260), label = "videoHeight")
+        val animatedWidth by animateDpAsState(
+            targetWidth,
+            tween(260),
+            label = "videoWidth",
+        )
+        val animatedHeight by animateDpAsState(
+            targetHeight,
+            tween(260),
+            label = "videoHeight",
+        )
 
         AndroidView(
             modifier = Modifier.size(animatedWidth, animatedHeight),
@@ -127,15 +111,35 @@ fun ResizableVideoSurface(
     }
 }
 
+/** Complete display geometry reported by Media3. */
+private data class VideoGeometry(
+    val width: Int = 0,
+    val height: Int = 0,
+    val pixelWidthHeightRatio: Float = 1f,
+    val unappliedRotationDegrees: Int = 0,
+)
+
+private fun VideoSize.toVideoGeometry(): VideoGeometry = VideoGeometry(
+    width = width,
+    height = height,
+    pixelWidthHeightRatio = pixelWidthHeightRatio,
+    unappliedRotationDegrees = unappliedRotationDegrees,
+)
+
 private fun buildSurfaceView(ctx: android.content.Context, player: ExoPlayer): SurfaceView {
     return SurfaceView(ctx).apply {
         holder.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 player.setVideoSurfaceHolder(holder)
             }
+
             override fun surfaceChanged(
-                holder: SurfaceHolder, format: Int, width: Int, height: Int,
+                holder: SurfaceHolder,
+                format: Int,
+                width: Int,
+                height: Int,
             ) = Unit
+
             override fun surfaceDestroyed(holder: SurfaceHolder) {
                 player.clearVideoSurfaceHolder(holder)
             }
@@ -163,16 +167,13 @@ private fun FirstFrameMask(firstFrameRendered: Boolean) {
 }
 
 /**
- * Returns the actual width/height (Dp) the SurfaceView should be laid out at for the
- * given mode — real dimensions, not a scale multiplier. Oversized results (Crop/IMAX/
- * 16:9/4:3 when the target ratio doesn't match the container) are intentional; the
- * caller's clipToBounds() trims them to the visible area.
+ * Returns the real SurfaceView width/height for the selected mode. The video
+ * ratio is normalized into display space before any mode calculation.
  */
 private fun computeTargetSize(
     containerWidth: Dp,
     containerHeight: Dp,
-    videoWidth: Int,
-    videoHeight: Int,
+    videoGeometry: VideoGeometry,
     mode: VideoAspectRatioMode,
 ): Pair<Dp, Dp> {
     if (containerWidth <= 0.dp || containerHeight <= 0.dp) return 0.dp to 0.dp
@@ -182,25 +183,38 @@ private fun computeTargetSize(
     }
 
     val containerRatio = containerWidth.value / containerHeight.value
-    val videoRatio = if (videoWidth > 0 && videoHeight > 0) {
-        videoWidth.toFloat() / videoHeight.toFloat()
-    } else {
-        containerRatio // no video size known yet — avoid a divide-by-zero / NaN flash
-    }
+    val videoRatio = videoGeometry.displayAspectRatio(containerRatio)
 
     return when (mode) {
-        VideoAspectRatioMode.FIT -> fitWithinContainer(containerWidth, containerHeight, containerRatio, videoRatio)
-        VideoAspectRatioMode.CROP -> fillContainer(containerWidth, containerHeight, containerRatio, videoRatio)
-        VideoAspectRatioMode.IMAX_FULL, VideoAspectRatioMode.RATIO_16_9, VideoAspectRatioMode.RATIO_4_3 -> {
+        VideoAspectRatioMode.FIT -> fitWithinContainer(
+            containerWidth,
+            containerHeight,
+            containerRatio,
+            videoRatio,
+        )
+        VideoAspectRatioMode.CROP -> fillContainer(
+            containerWidth,
+            containerHeight,
+            containerRatio,
+            videoRatio,
+        )
+        VideoAspectRatioMode.IMAX_FULL,
+        VideoAspectRatioMode.RATIO_16_9,
+        VideoAspectRatioMode.RATIO_4_3 -> {
             val targetRatio = mode.ratio ?: videoRatio
             fillContainer(containerWidth, containerHeight, containerRatio, targetRatio)
         }
-        VideoAspectRatioMode.STRETCH -> containerWidth to containerHeight // unreachable, handled above
+        VideoAspectRatioMode.STRETCH -> containerWidth to containerHeight
     }
 }
 
-/** Whole frame visible, letterboxed/pillarboxed — shrinks to fit inside the container. */
-private fun fitWithinContainer(containerW: Dp, containerH: Dp, containerRatio: Float, ratio: Float): Pair<Dp, Dp> {
+/** Whole frame visible, letterboxed/pillarboxed. */
+private fun fitWithinContainer(
+    containerW: Dp,
+    containerH: Dp,
+    containerRatio: Float,
+    ratio: Float,
+): Pair<Dp, Dp> {
     return if (ratio > containerRatio) {
         containerW to (containerW.value / ratio).dp
     } else {
@@ -208,11 +222,39 @@ private fun fitWithinContainer(containerW: Dp, containerH: Dp, containerRatio: F
     }
 }
 
-/** Fills the container edge-to-edge at the given ratio — oversizes and lets the caller clip. */
-private fun fillContainer(containerW: Dp, containerH: Dp, containerRatio: Float, ratio: Float): Pair<Dp, Dp> {
+/** Fills the container at the requested ratio and lets the parent clip it. */
+private fun fillContainer(
+    containerW: Dp,
+    containerH: Dp,
+    containerRatio: Float,
+    ratio: Float,
+): Pair<Dp, Dp> {
     return if (ratio > containerRatio) {
         (containerH.value * ratio).dp to containerH
     } else {
         containerW to (containerW.value / ratio).dp
     }
+}
+
+/**
+ * Converts encoded video geometry into the aspect ratio visible to the user.
+ * Non-square pixels are corrected with pixelWidthHeightRatio. For 90/270 degree
+ * metadata, the display axes swap, so the normalized ratio is inverted.
+ */
+private fun VideoGeometry.displayAspectRatio(fallback: Float): Float {
+    if (width <= 0 || height <= 0) return fallback
+
+    val pixelRatio = pixelWidthHeightRatio
+        .takeIf { it.isFinite() && it > 0f }
+        ?: 1f
+    val encodedRatio = (width.toFloat() * pixelRatio) / height.toFloat()
+    if (!encodedRatio.isFinite() || encodedRatio <= 0f) return fallback
+
+    val normalizedRotation = ((unappliedRotationDegrees % 360) + 360) % 360
+    val displayRatio = if (normalizedRotation == 90 || normalizedRotation == 270) {
+        1f / encodedRatio
+    } else {
+        encodedRatio
+    }
+    return displayRatio.takeIf { it.isFinite() && it > 0f } ?: fallback
 }

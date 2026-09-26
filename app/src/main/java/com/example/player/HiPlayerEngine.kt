@@ -105,6 +105,9 @@ class HiPlayerEngine(
     private val _equalizerPreset = MutableStateFlow("Flat")
     val equalizerPreset = _equalizerPreset.asStateFlow()
 
+    private val _equalizerBandsDb = MutableStateFlow(List(5) { 0f })
+    val equalizerBandsDb = _equalizerBandsDb.asStateFlow()
+
     private val _audioDelayMs = MutableStateFlow(0L)
     val audioDelayMs = _audioDelayMs.asStateFlow()
 
@@ -560,6 +563,15 @@ class HiPlayerEngine(
         applyEqualizerPreset(normalized)
     }
 
+    fun setCustomEqualizerBand(index: Int, gainDb: Float) {
+        if (index !in 0..4) return
+        val updated = _equalizerBandsDb.value.toMutableList()
+        updated[index] = gainDb.coerceIn(-12f, 12f)
+        _equalizerBandsDb.value = updated
+        _equalizerPreset.value = "Custom"
+        applyEqualizerPreset("Custom")
+    }
+
     private fun applyEqualizerPreset(preset: String) {
         val eq = equalizer ?: return
         try {
@@ -569,6 +581,7 @@ class HiPlayerEngine(
                 "Rock" -> floatArrayOf(6f, 3f, -1f, 3f, 5f)
                 "Classical" -> floatArrayOf(3f, 0f, 2f, 4f, 3f)
                 "Vocal" -> floatArrayOf(-1f, 2f, 5f, 2f, -1f)
+                "Custom" -> _equalizerBandsDb.value.toFloatArray()
                 else -> floatArrayOf(0f, 0f, 0f, 0f, 0f)
             }
             val range = eq.bandLevelRange
