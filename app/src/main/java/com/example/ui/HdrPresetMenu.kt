@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -46,11 +47,12 @@ fun HdrPresetMenu(
     if (customizing) {
         Column(
             modifier = modifier
+                .fillMaxWidth(0.88f)
                 .background(Color.Black.copy(alpha = 0.52f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 9.dp, vertical = 6.dp),
         ) {
-            Text("Customize HDR", color = Color.White, fontSize = 13.sp)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Customize HDR", color = Color.White, fontSize = 11.sp)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
                 }
@@ -58,7 +60,7 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(saturation = it))
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CustomSlider(Modifier.weight(1f), "Vibrance", customPreset.vibrance, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(vibrance = it))
                 }
@@ -66,7 +68,7 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(sharpness = it))
                 }
             }
-            Text("Color intensity", color = Color.White, fontSize = 12.sp)
+            Text("Color intensity", color = Color.White, fontSize = 10.sp)
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -74,7 +76,7 @@ fun HdrPresetMenu(
                 HdrColor.entries.forEach { color ->
                     Box(
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(24.dp)
                             .background(color.color, androidx.compose.foundation.shape.CircleShape)
                             .clickable { onColorSelected(color) }
                             .then(
@@ -98,8 +100,8 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.LightGray, fontSize = 10.sp)
-                Text("Dark", color = Color.LightGray, fontSize = 10.sp)
+                Text("Light", color = Color.LightGray, fontSize = 9.sp)
+                Text("Dark", color = Color.LightGray, fontSize = 9.sp)
             }
         }
     } else {
@@ -149,13 +151,15 @@ private fun CustomSlider(
         Text(
             text = "$label ${"%.2f".format(value)}",
             color = Color.White,
-            fontSize = 11.sp,
+            fontSize = 9.sp,
         )
         Slider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),
             colors = SliderDefaults.colors(
                 thumbColor = LocalHiPalette.current.primary,
                 activeTrackColor = LocalHiPalette.current.primary,

@@ -29,14 +29,15 @@ fun EqualizerBottomSheet(
     onSelectPreset: (String) -> Unit,
     onCustomBandChange: (Int, Float) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val presets = listOf("Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal")
     val bands = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
     val palette = LocalHiPalette.current
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth(0.90f)
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),

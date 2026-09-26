@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -52,8 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -187,7 +189,9 @@ fun PlayerScreen(
     var firstFrameRendered by remember { mutableStateOf(false) }
     var videoWidth by remember { mutableStateOf(0) }
     var videoHeight by remember { mutableStateOf(0) }
-    var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var videoPixelWidthHeightRatio by remember { mutableStateOf(1f) }
+    var videoRotationDegrees by remember { mutableStateOf(0) }
+    var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
     var showAspectRatioIndicator by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
@@ -207,11 +211,15 @@ fun PlayerScreen(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
                 videoHeight = videoSize.height
+                videoPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
+                videoRotationDegrees = videoSize.unappliedRotationDegrees
             }
         }
         player.addListener(listener)
         videoWidth = player.videoSize.width
         videoHeight = player.videoSize.height
+        videoPixelWidthHeightRatio = player.videoSize.pixelWidthHeightRatio
+        videoRotationDegrees = player.videoSize.unappliedRotationDegrees
         onDispose { player.removeListener(listener) }
     }
 
@@ -425,14 +433,32 @@ fun PlayerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
+            .clipToBounds()
+            .onSizeChanged { containerSize = it },
+        contentAlignment = Alignment.Center,
     ) {
         // 1. GLSL video surface layer with the selected HDR color preset.
         val ratioScale = computeVideoRatioScale(
-            surfaceSize,
+            containerSize,
             videoWidth,
             videoHeight,
-            aspectRatioMode
+            aspectRatioMode,
+            videoPixelWidthHeightRatio,
+            videoRotationDegrees,
         )
+        val density = LocalDensity.current
+        val targetSurfaceWidth = with(density) {
+            (containerSize.width * ratioScale.first * videoScale)
+                .coerceAtLeast(1f)
+                .toInt()
+                .toDp()
+        }
+        val targetSurfaceHeight = with(density) {
+            (containerSize.height * ratioScale.second * videoScale)
+                .coerceAtLeast(1f)
+                .toInt()
+                .toDp()
+        }
 
         AndroidView(
             factory = { ctx ->
@@ -446,18 +472,11 @@ fun PlayerScreen(
                 configureGlSurface(videoSurface)
                 videoSurface.setPlayer(playerViewModel.engine.getPlayer())
                 videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
-                videoSurface.pivotX = videoSurface.width / 2f
-                videoSurface.pivotY = videoSurface.height / 2f
-                videoSurface.requestLayout()
                 videoSurface.invalidate()
             },
             modifier = Modifier
-                .fillMaxSize()
-                .onSizeChanged { surfaceSize = it }
-                .graphicsLayer {
-                    scaleX = ratioScale.first * videoScale
-                    scaleY = ratioScale.second * videoScale
-                }
+                .width(targetSurfaceWidth)
+                .height(targetSurfaceHeight)
         )
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -740,7 +759,10 @@ fun PlayerScreen(
                     onCustomBandChange = { index, gainDb ->
                         playerViewModel.engine.setCustomEqualizerBand(index, gainDb)
                     },
-                    onDismiss = { playerViewModel.closeSheet() }
+                    onDismiss = { playerViewModel.closeSheet() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 128.dp),
                 )
             }
             ActiveSheet.VIDEO_SETTINGS -> {
@@ -806,13 +828,22 @@ private fun computeVideoRatioScale(
     container: androidx.compose.ui.unit.IntSize,
     videoWidth: Int,
     videoHeight: Int,
-    mode: AspectRatioMode
+    mode: AspectRatioMode,
+    pixelWidthHeightRatio: Float = 1f,
+    unappliedRotationDegrees: Int = 0,
 ): Pair<Float, Float> {
     if (container.width == 0 || container.height == 0 || videoWidth == 0 || videoHeight == 0) {
         return 1f to 1f
     }
     val containerRatio = container.width.toFloat() / container.height.toFloat()
-    val videoRatio = videoWidth.toFloat() / videoHeight.toFloat()
+    val safePixelRatio = pixelWidthHeightRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val encodedRatio = videoWidth.toFloat() * safePixelRatio / videoHeight.toFloat()
+    val normalizedRotation = ((unappliedRotationDegrees % 360) + 360) % 360
+    val videoRatio = if (normalizedRotation == 90 || normalizedRotation == 270) {
+        1f / encodedRatio
+    } else {
+        encodedRatio
+    }
     return when (mode) {
         AspectRatioMode.STRETCH -> 1f to 1f
         AspectRatioMode.FIT,
