@@ -581,6 +581,11 @@ class HiPlayerEngine(
                 "Rock" -> floatArrayOf(6f, 3f, -1f, 3f, 5f)
                 "Classical" -> floatArrayOf(3f, 0f, 2f, 4f, 3f)
                 "Vocal" -> floatArrayOf(-1f, 2f, 5f, 2f, -1f)
+                "Dance" -> floatArrayOf(6f, 3f, 0f, 4f, 6f)
+                "Electronic" -> floatArrayOf(5f, 1f, -2f, 3f, 7f)
+                "Acoustic" -> floatArrayOf(2f, 3f, 4f, 3f, 1f)
+                "Podcast" -> floatArrayOf(-2f, 1f, 5f, 3f, -3f)
+                "Movie" -> floatArrayOf(5f, 2f, 0f, 3f, 5f)
                 "Custom" -> _equalizerBandsDb.value.toFloatArray()
                 else -> floatArrayOf(0f, 0f, 0f, 0f, 0f)
             }

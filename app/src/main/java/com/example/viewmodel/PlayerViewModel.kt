@@ -62,6 +62,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _currentVideo = MutableStateFlow<VideoItem?>(null)
     val currentVideo = _currentVideo.asStateFlow()
 
+    private val _showStartOverPrompt = MutableStateFlow(false)
+    val showStartOverPrompt = _showStartOverPrompt.asStateFlow()
+
     private val _currentRating = MutableStateFlow<MediaRating?>(null)
     val currentRating = _currentRating.asStateFlow()
     private var ratingFetchJob: Job? = null
@@ -127,6 +130,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun playVideo(video: VideoItem, startPositionOverride: Long? = null) {
         _currentVideo.value = video
+        _showStartOverPrompt.value = false
         _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         fetchRatingFor(video)
         viewModelScope.launch {
@@ -147,6 +151,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
             val record = recordDeferred.await()
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
+            _showStartOverPrompt.value = startPositionOverride == null && startPos >= 10_000L
 
             // Restore the saved ratio before preparing the new item. Previously
             // this happened after prepareMedia, so a quick tap on resize could
@@ -163,6 +168,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             )
 
         }
+    }
+
+    fun playCurrentVideoFromStart() {
+        _showStartOverPrompt.value = false
+        _currentVideo.value?.let { playVideo(it, startPositionOverride = 0L) }
+    }
+
+    fun dismissStartOverPrompt() {
+        _showStartOverPrompt.value = false
     }
 
     fun playAdjacentVideo(queue: List<VideoItem>, step: Int) {

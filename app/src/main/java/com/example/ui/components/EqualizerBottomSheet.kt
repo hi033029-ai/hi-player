@@ -31,7 +31,10 @@ fun EqualizerBottomSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val presets = listOf("Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal")
+    val presets = listOf(
+        "Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal",
+        "Dance", "Electronic", "Acoustic", "Podcast", "Movie"
+    )
     val bands = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
     val palette = LocalHiPalette.current
 
@@ -39,7 +42,7 @@ fun EqualizerBottomSheet(
         modifier = modifier
             .fillMaxWidth(0.90f)
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .background(Color.Black.copy(alpha = 0.88f), RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.96f), RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Row(
@@ -65,7 +68,7 @@ fun EqualizerBottomSheet(
         if (selectedPreset == "Custom") {
             Text(
                 text = "Custom equalizer",
-                color = Color.White,
+                color = Color.Black,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
@@ -79,7 +82,7 @@ fun EqualizerBottomSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
-                            color = Color.LightGray,
+                            color = Color.DarkGray,
                             fontSize = 9.sp,
                             maxLines = 1,
                         )
@@ -96,7 +99,7 @@ fun EqualizerBottomSheet(
                         )
                         Text(
                             text = "%+.1f dB".format(value),
-                            color = Color.White,
+                            color = Color.Black,
                             fontSize = 9.sp,
                         )
                     }
@@ -115,7 +118,7 @@ private fun PresetChip(
     val palette = LocalHiPalette.current
     Text(
         text = text,
-        color = if (selected) Color.Black else Color.White,
+        color = if (selected) Color.White else Color.Black,
         fontSize = 11.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier

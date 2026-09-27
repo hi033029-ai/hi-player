@@ -48,10 +48,10 @@ fun HdrPresetMenu(
         Column(
             modifier = modifier
                 .fillMaxWidth(0.88f)
-                .background(Color.Black.copy(alpha = 0.52f), RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.96f), RoundedCornerShape(12.dp))
                 .padding(horizontal = 9.dp, vertical = 6.dp),
         ) {
-            Text("Customize HDR", color = Color.White, fontSize = 11.sp)
+            Text("Customize HDR", color = Color.Black, fontSize = 11.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
@@ -68,7 +68,7 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(sharpness = it))
                 }
             }
-            Text("Color intensity", color = Color.White, fontSize = 10.sp)
+            Text("Color intensity", color = Color.Black, fontSize = 10.sp)
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -100,8 +100,8 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.LightGray, fontSize = 9.sp)
-                Text("Dark", color = Color.LightGray, fontSize = 9.sp)
+                Text("Light", color = Color.DarkGray, fontSize = 9.sp)
+                Text("Dark", color = Color.DarkGray, fontSize = 9.sp)
             }
         }
     } else {
@@ -150,7 +150,7 @@ private fun CustomSlider(
     Column(modifier = modifier) {
         Text(
             text = "$label ${"%.2f".format(value)}",
-            color = Color.White,
+            color = Color.Black,
             fontSize = 9.sp,
         )
         Slider(

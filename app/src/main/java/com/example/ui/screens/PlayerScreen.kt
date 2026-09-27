@@ -151,6 +151,7 @@ fun PlayerScreen(
     val audioDelayMs by playerViewModel.engine.audioDelayMs.collectAsState()
     val subtitleOffsetMs by playerViewModel.engine.subtitleOffsetMs.collectAsState()
     val activeSheet by playerViewModel.activeSheet.collectAsState()
+    val showStartOverPrompt by playerViewModel.showStartOverPrompt.collectAsState()
     val currentRating by playerViewModel.currentRating.collectAsState()
     val sleepTimerMinutes by playerViewModel.sleepTimerMinutesLeft.collectAsState()
     val playerError by playerViewModel.engine.playerError.collectAsState()
@@ -263,6 +264,18 @@ fun PlayerScreen(
         playerViewModel.playVideo(videoQueue[nextIndex])
     }
 
+    fun playNextVideoAutomatically() {
+        val current = currentVideo ?: return
+        val index = videoQueue.indexOfFirst { it.uri == current.uri }
+        val next = videoQueue.getOrNull(index + 1) ?: return
+        playerViewModel.playVideo(next)
+    }
+
+    DisposableEffect(playerViewModel.engine, videoQueue) {
+        playerViewModel.engine.onVideoEnded = { playNextVideoAutomatically() }
+        onDispose { playerViewModel.engine.onVideoEnded = null }
+    }
+
     // File picker for opening a local video.
     val videoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -286,6 +299,13 @@ fun PlayerScreen(
         if (showAspectPicker) {
             delay(4000)
             showAspectPicker = false
+        }
+    }
+
+    LaunchedEffect(showStartOverPrompt) {
+        if (showStartOverPrompt) {
+            delay(5_000)
+            playerViewModel.dismissStartOverPrompt()
         }
     }
 
@@ -725,6 +745,21 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
+
+        if (showStartOverPrompt && !isScreenLocked) {
+            Button(
+                onClick = { playerViewModel.playCurrentVideoFromStart() },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .height(32.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White.copy(alpha = 0.92f),
+                    contentColor = Color.Black,
+                ),
+            ) {
+                Text("Start over", fontSize = 11.sp)
+            }
+        }
 
         // Error Card Overlay
         playerError?.let { err ->
