@@ -70,25 +70,31 @@ fun AudioSettingsBottomSheet(
         containerColor = HiSurfaceDark,
         tonalElevation = 8.dp
     ) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .padding(bottom = 24.dp)
+                .fillMaxWidth(0.90f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(HiSurfaceDark)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(bottom = 12.dp)
         ) {
             Text(
                 text = "Audio Language",
-                fontSize = 18.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = HiTextPrimary
             )
             Text(
                 text = "Switch between the audio tracks available in this file",
-                fontSize = 12.sp,
+                fontSize = 10.sp,
                 color = HiTextSecondary
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // AUDIO LANGUAGE LIST - this is the primary purpose of the sheet,
             // so it leads and is no longer buried below decorative controls.
@@ -114,7 +120,7 @@ fun AudioSettingsBottomSheet(
                                     }
                                 )
                                 .clickable(enabled = track.isSupported) { onSelectTrack(track) }
-                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                                .padding(horizontal = 10.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -151,7 +157,7 @@ fun AudioSettingsBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Loudness booster and lip-sync delay are real, working controls
             // (unlike the old "Night Mode" toggle, which was decorative local
@@ -300,6 +306,7 @@ fun AudioSettingsBottomSheet(
                     }
                 }
             }
+        }
         }
     }
 }

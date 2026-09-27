@@ -73,22 +73,28 @@ fun SubtitleSettingsBottomSheet(
         containerColor = HiSurfaceDark,
         tonalElevation = 8.dp
     ) {
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.90f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(HiSurfaceDark)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .padding(bottom = 24.dp)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(bottom = 12.dp)
         ) {
             Text(
                 text = "Subtitle & Closed Caption Settings",
-                fontSize = 18.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = HiTextPrimary
             )
             Text(
                 text = "Embedded PGS, ASS, SRT tracks & external subtitle sync",
-                fontSize = 12.sp,
+                fontSize = 10.sp,
                 color = HiTextSecondary
             )
 
@@ -99,7 +105,7 @@ fun SubtitleSettingsBottomSheet(
                 onClick = { subtitlePickerLauncher.launch(arrayOf("*/*")) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(38.dp)
                     .testTag("load_external_subtitle_button"),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = HiSurfaceElevated)
@@ -128,7 +134,7 @@ fun SubtitleSettingsBottomSheet(
                 onClick = onOpenCustomizeAppearance,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(38.dp)
                     .testTag("customize_subtitle_appearance_button"),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = HiSurfaceElevated)
@@ -320,6 +326,7 @@ fun SubtitleSettingsBottomSheet(
                     }
                 }
             }
+        }
         }
     }
 }

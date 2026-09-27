@@ -142,7 +142,7 @@ fun ControlsOverlay(
         if (isLocked) {
             // Floating Unlock Button when locked
             AnimatedVisibility(
-                visible = isVisible,
+                visible = true,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -334,12 +334,12 @@ fun ControlsOverlay(
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             SkipButton(Icons.Default.SkipPrevious, onPrevious, modifier = Modifier.testTag("bottom_rewind_button"))
-                            PlayPauseButton(isPlaying, onTogglePlayPause, tint = HiPrimaryCyan, modifier = Modifier.testTag("bottom_play_pause_button"))
+                            PlayPauseButton(isPlaying, onTogglePlayPause, tint = Color.White, modifier = Modifier.testTag("bottom_play_pause_button"))
                             SkipButton(Icons.Default.SkipNext, onNext, modifier = Modifier.testTag("bottom_ff_button"))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")
-                            PlayerToolbarButton(Icons.Default.Audiotrack, "Audio language", onOpenAudioSettings, testTag = "bottom_audio_tracks_button")
+                            PlayerToolbarButton(Icons.Default.Audiotrack, "Language", onOpenAudioSettings, testTag = "bottom_audio_tracks_button")
                         }
                     }
                 }
@@ -507,21 +507,30 @@ private fun PlayerToolbarButton(
     testTag: String = "",
     onLongClick: (() -> Unit)? = null,
 ) {
-    Box(
+    Column(
         modifier = Modifier
-            .size(46.dp)
+            .width(52.dp)
+            .height(48.dp)
             .testTag(testTag)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
             ),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(21.dp)
+        )
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.86f),
+            fontSize = 7.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

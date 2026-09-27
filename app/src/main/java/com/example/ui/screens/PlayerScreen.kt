@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -194,11 +196,13 @@ fun PlayerScreen(
     var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
     var showAspectRatioIndicator by remember { mutableStateOf(false) }
+    var isRatioTransitioning by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
+    var equalizerInteractionTick by remember { mutableStateOf(0) }
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
     var hdrColorIntensity by remember { mutableStateOf(0.5f) }
@@ -285,6 +289,24 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(aspectRatioMode) {
+        // Ratio changes are user interactions; never leave the controls hidden
+        // because the playback auto-hide timer fired at the same time.
+        areControlsVisible = true
+        isRatioTransitioning = true
+        delay(360)
+        isRatioTransitioning = false
+    }
+
+    LaunchedEffect(activeSheet, equalizerPreset, equalizerInteractionTick) {
+        if (activeSheet == ActiveSheet.EQUALIZER) {
+            delay(5_000)
+            if (activeSheet == ActiveSheet.EQUALIZER) {
+                playerViewModel.closeSheet()
+            }
+        }
+    }
+
     LaunchedEffect(showSpeedOverlay, playbackSpeed) {
         if (showSpeedOverlay) {
             delay(900)
@@ -354,6 +376,7 @@ fun PlayerScreen(
             hdrInteractionTick++
         }
         surface.onHdrLongPress = {}
+        surface.isInteractionLocked = { isScreenLocked }
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
             if (preset.name == ColorPresets.HDR_DISABLED.name) {
@@ -415,10 +438,10 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls after 3 seconds of inactivity during playback
-    LaunchedEffect(areControlsVisible, isPlaying) {
-        if (areControlsVisible && isPlaying && !isScreenLocked) {
+    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning) {
+        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning) {
             delay(3000)
-            areControlsVisible = false
+            if (!isRatioTransitioning) areControlsVisible = false
         }
     }
 
@@ -459,6 +482,16 @@ fun PlayerScreen(
                 .toInt()
                 .toDp()
         }
+        val animatedSurfaceWidth by animateDpAsState(
+            targetValue = targetSurfaceWidth,
+            animationSpec = tween(320, easing = FastOutSlowInEasing),
+            label = "videoSurfaceWidth"
+        )
+        val animatedSurfaceHeight by animateDpAsState(
+            targetValue = targetSurfaceHeight,
+            animationSpec = tween(320, easing = FastOutSlowInEasing),
+            label = "videoSurfaceHeight"
+        )
 
         AndroidView(
             factory = { ctx ->
@@ -475,8 +508,8 @@ fun PlayerScreen(
                 videoSurface.invalidate()
             },
             modifier = Modifier
-                .width(targetSurfaceWidth)
-                .height(targetSurfaceHeight)
+                .width(animatedSurfaceWidth)
+                .height(animatedSurfaceHeight)
         )
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -631,7 +664,17 @@ fun PlayerScreen(
             onPrevious = { playAdjacentVideo(-1) },
             onNext = { playAdjacentVideo(1) },
             onBack = onBack,
-            onToggleLock = { playerViewModel.engine.setScreenLocked(!isScreenLocked) },
+            onToggleLock = {
+                val locking = !isScreenLocked
+                playerViewModel.engine.setScreenLocked(locking)
+                areControlsVisible = true
+                if (locking) {
+                    playerViewModel.closeSheet()
+                    showAspectPicker = false
+                    showHdrPresetMenu = false
+                    showHdrCustomizer = false
+                }
+            },
             onRotateScreen = { playerViewModel.cycleScreenOrientation() },
             onZoomIn = { playerViewModel.zoomIn() },
             onZoomOut = { playerViewModel.zoomOut() },
@@ -661,7 +704,10 @@ fun PlayerScreen(
                 playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS)
             },
             onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
-            onOpenEqualizer = { playerViewModel.openSheet(ActiveSheet.EQUALIZER) },
+            onOpenEqualizer = {
+                equalizerInteractionTick++
+                playerViewModel.openSheet(ActiveSheet.EQUALIZER)
+            },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
             onCycleAspectRatio = {
@@ -755,9 +801,16 @@ fun PlayerScreen(
                 EqualizerBottomSheet(
                     selectedPreset = equalizerPreset,
                     customBandsDb = equalizerBandsDb,
-                    onSelectPreset = { playerViewModel.engine.setEqualizerPreset(it) },
+                    onSelectPreset = {
+                        playerViewModel.engine.setEqualizerPreset(it)
+                        equalizerInteractionTick++
+                        if (it != "Custom") {
+                            playerViewModel.closeSheet()
+                        }
+                    },
                     onCustomBandChange = { index, gainDb ->
                         playerViewModel.engine.setCustomEqualizerBand(index, gainDb)
+                        equalizerInteractionTick++
                     },
                     onDismiss = { playerViewModel.closeSheet() },
                     modifier = Modifier

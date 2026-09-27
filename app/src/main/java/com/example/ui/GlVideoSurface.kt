@@ -89,6 +89,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onScrubStart: (() -> Unit)? = null
     var onScrubMove: ((Long) -> Unit)? = null
     var onScrubEnd: (() -> Unit)? = null
+    var isInteractionLocked: (() -> Boolean)? = null
     var onHdrToggle: (() -> Unit)? = null
     var onHdrLongPress: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
@@ -129,6 +130,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (isInteractionLocked?.invoke() == true) {
+            // The Compose unlock control remains above this media overlay; the
+            // native surface must not run seek, zoom, HUD, or playback gestures.
+            return true
+        }
         gestureDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
