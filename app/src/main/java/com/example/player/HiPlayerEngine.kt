@@ -995,22 +995,26 @@ class HiPlayerEngine(
 
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
         val selector = trackSelector ?: return
+        val player = exoPlayer ?: return
+        val builder = selector.parameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .clearOverridesOfType(C.TRACK_TYPE_IMAGE)
         if (track == null) {
             // Captions in movie files are commonly text (SRT/ASS/WebVTT), but
             // Blu-ray PGS/VobSub captions can be reported as image tracks.
             // Disable both when the user selects "Subtitles Off".
-            selector.parameters = selector.parameters.buildUpon()
+            selector.parameters = builder
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, true)
                 .build()
         } else {
-            val currentTracks = exoPlayer?.currentTracks ?: return
+            val currentTracks = player.currentTracks
             for ((groupIndex, group) in currentTracks.groups.withIndex()) {
                 if (group.type == track.trackType && groupIndex == track.trackGroupIndex) {
                     val mediaTrackGroup = group.mediaTrackGroup
                     if (mediaTrackGroup.length > track.trackIndex) {
                         val override = TrackSelectionOverride(mediaTrackGroup, listOf(track.trackIndex))
-                        selector.parameters = selector.parameters.buildUpon()
+                        selector.parameters = builder
                             // Only one caption type should be active at a time.
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, track.trackType != C.TRACK_TYPE_TEXT)
                             .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, track.trackType != C.TRACK_TYPE_IMAGE)
@@ -1021,6 +1025,7 @@ class HiPlayerEngine(
                 }
             }
         }
+        player.trackSelectionParameters = selector.parameters
         refreshAvailableTracks()
     }
 

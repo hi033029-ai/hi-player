@@ -41,6 +41,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var verticalControl = false
     private var leftSide = false
     private var pinchDistance = 0f
+    private var pinchActive = false
+    private var suppressSingleFingerAfterPinch = false
     private var longPressHandled = false
     private var holdSeekDirection = 0
     private var holdSeekRunnable: Runnable? = null
@@ -94,6 +96,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onHdrLongPress: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
     var onPinchZoom: ((Float) -> Unit)? = null
+    var onPinchStart: (() -> Unit)? = null
+    var onPinchEnd: (() -> Unit)? = null
     var onSingleTap: (() -> Unit)? = null
     var onDoubleTapLeft: (() -> Unit)? = null
     var onDoubleTapCenter: (() -> Unit)? = null
@@ -157,13 +161,27 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount >= 2) {
                     pinchDistance = pointerDistance(event)
+                    pinchActive = true
+                    suppressSingleFingerAfterPinch = false
+                    onPinchStart?.invoke()
                     horizontalScrub = false
                     verticalControl = false
                 }
                 return true
             }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (pinchActive) {
+                    pinchDistance = 0f
+                    pinchActive = false
+                    suppressSingleFingerAfterPinch = true
+                    horizontalScrub = false
+                    verticalControl = false
+                    onPinchEnd?.invoke()
+                }
+                return true
+            }
             MotionEvent.ACTION_MOVE -> {
-                if (event.pointerCount >= 2 && pinchDistance > 0f) {
+                if (pinchActive && event.pointerCount >= 2 && pinchDistance > 0f) {
                     val distance = pointerDistance(event)
                     if (distance > 0f) {
                         onPinchZoom?.invoke((distance / pinchDistance).coerceIn(0.85f, 1.15f))
@@ -171,6 +189,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     }
                     return true
                 }
+                if (pinchActive || suppressSingleFingerAfterPinch) return true
                 val dx = event.x - downX
                 val dy = event.y - downY
                 if (!horizontalScrub && !verticalControl) {
@@ -202,6 +221,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (pinchActive) {
+                    pinchDistance = 0f
+                    pinchActive = false
+                    onPinchEnd?.invoke()
+                }
                 if (horizontalScrub) onScrubEnd?.invoke()
                 endHoldSeek()
                 if (!longPressHandled && !horizontalScrub && !verticalControl &&
@@ -212,6 +236,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 pinchDistance = 0f
                 horizontalScrub = false
                 verticalControl = false
+                suppressSingleFingerAfterPinch = false
                 scrubDeltaMs = 0L
                 return true
             }

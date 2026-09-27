@@ -103,6 +103,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val preferencesRepo = PlayerPreferencesRepository(application)
     private val libraryPrefs = application.getSharedPreferences("library_preferences", android.content.Context.MODE_PRIVATE)
 
+    private fun readHiddenContinueUris(): Set<String> = libraryPrefs
+        .getStringSet("hidden_continue_watching_uris", emptySet())
+        .orEmpty()
+
+    private fun persistHiddenContinueUris(uris: Set<String>) {
+        libraryPrefs.edit().putStringSet("hidden_continue_watching_uris", uris).apply()
+    }
+
     private fun readVideoOrder(): List<String> = libraryPrefs
         .getString("video_display_order", "")
         .orEmpty()
@@ -148,7 +156,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val allVideos = _allVideos.asStateFlow()
     private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
     val deleteProgress = _deleteProgress.asStateFlow()
-    private val _hiddenContinueUris = MutableStateFlow<Set<String>>(emptySet())
+    private val _hiddenContinueUris = MutableStateFlow(readHiddenContinueUris())
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
@@ -203,21 +211,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _hiddenContinueUris
     ) { allVideos, history, hiddenUris ->
         val videoMap = allVideos.associateBy { it.uri.toString() }
-        history.filterNot { it.uriString in hiddenUris }.mapNotNull { entity ->
-            val baseVideo = videoMap[entity.uriString] ?: VideoItem(
-                id = entity.uriString.hashCode().toLong(),
-                uri = Uri.parse(entity.uriString),
-                title = entity.title.ifBlank { "Video" },
-                durationMs = entity.durationMs,
-                sizeBytes = 0L,
-                width = 1920,
-                height = 1080,
-                mimeType = "video/*",
-                dateAdded = entity.lastWatchedTimestamp,
-                folderName = "Storage",
-                path = entity.uriString,
-                codec = "HW Dec"
-            )
+        history
+            .filterNot { it.uriString in hiddenUris }
+            .filter { videoMap.containsKey(it.uriString) }
+            .filter {
+                it.lastPositionMs > 0L &&
+                    (it.durationMs <= 0L || it.lastPositionMs < it.durationMs - 5_000L)
+            }
+            .sortedByDescending { it.lastWatchedTimestamp }
+            .mapNotNull { entity ->
+            val baseVideo = videoMap[entity.uriString] ?: return@mapNotNull null
             val duration = if (entity.durationMs > 0) entity.durationMs else baseVideo.durationMs
             val position = entity.lastPositionMs
             val fraction = if (duration > 0) {
@@ -248,7 +251,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 progressFraction = fraction,
                 progressText = progressText
             )
-        }.take(5)
+            }.take(5)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val favoriteRecords = videoDao.getFavorites()
@@ -579,7 +582,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeFromContinueWatching(uriString: String) {
-        _hiddenContinueUris.value = _hiddenContinueUris.value + uriString
+        val updated = _hiddenContinueUris.value + uriString
+        _hiddenContinueUris.value = updated
+        persistHiddenContinueUris(updated)
         // Removing an item from this strip only hides it from Continue Watching.
         // Keep its VideoEntity so opening it from the Videos library can resume
         // from the saved position.
@@ -594,7 +599,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (it.path.ifBlank { it.uri.toString() } == key) it.copy(isNewVideo = false) else it
             }
         }
-        _hiddenContinueUris.value = _hiddenContinueUris.value - video.uri.toString()
+        val updatedHidden = _hiddenContinueUris.value - video.uri.toString()
+        _hiddenContinueUris.value = updatedHidden
+        persistHiddenContinueUris(updatedHidden)
     }
 
     fun setThemeMode(mode: com.example.data.AppThemeMode) {

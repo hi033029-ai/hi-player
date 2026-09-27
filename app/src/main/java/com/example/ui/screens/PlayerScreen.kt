@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -200,6 +201,7 @@ fun PlayerScreen(
     var isRatioTransitioning by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
+    var isPinching by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
@@ -390,6 +392,8 @@ fun PlayerScreen(
             playerViewModel.setVideoScale(videoScale * zoomFactor)
             showZoomOverlay = true
         }
+        surface.onPinchStart = { isPinching = true }
+        surface.onPinchEnd = { isPinching = false }
         surface.onHdrToggle = {
             showHdrPresetMenu = true
             showHdrCustomizer = false
@@ -504,12 +508,12 @@ fun PlayerScreen(
         }
         val animatedSurfaceWidth by animateDpAsState(
             targetValue = targetSurfaceWidth,
-            animationSpec = tween(320, easing = FastOutSlowInEasing),
+            animationSpec = if (isPinching) snap() else tween(220, easing = FastOutSlowInEasing),
             label = "videoSurfaceWidth"
         )
         val animatedSurfaceHeight by animateDpAsState(
             targetValue = targetSurfaceHeight,
-            animationSpec = tween(320, easing = FastOutSlowInEasing),
+            animationSpec = if (isPinching) snap() else tween(220, easing = FastOutSlowInEasing),
             label = "videoSurfaceHeight"
         )
 
@@ -750,8 +754,9 @@ fun PlayerScreen(
             Button(
                 onClick = { playerViewModel.playCurrentVideoFromStart() },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .height(32.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 62.dp, bottom = 174.dp)
+                    .height(28.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White.copy(alpha = 0.92f),
                     contentColor = Color.Black,

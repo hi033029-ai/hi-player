@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -63,6 +65,7 @@ fun AudioSettingsBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var boostSlider by remember { mutableFloatStateOf(volumeBoostPercent.toFloat()) }
     var showAdvanced by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -79,6 +82,7 @@ fun AudioSettingsBottomSheet(
                 .fillMaxWidth(0.90f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(HiSurfaceDark)
+                .verticalScroll(scrollState)
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .padding(bottom = 12.dp)
         ) {
