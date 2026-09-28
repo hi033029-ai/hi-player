@@ -20,6 +20,8 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.exoplayer.SeekParameters
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
 import java.nio.ByteBuffer
@@ -40,12 +42,17 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var scrubDeltaMs = 0L
     private var verticalControl = false
     private var leftSide = false
+    private var gestureStartBrightness = 0.5f
+    private var gestureStartVolume = 1f
     private var pinchDistance = 0f
     private var pinchActive = false
     private var suppressSingleFingerAfterPinch = false
     private var longPressHandled = false
     private var holdSeekDirection = 0
     private var holdSeekRunnable: Runnable? = null
+    private var holdSeekWasPlaying = false
+    private var holdSeekPreviousSpeed = 1f
+    private var holdSeekPreviousParameters = SeekParameters.DEFAULT
     private var presetPopup: PopupWindow? = null
     private var presetDismissRunnable: Runnable? = null
     private var hudPopup: PopupWindow? = null
@@ -86,6 +93,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     var onBrightnessDelta: ((Float) -> Unit)? = null
     var onVolumeDelta: ((Float) -> Unit)? = null
+    var onBrightnessLevel: ((Float) -> Unit)? = null
+    var onVolumeLevel: ((Float) -> Unit)? = null
     var currentBrightnessLevel: (() -> Float)? = null
     var currentVolumeLevel: (() -> Float)? = null
     var onScrubStart: (() -> Unit)? = null
@@ -156,6 +165,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 // never restart a gesture from the hardcoded 100% default.
                 brightnessLevel = currentBrightnessLevel?.invoke()?.coerceIn(0f, 1f) ?: brightnessLevel
                 volumeLevel = currentVolumeLevel?.invoke()?.coerceIn(0f, 2f) ?: volumeLevel
+                gestureStartBrightness = brightnessLevel
+                gestureStartVolume = volumeLevel
                 return true
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -190,6 +201,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     return true
                 }
                 if (pinchActive || suppressSingleFingerAfterPinch) return true
+                if (holdSeekDirection != 0) return true
                 val dx = event.x - downX
                 val dy = event.y - downY
                 if (!horizontalScrub && !verticalControl) {
@@ -205,15 +217,18 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     scrubDeltaMs += ((event.x - lastX) * 120L).toLong()
                     onScrubMove?.invoke(scrubDeltaMs)
                 } else if (verticalControl && height > 0) {
-                    val delta = -(event.y - lastY) / height.toFloat()
+                    // Base the entire gesture on the level at ACTION_DOWN.
+                    // Reading the system value on every MOVE causes a visible
+                    // jump when a new swipe begins or changes direction.
+                    val totalDelta = -(event.y - downY) / height.toFloat()
                     if (leftSide) {
-                        brightnessLevel = (brightnessLevel + delta).coerceIn(0f, 1f)
-                        onBrightnessDelta?.invoke(delta)
-                        showHud("Brightness ${"%.0f".format(brightnessLevel * 100f)}%", brightnessLevel, false)
+                        brightnessLevel = (gestureStartBrightness + totalDelta).coerceIn(0f, 1f)
+                        onBrightnessLevel?.invoke(brightnessLevel)
+                        showHud("Brightness", brightnessLevel, false)
                     } else {
-                        volumeLevel = (volumeLevel + delta).coerceIn(0f, 2f)
-                        onVolumeDelta?.invoke(delta)
-                        showHud("Volume ${"%.0f".format(volumeLevel * 100f)}%", volumeLevel / 2f, true)
+                        volumeLevel = (gestureStartVolume + totalDelta).coerceIn(0f, 2f)
+                        onVolumeLevel?.invoke(volumeLevel)
+                        showHud("Volume", volumeLevel / 2f, true)
                     }
                 }
                 lastX = event.x
@@ -247,14 +262,31 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private fun beginHoldSeek(direction: Int) {
         endHoldSeek()
         holdSeekDirection = direction
-        player?.play()
+        player?.let { current ->
+            holdSeekWasPlaying = current.isPlaying
+            holdSeekPreviousSpeed = current.playbackParameters.speed
+            holdSeekPreviousParameters = current.seekParameters
+            current.setSeekParameters(SeekParameters.EXACT)
+            if (direction > 0) {
+                // Forward playback is genuinely continuous instead of a series
+                // of visible seek jumps.
+                current.playbackParameters = PlaybackParameters(2f)
+                current.play()
+            } else {
+                // Media3 does not support reverse playback. Use small exact
+                // seeks at a video-clock cadence so rewind appears continuous.
+                current.pause()
+            }
+        }
         onHoldSeekStart?.invoke(direction > 0)
         val runner = object : Runnable {
             override fun run() {
                 val current = player ?: return
-                val next = (current.currentPosition + direction * 400L).coerceAtLeast(0L)
-                current.seekTo(next)
-                postDelayed(this, 200L)
+                if (direction < 0) {
+                    val next = (current.currentPosition - 66L).coerceAtLeast(0L)
+                    current.seekTo(next)
+                }
+                postDelayed(this, 33L)
             }
         }
         holdSeekRunnable = runner
@@ -265,7 +297,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         holdSeekRunnable?.let(::removeCallbacks)
         holdSeekRunnable = null
         if (holdSeekDirection != 0) {
-            player?.play()
+            player?.let { current ->
+                current.playbackParameters = PlaybackParameters(holdSeekPreviousSpeed)
+                current.setSeekParameters(holdSeekPreviousParameters)
+                if (holdSeekWasPlaying) current.play() else current.pause()
+            }
             onHoldSeekEnd?.invoke()
         }
         holdSeekDirection = 0
@@ -356,30 +392,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 gravity = Gravity.CENTER
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             }
-            val scaleLabels = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            val scaleValues = if (isVolume) {
-                arrayOf("200%", "100%", "0%")
-            } else {
-                arrayOf("100%", "50%", "0%")
-            }
-            scaleValues.forEach { scale ->
-                scaleLabels.addView(
-                    TextView(context).apply {
-                        text = scale
-                        textSize = 9f
-                        setTextColor(android.graphics.Color.LTGRAY)
-                        gravity = Gravity.CENTER_VERTICAL
-                    },
-                    LinearLayout.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        0,
-                        1f,
-                    ),
-                )
-            }
             hudBar = VerticalLevelBar(context).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(16), dp(150))
             }
@@ -389,25 +401,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(6), 0, 0)
             }
-            if (isVolume) {
-                meterRow.addView(hudBar)
-                meterRow.addView(
-                    scaleLabels,
-                    LinearLayout.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(150),
-                    ).apply { marginStart = dp(4) },
-                )
-            } else {
-                meterRow.addView(
-                    scaleLabels,
-                    LinearLayout.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        dp(150),
-                    ).apply { marginEnd = dp(4) },
-                )
-                meterRow.addView(hudBar)
-            }
+            meterRow.addView(hudBar)
             container.addView(meterRow)
             hudPopup = PopupWindow(
                 container,

@@ -13,9 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,14 +53,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.VideoSize
+import androidx.media3.common.CueGroup
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.ui.components.AudioSettingsBottomSheet
@@ -195,13 +193,13 @@ fun PlayerScreen(
     var videoHeight by remember { mutableStateOf(0) }
     var videoPixelWidthHeightRatio by remember { mutableStateOf(1f) }
     var videoRotationDegrees by remember { mutableStateOf(0) }
+    var subtitleCueText by remember { mutableStateOf(emptyList<String>()) }
     var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
     var showAspectRatioIndicator by remember { mutableStateOf(false) }
     var isRatioTransitioning by remember { mutableStateOf(false) }
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
-    var isPinching by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
@@ -220,6 +218,11 @@ fun PlayerScreen(
                 videoHeight = videoSize.height
                 videoPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
                 videoRotationDegrees = videoSize.unappliedRotationDegrees
+            }
+
+            override fun onCues(cueGroup: CueGroup) {
+                subtitleCueText = cueGroup.cues
+                    .mapNotNull { it.text?.toString()?.trim()?.takeIf(String::isNotEmpty) }
             }
         }
         player.addListener(listener)
@@ -363,8 +366,9 @@ fun PlayerScreen(
             }
         }
         surface.currentBrightnessLevel = {
-            val value = activity?.window?.attributes?.screenBrightness ?: -1f
-            if (value >= 0f) value else 0.5f
+            playerViewModel.brightnessLevel.value
+                ?: activity?.window?.attributes?.screenBrightness
+                ?: 0.5f
         }
         surface.currentVolumeLevel = {
             val audio = activity?.getSystemService(android.content.Context.AUDIO_SERVICE)
@@ -373,8 +377,17 @@ fun PlayerScreen(
             val current = audio?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
             val systemLevel = if (max > 0) current.toFloat() / max else 0f
             val boostLevel = playerViewModel.engine.volumeBoostPercent.value / 100f
-            (systemLevel + boostLevel).coerceIn(0f, 2f)
+            playerViewModel.volumeLevel.value
+                ?: (systemLevel + boostLevel).coerceIn(0f, 2f)
         }
+        surface.onBrightnessLevel = { level ->
+            activity?.let { act ->
+                val attributes = act.window.attributes
+                attributes.screenBrightness = playerViewModel.onBrightnessGestureLevel(level)
+                act.window.attributes = attributes
+            }
+        }
+        surface.onVolumeLevel = { level -> playerViewModel.onVolumeGestureLevel(level) }
         surface.onVolumeDelta = { delta -> playerViewModel.onVolumeGesture(delta) }
         surface.onScrubStart = { playerViewModel.onScrubStart() }
         surface.onScrubMove = { delta -> playerViewModel.onScrubMove(delta) }
@@ -392,8 +405,6 @@ fun PlayerScreen(
             playerViewModel.setVideoScale(videoScale * zoomFactor)
             showZoomOverlay = true
         }
-        surface.onPinchStart = { isPinching = true }
-        surface.onPinchEnd = { isPinching = false }
         surface.onHdrToggle = {
             showHdrPresetMenu = true
             showHdrCustomizer = false
@@ -493,30 +504,6 @@ fun PlayerScreen(
             videoPixelWidthHeightRatio,
             videoRotationDegrees,
         )
-        val density = LocalDensity.current
-        val targetSurfaceWidth = with(density) {
-            (containerSize.width * ratioScale.first * videoScale)
-                .coerceAtLeast(1f)
-                .toInt()
-                .toDp()
-        }
-        val targetSurfaceHeight = with(density) {
-            (containerSize.height * ratioScale.second * videoScale)
-                .coerceAtLeast(1f)
-                .toInt()
-                .toDp()
-        }
-        val animatedSurfaceWidth by animateDpAsState(
-            targetValue = targetSurfaceWidth,
-            animationSpec = if (isPinching) snap() else tween(220, easing = FastOutSlowInEasing),
-            label = "videoSurfaceWidth"
-        )
-        val animatedSurfaceHeight by animateDpAsState(
-            targetValue = targetSurfaceHeight,
-            animationSpec = if (isPinching) snap() else tween(220, easing = FastOutSlowInEasing),
-            label = "videoSurfaceHeight"
-        )
-
         AndroidView(
             factory = { ctx ->
                 GlVideoSurface(ctx).apply {
@@ -532,8 +519,17 @@ fun PlayerScreen(
                 videoSurface.invalidate()
             },
             modifier = Modifier
-                .width(animatedSurfaceWidth)
-                .height(animatedSurfaceHeight)
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Keep the native SurfaceView at the stable container size.
+                    // Resizing a SurfaceView itself can move its buffer one frame
+                    // behind Compose on some devices, causing the video to jump
+                    // sideways or lose its center. A centered layer transform
+                    // preserves the same final geometry without relocating the
+                    // native surface.
+                    scaleX = ratioScale.first * videoScale
+                    scaleY = ratioScale.second * videoScale
+                }
         )
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -665,6 +661,21 @@ fun PlayerScreen(
                 .align(Alignment.BottomStart)
                 .padding(start = 28.dp, bottom = 150.dp),
         )
+
+        if (subtitleCueText.isNotEmpty() && !isScreenLocked) {
+            Text(
+                text = subtitleCueText.joinToString("\n"),
+                color = Color.White,
+                fontSize = subtitleStyle.fontSizeSp.coerceIn(12, 48).sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 24.dp, vertical = 112.dp)
+                    .background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(5.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
 
         // 2. UI Controls Overlay Layer
         ControlsOverlay(

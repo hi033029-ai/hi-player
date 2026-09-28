@@ -15,6 +15,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -999,11 +1000,12 @@ class HiPlayerEngine(
         val builder = selector.parameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .clearOverridesOfType(C.TRACK_TYPE_IMAGE)
+        var updatedParameters: TrackSelectionParameters? = null
         if (track == null) {
             // Captions in movie files are commonly text (SRT/ASS/WebVTT), but
             // Blu-ray PGS/VobSub captions can be reported as image tracks.
             // Disable both when the user selects "Subtitles Off".
-            selector.parameters = builder
+            updatedParameters = builder
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, true)
                 .build()
@@ -1014,7 +1016,7 @@ class HiPlayerEngine(
                     val mediaTrackGroup = group.mediaTrackGroup
                     if (mediaTrackGroup.length > track.trackIndex) {
                         val override = TrackSelectionOverride(mediaTrackGroup, listOf(track.trackIndex))
-                        selector.parameters = builder
+                        updatedParameters = builder
                             // Only one caption type should be active at a time.
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, track.trackType != C.TRACK_TYPE_TEXT)
                             .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, track.trackType != C.TRACK_TYPE_IMAGE)
@@ -1025,7 +1027,13 @@ class HiPlayerEngine(
                 }
             }
         }
-        player.trackSelectionParameters = selector.parameters
+        updatedParameters?.let { parameters ->
+            selector.parameters = parameters
+            // Apply the exact same object to the player. This is important for
+            // caption renderers because changing only the selector can leave a
+            // previously disabled text/image renderer disabled until reprepare.
+            player.trackSelectionParameters = parameters
+        }
         refreshAvailableTracks()
     }
 

@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 enum class ActiveSheet {
     NONE,
@@ -387,6 +388,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         return newLevel
     }
 
+    fun onBrightnessGestureLevel(level: Float): Float {
+        val newLevel = level.coerceIn(0.01f, 1.0f)
+        _brightnessLevel.value = newLevel
+        scheduleHudDismiss()
+        return newLevel
+    }
+
     fun onVolumeGesture(delta: Float) {
         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -411,6 +419,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
             _volumeLevel.value = target.toFloat() / maxVolume.toFloat()
         }
+        scheduleHudDismiss()
+    }
+
+    /** Applies the complete gesture target without rereading a moving system level. */
+    fun onVolumeGestureLevel(level: Float) {
+        val target = level.coerceIn(0f, 2f)
+        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val systemRatio = target.coerceAtMost(1f)
+        val targetSystem = (systemRatio * maxVolume).roundToInt().coerceIn(0, maxVolume)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetSystem, 0)
+        val boost = ((target - 1f).coerceAtLeast(0f) * 100f).roundToInt().coerceIn(0, 100)
+        engine.setVolumeBoost(boost)
+        _volumeLevel.value = target
         scheduleHudDismiss()
     }
 

@@ -5,8 +5,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,11 +39,25 @@ fun HoldSeekOverlayIndicator(
                 .background(Color.Black.copy(alpha = 0.28f), RoundedCornerShape(10.dp))
                 .padding(horizontal = 18.dp, vertical = 10.dp),
         ) {
-            Text(
-                text = if (side == HoldSeekSide.REWIND) "‹‹ 2×" else "2× ››",
-                color = Color.White,
-                fontSize = 17.sp,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (side == HoldSeekSide.REWIND) {
+                    Icon(
+                        imageVector = Icons.Default.FastRewind,
+                        contentDescription = "Rewinding at 2x",
+                        tint = Color.White,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Rewind 2×", color = Color.White, fontSize = 15.sp)
+                } else {
+                    Text("Fast forward 2×", color = Color.White, fontSize = 15.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.FastForward,
+                        contentDescription = "Fast forwarding at 2x",
+                        tint = Color.White,
+                    )
+                }
+            }
         }
     }
 }
