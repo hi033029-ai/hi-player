@@ -15,7 +15,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
-import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -1000,7 +999,7 @@ class HiPlayerEngine(
         val builder = selector.parameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_TEXT)
             .clearOverridesOfType(C.TRACK_TYPE_IMAGE)
-        var updatedParameters: TrackSelectionParameters? = null
+        var updatedParameters: DefaultTrackSelector.Parameters? = null
         if (track == null) {
             // Captions in movie files are commonly text (SRT/ASS/WebVTT), but
             // Blu-ray PGS/VobSub captions can be reported as image tracks.

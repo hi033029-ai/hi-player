@@ -61,7 +61,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.VideoSize
-import androidx.media3.common.CueGroup
+import androidx.media3.common.text.CueGroup
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.ui.components.AudioSettingsBottomSheet
