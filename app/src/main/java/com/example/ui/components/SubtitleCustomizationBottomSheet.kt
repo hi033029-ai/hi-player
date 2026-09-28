@@ -58,6 +58,12 @@ fun SubtitleCustomizationBottomSheet(
     var textColorHex by remember { mutableLongStateOf(config.textColorHex) }
     var bgOpacity by remember { mutableFloatStateOf(config.bgOpacity) }
     var verticalOffset by remember { mutableFloatStateOf(config.verticalOffsetDp.toFloat()) }
+    var workingConfig by remember { mutableStateOf(config) }
+
+    fun updateStyle(next: SubtitleStyleConfig) {
+        workingConfig = next
+        onUpdateStyle(next)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -126,7 +132,7 @@ fun SubtitleCustomizationBottomSheet(
                 value = fontSize,
                 onValueChange = {
                     fontSize = it
-                    onUpdateStyle(config.copy(fontSizeSp = it.toInt()))
+                    updateStyle(workingConfig.copy(fontSizeSp = it.toInt()))
                 },
                 valueRange = 14f..36f,
                 colors = SliderDefaults.colors(thumbColor = HiPrimaryCyan, activeTrackColor = HiPrimaryCyan)
@@ -150,7 +156,7 @@ fun SubtitleCustomizationBottomSheet(
                             .background(if (isSelected) HiPrimaryCyan else HiSurfaceElevated)
                             .clickable {
                                 fontFamily = family
-                                onUpdateStyle(config.copy(fontFamily = family))
+                                updateStyle(workingConfig.copy(fontFamily = family))
                             }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
@@ -190,7 +196,7 @@ fun SubtitleCustomizationBottomSheet(
                             .border(if (isSelected) 3.dp else 0.dp, if (isSelected) HiPrimaryCyan else Color.Transparent, CircleShape)
                             .clickable {
                                 textColorHex = colorVal
-                                onUpdateStyle(config.copy(textColorHex = colorVal))
+                                updateStyle(workingConfig.copy(textColorHex = colorVal))
                             }
                     )
                 }
@@ -204,7 +210,7 @@ fun SubtitleCustomizationBottomSheet(
                 value = bgOpacity,
                 onValueChange = {
                     bgOpacity = it
-                    onUpdateStyle(config.copy(bgOpacity = it))
+                    updateStyle(workingConfig.copy(bgOpacity = it))
                 },
                 valueRange = 0f..1f,
                 colors = SliderDefaults.colors(thumbColor = HiPrimaryCyan, activeTrackColor = HiPrimaryCyan)
@@ -218,7 +224,7 @@ fun SubtitleCustomizationBottomSheet(
                 value = verticalOffset,
                 onValueChange = {
                     verticalOffset = it
-                    onUpdateStyle(config.copy(verticalOffsetDp = it.toInt()))
+                    updateStyle(workingConfig.copy(verticalOffsetDp = it.toInt()))
                 },
                 valueRange = 0f..60f,
                 colors = SliderDefaults.colors(thumbColor = HiPrimaryCyan, activeTrackColor = HiPrimaryCyan)

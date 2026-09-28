@@ -283,10 +283,13 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             override fun run() {
                 val current = player ?: return
                 if (direction < 0) {
-                    val next = (current.currentPosition - 66L).coerceAtLeast(0L)
+                    // Media3 has no reverse playback mode. Apply one exact
+                    // 200 ms step every 100 ms: a visible, stable 2x rewind
+                    // without flooding the decoder with seek requests.
+                    val next = (current.currentPosition - 200L).coerceAtLeast(0L)
                     current.seekTo(next)
                 }
-                postDelayed(this, 33L)
+                postDelayed(this, 100L)
             }
         }
         holdSeekRunnable = runner
@@ -363,6 +366,16 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         presetDismissRunnable = null
         presetPopup?.dismiss()
         presetPopup = null
+    }
+
+    fun dismissHud() {
+        hudDismissRunnable?.let(::removeCallbacks)
+        hudDismissRunnable = null
+        hudPopup?.dismiss()
+        hudPopup = null
+        hudText = null
+        hudBar = null
+        hudIsVolume = null
     }
 
     private fun showHud(label: String, normalizedProgress: Float, isVolume: Boolean) {
@@ -446,11 +459,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             color = android.graphics.Color.argb(100, 255, 255, 255)
         }
         private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-            alpha = 175
-            strokeWidth = resources.displayMetrics.density
-        }
         private var level = 0f
 
         fun setLevel(nextLevel: Float) {
@@ -472,10 +480,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             val fillTop = height * (1f - level)
             val fillBounds = RectF(inset, fillTop, width - inset, height.toFloat())
             canvas.drawRoundRect(fillBounds, radius, radius, fillPaint)
-            listOf(0f, 0.5f, 1f).forEach { fraction ->
-                val y = height * (1f - fraction)
-                canvas.drawLine(0f, y, width.toFloat(), y, tickPaint)
-            }
         }
     }
 

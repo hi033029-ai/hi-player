@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -194,6 +195,7 @@ fun PlayerScreen(
     var videoPixelWidthHeightRatio by remember { mutableStateOf(1f) }
     var videoRotationDegrees by remember { mutableStateOf(0) }
     var subtitleCueText by remember { mutableStateOf(emptyList<String>()) }
+    var glSurfaceRef by remember { mutableStateOf<GlVideoSurface?>(null) }
     var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var showAspectPicker by remember { mutableStateOf(false) }
     var showAspectRatioIndicator by remember { mutableStateOf(false) }
@@ -312,6 +314,10 @@ fun PlayerScreen(
             delay(5_000)
             playerViewModel.dismissStartOverPrompt()
         }
+    }
+
+    LaunchedEffect(activeSheet) {
+        if (activeSheet != ActiveSheet.NONE) glSurfaceRef?.dismissHud()
     }
 
     LaunchedEffect(aspectRatioMode) {
@@ -507,12 +513,14 @@ fun PlayerScreen(
         AndroidView(
             factory = { ctx ->
                 GlVideoSurface(ctx).apply {
+                    glSurfaceRef = this
                     configureGlSurface(this)
                     setPlayer(playerViewModel.engine.getPlayer())
                     setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 }
             },
             update = { videoSurface ->
+                glSurfaceRef = videoSurface
                 configureGlSurface(videoSurface)
                 videoSurface.setPlayer(playerViewModel.engine.getPlayer())
                 videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
@@ -665,14 +673,27 @@ fun PlayerScreen(
         if (subtitleCueText.isNotEmpty() && !isScreenLocked) {
             Text(
                 text = subtitleCueText.joinToString("\n"),
-                color = Color.White,
+                color = Color(subtitleStyle.textColorHex),
                 fontSize = subtitleStyle.fontSizeSp.coerceIn(12, 48).sp,
+                fontFamily = when (subtitleStyle.fontFamily) {
+                    "Monospace" -> FontFamily.Monospace
+                    "Serif" -> FontFamily.Serif
+                    "Cursive" -> FontFamily.Cursive
+                    else -> FontFamily.SansSerif
+                },
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 24.dp, vertical = 112.dp)
-                    .background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(5.dp))
+                    .padding(
+                        start = 24.dp,
+                        end = 24.dp,
+                        bottom = (112 + subtitleStyle.verticalOffsetDp.coerceIn(0, 240)).dp,
+                    )
+                    .background(
+                        Color.Black.copy(alpha = subtitleStyle.bgOpacity.coerceIn(0f, 1f)),
+                        RoundedCornerShape(5.dp),
+                    )
                     .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
