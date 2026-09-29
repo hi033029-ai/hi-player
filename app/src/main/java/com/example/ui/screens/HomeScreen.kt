@@ -177,6 +177,10 @@ fun HomeScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
+    val showContinueWatching = !isSearchActive &&
+        navMode == LibraryNavMode.ALL_VIDEOS &&
+        selectedFolder == null &&
+        continueWatchingVideos.isNotEmpty()
     fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
@@ -186,7 +190,7 @@ fun HomeScreen(
     }
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
     val currentVideoHeaderOffset = rememberUpdatedState(
-        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) 1 else 0
+        if (showContinueWatching) 1 else 0
     )
     val videoListState = rememberLazyListState()
     val reorderableVideoListState = rememberReorderableLazyListState(videoListState) { from, to ->
@@ -598,6 +602,41 @@ fun HomeScreen(
                                 )
                             }
 
+                            Box {
+                                IconButton(
+                                    onClick = { sortMenuExpanded = true },
+                                    modifier = Modifier.size(32.dp).testTag("sort_by_folder_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sort,
+                                        contentDescription = "Sort By",
+                                        tint = palette.textSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                    modifier = Modifier.background(palette.surfaceElevated)
+                                ) {
+                                    VideoSortOption.entries.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = option.displayName,
+                                                    color = if (sortOption == option) palette.primary else palette.textPrimary,
+                                                    fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            onClick = {
+                                                sortMenuExpanded = false
+                                                libraryViewModel.setSortOption(option)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
                             IconButton(
                                 onClick = { libraryViewModel.selectFolder(null) },
                                 modifier = Modifier.size(32.dp)
@@ -766,7 +805,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                        if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
@@ -791,7 +830,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp)
                     ) {
-                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                        if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
@@ -824,7 +863,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                        if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
@@ -928,7 +967,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                        if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
@@ -983,7 +1022,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        if (!isSearchActive && continueWatchingVideos.isNotEmpty()) {
+                        if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,

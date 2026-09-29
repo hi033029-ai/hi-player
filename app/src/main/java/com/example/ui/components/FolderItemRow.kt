@@ -163,21 +163,24 @@ fun FolderGridCard(
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        Text(
-            text = if (videoCount == 1) "1 video" else "$videoCount videos",
-            fontSize = 11.5.sp,
-            color = palette.textSecondary
-        )
-        if (hasNewVideo) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "NEW",
-                modifier = Modifier
-                    .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 7.dp, vertical = 2.dp),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF16A34A)
+                text = if (videoCount == 1) "1 video" else "$videoCount videos",
+                fontSize = 11.5.sp,
+                color = palette.textSecondary
             )
+            if (hasNewVideo) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "NEW",
+                    modifier = Modifier
+                        .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
         }
     }
 }

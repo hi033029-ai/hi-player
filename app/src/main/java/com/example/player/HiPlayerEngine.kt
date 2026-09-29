@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.RandomAccessFile
+import java.util.Locale
 
 data class DecoderTelemetry(
     val codecName: String = "HEVC (H.265 HW)",
@@ -1042,6 +1043,37 @@ class HiPlayerEngine(
         updateVideoOutputInfo()
     }
 
+    private fun trackDisplayLabel(language: String?, rawLabel: String?, fallback: String): String {
+        val languageCode = language?.trim()?.replace('_', '-')
+        if (!languageCode.isNullOrBlank() && !languageCode.equals("und", ignoreCase = true)) {
+            val locale = Locale.forLanguageTag(languageCode)
+            val languageName = locale.getDisplayLanguage(Locale.ENGLISH).trim()
+            if (languageName.isNotBlank() && !languageName.equals(locale.language, ignoreCase = true)) {
+                return languageName.replaceFirstChar { it.titlecase(Locale.ENGLISH) }
+            }
+        }
+
+        return cleanTrackLabel(rawLabel).ifBlank { fallback }
+    }
+
+    private fun cleanTrackLabel(rawLabel: String?): String {
+        var label = rawLabel?.trim().orEmpty()
+        if (label.isBlank()) return ""
+
+        val metadata = """(?:audio|text|application)/[A-Za-z0-9.+_-]+|AAC|AC-?3|E-?AC-?3|DTS(?:-HD)?|TRUEHD|FLAC|OPUS|VORBIS|PCM|MP3|MP4A(?:\.[A-Za-z0-9.]+)?|ALAC|ATMOS|(?:\d+(?:\.\d+)?\s*(?:ch|channels?|channel|stereo|mono|surround))|\d+\.\d+"""
+        val parenthesizedMetadata = Regex(
+            """\s*[\[(][^\])]*(?:$metadata)[^\])]*[\])]\s*$""",
+            RegexOption.IGNORE_CASE
+        )
+        val trailingMetadata = Regex(
+            """\s*(?:[-–—|]\s*)?(?:$metadata)(?:\s+.*)?\s*$""",
+            RegexOption.IGNORE_CASE
+        )
+        label = label.replace(parenthesizedMetadata, "")
+        label = label.replace(trailingMetadata, "")
+        return label.trim().trimEnd('-', '–', '—', '|', ':').trim()
+    }
+
     private fun updateAvailableTracks(tracks: Tracks?) {
         if (tracks == null) return
         val audioList = mutableListOf<VideoTrackInfo>()
@@ -1054,20 +1086,16 @@ class HiPlayerEngine(
             if (group.type == C.TRACK_TYPE_AUDIO) {
                 for (trackIndex in 0 until mediaTrackGroup.length) {
                     val format = mediaTrackGroup.getFormat(trackIndex)
-                    val label = format.label ?: format.language ?: "Audio Track ${audioList.size + 1}"
+                    val label = trackDisplayLabel(
+                        format.language,
+                        format.label,
+                        "Audio Track ${audioList.size + 1}"
+                    )
                     val mime = format.sampleMimeType ?: "audio"
-                    val channelCount = format.channelCount
-                    val channelStr = when (channelCount) {
-                        8 -> "7.1 Surround"
-                        6 -> "5.1 Surround"
-                        2 -> "Stereo"
-                        else -> "$channelCount Ch"
-                    }
-                    val fullLabel = "$label ($channelStr - ${mime.substringAfterLast("/")})"
                     audioList.add(
                         VideoTrackInfo(
                             id = format.id ?: "$groupIndex-$trackIndex",
-                            label = fullLabel,
+                            label = label,
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
@@ -1081,13 +1109,16 @@ class HiPlayerEngine(
             } else if (group.type == C.TRACK_TYPE_TEXT || group.type == C.TRACK_TYPE_IMAGE) {
                 for (trackIndex in 0 until mediaTrackGroup.length) {
                     val format = mediaTrackGroup.getFormat(trackIndex)
-                    val label = format.label ?: format.language ?: "Subtitle ${subtitleList.size + 1}"
+                    val label = trackDisplayLabel(
+                        format.language,
+                        format.label,
+                        "Subtitle ${subtitleList.size + 1}"
+                    )
                     val mime = format.sampleMimeType ?: "text"
-                    val fullLabel = "$label (${mime.substringAfterLast("/")})"
                     subtitleList.add(
                         VideoTrackInfo(
                             id = format.id ?: "$groupIndex-$trackIndex",
-                            label = fullLabel,
+                            label = label,
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
