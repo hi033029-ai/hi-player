@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -47,12 +48,13 @@ fun HdrPresetMenu(
     if (customizing) {
         Column(
             modifier = modifier
-                .fillMaxWidth(0.88f)
-                .background(Color.White.copy(alpha = 0.96f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 9.dp, vertical = 6.dp),
+                .fillMaxWidth(0.76f)
+                .widthIn(max = 320.dp)
+                .background(Color.White, RoundedCornerShape(10.dp))
+                .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
-            Text("Customize HDR", color = Color.Black, fontSize = 11.sp)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("Customize HDR", color = Color(0xFF111827), fontSize = 10.sp)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
                 }
@@ -60,7 +62,7 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(saturation = it))
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Vibrance", customPreset.vibrance, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(vibrance = it))
                 }
@@ -68,7 +70,11 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(sharpness = it))
                 }
             }
-            Text("Color intensity", color = Color.Black, fontSize = 10.sp)
+            Text(
+                text = "Color intensity • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                color = selectedColor.color,
+                fontSize = 9.sp,
+            )
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -80,7 +86,7 @@ fun HdrPresetMenu(
                             .background(color.color, androidx.compose.foundation.shape.CircleShape)
                             .clickable { onColorSelected(color) }
                             .then(
-                                if (color == selectedColor) Modifier.border(2.dp, Color.White, androidx.compose.foundation.shape.CircleShape)
+                                if (color == selectedColor) Modifier.border(2.dp, Color(0xFF111827), androidx.compose.foundation.shape.CircleShape)
                                 else Modifier
                             ),
                     )
@@ -100,8 +106,8 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.DarkGray, fontSize = 9.sp)
-                Text("Dark", color = Color.DarkGray, fontSize = 9.sp)
+                Text("Light", color = Color(0xFF374151), fontSize = 8.sp)
+                Text("Dark", color = Color(0xFF374151), fontSize = 8.sp)
             }
         }
     } else {
@@ -151,7 +157,7 @@ private fun CustomSlider(
         Text(
             text = "$label ${"%.2f".format(value)}",
             color = Color.Black,
-            fontSize = 9.sp,
+            fontSize = 8.sp,
         )
         Slider(
             value = value,
@@ -159,7 +165,7 @@ private fun CustomSlider(
             valueRange = range,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp),
+                .height(20.dp),
             colors = SliderDefaults.colors(
                 thumbColor = LocalHiPalette.current.primary,
                 activeTrackColor = LocalHiPalette.current.primary,

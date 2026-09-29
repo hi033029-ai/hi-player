@@ -224,11 +224,19 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     if (leftSide) {
                         brightnessLevel = (gestureStartBrightness + totalDelta).coerceIn(0f, 1f)
                         onBrightnessLevel?.invoke(brightnessLevel)
-                        showHud("Brightness", brightnessLevel, false)
+                        showHud(
+                            "Brightness ${(brightnessLevel * 100f).toInt()}%",
+                            brightnessLevel,
+                            false,
+                        )
                     } else {
                         volumeLevel = (gestureStartVolume + totalDelta).coerceIn(0f, 2f)
                         onVolumeLevel?.invoke(volumeLevel)
-                        showHud("Volume", volumeLevel / 2f, true)
+                        showHud(
+                            "Volume ${(volumeLevel * 100f).toInt()}%",
+                            volumeLevel / 2f,
+                            true,
+                        )
                     }
                 }
                 lastX = event.x
@@ -266,7 +274,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             holdSeekWasPlaying = current.isPlaying
             holdSeekPreviousSpeed = current.playbackParameters.speed
             holdSeekPreviousParameters = current.seekParameters
-            current.setSeekParameters(SeekParameters.EXACT)
+            // Reverse playback is emulated with timed backward seeks. Exact
+            // seeks repeatedly flush HEVC/MediaCodec and can leave the last
+            // decoded frame frozen, especially on files with sparse keyframes.
+            // Keyframe seeks keep the preview responsive while holding.
+            current.setSeekParameters(SeekParameters.CLOSEST_SYNC)
             if (direction > 0) {
                 // Forward playback is genuinely continuous instead of a series
                 // of visible seek jumps.
@@ -283,13 +295,13 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             override fun run() {
                 val current = player ?: return
                 if (direction < 0) {
-                    // Media3 has no reverse playback mode. Apply one exact
-                    // 200 ms step every 100 ms: a visible, stable 2x rewind
-                    // without flooding the decoder with seek requests.
-                    val next = (current.currentPosition - 200L).coerceAtLeast(0L)
+                    // Media3 has no reverse playback mode. Apply a 400 ms
+                    // keyframe seek every 200 ms for a stable 2x rewind,
+                    // without flooding the decoder with requests.
+                    val next = (current.currentPosition - 400L).coerceAtLeast(0L)
                     current.seekTo(next)
                 }
-                postDelayed(this, 100L)
+                postDelayed(this, 200L)
             }
         }
         holdSeekRunnable = runner

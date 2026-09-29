@@ -412,8 +412,13 @@ fun PlayerScreen(
             showZoomOverlay = true
         }
         surface.onHdrToggle = {
-            showHdrPresetMenu = true
-            showHdrCustomizer = false
+            if (showHdrPresetMenu || showHdrCustomizer) {
+                showHdrPresetMenu = false
+                showHdrCustomizer = false
+            } else {
+                showHdrPresetMenu = true
+                showHdrCustomizer = false
+            }
             hdrInteractionTick++
         }
         surface.onHdrLongPress = {}
@@ -671,31 +676,44 @@ fun PlayerScreen(
         )
 
         if (subtitleCueText.isNotEmpty() && !isScreenLocked) {
-            Text(
-                text = subtitleCueText.joinToString("\n"),
-                color = Color(subtitleStyle.textColorHex),
-                fontSize = subtitleStyle.fontSizeSp.coerceIn(12, 48).sp,
-                fontFamily = when (subtitleStyle.fontFamily) {
-                    "Monospace" -> FontFamily.Monospace
-                    "Serif" -> FontFamily.Serif
-                    "Cursive" -> FontFamily.Cursive
-                    else -> FontFamily.SansSerif
-                },
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
+            // Use the same centered transform as the video surface. This keeps
+            // captions at the bottom of the actual video image in FIT, crop,
+            // IMAX, and custom-ratio modes instead of anchoring them to the
+            // physical device window.
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        start = 24.dp,
-                        end = 24.dp,
-                        bottom = (112 + subtitleStyle.verticalOffsetDp.coerceIn(0, 240)).dp,
-                    )
-                    .background(
-                        Color.Black.copy(alpha = subtitleStyle.bgOpacity.coerceIn(0f, 1f)),
-                        RoundedCornerShape(5.dp),
-                    )
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            )
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = ratioScale.first * videoScale
+                        scaleY = ratioScale.second * videoScale
+                    },
+            ) {
+                Text(
+                    text = subtitleCueText.joinToString("\n"),
+                    color = Color(subtitleStyle.textColorHex),
+                    fontSize = subtitleStyle.fontSizeSp.coerceIn(12, 48).sp,
+                    fontFamily = when (subtitleStyle.fontFamily) {
+                        "Monospace" -> FontFamily.Monospace
+                        "Serif" -> FontFamily.Serif
+                        "Cursive" -> FontFamily.Cursive
+                        else -> FontFamily.SansSerif
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            start = 24.dp,
+                            end = 24.dp,
+                            bottom = (24 + subtitleStyle.verticalOffsetDp.coerceIn(0, 240)).dp,
+                        )
+                        .background(
+                            Color.Black.copy(alpha = subtitleStyle.bgOpacity.coerceIn(0f, 1f)),
+                            RoundedCornerShape(5.dp),
+                        )
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
         }
 
         // 2. UI Controls Overlay Layer
@@ -747,8 +765,13 @@ fun PlayerScreen(
             // A single tap opens the HDR choices. HDR is changed only after the
             // user selects a preset, including the explicit Off option.
             onToggleHdrEnhance = {
-                showHdrPresetMenu = true
-                showHdrCustomizer = false
+                if (showHdrPresetMenu || showHdrCustomizer) {
+                    showHdrPresetMenu = false
+                    showHdrCustomizer = false
+                } else {
+                    showHdrPresetMenu = true
+                    showHdrCustomizer = false
+                }
                 hdrInteractionTick++
             },
             onLongPressHdrEnhance = {},
@@ -762,7 +785,11 @@ fun PlayerScreen(
             onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
             onOpenEqualizer = {
                 equalizerInteractionTick++
-                playerViewModel.openSheet(ActiveSheet.EQUALIZER)
+                if (activeSheet == ActiveSheet.EQUALIZER) {
+                    playerViewModel.closeSheet()
+                } else {
+                    playerViewModel.openSheet(ActiveSheet.EQUALIZER)
+                }
             },
             onOpenVideoSettings = { playerViewModel.openSheet(ActiveSheet.VIDEO_SETTINGS) },
             onOpenTelemetry = { playerViewModel.openSheet(ActiveSheet.DECODER_TELEMETRY) },
