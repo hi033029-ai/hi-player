@@ -274,15 +274,15 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             holdSeekWasPlaying = current.isPlaying
             holdSeekPreviousSpeed = current.playbackParameters.speed
             holdSeekPreviousParameters = current.seekParameters
-            // Reverse playback is emulated with timed backward seeks. Exact
-            // seeks repeatedly flush HEVC/MediaCodec and can leave the last
-            // decoded frame frozen, especially on files with sparse keyframes.
-            // Keyframe seeks keep the preview responsive while holding.
-            current.setSeekParameters(SeekParameters.CLOSEST_SYNC)
+            // Reverse playback is emulated with timed backward seeks. Use
+            // exact targets at a lower cadence so each target has time to
+            // decode; very frequent keyframe seeks can repeatedly land on the
+            // same GOP and make rewind appear not to move.
+            current.setSeekParameters(SeekParameters.EXACT)
             if (direction > 0) {
                 // Forward playback is genuinely continuous instead of a series
                 // of visible seek jumps.
-                current.playbackParameters = PlaybackParameters(2f)
+                current.playbackParameters = PlaybackParameters(4f)
                 current.play()
             } else {
                 // Media3 does not support reverse playback. Use small exact
@@ -295,13 +295,12 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             override fun run() {
                 val current = player ?: return
                 if (direction < 0) {
-                    // Media3 has no reverse playback mode. Apply a 400 ms
-                    // keyframe seek every 200 ms for a stable 2x rewind,
-                    // without flooding the decoder with requests.
-                    val next = (current.currentPosition - 400L).coerceAtLeast(0L)
+                    // Media3 has no reverse playback mode. Apply a 1-second
+                    // reverse step every 500 ms for a visible 2x rewind.
+                    val next = (current.currentPosition - 1_000L).coerceAtLeast(0L)
                     current.seekTo(next)
                 }
-                postDelayed(this, 200L)
+                postDelayed(this, 500L)
             }
         }
         holdSeekRunnable = runner

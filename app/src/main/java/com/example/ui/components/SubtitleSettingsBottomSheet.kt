@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,7 +81,8 @@ fun SubtitleSettingsBottomSheet(
         ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.90f)
+                .fillMaxWidth(0.78f)
+                .widthIn(max = 320.dp)
                 .heightIn(max = 560.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(HiSurfaceDark)
@@ -94,13 +96,7 @@ fun SubtitleSettingsBottomSheet(
                 fontWeight = FontWeight.Bold,
                 color = HiTextPrimary
             )
-            Text(
-                text = "Embedded PGS, ASS, SRT tracks & external subtitle sync",
-                fontSize = 10.sp,
-                color = HiTextSecondary
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Load External Subtitle (.srt / .vtt)
             Button(
@@ -158,65 +154,6 @@ fun SubtitleSettingsBottomSheet(
 
 
             Spacer(modifier = Modifier.height(14.dp))
-
-            // SUBTITLE SYNC / OFFSET
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(HiSurfaceElevated)
-                    .padding(14.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = null,
-                                tint = HiPrimaryCyan,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Subtitle Sync Offset",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = HiTextPrimary
-                            )
-                        }
-                        Text(
-                            text = if (subtitleOffsetMs >= 0) "+${subtitleOffsetMs}ms" else "${subtitleOffsetMs}ms",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = HiPrimaryCyan
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { onSubtitleOffsetChange(subtitleOffsetMs - 250) }) {
-                            Text("-250ms", color = HiPrimaryCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        IconButton(onClick = { onSubtitleOffsetChange(0) }) {
-                            Text("Reset", color = HiTextSecondary, fontSize = 11.sp)
-                        }
-                        IconButton(onClick = { onSubtitleOffsetChange(subtitleOffsetMs + 250) }) {
-                            Text("+250ms", color = HiPrimaryCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
 
             // SUBTITLE TRACKS LIST
             Text(
