@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ClosedCaptionDisabled
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,11 +45,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.VideoTrackInfo
-import com.example.ui.theme.HiPrimaryCyan
-import com.example.ui.theme.HiSurfaceDark
-import com.example.ui.theme.HiSurfaceElevated
-import com.example.ui.theme.HiTextPrimary
-import com.example.ui.theme.HiTextSecondary
+
+private val PickerSurface = Color.Black
+private val PickerSurfaceElevated = Color(0xFF202020)
+private val PickerSurfaceSelected = Color(0xFF383838)
+private val PickerTextPrimary = Color.White
+private val PickerTextSecondary = Color(0xFFBDBDBD)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,8 +74,9 @@ fun SubtitleSettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = HiSurfaceDark,
-        tonalElevation = 8.dp
+        containerColor = PickerSurface,
+        tonalElevation = 8.dp,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = PickerTextSecondary) }
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -85,7 +88,7 @@ fun SubtitleSettingsBottomSheet(
                 .widthIn(max = 320.dp)
                 .heightIn(max = 560.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(HiSurfaceDark)
+                .background(PickerSurface)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .padding(bottom = 12.dp)
@@ -94,7 +97,7 @@ fun SubtitleSettingsBottomSheet(
                 text = "Subtitle & Closed Caption Settings",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = HiTextPrimary
+                color = PickerTextPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
 
@@ -106,18 +109,18 @@ fun SubtitleSettingsBottomSheet(
                     .height(38.dp)
                     .testTag("load_external_subtitle_button"),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = HiSurfaceElevated)
+                colors = ButtonDefaults.buttonColors(containerColor = PickerSurfaceElevated)
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = null,
-                    tint = HiPrimaryCyan,
+                    tint = PickerTextPrimary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Load External Subtitle (.srt / .ass / .vtt)",
-                    color = HiPrimaryCyan,
+                    color = PickerTextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -135,18 +138,18 @@ fun SubtitleSettingsBottomSheet(
                     .height(38.dp)
                     .testTag("customize_subtitle_appearance_button"),
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = HiSurfaceElevated)
+                colors = ButtonDefaults.buttonColors(containerColor = PickerSurfaceElevated)
             ) {
                 Icon(
                     imageVector = Icons.Default.FormatColorText,
                     contentDescription = null,
-                    tint = HiPrimaryCyan,
+                    tint = PickerTextPrimary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Customize Appearance (Size, Color, Opacity)",
-                    color = HiPrimaryCyan,
+                    color = PickerTextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -160,7 +163,7 @@ fun SubtitleSettingsBottomSheet(
                 text = "Available Subtitle Tracks",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = HiTextPrimary
+                color = PickerTextPrimary
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -170,7 +173,7 @@ fun SubtitleSettingsBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (!anySelected) Color(0x3300E5FF) else HiSurfaceElevated)
+                    .background(if (!anySelected) PickerSurfaceSelected else PickerSurfaceElevated)
                     .clickable { onSelectTrack(null) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -180,7 +183,7 @@ fun SubtitleSettingsBottomSheet(
                     Icon(
                         imageVector = Icons.Default.ClosedCaptionDisabled,
                         contentDescription = null,
-                        tint = if (!anySelected) HiPrimaryCyan else HiTextSecondary,
+                        tint = if (!anySelected) PickerTextPrimary else PickerTextSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -188,14 +191,14 @@ fun SubtitleSettingsBottomSheet(
                         text = "Subtitles Off",
                         fontSize = 13.sp,
                         fontWeight = if (!anySelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (!anySelected) HiPrimaryCyan else HiTextPrimary
+                        color = PickerTextPrimary
                     )
                 }
                 if (!anySelected) {
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = "Selected",
-                        tint = HiPrimaryCyan,
+                        tint = PickerTextPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -209,13 +212,13 @@ fun SubtitleSettingsBottomSheet(
                         .fillMaxWidth()
                         .height(96.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(HiSurfaceElevated)
+                        .background(PickerSurfaceElevated)
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "No embedded captions were detected. You can load an external subtitle file above.",
-                        color = HiTextSecondary,
+                        color = PickerTextSecondary,
                         fontSize = 12.sp
                     )
                 }
@@ -229,7 +232,7 @@ fun SubtitleSettingsBottomSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (track.isSelected) Color(0x3300E5FF) else HiSurfaceElevated)
+                                .background(if (track.isSelected) PickerSurfaceSelected else PickerSurfaceElevated)
                                 .clickable { onSelectTrack(track) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -242,7 +245,7 @@ fun SubtitleSettingsBottomSheet(
                                 Icon(
                                     imageVector = Icons.Default.ClosedCaption,
                                     contentDescription = null,
-                                    tint = if (track.isSelected) HiPrimaryCyan else HiTextSecondary,
+                                    tint = if (track.isSelected) PickerTextPrimary else PickerTextSecondary,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -250,14 +253,14 @@ fun SubtitleSettingsBottomSheet(
                                     text = track.label,
                                     fontSize = 13.sp,
                                     fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (track.isSelected) HiPrimaryCyan else HiTextPrimary
+                                    color = PickerTextPrimary
                                 )
                             }
                             if (track.isSelected) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
-                                    tint = HiPrimaryCyan,
+                                    tint = PickerTextPrimary,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }

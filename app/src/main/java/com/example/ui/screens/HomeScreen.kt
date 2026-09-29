@@ -178,8 +178,6 @@ fun HomeScreen(
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
     val showContinueWatching = !isSearchActive &&
-        navMode == LibraryNavMode.ALL_VIDEOS &&
-        selectedFolder == null &&
         continueWatchingVideos.isNotEmpty()
     fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
@@ -796,7 +794,21 @@ fun HomeScreen(
             } else if (navMode == LibraryNavMode.FOLDERS && selectedFolder == null) {
                 // CLEAN FOLDER SYSTEM VIEW (Matching User's Reference Image)
                 if (folders.isEmpty()) {
-                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    if (showContinueWatching) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            ContinueWatchingStrip(
+                                items = continueWatchingVideos,
+                                onVideoSelected = onVideoSelected,
+                                onRemove = { libraryViewModel.removeFromContinueWatching(it) },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                            }
+                        }
+                    } else {
+                        EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    }
                 } else if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
@@ -856,7 +868,21 @@ fun HomeScreen(
                 // descending into them, instead of a flat "Recent" list.
                 val node = currentTreeNode
                 if (node == null || (node.childFolders.isEmpty() && node.directVideos.isEmpty())) {
-                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    if (showContinueWatching) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            ContinueWatchingStrip(
+                                items = continueWatchingVideos,
+                                onVideoSelected = onVideoSelected,
+                                onRemove = { libraryViewModel.removeFromContinueWatching(it) },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                            }
+                        }
+                    } else {
+                        EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    }
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -954,7 +980,21 @@ fun HomeScreen(
                     }
                 }
             } else if (filteredVideos.isEmpty()) {
-                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                if (showContinueWatching) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        ContinueWatchingStrip(
+                            items = continueWatchingVideos,
+                            onVideoSelected = onVideoSelected,
+                            onRemove = { libraryViewModel.removeFromContinueWatching(it) },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                        Box(modifier = Modifier.weight(1f)) {
+                            EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                        }
+                    }
+                } else {
+                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                }
             } else {
                 // Unified media items (List or Grid). Continue Watching is kept
                 // above both layouts so it never disappears when switching modes.

@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -35,11 +36,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.VideoTrackInfo
-import com.example.ui.theme.HiPrimaryCyan
-import com.example.ui.theme.HiSurfaceDark
-import com.example.ui.theme.HiSurfaceElevated
-import com.example.ui.theme.HiTextPrimary
-import com.example.ui.theme.HiTextSecondary
+
+private val PickerSurface = Color.Black
+private val PickerSurfaceElevated = Color(0xFF202020)
+private val PickerSurfaceSelected = Color(0xFF383838)
+private val PickerTextPrimary = Color.White
+private val PickerTextSecondary = Color(0xFFBDBDBD)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,8 +60,9 @@ fun AudioSettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = HiSurfaceDark,
-        tonalElevation = 8.dp
+        containerColor = PickerSurface,
+        tonalElevation = 8.dp,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = PickerTextSecondary) }
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -70,7 +73,7 @@ fun AudioSettingsBottomSheet(
                 .fillMaxWidth(0.78f)
                 .widthIn(max = 320.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(HiSurfaceDark)
+                .background(PickerSurface)
                 .verticalScroll(scrollState)
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .padding(bottom = 12.dp)
@@ -79,7 +82,7 @@ fun AudioSettingsBottomSheet(
                 text = "Audio Language",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = HiTextPrimary
+                color = PickerTextPrimary
             )
             Spacer(modifier = Modifier.height(5.dp))
 
@@ -89,7 +92,7 @@ fun AudioSettingsBottomSheet(
                 Text(
                     text = "Default Stereo Stream (Internal)",
                     fontSize = 13.sp,
-                    color = HiTextSecondary,
+                    color = PickerTextSecondary,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             } else {
@@ -101,9 +104,9 @@ fun AudioSettingsBottomSheet(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(
                                     when {
-                                        track.isSelected -> Color(0x3300E5FF)
-                                        !track.isSupported -> HiSurfaceElevated.copy(alpha = 0.55f)
-                                        else -> HiSurfaceElevated
+                                        track.isSelected -> PickerSurfaceSelected
+                                        !track.isSupported -> PickerSurfaceElevated.copy(alpha = 0.55f)
+                                        else -> PickerSurfaceElevated
                                     }
                                 )
                                 .clickable(enabled = track.isSupported) { onSelectTrack(track) }
@@ -117,16 +120,16 @@ fun AudioSettingsBottomSheet(
                                     fontSize = 14.sp,
                                     fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = when {
-                                        track.isSelected -> HiPrimaryCyan
-                                        !track.isSupported -> HiTextSecondary.copy(alpha = 0.65f)
-                                        else -> HiTextPrimary
+                                        track.isSelected -> PickerTextPrimary
+                                        !track.isSupported -> PickerTextSecondary.copy(alpha = 0.65f)
+                                        else -> PickerTextPrimary
                                     }
                                 )
                                 if (!track.isSupported) {
                                     Text(
                                         text = "— unsupported on this device",
                                         fontSize = 12.sp,
-                                        color = HiTextSecondary.copy(alpha = 0.72f),
+                                        color = PickerTextSecondary.copy(alpha = 0.72f),
                                         modifier = Modifier.padding(top = 3.dp)
                                     )
                                 }
@@ -135,7 +138,7 @@ fun AudioSettingsBottomSheet(
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
-                                    tint = HiPrimaryCyan,
+                                    tint = PickerTextPrimary,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
