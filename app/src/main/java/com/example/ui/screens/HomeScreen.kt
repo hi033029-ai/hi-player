@@ -177,8 +177,6 @@ fun HomeScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
-    val showContinueWatching = !isSearchActive &&
-        continueWatchingVideos.isNotEmpty()
     fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
@@ -187,9 +185,10 @@ fun HomeScreen(
         libraryViewModel.applySavedVideoOrder(filteredVideos)
     }
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
-    val currentVideoHeaderOffset = rememberUpdatedState(
-        if (showContinueWatching) 1 else 0
-    )
+    val showContinueWatching = !isSearchActive &&
+        selectedFolder == null &&
+        continueWatchingVideos.isNotEmpty()
+    val currentVideoHeaderOffset = rememberUpdatedState(if (showContinueWatching) 1 else 0)
     val videoListState = rememberLazyListState()
     val reorderableVideoListState = rememberReorderableLazyListState(videoListState) { from, to ->
         val items = currentOrderedVideos.value
@@ -404,12 +403,11 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .background(palette.surface)
             ) {
-                // Nav-mode dropdown + view/sort toggle - only shown at the
-                // folder root. Previously this stayed visible even after
+                // Nav-mode dropdown + view/sort toggle remains available while browsing
+                // a folder so the new-folder notice cannot hide these controls. Previously this stayed visible even after
                 // drilling into a folder, stacking on top of the folder's
                 // own back/view header below and showing two overlapping
                 // sets of view/sort controls at once.
-                if (selectedFolder == null) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -558,6 +556,7 @@ fun HomeScreen(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
+                                .weight(1f)
                                 .clickable { libraryViewModel.selectFolder(null) }
                                 .padding(horizontal = 6.dp, vertical = 4.dp)
                         ) {
@@ -568,12 +567,14 @@ fun HomeScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = selectedFolder ?: "",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
-                                    color = palette.textPrimary
+                                    color = palette.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = "${filteredVideos.size} videos in folder",
@@ -603,7 +604,7 @@ fun HomeScreen(
                             Box {
                                 IconButton(
                                     onClick = { sortMenuExpanded = true },
-                                    modifier = Modifier.size(32.dp).testTag("sort_by_folder_button")
+                                    modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Sort,
@@ -621,9 +622,10 @@ fun HomeScreen(
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    text = option.displayName,
+                                                    option.displayName,
                                                     color = if (sortOption == option) palette.primary else palette.textPrimary,
-                                                    fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal
+                                                    fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
+                                                    fontSize = 12.5.sp
                                                 )
                                             },
                                             onClick = {
@@ -634,7 +636,6 @@ fun HomeScreen(
                                     }
                                 }
                             }
-
                             IconButton(
                                 onClick = { libraryViewModel.selectFolder(null) },
                                 modifier = Modifier.size(32.dp)
@@ -794,21 +795,7 @@ fun HomeScreen(
             } else if (navMode == LibraryNavMode.FOLDERS && selectedFolder == null) {
                 // CLEAN FOLDER SYSTEM VIEW (Matching User's Reference Image)
                 if (folders.isEmpty()) {
-                    if (showContinueWatching) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            ContinueWatchingStrip(
-                                items = continueWatchingVideos,
-                                onVideoSelected = onVideoSelected,
-                                onRemove = { libraryViewModel.removeFromContinueWatching(it) },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                            Box(modifier = Modifier.weight(1f)) {
-                                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                            }
-                        }
-                    } else {
-                        EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                    }
+                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
                 } else if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
@@ -868,21 +855,7 @@ fun HomeScreen(
                 // descending into them, instead of a flat "Recent" list.
                 val node = currentTreeNode
                 if (node == null || (node.childFolders.isEmpty() && node.directVideos.isEmpty())) {
-                    if (showContinueWatching) {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            ContinueWatchingStrip(
-                                items = continueWatchingVideos,
-                                onVideoSelected = onVideoSelected,
-                                onRemove = { libraryViewModel.removeFromContinueWatching(it) },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                            Box(modifier = Modifier.weight(1f)) {
-                                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                            }
-                        }
-                    } else {
-                        EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                    }
+                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
                 } else {
                     LazyColumn(
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -980,21 +953,7 @@ fun HomeScreen(
                     }
                 }
             } else if (filteredVideos.isEmpty()) {
-                if (showContinueWatching) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        ContinueWatchingStrip(
-                            items = continueWatchingVideos,
-                            onVideoSelected = onVideoSelected,
-                            onRemove = { libraryViewModel.removeFromContinueWatching(it) },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                        Box(modifier = Modifier.weight(1f)) {
-                            EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                        }
-                    }
-                } else {
-                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
-                }
+                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
             } else {
                 // Unified media items (List or Grid). Continue Watching is kept
                 // above both layouts so it never disappears when switching modes.

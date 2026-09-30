@@ -163,20 +163,23 @@ fun FolderGridCard(
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        ) {
             Text(
                 text = if (videoCount == 1) "1 video" else "$videoCount videos",
                 fontSize = 11.5.sp,
                 color = palette.textSecondary
             )
             if (hasNewVideo) {
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(5.dp))
                 Text(
                     text = "NEW",
                     modifier = Modifier
-                        .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.dp),
-                    fontSize = 9.sp,
+                        .background(Color(0xFF16A34A), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                    fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )

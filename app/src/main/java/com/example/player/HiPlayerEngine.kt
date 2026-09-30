@@ -59,6 +59,20 @@ data class DecoderTelemetry(
 
 private val growingDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
 
+private fun displayTrackLanguage(language: String?, formatLabel: String?, fallback: String): String {
+    val normalized = language?.trim()?.takeUnless { it.isEmpty() || it.equals("und", ignoreCase = true) }
+    if (normalized != null) {
+        val displayName = Locale.forLanguageTag(normalized).getDisplayLanguage(Locale.ENGLISH)
+        if (displayName.isNotBlank()) return displayName.replaceFirstChar { it.uppercase(Locale.ENGLISH) }
+    }
+    return formatLabel
+        ?.substringBefore("(")
+        ?.substringBefore(" - ")
+        ?.trim()
+        ?.takeUnless { it.isNullOrBlank() }
+        ?: fallback
+}
+
 @OptIn(UnstableApi::class)
 class HiPlayerEngine(
     private val context: Context,
@@ -1043,37 +1057,6 @@ class HiPlayerEngine(
         updateVideoOutputInfo()
     }
 
-    private fun trackDisplayLabel(language: String?, rawLabel: String?, fallback: String): String {
-        val languageCode = language?.trim()?.replace('_', '-')
-        if (!languageCode.isNullOrBlank() && !languageCode.equals("und", ignoreCase = true)) {
-            val locale = Locale.forLanguageTag(languageCode)
-            val languageName = locale.getDisplayLanguage(Locale.ENGLISH).trim()
-            if (languageName.isNotBlank() && !languageName.equals(locale.language, ignoreCase = true)) {
-                return languageName.replaceFirstChar { it.titlecase(Locale.ENGLISH) }
-            }
-        }
-
-        return cleanTrackLabel(rawLabel).ifBlank { fallback }
-    }
-
-    private fun cleanTrackLabel(rawLabel: String?): String {
-        var label = rawLabel?.trim().orEmpty()
-        if (label.isBlank()) return ""
-
-        val metadata = """(?:audio|text|application)/[A-Za-z0-9.+_-]+|AAC|AC-?3|E-?AC-?3|DTS(?:-HD)?|TRUEHD|FLAC|OPUS|VORBIS|PCM|MP3|MP4A(?:\.[A-Za-z0-9.]+)?|ALAC|ATMOS|(?:\d+(?:\.\d+)?\s*(?:ch|channels?|channel|stereo|mono|surround))|\d+\.\d+"""
-        val parenthesizedMetadata = Regex(
-            """\s*[\[(][^\])]*(?:$metadata)[^\])]*[\])]\s*$""",
-            RegexOption.IGNORE_CASE
-        )
-        val trailingMetadata = Regex(
-            """\s*(?:[-–—|]\s*)?(?:$metadata)(?:\s+.*)?\s*$""",
-            RegexOption.IGNORE_CASE
-        )
-        label = label.replace(parenthesizedMetadata, "")
-        label = label.replace(trailingMetadata, "")
-        return label.trim().trimEnd('-', '–', '—', '|', ':').trim()
-    }
-
     private fun updateAvailableTracks(tracks: Tracks?) {
         if (tracks == null) return
         val audioList = mutableListOf<VideoTrackInfo>()
@@ -1086,16 +1069,16 @@ class HiPlayerEngine(
             if (group.type == C.TRACK_TYPE_AUDIO) {
                 for (trackIndex in 0 until mediaTrackGroup.length) {
                     val format = mediaTrackGroup.getFormat(trackIndex)
-                    val label = trackDisplayLabel(
+                    val mime = format.sampleMimeType ?: "audio"
+                    val fullLabel = displayTrackLanguage(
                         format.language,
                         format.label,
                         "Audio Track ${audioList.size + 1}"
                     )
-                    val mime = format.sampleMimeType ?: "audio"
                     audioList.add(
                         VideoTrackInfo(
                             id = format.id ?: "$groupIndex-$trackIndex",
-                            label = label,
+                            label = fullLabel,
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
@@ -1109,16 +1092,16 @@ class HiPlayerEngine(
             } else if (group.type == C.TRACK_TYPE_TEXT || group.type == C.TRACK_TYPE_IMAGE) {
                 for (trackIndex in 0 until mediaTrackGroup.length) {
                     val format = mediaTrackGroup.getFormat(trackIndex)
-                    val label = trackDisplayLabel(
+                    val mime = format.sampleMimeType ?: "text"
+                    val fullLabel = displayTrackLanguage(
                         format.language,
                         format.label,
                         "Subtitle ${subtitleList.size + 1}"
                     )
-                    val mime = format.sampleMimeType ?: "text"
                     subtitleList.add(
                         VideoTrackInfo(
                             id = format.id ?: "$groupIndex-$trackIndex",
-                            label = label,
+                            label = fullLabel,
                             language = format.language,
                             mimeType = mime,
                             isSelected = group.isTrackSelected(trackIndex),
