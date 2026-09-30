@@ -1071,7 +1071,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
 
     // Video Technical Telemetry Inspector Dialog
     inspectVideo?.let { video ->
