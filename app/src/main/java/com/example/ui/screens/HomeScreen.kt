@@ -187,6 +187,7 @@ fun HomeScreen(
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
     val showContinueWatching = !isSearchActive &&
         selectedFolder == null &&
+        currentTreeNode == null &&
         continueWatchingVideos.isNotEmpty()
     val currentVideoHeaderOffset = rememberUpdatedState(if (showContinueWatching) 1 else 0)
     val videoListState = rememberLazyListState()
@@ -785,6 +786,13 @@ fun HomeScreen(
             }
 
             // 4. PLAN SHEET CONTENT CANVAS
+            // Keep branch-specific fillMaxSize() lists below the toolbar/header.
+            // A weighted canvas prevents them from drawing underneath the controls.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -1069,6 +1077,7 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
             }
         }
 
