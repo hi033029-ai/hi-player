@@ -227,8 +227,6 @@ fun MusicScreen(
                             val isSelected = libraryMode == option
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(if (isSelected) palette.primary else palette.surfaceElevated)
                                     .clickable { libraryMode = option }
                                     .padding(horizontal = 14.dp, vertical = 8.dp)
                                     .testTag("music_library_category_$option"),
@@ -238,7 +236,7 @@ fun MusicScreen(
                                     text = option,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.Black else palette.textPrimary
+                                    color = if (isSelected) palette.primary else palette.textPrimary
                                 )
                             }
                         }
@@ -257,8 +255,6 @@ fun MusicScreen(
                         val isSelected = selectedFilter == filter
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) palette.primary.copy(alpha = 0.18f) else Color.Transparent)
                                 .clickable { musicViewModel.setFilter(filter) }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                                 .testTag("audio_filter_$filter"),

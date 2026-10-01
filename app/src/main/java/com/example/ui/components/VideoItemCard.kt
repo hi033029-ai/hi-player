@@ -79,17 +79,12 @@ fun VideoItemCard(
     val palette = LocalHiPalette.current
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .testTag("video_card_${video.id}"),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent
-        ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, palette.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .background(if (isSelected) palette.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .testTag("video_card_${video.id}")
     ) {
         Row(
             modifier = Modifier
@@ -409,17 +404,12 @@ fun VideoGridCard(
     val palette = LocalHiPalette.current
     var menuExpanded by remember { mutableStateOf(false) }
 
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .testTag("video_grid_card_${video.id}"),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent
-        ),
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, palette.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .background(if (isSelected) palette.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .testTag("video_grid_card_${video.id}")
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()

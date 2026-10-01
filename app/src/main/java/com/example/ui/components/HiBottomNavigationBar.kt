@@ -76,11 +76,6 @@ fun HiBottomNavigationBar(
     var metrics by remember { mutableStateOf(List(tabs.size) { TabMetrics() }) }
     val activeIndex = tabs.indexOfFirst { it.tab == currentTab }.coerceAtLeast(0)
     val activeMetrics = metrics[activeIndex]
-    val indicatorX by animateDpAsState(
-        targetValue = activeMetrics.center - 11.dp,
-        animationSpec = tween(durationMillis = 300),
-        label = "tab-indicator-x"
-    )
     val progressWidth by animateDpAsState(
         targetValue = (activeMetrics.width * 0.42f).coerceAtLeast(18.dp),
         animationSpec = tween(durationMillis = 300),
@@ -99,16 +94,6 @@ fun HiBottomNavigationBar(
             .background(palette.background)
             .testTag("hi_bottom_navigation_bar")
     ) {
-        // The amber marker floats above the selected player tab.
-        Box(
-            modifier = Modifier
-                .offset(x = indicatorX, y = 0.dp)
-                .size(22.dp)
-                .shadow(12.dp, CircleShape, ambientColor = palette.primary, spotColor = palette.primary)
-                .background(palette.primary, CircleShape)
-                .testTag("nav_active_indicator")
-        )
-
         Column(
             modifier = Modifier
                 .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -118,9 +103,7 @@ fun HiBottomNavigationBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(60.dp)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.primary.copy(alpha = 0.28f), RoundedCornerShape(32.dp)),
+                    .background(palette.surface),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {

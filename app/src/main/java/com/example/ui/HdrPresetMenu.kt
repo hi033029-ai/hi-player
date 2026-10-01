@@ -50,10 +50,10 @@ fun HdrPresetMenu(
             modifier = modifier
                 .fillMaxWidth(0.76f)
                 .widthIn(max = 320.dp)
-                .background(Color.White, RoundedCornerShape(10.dp))
+                .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
-            Text("Customize HDR", color = Color(0xFF111827), fontSize = 10.sp)
+            Text("Customize HDR", color = palette.textPrimary, fontSize = 10.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
@@ -106,14 +106,14 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color(0xFF374151), fontSize = 8.sp)
-                Text("Dark", color = Color(0xFF374151), fontSize = 8.sp)
+                Text("Light", color = palette.textSecondary, fontSize = 8.sp)
+                Text("Dark", color = palette.textSecondary, fontSize = 8.sp)
             }
         }
     } else {
         Row(
             modifier = modifier
-                .background(Color.Black.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.24f))
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
@@ -156,7 +156,7 @@ private fun CustomSlider(
     Column(modifier = modifier) {
         Text(
             text = "$label ${"%.2f".format(value)}",
-            color = Color.Black,
+            color = LocalHiPalette.current.textPrimary,
             fontSize = 8.sp,
         )
         Slider(

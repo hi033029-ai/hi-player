@@ -1081,6 +1081,7 @@ class HiPlayerEngine(
                             label = fullLabel,
                             language = format.language,
                             mimeType = mime,
+                            channelCount = format.channelCount,
                             isSelected = group.isTrackSelected(trackIndex),
                             isSupported = group.isTrackSupported(trackIndex),
                             trackType = group.type,

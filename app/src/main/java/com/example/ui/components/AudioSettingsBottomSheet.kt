@@ -96,27 +96,26 @@ fun AudioSettingsBottomSheet(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     audioTracks.forEach { track ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(
-                                    when {
-                                        track.isSelected -> PickerSurfaceSelected
-                                        !track.isSupported -> PickerSurfaceElevated.copy(alpha = 0.55f)
-                                        else -> PickerSurfaceElevated
-                                    }
-                                )
                                 .clickable(enabled = track.isSupported) { onSelectTrack(track) }
-                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                                .padding(horizontal = 4.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(34.dp)
+                                    .background(if (track.isSelected) PickerTextPrimary else PickerSurfaceElevated)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = track.label,
+                                    text = audioTrackTitle(track),
                                     fontSize = 14.sp,
                                     fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = when {
@@ -124,6 +123,12 @@ fun AudioSettingsBottomSheet(
                                         !track.isSupported -> PickerTextSecondary.copy(alpha = 0.65f)
                                         else -> PickerTextPrimary
                                     }
+                                )
+                                Text(
+                                    text = audioTrackChannelSuffix(track),
+                                    fontSize = 11.sp,
+                                    color = if (track.isSelected) PickerTextSecondary else PickerTextSecondary.copy(alpha = 0.78f),
+                                    modifier = Modifier.padding(top = 2.dp)
                                 )
                                 if (!track.isSupported) {
                                     Text(
@@ -151,5 +156,33 @@ fun AudioSettingsBottomSheet(
 
         }
         }
+    }
+}
+
+private fun audioTrackTitle(track: VideoTrackInfo): String {
+    val label = track.label.trim()
+    if (label.isNotEmpty() && !label.equals("und", ignoreCase = true) && !label.equals("unknown", ignoreCase = true)) {
+        return label
+    }
+    return when (track.language?.lowercase()) {
+        "hi", "hin" -> "Hindi"
+        "en", "eng" -> "English"
+        "ta", "tam" -> "Tamil"
+        "te", "tel" -> "Telugu"
+        "ml", "mal" -> "Malayalam"
+        "kn", "kan" -> "Kannada"
+        "bn", "ben" -> "Bengali"
+        else -> "Audio track"
+    }
+}
+
+private fun audioTrackChannelSuffix(track: VideoTrackInfo): String {
+    return when (track.channelCount) {
+        1 -> "Mono · 1.0"
+        2 -> "Stereo · 2.0"
+        6 -> "Surround · 5.1"
+        8 -> "Surround · 7.1"
+        in 3..5 -> "${track.channelCount} channels"
+        else -> "Audio stream"
     }
 }

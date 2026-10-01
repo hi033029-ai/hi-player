@@ -101,17 +101,11 @@ fun SubtitleCustomizationBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(90.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black)
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp)),
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .background(
-                            Color.Black.copy(alpha = bgOpacity),
-                            RoundedCornerShape(4.dp)
-                        )
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
@@ -157,8 +151,6 @@ fun SubtitleCustomizationBottomSheet(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isSelected) HiPrimaryCyan else HiSurfaceElevated)
                             .clickable {
                                 fontFamily = family
                                 updateStyle(workingConfig.copy(fontFamily = family))
@@ -170,7 +162,7 @@ fun SubtitleCustomizationBottomSheet(
                             text = family,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color.Black else Color.White
+                            color = if (isSelected) HiPrimaryCyan else HiTextPrimary
                         )
                     }
                 }

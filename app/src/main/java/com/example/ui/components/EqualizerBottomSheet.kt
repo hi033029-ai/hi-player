@@ -41,8 +41,8 @@ fun EqualizerBottomSheet(
     Column(
         modifier = modifier
             .fillMaxWidth(0.90f)
+            .background(Color.Black.copy(alpha = 0.26f))
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .background(Color.White.copy(alpha = 0.96f), RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Row(
@@ -68,7 +68,7 @@ fun EqualizerBottomSheet(
         if (selectedPreset == "Custom") {
             Text(
                 text = "Custom equalizer",
-                color = Color.Black,
+                color = palette.textPrimary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
@@ -82,7 +82,7 @@ fun EqualizerBottomSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
-                            color = Color.DarkGray,
+                            color = palette.textSecondary,
                             fontSize = 9.sp,
                             maxLines = 1,
                         )
@@ -99,7 +99,7 @@ fun EqualizerBottomSheet(
                         )
                         Text(
                             text = "%+.1f dB".format(value),
-                            color = Color.Black,
+                            color = palette.textPrimary,
                             fontSize = 9.sp,
                         )
                     }
@@ -118,14 +118,10 @@ private fun PresetChip(
     val palette = LocalHiPalette.current
     Text(
         text = text,
-        color = if (selected) Color.White else Color.Black,
+        color = if (selected) palette.primary else palette.textPrimary,
         fontSize = 11.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier
-            .background(
-                if (selected) palette.primary else Color.Transparent,
-                RoundedCornerShape(8.dp),
-            )
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 8.dp),
     )

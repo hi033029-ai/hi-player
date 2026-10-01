@@ -25,6 +25,8 @@ data class VideoTrackInfo(
     val label: String,
     val language: String?,
     val mimeType: String?,
+    /** Number of audio channels reported by Media3; zero for non-audio tracks. */
+    val channelCount: Int = 0,
     val isSelected: Boolean,
     /** Whether Media3 reports this embedded track as playable on this device. */
     val isSupported: Boolean = true,

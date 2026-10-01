@@ -74,7 +74,7 @@ fun SubtitleSettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = PickerSurface,
+        containerColor = PickerSurface.copy(alpha = 0.96f),
         tonalElevation = 8.dp,
         dragHandle = { BottomSheetDefaults.DragHandle(color = PickerTextSecondary) }
     ) {
@@ -87,8 +87,6 @@ fun SubtitleSettingsBottomSheet(
                 .fillMaxWidth(0.78f)
                 .widthIn(max = 320.dp)
                 .heightIn(max = 560.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(PickerSurface)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 14.dp, vertical = 6.dp)
                 .padding(bottom = 12.dp)
@@ -108,8 +106,10 @@ fun SubtitleSettingsBottomSheet(
                     .fillMaxWidth()
                     .height(38.dp)
                     .testTag("load_external_subtitle_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PickerSurfaceElevated)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = PickerTextPrimary,
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -137,8 +137,10 @@ fun SubtitleSettingsBottomSheet(
                     .fillMaxWidth()
                     .height(38.dp)
                     .testTag("customize_subtitle_appearance_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PickerSurfaceElevated)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = PickerTextPrimary,
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.FormatColorText,
@@ -172,8 +174,6 @@ fun SubtitleSettingsBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (!anySelected) PickerSurfaceSelected else PickerSurfaceElevated)
                     .clickable { onSelectTrack(null) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -211,8 +211,6 @@ fun SubtitleSettingsBottomSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(96.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(PickerSurfaceElevated)
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -231,8 +229,6 @@ fun SubtitleSettingsBottomSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (track.isSelected) PickerSurfaceSelected else PickerSurfaceElevated)
                                 .clickable { onSelectTrack(track) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,

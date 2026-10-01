@@ -47,16 +47,11 @@ fun FolderItemRow(
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Soft rounded Folder Icon matching reference image
+        // Plain folder icon; selection is communicated through theme-colored text.
         Box(
             modifier = Modifier
                 .width(48.dp)
-                .height(40.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    if (palette.isDark) Color(0xFF232B38)
-                    else Color(0xFFE2E8F0)
-                ),
+                .height(40.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(

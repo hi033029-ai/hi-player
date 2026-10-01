@@ -73,6 +73,7 @@ fun PlayerControlsOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.18f))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -96,7 +97,7 @@ fun PlayerControlsOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ControlBg)
+                .background(Color.Black.copy(alpha = 0.18f))
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -109,7 +110,6 @@ fun PlayerControlsOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .padding(horizontal = 6.dp)
-                    .clip(RoundedCornerShape(6.dp))
                     .clickable(enabled = !isHdrSwitching) { onToggleHdr() }
                     .padding(horizontal = 4.dp, vertical = 4.dp),
             ) {
@@ -144,7 +144,7 @@ fun PlayerControlsOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ControlBg)
+                .background(Color.Black.copy(alpha = 0.18f))
                 .padding(horizontal = 12.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -168,7 +168,7 @@ fun PlayerControlsOverlay(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(ControlBg)
+                .background(Color.Black.copy(alpha = 0.18f))
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -182,7 +182,6 @@ fun PlayerControlsOverlay(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .padding(horizontal = 5.dp)
-                        .clip(RoundedCornerShape(6.dp))
                         .combinedClickable(
                             onClick = onAspectRatioTap,
                             onLongClick = onAspectRatioLongPress,
@@ -258,7 +257,6 @@ private fun ControlButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .padding(horizontal = 5.dp)
-            .clip(RoundedCornerShape(6.dp))
             .clickable { onClick() }
             .padding(horizontal = 4.dp, vertical = 4.dp),
     ) {
