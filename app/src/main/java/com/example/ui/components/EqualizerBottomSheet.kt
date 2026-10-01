@@ -92,9 +92,11 @@ fun EqualizerBottomSheet(
                             valueRange = -12f..12f,
                             modifier = Modifier.fillMaxWidth(),
                             colors = SliderDefaults.colors(
-                                thumbColor = palette.primary,
-                                activeTrackColor = palette.primary,
-                                inactiveTrackColor = palette.primary.copy(alpha = 0.28f),
+                                thumbColor = Color.White,
+                                activeTrackColor = Color.White,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.38f),
+                                activeTickColor = Color.White,
+                                inactiveTickColor = Color.White.copy(alpha = 0.55f),
                             ),
                         )
                         Text(

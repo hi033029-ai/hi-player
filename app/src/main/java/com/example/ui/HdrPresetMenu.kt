@@ -167,11 +167,11 @@ private fun CustomSlider(
                 .fillMaxWidth()
                 .height(20.dp),
             colors = SliderDefaults.colors(
-                thumbColor = LocalHiPalette.current.primary,
-                activeTrackColor = LocalHiPalette.current.primary,
-                inactiveTrackColor = LocalHiPalette.current.primary.copy(alpha = 0.28f),
-                activeTickColor = LocalHiPalette.current.primary,
-                inactiveTickColor = LocalHiPalette.current.primary.copy(alpha = 0.38f),
+                thumbColor = Color.White,
+                activeTrackColor = Color.White,
+                inactiveTrackColor = Color.White.copy(alpha = 0.38f),
+                activeTickColor = Color.White,
+                inactiveTickColor = Color.White.copy(alpha = 0.55f),
             ),
         )
     }

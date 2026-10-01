@@ -190,7 +190,7 @@ fun HomeScreen(
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
     val showContinueWatching = !isSearchActive &&
         selectedFolder == null &&
-        currentTreeNode == null &&
+        (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null) &&
         continueWatchingVideos.isNotEmpty()
     val currentVideoHeaderOffset = rememberUpdatedState(if (showContinueWatching) 1 else 0)
     val videoListState = rememberLazyListState()
@@ -842,7 +842,8 @@ fun HomeScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (showContinueWatching) {
                             item {
