@@ -657,7 +657,7 @@ fun HomeScreen(
                             }
                         }
                     }
-                } else {
+                } else if (navMode != LibraryNavMode.FOLDERS) {
                     // Status & Toolbar when in main view
                     Row(
                         modifier = Modifier
@@ -815,7 +815,7 @@ fun HomeScreen(
                 } else if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -875,7 +875,7 @@ fun HomeScreen(
                     EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
                 } else {
                     LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
@@ -978,7 +978,7 @@ fun HomeScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         state = videoGridState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -1034,7 +1034,7 @@ fun HomeScreen(
 
                     LazyColumn(
                         state = videoListState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
