@@ -893,7 +893,10 @@ fun PlayerScreen(
                     onSelectTrack = { playerViewModel.selectAudioTrack(it) },
                     onVolumeBoostChange = { playerViewModel.setVolumeBoost(it) },
                     onAudioDelayChange = { playerViewModel.setAudioDelay(it) },
-                    onDismiss = { playerViewModel.closeSheet() }
+                    onDismiss = { playerViewModel.closeSheet() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 128.dp),
                 )
             }
             ActiveSheet.EQUALIZER -> {

@@ -53,7 +53,7 @@ fun HdrPresetMenu(
                 .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
-            Text("Customize HDR", color = palette.textPrimary, fontSize = 10.sp)
+            Text("Customize HDR", color = Color.White, fontSize = 10.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
@@ -106,8 +106,8 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = palette.textSecondary, fontSize = 8.sp)
-                Text("Dark", color = palette.textSecondary, fontSize = 8.sp)
+                Text("Light", color = Color.White, fontSize = 8.sp)
+                Text("Dark", color = Color.White, fontSize = 8.sp)
             }
         }
     } else {
@@ -120,7 +120,7 @@ fun HdrPresetMenu(
             ColorPresets.ALL.forEach { preset ->
                 Text(
                     text = preset.name,
-                    color = if (preset.name == selected.name) Color.Cyan else Color.White,
+                    color = Color.White,
                     fontSize = 14.sp,
                     modifier = Modifier
                         .clickable { onSelect(preset) }
@@ -129,7 +129,7 @@ fun HdrPresetMenu(
             }
             Text(
                 text = "Customize",
-                color = if (selected.name == ColorPresets.CUSTOM.name) Color.Cyan else Color.White,
+                color = Color.White,
                 fontSize = 14.sp,
                 modifier = Modifier
                     .clickable(onClick = onCustomize)
@@ -156,7 +156,7 @@ private fun CustomSlider(
     Column(modifier = modifier) {
         Text(
             text = "$label ${"%.2f".format(value)}",
-            color = LocalHiPalette.current.textPrimary,
+            color = Color.White,
             fontSize = 8.sp,
         )
         Slider(

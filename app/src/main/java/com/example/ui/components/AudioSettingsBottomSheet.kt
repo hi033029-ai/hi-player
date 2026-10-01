@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,15 +19,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +38,6 @@ private val PickerSurfaceSelected = Color(0xFF383838)
 private val PickerTextPrimary = Color.White
 private val PickerTextSecondary = Color(0xFFBDBDBD)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AudioSettingsBottomSheet(
     audioTracks: List<VideoTrackInfo>,
@@ -52,31 +46,25 @@ fun AudioSettingsBottomSheet(
     onSelectTrack: (VideoTrackInfo) -> Unit,
     onVolumeBoostChange: (Int) -> Unit,
     onAudioDelayChange: (Long) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scrollState = rememberScrollState()
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = PickerSurface,
-        tonalElevation = 8.dp,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = PickerTextSecondary) }
+    Box(
+        modifier = modifier
+            .widthIn(max = 270.dp)
+            .heightIn(max = 260.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color.Black.copy(alpha = 0.94f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.78f)
-                .widthIn(max = 320.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(PickerSurface)
+                .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 14.dp, vertical = 6.dp)
-                .padding(bottom = 12.dp)
+                .padding(bottom = 2.dp)
         ) {
             Text(
                 text = "Audio Language",
@@ -127,7 +115,7 @@ fun AudioSettingsBottomSheet(
                                 Text(
                                     text = audioTrackChannelSuffix(track),
                                     fontSize = 11.sp,
-                                    color = if (track.isSelected) PickerTextSecondary else PickerTextSecondary.copy(alpha = 0.78f),
+                                    color = PickerTextPrimary,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                                 if (!track.isSupported) {
@@ -154,7 +142,6 @@ fun AudioSettingsBottomSheet(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-        }
         }
     }
 }

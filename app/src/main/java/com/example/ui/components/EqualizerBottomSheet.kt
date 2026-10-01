@@ -68,7 +68,7 @@ fun EqualizerBottomSheet(
         if (selectedPreset == "Custom") {
             Text(
                 text = "Custom equalizer",
-                color = palette.textPrimary,
+                color = Color.White,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
@@ -82,7 +82,7 @@ fun EqualizerBottomSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
-                            color = palette.textSecondary,
+                            color = Color.White,
                             fontSize = 9.sp,
                             maxLines = 1,
                         )
@@ -99,7 +99,7 @@ fun EqualizerBottomSheet(
                         )
                         Text(
                             text = "%+.1f dB".format(value),
-                            color = palette.textPrimary,
+                            color = Color.White,
                             fontSize = 9.sp,
                         )
                     }
@@ -118,7 +118,7 @@ private fun PresetChip(
     val palette = LocalHiPalette.current
     Text(
         text = text,
-        color = if (selected) palette.primary else palette.textPrimary,
+        color = Color.White,
         fontSize = 11.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier
