@@ -799,6 +799,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight()
+                    .padding(top = 28.dp)
             ) {
             if (isLoading) {
                 Box(

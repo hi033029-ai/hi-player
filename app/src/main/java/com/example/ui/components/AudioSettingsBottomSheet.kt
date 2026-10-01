@@ -53,11 +53,11 @@ fun AudioSettingsBottomSheet(
 
     Box(
         modifier = modifier
-            .widthIn(max = 270.dp)
-            .heightIn(max = 260.dp)
+            .widthIn(max = 220.dp)
+            .heightIn(max = 205.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(Color.Black.copy(alpha = 0.94f))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 9.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -68,11 +68,11 @@ fun AudioSettingsBottomSheet(
         ) {
             Text(
                 text = "Audio Language",
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = PickerTextPrimary
             )
-            Spacer(modifier = Modifier.height(5.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             // AUDIO LANGUAGE LIST - this is the primary purpose of the sheet,
             // so it leads and is no longer buried below decorative controls.
@@ -84,27 +84,27 @@ fun AudioSettingsBottomSheet(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     audioTracks.forEach { track ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable(enabled = track.isSupported) { onSelectTrack(track) }
-                                .padding(horizontal = 4.dp, vertical = 8.dp),
+                                .padding(horizontal = 2.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
-                                    .height(34.dp)
+                                    .height(26.dp)
                                     .background(if (track.isSelected) PickerTextPrimary else PickerSurfaceElevated)
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(7.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = audioTrackTitle(track),
-                                    fontSize = 14.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = if (track.isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = when {
                                         track.isSelected -> PickerTextPrimary
@@ -114,14 +114,14 @@ fun AudioSettingsBottomSheet(
                                 )
                                 Text(
                                     text = audioTrackChannelSuffix(track),
-                                    fontSize = 11.sp,
+                                    fontSize = 9.sp,
                                     color = PickerTextPrimary,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                                 if (!track.isSupported) {
                                     Text(
                                         text = "— unsupported on this device",
-                                        fontSize = 12.sp,
+                                        fontSize = 9.sp,
                                         color = PickerTextSecondary.copy(alpha = 0.72f),
                                         modifier = Modifier.padding(top = 3.dp)
                                     )

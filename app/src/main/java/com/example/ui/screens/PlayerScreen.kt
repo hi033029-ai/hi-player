@@ -338,6 +338,15 @@ fun PlayerScreen(
         }
     }
 
+    LaunchedEffect(activeSheet) {
+        if (activeSheet == ActiveSheet.AUDIO_SETTINGS) {
+            delay(5_000)
+            if (activeSheet == ActiveSheet.AUDIO_SETTINGS) {
+                playerViewModel.closeSheet()
+            }
+        }
+    }
+
     LaunchedEffect(showSpeedOverlay, playbackSpeed) {
         if (showSpeedOverlay) {
             delay(900)
@@ -782,7 +791,13 @@ fun PlayerScreen(
                 playerViewModel.refreshCaptionTracks()
                 playerViewModel.openSheet(ActiveSheet.SUBTITLE_SETTINGS)
             },
-            onOpenAudioSettings = { playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS) },
+            onOpenAudioSettings = {
+                if (activeSheet == ActiveSheet.AUDIO_SETTINGS) {
+                    playerViewModel.closeSheet()
+                } else {
+                    playerViewModel.openSheet(ActiveSheet.AUDIO_SETTINGS)
+                }
+            },
             onOpenEqualizer = {
                 equalizerInteractionTick++
                 if (activeSheet == ActiveSheet.EQUALIZER) {
@@ -890,7 +905,10 @@ fun PlayerScreen(
                     audioTracks = availableAudioTracks,
                     volumeBoostPercent = volumeBoostPercent,
                     audioDelayMs = audioDelayMs,
-                    onSelectTrack = { playerViewModel.selectAudioTrack(it) },
+                    onSelectTrack = {
+                        playerViewModel.selectAudioTrack(it)
+                        playerViewModel.closeSheet()
+                    },
                     onVolumeBoostChange = { playerViewModel.setVolumeBoost(it) },
                     onAudioDelayChange = { playerViewModel.setAudioDelay(it) },
                     onDismiss = { playerViewModel.closeSheet() },
