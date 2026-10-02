@@ -279,36 +279,6 @@ fun HomeScreen(
                 title = {
                     if (selectionMode) {
                         Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold)
-                    } else if (isSearchActive) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { libraryViewModel.setSearchQuery(it) },
-                            placeholder = {
-                                Text(
-                                    "Search plan sheet items, codecs, folders...",
-                                    color = palette.textSecondary,
-                                    fontSize = 13.sp
-                                )
-                            },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = palette.textPrimary,
-                                unfocusedTextColor = palette.textPrimary,
-                                focusedBorderColor = palette.primary,
-                                unfocusedBorderColor = palette.surfaceBorder
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("search_text_field"),
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { libraryViewModel.setSearchQuery("") }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = palette.textSecondary)
-                                    }
-                                }
-                            }
-                        )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             com.example.ui.components.HiPlayerLogoBadge(
@@ -341,16 +311,6 @@ fun HomeScreen(
                             Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
                         }
                     } else {
-                        IconButton(
-                            onClick = { onSearchRequested?.invoke() ?: run { isSearchActive = !isSearchActive } },
-                            modifier = Modifier.testTag("toggle_search_button")
-                        ) {
-                            Icon(
-                                imageVector = if (isSearchActive) Icons.Default.Clear else Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = palette.textPrimary
-                            )
-                        }
                         IconButton(
                             onClick = { libraryViewModel.refreshVideos() },
                             modifier = Modifier.testTag("refresh_videos_button")
@@ -400,6 +360,71 @@ fun HomeScreen(
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
                 )
+            }
+            if (!selectionMode) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(palette.surface),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .widthIn(min = 250.dp, max = 360.dp)
+                                .height(48.dp)
+                                .clickable { isSearchActive = true }
+                                .testTag("search_video_card"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                            border = BorderStroke(1.dp, palette.surfaceBorder),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                        ) {
+                            if (isSearchActive) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { libraryViewModel.setSearchQuery(it) },
+                                    placeholder = {
+                                        Text("Search video here", color = palette.textSecondary, fontSize = 13.sp)
+                                    },
+                                    singleLine = true,
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Search, contentDescription = null, tint = palette.textSecondary)
+                                    },
+                                    trailingIcon = {
+                                        IconButton(onClick = {
+                                            libraryViewModel.setSearchQuery("")
+                                            isSearchActive = false
+                                        }) {
+                                            Icon(Icons.Default.Clear, contentDescription = "Close search", tint = palette.textSecondary)
+                                        }
+                                    },
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = palette.textPrimary,
+                                        unfocusedTextColor = palette.textPrimary,
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent
+                                    ),
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, tint = palette.textSecondary)
+                                    Text("Search video here", color = palette.textSecondary, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             // UNIFIED PLAN SHEET HEADER & HORIZONTAL FILTER TABS
             Column(
