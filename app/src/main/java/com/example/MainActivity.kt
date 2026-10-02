@@ -245,7 +245,8 @@ class MainActivity : ComponentActivity() {
                                     containerColor = palette.background,
                                     topBar = {
                                         HiPlayerHeader(
-                                            onSearchClick = { showGlobalSearchDialog = true },
+                                            showSearch = false,
+                                            onSearchClick = null,
                                             onRefreshClick = {
                                                 libraryViewModel.refreshVideos()
                                                 musicViewModel.loadAudioTracks()

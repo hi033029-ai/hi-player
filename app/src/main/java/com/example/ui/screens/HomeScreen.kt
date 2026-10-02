@@ -188,7 +188,7 @@ fun HomeScreen(
         libraryViewModel.applySavedVideoOrder(filteredVideos)
     }
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
-    val showContinueWatching = !isSearchActive &&
+    val showContinueWatching = searchQuery.isBlank() &&
         selectedFolder == null &&
         (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null) &&
         continueWatchingVideos.isNotEmpty()
@@ -815,16 +815,13 @@ fun HomeScreen(
                         }
                     }
                 }
-            }
-
             // 4. PLAN SHEET CONTENT CANVAS
             // Keep branch-specific fillMaxSize() lists below the toolbar/header.
             // A weighted canvas prevents them from drawing underneath the controls.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight()
-                    .padding(top = 28.dp)
+                    .weight(1f)
             ) {
             if (isLoading) {
                 Box(
@@ -833,7 +830,11 @@ fun HomeScreen(
                 ) {
                     CircularProgressIndicator(color = palette.primary)
                 }
-            } else if (navMode == LibraryNavMode.FOLDERS && selectedFolder == null) {
+            } else if (
+                navMode == LibraryNavMode.FOLDERS &&
+                    selectedFolder == null &&
+                    searchQuery.isBlank()
+            ) {
                 // CLEAN FOLDER SYSTEM VIEW (Matching User's Reference Image)
                 if (folders.isEmpty()) {
                     EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
@@ -1111,6 +1112,7 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
             }
             }
         }
