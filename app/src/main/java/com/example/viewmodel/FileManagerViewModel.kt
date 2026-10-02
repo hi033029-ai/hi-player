@@ -38,7 +38,18 @@ import java.util.concurrent.atomic.AtomicLong
 
 class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
 
-    data class DeleteProgress(val total: Int, val completed: Int, val failed: Int)
+    data class DeleteProgress(
+        val total: Int,
+        val completed: Int,
+        val failed: Int,
+        val currentItemName: String? = null
+    )
+
+    data class ExtractionProgress(
+        val total: Int,
+        val completed: Int,
+        val currentItemName: String? = null
+    )
     data class RecycleBinItem(
         val id: String,
         val name: String,
@@ -50,6 +61,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private var periodicRefreshJob: Job? = null
     private var deleteJob: Job? = null
+    private var libraryScanJob: Job? = null
 
     val rootDir: File = Environment.getExternalStorageDirectory() ?: File("/storage/emulated/0")
 
@@ -95,7 +107,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedArchive = MutableStateFlow<FileItem?>(null)
     val selectedArchive = _selectedArchive.asStateFlow()
 
-    private val _extractingProgress = MutableStateFlow<Float?>(null)
+    private val _extractingProgress = MutableStateFlow<ExtractionProgress?>(null)
     val extractingProgress = _extractingProgress.asStateFlow()
 
     private val _archiveAwaitingDestination = MutableStateFlow<FileItem?>(null)
@@ -257,13 +269,26 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
         deleteJob?.cancel()
-        _deleteProgress.value = DeleteProgress(safeItems.size, 0, 0)
+        _deleteProgress.value = DeleteProgress(
+            total = safeItems.size,
+            completed = 0,
+            failed = 0,
+            currentItemName = safeItems.firstOrNull()?.name
+        )
         deleteJob = viewModelScope.launch(Dispatchers.IO) {
             recycleBinRoot.mkdirs()
             var completed = 0
             var failed = 0
             val movedPaths = mutableSetOf<String>()
             safeItems.forEach { item ->
+                withContext(Dispatchers.Main) {
+                    _deleteProgress.value = DeleteProgress(
+                        total = safeItems.size,
+                        completed = completed,
+                        failed = failed,
+                        currentItemName = item.name
+                    )
+                }
                 try {
                     if (moveItemToRecycleBin(item)) {
                         completed++
@@ -275,7 +300,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 val processed = completed + failed
                 if (processed == safeItems.size || processed % 4 == 0) {
                     withContext(Dispatchers.Main) {
-                        _deleteProgress.value = DeleteProgress(safeItems.size, completed, failed)
+                        _deleteProgress.value = DeleteProgress(
+                            total = safeItems.size,
+                            completed = completed,
+                            failed = failed,
+                            currentItemName = item.name
+                        )
                     }
                 }
             }
@@ -287,7 +317,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     else -> "Moved $completed to Recycle Bin, failed $failed"
                 }
                 deselectAll()
-                refreshAll()
+                refreshCurrentDirectory(silent = true)
                 refreshRecycleBin()
                 onComplete(movedPaths)
             }
@@ -323,7 +353,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _selectedRecycleBinIds.value = emptySet()
                 _deleteResultMessage.value = "Restored $restored item${if (restored == 1) "" else "s"}"
                 refreshRecycleBin()
-                refreshAll()
+                refreshCurrentDirectory(silent = true)
             }
         }
     }
@@ -442,7 +472,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         deleteJob = null
         _deleteProgress.value = null
         _deleteResultMessage.value = "Deletion cancelled"
-        refreshAll(silent = true)
+        refreshCurrentDirectory(silent = true)
     }
 
     private fun isDirectChildOfCurrentDirectory(file: File): Boolean {
@@ -489,7 +519,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 } else {
                     "Couldn't rename ${item.name}"
                 }
-                if (renamed) refreshAll()
+                if (renamed) refreshCurrentDirectory(silent = true)
             }
         }
     }
@@ -500,7 +530,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         periodicRefreshJob = viewModelScope.launch {
             while (isActive) {
                 delay(5_000L)
-                refreshAll(silent = true)
+                // Keep downloaded and growing files visible without repeatedly
+                // walking the whole device for archives and documents.
+                refreshCurrentDirectory(silent = true)
             }
         }
     }
@@ -508,12 +540,20 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     override fun onCleared() {
         periodicRefreshJob?.cancel()
         periodicRefreshJob = null
+        libraryScanJob?.cancel()
+        libraryScanJob = null
         super.onCleared()
     }
 
-    fun refreshAll(silent: Boolean = false) {
+    /** Reloads only the active directory. Safe for periodic and post-operation use. */
+    fun refreshCurrentDirectory(silent: Boolean = false) {
         calculateStorageInfo()
         loadDirectory(_currentDirectory.value, showLoading = !silent)
+    }
+
+    /** Explicit full refresh for archive/document discovery and storage state. */
+    fun refreshAll(silent: Boolean = false) {
+        refreshCurrentDirectory(silent)
         scanDeviceArchivesAndDocuments()
     }
 
@@ -734,16 +774,15 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun scanDeviceArchivesAndDocuments() {
         val generation = libraryScanGeneration.incrementAndGet()
-        viewModelScope.launch(Dispatchers.IO) {
+        libraryScanJob?.cancel()
+        libraryScanJob = viewModelScope.launch(Dispatchers.IO) {
             val archives = mutableListOf<FileItem>()
             val docs = mutableListOf<FileItem>()
 
-            // Scan common directories: Root storage, Download, Documents, DCIM, etc.
-            // Depth increased from 3 -> 5 and a couple more common locations added
-            // (WhatsApp/Telegram media folders are common places for zip files to
-            // land) so archives further down the folder structure are still found.
+            // Scan the locations people use for archives and documents. Avoid a
+            // recursive root-storage crawl: it overlaps these paths and makes a
+            // full scan disproportionately expensive on large phones.
             val searchDirs = listOf(
-                rootDir,
                 File(rootDir, "Download"),
                 File(rootDir, "Documents"),
                 File(rootDir, "DCIM"),
@@ -941,22 +980,38 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun extractArchiveInternal(item: FileItem, context: Context, targetDir: File) {
         viewModelScope.launch {
-            _extractingProgress.value = 0.05f
+            val totalFiles = withContext(Dispatchers.IO) { countArchiveFiles(item.file) }
+            _extractingProgress.value = ExtractionProgress(
+                total = totalFiles,
+                completed = 0,
+                currentItemName = item.name
+            )
             val success = withContext(Dispatchers.IO) {
                 try {
                     val baseName = item.name.substringBeforeLast(".")
-                    val destDir = File(targetDir, "${baseName}_extracted")
+                    val destDir = uniqueExtractionDirectory(targetDir, baseName)
                     if (!destDir.exists()) destDir.mkdirs()
 
                     if (item.name.lowercase(Locale.ROOT).endsWith(".zip") || item.name.lowercase(Locale.ROOT).endsWith(".apk")) {
                         val buffer = ByteArray(8192)
+                        var completed = 0
+                        val destinationRoot = destDir.canonicalFile
                         ZipInputStream(BufferedInputStream(FileInputStream(item.file))).use { zis ->
                             var entry: ZipEntry? = zis.nextEntry
                             while (entry != null) {
                                 val outFile = File(destDir, entry.name)
+                                val canonicalOutput = outFile.canonicalFile
+                                if (!canonicalOutput.path.startsWith(destinationRoot.path + File.separator)) {
+                                    throw SecurityException("Archive entry escapes destination")
+                                }
                                 if (entry.isDirectory) {
                                     outFile.mkdirs()
                                 } else {
+                                    _extractingProgress.value = ExtractionProgress(
+                                        total = totalFiles,
+                                        completed = completed,
+                                        currentItemName = entry.name
+                                    )
                                     outFile.parentFile?.mkdirs()
                                     FileOutputStream(outFile).use { fos ->
                                         BufferedOutputStream(fos).use { bos ->
@@ -966,6 +1021,12 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                                             }
                                         }
                                     }
+                                    completed++
+                                    _extractingProgress.value = ExtractionProgress(
+                                        total = totalFiles,
+                                        completed = completed,
+                                        currentItemName = entry.name
+                                    )
                                 }
                                 zis.closeEntry()
                                 entry = zis.nextEntry
@@ -975,6 +1036,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     } else {
                         // Create extract directory marker for non-zip
                         destDir.mkdirs()
+                        _extractingProgress.value = ExtractionProgress(
+                            total = 1,
+                            completed = 1,
+                            currentItemName = item.name
+                        )
                         true
                     }
                 } catch (e: Exception) {
@@ -986,11 +1052,37 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _extractingProgress.value = null
             if (success) {
                 Toast.makeText(context, "Successfully extracted archive!", Toast.LENGTH_SHORT).show()
-                refreshAll()
+                refreshCurrentDirectory(silent = true)
             } else {
                 Toast.makeText(context, "Extraction completed with system viewer", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun countArchiveFiles(file: File): Int = runCatching {
+        if (!file.name.endsWith(".zip", ignoreCase = true) && !file.name.endsWith(".apk", ignoreCase = true)) {
+            1
+        } else {
+            ZipFile(file).use { zip ->
+                val entries = zip.entries()
+                var count = 0
+                while (entries.hasMoreElements()) {
+                    if (!entries.nextElement().isDirectory) count++
+                }
+                count
+            }
+        }
+    }.getOrDefault(0)
+
+    private fun uniqueExtractionDirectory(parent: File, baseName: String): File {
+        val cleanBaseName = baseName.ifBlank { "Extracted files" }
+        var candidate = File(parent, cleanBaseName)
+        var index = 2
+        while (candidate.exists()) {
+            candidate = File(parent, "$cleanBaseName ($index)")
+            index++
+        }
+        return candidate
     }
 
     fun openDocument(item: FileItem, context: Context) {

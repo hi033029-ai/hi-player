@@ -383,13 +383,20 @@ class HiPlayerEngine(
                 }
                 return
             }
-            if (retryUri != null && isGrowingDownloadUri(retryUri) && growingRetryAttempts < 30) {
-                growingRetryAttempts += 1
-                val retryPosition = exoPlayer?.currentPosition ?: 0L
-                growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
-                    delay(1500L)
-                    prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+            if (retryUri != null && isGrowingDownloadUri(retryUri)) {
+                if (isLikelyStreamableGrowingContainer(retryUri) &&
+                    DownloadingFilesRegistry.isActivelyGrowing(retryUri.path.orEmpty()) &&
+                    growingRetryAttempts < 10
+                ) {
+                    growingRetryAttempts += 1
+                    val retryPosition = exoPlayer?.currentPosition ?: 0L
+                    growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
+                        delay(1500L)
+                        prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                    }
+                    return
                 }
+                _playerError.value = incompleteDownloadMessage(retryUri)
                 return
             }
             val cause = error.cause
@@ -801,10 +808,34 @@ class HiPlayerEngine(
         return growingDownloadSuffixes.any { name.endsWith(it) }
     }
 
+    private fun isLikelyStreamableGrowingContainer(uri: Uri): Boolean {
+        val name = uri.lastPathSegment?.lowercase().orEmpty()
+        val withoutDownloadSuffix = growingDownloadSuffixes
+            .firstOrNull { name.endsWith(it) }
+            ?.let(name::removeSuffix)
+            ?: name
+        return withoutDownloadSuffix.endsWith(".mkv") ||
+            withoutDownloadSuffix.endsWith(".webm") ||
+            withoutDownloadSuffix.endsWith(".ts")
+    }
+
+    private fun incompleteDownloadMessage(uri: Uri): String {
+        return if (isLikelyStreamableGrowingContainer(uri)) {
+            "This download has not received playable data yet. Keep the download running and try again shortly."
+        } else {
+            "This video is still downloading. Standard MP4 files need their final metadata before they can play; wait for the download to finish."
+        }
+    }
+
     private class GrowingFileDataSource(private val path: String) : DataSource {
+        private companion object {
+            const val RETRY_DELAY_MS = 250L
+        }
+
         private var file: RandomAccessFile? = null
         private var position = 0L
         private var opened = false
+        private var lastKnownLength = 0L
 
         override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) = Unit
 
@@ -813,15 +844,20 @@ class HiPlayerEngine(
             position = dataSpec.position
             file?.seek(position)
             opened = true
+            lastKnownLength = file?.length() ?: 0L
+            DownloadingFilesRegistry.markDownloading(path, lastKnownLength)
             return C.LENGTH_UNSET.toLong()
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (!opened) return C.RESULT_END_OF_INPUT
             if (length == 0) return 0
-            val deadline = System.currentTimeMillis() + 45_000L
             while (true) {
                 val currentLength = file?.length() ?: return C.RESULT_END_OF_INPUT
+                if (currentLength > lastKnownLength) {
+                    lastKnownLength = currentLength
+                    DownloadingFilesRegistry.markDownloading(path, currentLength)
+                }
                 if (position < currentLength) {
                     file?.seek(position)
                     val available = minOf(length.toLong(), currentLength - position).toInt()
@@ -831,10 +867,13 @@ class HiPlayerEngine(
                         return read
                     }
                 }
-                val stillWriting = DownloadingFilesRegistry.isDownloading(path) ||
-                    growingDownloadSuffixes.any { path.lowercase().endsWith(it) }
-                if (!stillWriting || System.currentTimeMillis() >= deadline) return C.RESULT_END_OF_INPUT
-                Thread.sleep(250L)
+                // The source remains open-ended while the download is receiving
+                // bytes. At the current EOF, wait briefly and re-stat rather
+                // than throwing an unexpected-EOF error.
+                if (!DownloadingFilesRegistry.isActivelyGrowing(path)) {
+                    return C.RESULT_END_OF_INPUT
+                }
+                Thread.sleep(RETRY_DELAY_MS)
             }
         }
 

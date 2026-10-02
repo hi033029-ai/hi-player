@@ -227,7 +227,7 @@ fun FileManagerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 hasFullStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
-                fileManagerViewModel.refreshAll()
+                fileManagerViewModel.refreshCurrentDirectory(silent = true)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -995,8 +995,26 @@ fun FileManagerScreen(
             title = { Text("Deleting files", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("Deleted ${progress.completed} of ${progress.total}", color = palette.textPrimary)
-                    Text("Remaining: $remaining", color = palette.textSecondary, fontSize = 13.sp)
+                    Text(
+                        text = "${progress.completed + progress.failed} of ${progress.total} processed",
+                        color = palette.textPrimary
+                    )
+                    Text(
+                        text = "Remaining: $remaining",
+                        color = palette.textSecondary,
+                        fontSize = 13.sp
+                    )
+                    progress.currentItemName?.let { name ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = name,
+                            color = palette.primary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
                     LinearProgressIndicator(
                         progress = { if (progress.total == 0) 1f else (progress.completed + progress.failed).toFloat() / progress.total },
@@ -2305,7 +2323,7 @@ private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third:
 fun ArchiveInspectorBottomSheet(
     archive: FileItem,
     entries: List<ArchiveEntryInfo>?,
-    extractingProgress: Float?,
+    extractingProgress: FileManagerViewModel.ExtractionProgress?,
     onDismiss: () -> Unit,
     onExtract: () -> Unit
 ) {
@@ -2375,15 +2393,34 @@ fun ArchiveInspectorBottomSheet(
 
             // Extraction status or action
             if (extractingProgress != null) {
+                val remaining = (extractingProgress.total - extractingProgress.completed).coerceAtLeast(0)
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Extracting archive...",
+                        text = "Extracting ${extractingProgress.completed} of ${extractingProgress.total}",
                         color = palette.primary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                    Text(
+                        text = "Remaining: $remaining",
+                        color = palette.textSecondary,
+                        fontSize = 11.sp
+                    )
+                    extractingProgress.currentItemName?.let { name ->
+                        Text(
+                            text = name,
+                            color = palette.textPrimary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     LinearProgressIndicator(
+                        progress = {
+                            if (extractingProgress.total == 0) 0f
+                            else extractingProgress.completed.toFloat() / extractingProgress.total
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)

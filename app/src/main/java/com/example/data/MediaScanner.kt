@@ -139,7 +139,7 @@ object MediaScanner {
                     val extension = originalName.substringAfterLast('.', "").lowercase()
                     if (extension !in videoExtensions || !knownPaths.add(file.absolutePath)) return@mapNotNull null
 
-                    DownloadingFilesRegistry.markDownloading(file.absolutePath)
+                    DownloadingFilesRegistry.markDownloading(file.absolutePath, file.length())
 
                     VideoItem(
                         id = file.absolutePath.hashCode().toLong(),
