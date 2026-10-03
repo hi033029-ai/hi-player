@@ -990,6 +990,11 @@ fun FileManagerScreen(
 
     deleteProgress?.let { progress ->
         val remaining = (progress.total - progress.completed - progress.failed).coerceAtLeast(0)
+        val progressFraction = if (progress.totalBytes > 0L) {
+            (progress.processedBytes.toFloat() / progress.totalBytes.toFloat()).coerceIn(0f, 1f)
+        } else if (progress.total > 0) {
+            (progress.completed + progress.failed).toFloat() / progress.total
+        } else 0f
         AlertDialog(
             onDismissRequest = { fileManagerViewModel.cancelDelete() },
             title = { Text("Deleting files", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
@@ -1004,6 +1009,13 @@ fun FileManagerScreen(
                         color = palette.textSecondary,
                         fontSize = 13.sp
                     )
+                    if (progress.totalBytes > 0L) {
+                        Text(
+                            text = "${formatRecycleBinSize(progress.processedBytes)} of ${formatRecycleBinSize(progress.totalBytes)}",
+                            color = palette.textSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
                     progress.currentItemName?.let { name ->
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
@@ -1017,7 +1029,7 @@ fun FileManagerScreen(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     LinearProgressIndicator(
-                        progress = { if (progress.total == 0) 1f else (progress.completed + progress.failed).toFloat() / progress.total },
+                        progress = { progressFraction },
                         modifier = Modifier.fillMaxWidth(),
                         color = palette.primary
                     )
