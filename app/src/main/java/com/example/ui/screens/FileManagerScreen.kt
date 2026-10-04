@@ -2137,8 +2137,8 @@ fun FolderItemCard(
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("folder_card_${folder.name}"),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else palette.surfaceElevated),
         border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
@@ -2243,8 +2243,8 @@ fun GenericFileItemCard(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else palette.surfaceElevated),
         border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
         elevation = CardDefaults.cardElevation(0.dp)
     ) {

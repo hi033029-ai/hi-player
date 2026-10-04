@@ -135,7 +135,7 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
                 border = null,
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
@@ -198,7 +198,7 @@ fun SettingsScreen(
             SettingsSectionHeader(title = "Text Size", accentColor = palette.primary)
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
                 border = null,
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
@@ -245,7 +245,7 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     HwAccelerationMode.entries.forEach { hwMode ->
@@ -304,7 +304,7 @@ fun SettingsScreen(
 
             Card(
                 shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     SettingsSwitchItem(

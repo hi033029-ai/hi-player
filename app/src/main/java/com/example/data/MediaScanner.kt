@@ -113,7 +113,15 @@ object MediaScanner {
             e.printStackTrace()
         }
 
-        videoList += scanPartialDownloadVideos(videoList)
+        // A pending file can already be indexed by MediaStore with zero
+        // duration. Replace that ordinary row with the growing-file entry so
+        // the Video Library keeps its partial-download state and file URI.
+        val partialItems = scanPartialDownloadVideos(videoList)
+        val partialPaths = partialItems.map { it.path }.filter(String::isNotEmpty).toSet()
+        if (partialPaths.isNotEmpty()) {
+            videoList.removeAll { it.path in partialPaths }
+        }
+        videoList += partialItems
 
         // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
         if (videoList.isEmpty()) {
@@ -137,7 +145,12 @@ object MediaScanner {
                     val suffix = partialDownloadSuffixes.firstOrNull { lowerName.endsWith(it) } ?: return@mapNotNull null
                     val originalName = file.name.dropLast(suffix.length)
                     val extension = originalName.substringAfterLast('.', "").lowercase()
-                    if (extension !in videoExtensions || !knownPaths.add(file.absolutePath)) return@mapNotNull null
+                    if (extension !in videoExtensions) return@mapNotNull null
+
+                    // MediaStore may already contain this temporary path. The
+                    // partial entry must win because it carries the growing
+                    // URI and isPartialDownload=true.
+                    knownPaths.add(file.absolutePath)
 
                     DownloadingFilesRegistry.markDownloading(file.absolutePath, file.length())
 
@@ -146,9 +159,9 @@ object MediaScanner {
                         uri = Uri.fromFile(file),
                         title = originalName,
                         // The container index may not exist until the download
-                        // finishes. Keep this distinct from a real zero-length
-                        // video so duration sorting and UI filters do not hide it.
-                        durationMs = -1L,
+                        // finishes. The explicit partial flag, not duration,
+                        // controls its library visibility and UI treatment.
+                        durationMs = 0L,
                         sizeBytes = file.length(),
                         mimeType = "video/$extension",
                         dateAdded = file.lastModified() / 1000L,

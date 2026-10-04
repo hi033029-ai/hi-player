@@ -82,8 +82,9 @@ fun VideoItemCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) palette.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .testTag("video_card_${video.id}")
     ) {
         Row(
@@ -407,8 +408,9 @@ fun VideoGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) palette.primary.copy(alpha = 0.10f) else Color.Transparent)
+            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .testTag("video_grid_card_${video.id}")
     ) {
         Column(
