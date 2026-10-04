@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
                             musicViewModel.loadAudioTracks()
                         },
                         onSkip = {
-                            libraryViewModel.setThemeMode(com.example.data.AppThemeMode.OCEAN_NIGHT_DARK)
+                            libraryViewModel.setThemeMode(com.example.data.AppThemeMode.CYAN_NEON_DARK)
                             libraryViewModel.setUiTextSize(14)
                             completeFirstLaunchAfterPermission = true
                             isShowingSplash = false
