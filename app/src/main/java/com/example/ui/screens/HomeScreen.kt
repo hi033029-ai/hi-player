@@ -452,93 +452,60 @@ fun HomeScreen(
             // narrow phones and intentionally disappear while the library content scrolls.
             if (selectedFolder == null && searchQuery.isBlank() && !isLibraryContentScrolled) {
                 val navOptions = listOf(
+                    Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
                     Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
                     Triple(LibraryNavMode.TREE_FOLDERS, "Tree Folders (${folders.size})", Icons.Default.FolderOpen),
-                    Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
                     Triple(LibraryNavMode.FAVORITES, "Favorites (${filteredVideos.count { it.isFavorite }})", Icons.Default.Star)
                 )
-                LazyRow(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(palette.surface),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(navOptions, key = { it.first.name }) { option ->
-                        val (mode, label, icon) = option
-                        val selected = navMode == mode
-                        Row(
-                            modifier = Modifier
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(if (selected) palette.primary else palette.surfaceElevated)
-                                .clickable {
-                                    libraryViewModel.selectFolder(null)
-                                    libraryViewModel.setNavMode(mode)
-                                }
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = label,
-                                tint = if (selected) {
-                                    if (palette.isDark) Color.Black else Color.White
-                                } else palette.textSecondary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = label,
-                                color = if (selected) {
-                                    if (palette.isDark) Color.Black else Color.White
-                                } else palette.textPrimary,
-                                fontSize = 11.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                    item {
-                        IconButton(
-                            onClick = { libraryViewModel.toggleViewMode() },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                                contentDescription = "Toggle view",
-                                tint = palette.textSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    item {
-                        Box {
-                            IconButton(
-                                onClick = { sortMenuExpanded = true },
-                                modifier = Modifier.size(34.dp)
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(navOptions, key = { it.first.name }) { option ->
+                            val (mode, label, icon) = option
+                            val selected = navMode == mode
+                            Row(
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(if (selected) palette.primary else palette.surfaceElevated)
+                                    .clickable {
+                                        libraryViewModel.selectFolder(null)
+                                        libraryViewModel.setNavMode(mode)
+                                    }
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sort,
-                                    contentDescription = "Sort videos",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Icon(icon, contentDescription = label, tint = if (selected) Color.White else palette.textSecondary, modifier = Modifier.size(15.dp))
+                                Text(label, color = if (selected) Color.White else palette.textPrimary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
                             }
-                            DropdownMenu(
-                                expanded = sortMenuExpanded,
-                                onDismissRequest = { sortMenuExpanded = false },
-                                modifier = Modifier.background(palette.surfaceElevated)
-                            ) {
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .background(palette.surface)
+                            .padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { libraryViewModel.toggleViewMode() }, modifier = Modifier.size(34.dp)) {
+                            Icon(if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList, "Toggle view", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
+                        }
+                        Box {
+                            IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(34.dp)) {
+                                Icon(Icons.Default.Sort, "Sort videos", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
+                            }
+                            DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(palette.surfaceElevated)) {
                                 VideoSortOption.entries.forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(option.displayName, color = palette.textPrimary) },
-                                        onClick = {
-                                            sortMenuExpanded = false
-                                            libraryViewModel.setSortOption(option)
-                                        }
-                                    )
+                                    DropdownMenuItem(text = { Text(option.displayName, color = palette.textPrimary) }, onClick = { sortMenuExpanded = false; libraryViewModel.setSortOption(option) })
                                 }
                             }
                         }

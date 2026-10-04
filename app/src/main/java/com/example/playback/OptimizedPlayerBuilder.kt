@@ -7,7 +7,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.FileDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -89,28 +88,26 @@ object OptimizedPlayerBuilder {
         }
     }
 
+    /** Route local files through the growing-file source; keep normal handling for remote/content URIs. */
+    private fun dataSourceFactory(context: Context): DataSource.Factory =
+        DefaultDataSource.Factory(
+            context,
+            FileDescriptorDataSource.Factory(context, waitForGrowth = true)
+        )
+
     /**
      * Media source built directly from a file descriptor — avoids ContentResolver copying
      * the file or ExoPlayer re-opening by path, and avoids loading the whole file into memory.
      */
     fun mediaSourceFromUri(context: Context, uri: Uri): MediaSource {
-        val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(
-            context,
-            FileDataSource.Factory(),
-        )
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory())
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory(context), extractorsFactory())
         return mediaSourceFactory.createMediaSource(MediaItem.fromUri(uri))
     }
 
     fun build(context: Context): ExoPlayer {
         return ExoPlayer.Builder(context, renderersFactory(context))
             .setLoadControl(loadControl())
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(
-                    DefaultDataSource.Factory(context),
-                    extractorsFactory(),
-                )
-            )
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory(context), extractorsFactory()))
             // How long the renderer waits before it starts dropping frames instead of
             // stalling — keeps playback smooth on heavy 4K/HDR under decoder pressure.
             .setSeekBackIncrementMs(10_000)

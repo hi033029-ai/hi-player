@@ -42,8 +42,10 @@ fun FolderItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 9.dp)
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -127,8 +129,10 @@ fun FolderGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 0.dp)
+            .padding(vertical = 10.dp, horizontal = 8.dp)
             .testTag("folder_grid_$name"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

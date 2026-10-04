@@ -343,7 +343,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             VideoSortOption.DATE_DESC -> list.sortedByDescending { it.id }
             VideoSortOption.DATE_ASC -> list.sortedBy { it.id }
             VideoSortOption.SIZE_DESC -> list.sortedByDescending { it.sizeBytes }
-            VideoSortOption.DURATION_DESC -> list.sortedByDescending { it.durationMs }
+            VideoSortOption.DURATION_DESC -> list.sortedWith(
+                compareByDescending<VideoItem> { !it.isPartialDownload }
+                    .thenByDescending { it.durationMs }
+            )
             VideoSortOption.QUALITY_DESC -> list.sortedWith(
                 compareByDescending<VideoItem> { it.width * it.height }
                     .thenByDescending { it.isHdr }
@@ -353,7 +356,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folders = _allVideos.map { videos ->
-        videos.groupBy { it.folderName }
+        videos.filterNot { it.isPartialDownload }
+            .groupBy { it.folderName }
             .map { (name, group) ->
                 VideoFolder(
                     name = name,

@@ -193,7 +193,7 @@ fun VideoItemCard(
                         .padding(horizontal = 3.dp, vertical = 1.5.dp)
                 ) {
                     Text(
-                        text = video.formattedDuration,
+                        text = if (video.isPartialDownload) "DOWNLOADING" else video.formattedDuration,
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium
@@ -514,7 +514,7 @@ fun VideoGridCard(
                         .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
-                        text = video.formattedDuration,
+                        text = if (video.isPartialDownload) "DOWNLOADING" else video.formattedDuration,
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium

@@ -25,6 +25,16 @@ data class FileItem(
     val extension: String = file.extension.lowercase(Locale.ROOT),
     val hasNewVideo: Boolean = false
 ) {
+    val isPendingDownload: Boolean
+        get() = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
+            .any { name.endsWith(it, ignoreCase = true) }
+
+    val displayName: String
+        get() = listOf(".crdownload", ".download", ".partial", ".part", ".tmp")
+            .firstOrNull { name.endsWith(it, ignoreCase = true) }
+            ?.let { name.dropLast(it.length).ifBlank { name } }
+            ?: name
+
     val formattedSize: String
         get() {
             if (isDirectory) return "$childCount items"

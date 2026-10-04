@@ -384,9 +384,12 @@ class HiPlayerEngine(
                 return
             }
             if (retryUri != null && isGrowingDownloadUri(retryUri)) {
-                if (isLikelyStreamableGrowingContainer(retryUri) &&
-                    DownloadingFilesRegistry.isActivelyGrowing(retryUri.path.orEmpty()) &&
-                    growingRetryAttempts < 10
+                // Do not reject MP4/other containers immediately: if their
+                // metadata is at the beginning, they can play while growing;
+                // if it is at the end, retrying lets playback begin as soon as
+                // the index arrives.
+                if (DownloadingFilesRegistry.isActivelyGrowing(retryUri.path.orEmpty()) &&
+                    growingRetryAttempts < 20
                 ) {
                     growingRetryAttempts += 1
                     val retryPosition = exoPlayer?.currentPosition ?: 0L
@@ -805,7 +808,8 @@ class HiPlayerEngine(
     private fun isGrowingDownloadUri(uri: Uri): Boolean {
         if (uri.scheme != "file") return false
         val name = uri.lastPathSegment?.lowercase() ?: return false
-        return growingDownloadSuffixes.any { name.endsWith(it) }
+        return growingDownloadSuffixes.any { name.endsWith(it) } ||
+            DownloadingFilesRegistry.isDownloading(uri.path.orEmpty())
     }
 
     private fun isLikelyStreamableGrowingContainer(uri: Uri): Boolean {

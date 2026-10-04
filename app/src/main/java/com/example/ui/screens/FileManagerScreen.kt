@@ -2230,13 +2230,14 @@ fun GenericFileItemCard(
     modifier: Modifier = Modifier
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
-    val (icon, badgeBg, badgeTint, typeLabel) = when {
+    val (icon, badgeBg, badgeTint, baseTypeLabel) = when {
         item.isApk -> Quadruple(Icons.Default.Android, Color(0xFF34D399).copy(alpha = 0.2f), Color(0xFF34D399), "APK")
         item.fileType == FileType.VIDEO -> Quadruple(Icons.Default.Movie, palette.primary.copy(alpha = 0.2f), palette.primary, "VIDEO")
         item.fileType == FileType.AUDIO -> Quadruple(Icons.Default.MusicNote, Color(0xFFC084FC).copy(alpha = 0.2f), Color(0xFFC084FC), "AUDIO")
         item.fileType == FileType.IMAGE -> Quadruple(Icons.Default.Image, Color(0xFF34D399).copy(alpha = 0.2f), Color(0xFF34D399), "IMAGE")
         else -> Quadruple(Icons.AutoMirrored.Filled.InsertDriveFile, palette.surfaceBorder, palette.textSecondary, item.extension.uppercase(Locale.ROOT))
     }
+    val typeLabel = if (item.isPendingDownload) "DOWNLOADING" else baseTypeLabel
 
     Card(
         modifier = modifier
@@ -2275,8 +2276,8 @@ fun GenericFileItemCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
+                    Text(
+                        text = item.displayName,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                     color = palette.textPrimary,

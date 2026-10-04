@@ -3,10 +3,13 @@ package com.example.playback
 import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import com.example.player.DownloadingFilesRegistry
+import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 
@@ -19,7 +22,10 @@ import java.io.IOException
  * seek, and (b) any intermediate copy of the file into app storage or a temp buffer —
  * critical for multi-GB 4K files where a copy would be slow and wasteful of storage.
  */
-class FileDescriptorDataSource(private val context: Context) : BaseDataSource(true) {
+class FileDescriptorDataSource(
+    private val context: Context,
+    private val waitForGrowth: Boolean = false,
+) : BaseDataSource(true) {
 
     private var pfd: ParcelFileDescriptor? = null
     private var input: FileInputStream? = null
@@ -39,8 +45,12 @@ class FileDescriptorDataSource(private val context: Context) : BaseDataSource(tr
         // Random-access seek directly on the fd — no re-read from the start.
         stream.channel.position(dataSpec.position)
 
+        val activeGrowingFile = waitForGrowth && dataSpec.uri.scheme == "file" &&
+            DownloadingFilesRegistry.isActivelyGrowing(dataSpec.uri.path.orEmpty())
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
             dataSpec.length
+        } else if (activeGrowingFile) {
+            C.LENGTH_UNSET.toLong()
         } else {
             fileLength - dataSpec.position
         }
@@ -61,7 +71,10 @@ class FileDescriptorDataSource(private val context: Context) : BaseDataSource(tr
             minOf(length.toLong(), bytesRemaining).toInt()
         }
 
-        val read = input?.read(buffer, offset, bytesToRead) ?: -1
+        var read = input?.read(buffer, offset, bytesToRead) ?: -1
+        if (read == -1 && waitForGrowth && waitForAppendedBytes()) {
+            read = input?.read(buffer, offset, length) ?: -1
+        }
         if (read == -1) {
             if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining > 0) {
                 throw IOException("Unexpected end of stream, $bytesRemaining bytes remaining")
@@ -72,6 +85,19 @@ class FileDescriptorDataSource(private val context: Context) : BaseDataSource(tr
         if (bytesRemaining != C.LENGTH_UNSET.toLong()) bytesRemaining -= read
         bytesTransferred(read)
         return read
+    }
+
+    private fun waitForAppendedBytes(): Boolean {
+        val path = uri?.takeIf { it.scheme == "file" }?.path ?: return false
+        if (!DownloadingFilesRegistry.isActivelyGrowing(path)) return false
+        val channel = input?.channel ?: return false
+        val deadline = SystemClock.elapsedRealtime() + 1_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (!DownloadingFilesRegistry.isActivelyGrowing(path)) return false
+            if (File(path).length() > channel.position()) return true
+            SystemClock.sleep(100L)
+        }
+        return File(path).length() > channel.position()
     }
 
     override fun getUri(): Uri? = uri
@@ -90,7 +116,11 @@ class FileDescriptorDataSource(private val context: Context) : BaseDataSource(tr
         }
     }
 
-    class Factory(private val context: Context) : DataSource.Factory {
-        override fun createDataSource(): DataSource = FileDescriptorDataSource(context)
+    class Factory(
+        private val context: Context,
+        private val waitForGrowth: Boolean = false,
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource =
+            FileDescriptorDataSource(context, waitForGrowth)
     }
 }

@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.model.VideoItem
+import com.example.player.DownloadingFilesRegistry
 import com.example.ui.components.HiBottomNavigationBar
 import com.example.ui.components.HiNavigationBottomSheet
 import com.example.ui.components.NavTab
@@ -348,6 +349,13 @@ class MainActivity : ComponentActivity() {
                                                     fileManagerViewModel = fileManagerViewModel,
                                                     includeHeader = false,
                                                     onOpenVideo = { file ->
+                                                        val lowerName = file.name.lowercase()
+                                                        val isPartial = listOf(
+                                                            ".crdownload", ".download", ".part", ".partial", ".tmp"
+                                                        ).any(lowerName::endsWith)
+                                                        if (isPartial) {
+                                                            DownloadingFilesRegistry.markDownloading(file.path, file.sizeBytes)
+                                                        }
                                                         val title = file.name
                                                             .removeSuffix(".crdownload")
                                                             .removeSuffix(".download")
@@ -366,10 +374,15 @@ class MainActivity : ComponentActivity() {
                                                                 id = file.path.hashCode().toLong(),
                                                                 uri = Uri.fromFile(file.file),
                                                                 title = title,
+                                                                durationMs = if (isPartial) -1L else 0L,
                                                                 sizeBytes = file.sizeBytes,
+                                                                width = if (isPartial) 0 else 1920,
+                                                                height = if (isPartial) 0 else 1080,
                                                                 mimeType = mimeType,
+                                                                codec = if (isPartial) "Downloading" else "HEVC/H.264",
                                                                 path = file.path,
-                                                                folderName = file.file.parentFile?.name ?: "Files"
+                                                                folderName = file.file.parentFile?.name ?: "Files",
+                                                                isPartialDownload = isPartial
                                                             )
                                                         libraryViewModel.markVideoOpened(video)
                                                         playerViewModel.playVideo(video)

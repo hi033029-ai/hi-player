@@ -145,12 +145,18 @@ object MediaScanner {
                         id = file.absolutePath.hashCode().toLong(),
                         uri = Uri.fromFile(file),
                         title = originalName,
+                        // The container index may not exist until the download
+                        // finishes. Keep this distinct from a real zero-length
+                        // video so duration sorting and UI filters do not hide it.
+                        durationMs = -1L,
                         sizeBytes = file.length(),
                         mimeType = "video/$extension",
                         dateAdded = file.lastModified() / 1000L,
                         folderName = file.parentFile?.name ?: "Downloads",
                         path = file.absolutePath,
-                        codec = "Downloading video",
+                        width = 0,
+                        height = 0,
+                        codec = "Downloading",
                         isPartialDownload = true,
                         isNewVideo = true
                     )
