@@ -19,7 +19,6 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDescriptorDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -32,9 +31,13 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.example.model.AspectRatioMode
+import com.example.model.PendingDownloadFormat
 import com.example.model.VideoTrackInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +47,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.RandomAccessFile
 import java.util.Locale
 
 data class DecoderTelemetry(
@@ -56,8 +58,6 @@ data class DecoderTelemetry(
     val colorSpace: String = "BT.2020 / HDR10",
     val audioFormat: String = "DTS-HD MA 7.1 / TrueHD"
 )
-
-private val growingDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
 
 private fun displayTrackLanguage(language: String?, formatLabel: String?, fallback: String): String {
     val normalized = language?.trim()?.takeUnless { it.isEmpty() || it.equals("und", ignoreCase = true) }
@@ -388,11 +388,14 @@ class HiPlayerEngine(
                 // metadata is at the beginning, they can play while growing;
                 // if it is at the end, retrying lets playback begin as soon as
                 // the index arrives.
-                if (DownloadingFilesRegistry.isActivelyGrowing(retryUri.path.orEmpty()) &&
-                    growingRetryAttempts < 20
-                ) {
-                    growingRetryAttempts += 1
+                if (DownloadingFilesRegistry.isDownloading(downloadRegistryKey(retryUri))) {
+                    // An MP4 whose metadata arrives at the end can need more
+                    // than 30 seconds before its extractor becomes usable.
+                    // Keep retrying while the file remains registered as an
+                    // active download; navigation/release cancels the job.
+                    growingRetryAttempts = (growingRetryAttempts + 1).coerceAtMost(Int.MAX_VALUE)
                     val retryPosition = exoPlayer?.currentPosition ?: 0L
+                    _isBuffering.value = true
                     growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
                         delay(1500L)
                         prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
@@ -797,27 +800,54 @@ class HiPlayerEngine(
     }
 
     private fun createGrowingFileSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
-        val path = uri.path ?: return null
-        if (!java.io.File(path).isFile) return null
+        val key = downloadRegistryKey(uri)
+        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile) return null
+        if (uri.scheme != "file" && !DownloadingFilesRegistry.isDownloading(key)) return null
         return ProgressiveMediaSource.Factory(
-            DataSource.Factory { GrowingFileDataSource(path) },
-            createOptimizedExtractorsFactory()
-        ).createMediaSource(mediaItem)
+            com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),
+            createGrowingExtractorsFactory()
+        )
+            // A growing file signals a recoverable I/O error at temporary EOF.
+            // Let Media3 retry the same progressive source while its registry
+            // entry remains active instead of promoting it to a fatal player
+            // error and recreating the whole surface/player.
+            .setLoadErrorHandlingPolicy(growingFileLoadErrorPolicy(key))
+            .createMediaSource(mediaItem)
     }
 
+    private fun createGrowingExtractorsFactory(): DefaultExtractorsFactory =
+        createOptimizedExtractorsFactory()
+            // A Matroska download often has its Cues index near the tail. It is
+            // unavailable until download completion, but the header/Tracks and
+            // clusters at the beginning can already be decoded. Disabling the
+            // Cues seek lets progressive playback begin from byte zero.
+            .setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+
+    private fun growingFileLoadErrorPolicy(downloadKey: String) =
+        object : DefaultLoadErrorHandlingPolicy() {
+            override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
+                if (DownloadingFilesRegistry.isDownloading(downloadKey)) 1_500L
+                else super.getRetryDelayMsFor(loadErrorInfo)
+
+            override fun getMinimumLoadableRetryCount(dataType: Int): Int =
+                if (DownloadingFilesRegistry.isDownloading(downloadKey)) Int.MAX_VALUE
+                else super.getMinimumLoadableRetryCount(dataType)
+        }
+
     private fun isGrowingDownloadUri(uri: Uri): Boolean {
+        val key = downloadRegistryKey(uri)
+        if (DownloadingFilesRegistry.isDownloading(key)) return true
         if (uri.scheme != "file") return false
         val name = uri.lastPathSegment?.lowercase() ?: return false
-        return growingDownloadSuffixes.any { name.endsWith(it) } ||
-            DownloadingFilesRegistry.isDownloading(uri.path.orEmpty())
+        return PendingDownloadFormat.isPending(name)
     }
+
+    private fun downloadRegistryKey(uri: Uri): String =
+        if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
 
     private fun isLikelyStreamableGrowingContainer(uri: Uri): Boolean {
         val name = uri.lastPathSegment?.lowercase().orEmpty()
-        val withoutDownloadSuffix = growingDownloadSuffixes
-            .firstOrNull { name.endsWith(it) }
-            ?.let(name::removeSuffix)
-            ?: name
+        val withoutDownloadSuffix = PendingDownloadFormat.originalName(name)
         return withoutDownloadSuffix.endsWith(".mkv") ||
             withoutDownloadSuffix.endsWith(".webm") ||
             withoutDownloadSuffix.endsWith(".ts")
@@ -828,65 +858,6 @@ class HiPlayerEngine(
             "This download has not received playable data yet. Keep the download running and try again shortly."
         } else {
             "This video is still downloading. Standard MP4 files need their final metadata before they can play; wait for the download to finish."
-        }
-    }
-
-    private class GrowingFileDataSource(private val path: String) : DataSource {
-        private companion object {
-            const val RETRY_DELAY_MS = 250L
-        }
-
-        private var file: RandomAccessFile? = null
-        private var position = 0L
-        private var opened = false
-        private var lastKnownLength = 0L
-
-        override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) = Unit
-
-        override fun open(dataSpec: DataSpec): Long {
-            file = RandomAccessFile(path, "r")
-            position = dataSpec.position
-            file?.seek(position)
-            opened = true
-            lastKnownLength = file?.length() ?: 0L
-            DownloadingFilesRegistry.markDownloading(path, lastKnownLength)
-            return C.LENGTH_UNSET.toLong()
-        }
-
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-            if (!opened) return C.RESULT_END_OF_INPUT
-            if (length == 0) return 0
-            while (true) {
-                val currentLength = file?.length() ?: return C.RESULT_END_OF_INPUT
-                if (currentLength > lastKnownLength) {
-                    lastKnownLength = currentLength
-                    DownloadingFilesRegistry.markDownloading(path, currentLength)
-                }
-                if (position < currentLength) {
-                    file?.seek(position)
-                    val available = minOf(length.toLong(), currentLength - position).toInt()
-                    val read = file?.read(buffer, offset, available) ?: -1
-                    if (read > 0) {
-                        position += read
-                        return read
-                    }
-                }
-                // The source remains open-ended while the download is receiving
-                // bytes. At the current EOF, wait briefly and re-stat rather
-                // than throwing an unexpected-EOF error.
-                if (!DownloadingFilesRegistry.isActivelyGrowing(path)) {
-                    return C.RESULT_END_OF_INPUT
-                }
-                Thread.sleep(RETRY_DELAY_MS)
-            }
-        }
-
-        override fun getUri(): Uri = Uri.fromFile(java.io.File(path))
-
-        override fun close() {
-            opened = false
-            file?.close()
-            file = null
         }
     }
 
@@ -910,6 +881,10 @@ class HiPlayerEngine(
 
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
+        growingRetryJob?.cancel()
+        growingRetryJob = null
+        activeGrowingUri = null
+        growingRetryAttempts = 0
         exoPlayer?.let {
             it.playWhenReady = false
             it.pause()
@@ -1221,6 +1196,10 @@ class HiPlayerEngine(
     }
 
     fun release() {
+        growingRetryJob?.cancel()
+        growingRetryJob = null
+        activeGrowingUri = null
+        growingRetryAttempts = 0
         progressJob?.cancel()
         progressJob = null
         loudnessEnhancer?.release()

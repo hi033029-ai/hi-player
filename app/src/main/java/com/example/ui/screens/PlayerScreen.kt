@@ -254,12 +254,15 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    // Safety valve for devices/codecs that do not dispatch onRenderedFirstFrame
-    // after a surface hand-off. Keep the mask brief: a 2.5-second fallback made
-    // every normal open look like an unnecessary long black loading screen.
-    LaunchedEffect(currentVideo?.uri, playerViewModel.engine.getPlayer()) {
-        delay(850)
-        if (!firstFrameRendered) firstFrameRendered = true
+    // Safety valve for finished media whose device codec skips the first-frame
+    // callback after a surface hand-off. A growing file must not use this
+    // timeout: lifting its mask without a decoded frame made a still-loading
+    // Matroska stream look like a broken black player.
+    LaunchedEffect(currentVideo?.uri, currentVideo?.isPartialDownload, playerViewModel.engine.getPlayer()) {
+        if (currentVideo?.isPartialDownload != true) {
+            delay(850)
+            if (!firstFrameRendered) firstFrameRendered = true
+        }
     }
 
     fun playAdjacentVideo(step: Int) {
@@ -722,6 +725,40 @@ fun PlayerScreen(
                         )
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
+            }
+        }
+
+        // This status is driven by the bytes observed by MediaScanner, not a
+        // simulated stream. It remains deliberately small and transparent so
+        // it does not compete with the player's playback controls.
+        currentVideo?.takeIf { it.isPartialDownload && !isScreenLocked }?.let { video ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 58.dp)
+                    .background(Color.Black.copy(alpha = 0.36f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "LIVE GROWING VIDEO",
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = video.formattedDownloadStatus,
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontSize = 10.sp
+                )
+                if (isBuffering && durationMs <= 0L) {
+                    Text(
+                        text = "Waiting for playable video data…",
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 9.sp
+                    )
+                }
             }
         }
 

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -104,6 +106,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -115,6 +118,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
 import com.example.data.AppThemeMode
+import com.example.filemanager.StoragePermission
 import com.example.model.VideoItem
 import com.example.ui.components.FolderItemRow
 import com.example.ui.components.FolderGridCard
@@ -147,6 +151,7 @@ fun HomeScreen(
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
     val allVideos by libraryViewModel.allVideos.collectAsState()
     val filteredVideos by libraryViewModel.filteredVideos.collectAsState()
     val folders by libraryViewModel.folders.collectAsState()
@@ -192,6 +197,13 @@ fun HomeScreen(
         libraryViewModel.applySavedVideoOrder(filteredVideos)
     }
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
+    var hasFullDownloadAccess by remember { mutableStateOf(StoragePermission.isGranted()) }
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasFullDownloadAccess = StoragePermission.isGranted()
+        libraryViewModel.refreshVideos(silent = true)
+    }
     val showContinueWatching = searchQuery.isBlank() &&
         selectedFolder == null &&
         (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null) &&
@@ -224,6 +236,7 @@ fun HomeScreen(
     val folderListState = rememberLazyListState()
     val folderGridState = rememberLazyGridState()
     val treeListState = rememberLazyListState()
+    val libraryModeRowState = rememberLazyListState()
     val isLibraryContentScrolled by remember {
         derivedStateOf {
             videoListState.firstVisibleItemIndex > 0 || videoListState.firstVisibleItemScrollOffset > 0 ||
@@ -236,6 +249,16 @@ fun HomeScreen(
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(isSearchActive) {
         if (isSearchActive) searchFocusRequester.requestFocus()
+    }
+    LaunchedEffect(navMode) {
+        val selectedModeIndex = when (navMode) {
+            LibraryNavMode.FOLDERS, LibraryNavMode.ALL_FOLDERS -> 0
+            LibraryNavMode.ALL_VIDEOS -> 1
+            LibraryNavMode.RECENT -> 2
+            LibraryNavMode.TREE_FOLDERS -> 3
+            LibraryNavMode.FAVORITES -> 4
+        }
+        libraryModeRowState.animateScrollToItem(selectedModeIndex)
     }
     fun toggleVideoSelection(video: VideoItem) {
         val key = videoKey(video)
@@ -454,20 +477,56 @@ fun HomeScreen(
                 val navOptions = listOf(
                     Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
                     Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
+                    Triple(LibraryNavMode.RECENT, "Recent (${continueWatchingVideos.size})", Icons.Default.Refresh),
                     Triple(LibraryNavMode.TREE_FOLDERS, "Tree Folders (${folders.size})", Icons.Default.FolderOpen),
                     Triple(LibraryNavMode.FAVORITES, "Favorites (${filteredVideos.count { it.isFavorite }})", Icons.Default.Star)
                 )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(palette.surface),
+                        .background(palette.surface)
+                        .pointerInput(navMode) {
+                            var accumulatedDrag = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    accumulatedDrag += dragAmount
+                                    if (kotlin.math.abs(accumulatedDrag) >= 56f) {
+                                        val modes = listOf(
+                                            LibraryNavMode.FOLDERS,
+                                            LibraryNavMode.ALL_VIDEOS,
+                                            LibraryNavMode.RECENT,
+                                            LibraryNavMode.TREE_FOLDERS,
+                                            LibraryNavMode.FAVORITES
+                                        )
+                                        val currentIndex = modes.indexOf(navMode).coerceAtLeast(0)
+                                        val nextIndex = if (accumulatedDrag < 0f) {
+                                            (currentIndex + 1).coerceAtMost(modes.lastIndex)
+                                        } else {
+                                            (currentIndex - 1).coerceAtLeast(0)
+                                        }
+                                        if (nextIndex != currentIndex) {
+                                            libraryViewModel.selectFolder(null)
+                                            libraryViewModel.setNavMode(modes[nextIndex])
+                                        }
+                                        accumulatedDrag = 0f
+                                    }
+                                },
+                                onDragEnd = { accumulatedDrag = 0f },
+                                onDragCancel = { accumulatedDrag = 0f }
+                            )
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LazyRow(
+                        state = libraryModeRowState,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        // The parent owns horizontal drags so every swipe changes
+                        // the active library mode instead of fighting LazyRow.
+                        userScrollEnabled = false
                     ) {
                         items(navOptions, key = { it.first.name }) { option ->
                             val (mode, label, icon) = option
@@ -761,6 +820,29 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Allow all-files access to show unfinished browser downloads.",
+                        modifier = Modifier.weight(1f),
+                        color = palette.textSecondary,
+                        fontSize = 12.sp
+                    )
+                    TextButton(
+                        onClick = {
+                            allFilesAccessLauncher.launch(StoragePermission.buildRequestIntent(context))
+                        }
+                    ) {
+                        Text("Allow", color = palette.primary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),

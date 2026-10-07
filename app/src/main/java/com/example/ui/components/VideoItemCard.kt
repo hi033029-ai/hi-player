@@ -201,17 +201,33 @@ fun VideoItemCard(
                     )
                 }
 
-                // Watch Progress Bar
-                if (progressFraction > 0f) {
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.5.dp)
-                            .align(Alignment.BottomCenter),
-                        color = palette.primary,
-                        trackColor = Color(0x66FFFFFF)
-                    )
+                // Playback progress for completed videos; real observed disk
+                // growth for active downloads. Unknown final sizes are shown
+                // indeterminate rather than being given a fake percentage.
+                when {
+                    video.isPartialDownload && video.downloadProgressFraction != null -> {
+                        LinearProgressIndicator(
+                            progress = { video.downloadProgressFraction!! },
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
+                    video.isPartialDownload -> {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
+                    progressFraction > 0f -> {
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
                 }
             }
 
@@ -241,7 +257,7 @@ fun VideoItemCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = video.formattedSize,
+                        text = if (video.isPartialDownload) video.formattedDownloadStatus else video.formattedSize,
                         fontSize = 11.sp,
                         color = palette.textSecondary
                     )
@@ -523,17 +539,33 @@ fun VideoGridCard(
                     )
                 }
 
-                // Watch Progress
-                if (progressFraction > 0f) {
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.5.dp)
-                            .align(Alignment.BottomCenter),
-                        color = palette.primary,
-                        trackColor = Color(0x66FFFFFF)
-                    )
+                // Use actual observed download growth for partial files. A
+                // downloader normally does not expose a final size, so this
+                // remains indeterminate until one is known.
+                when {
+                    video.isPartialDownload && video.downloadProgressFraction != null -> {
+                        LinearProgressIndicator(
+                            progress = { video.downloadProgressFraction!! },
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
+                    video.isPartialDownload -> {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
+                    progressFraction > 0f -> {
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
+                            color = palette.primary,
+                            trackColor = Color(0x66FFFFFF)
+                        )
+                    }
                 }
             }
 
@@ -632,7 +664,7 @@ fun VideoGridCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = video.formattedSize,
+                        text = if (video.isPartialDownload) video.formattedDownloadStatus else video.formattedSize,
                         fontSize = 10.sp,
                         color = palette.textSecondary
                     )

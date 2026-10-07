@@ -30,13 +30,18 @@ class FileDescriptorDataSource(
     private var pfd: ParcelFileDescriptor? = null
     private var input: FileInputStream? = null
     private var uri: Uri? = null
+    private var growingDownloadKey: String? = null
     private var bytesRemaining: Long = 0
 
     override fun open(dataSpec: DataSpec): Long {
         uri = dataSpec.uri
-        val resolver = context.contentResolver
-        val opened = resolver.openFileDescriptor(dataSpec.uri, "r")
-            ?: throw IOException("Could not open file descriptor for ${dataSpec.uri}")
+        val opened = if (dataSpec.uri.scheme == "file") {
+            val path = dataSpec.uri.path ?: throw IOException("File URI has no path: ${dataSpec.uri}")
+            ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY)
+        } else {
+            context.contentResolver.openFileDescriptor(dataSpec.uri, "r")
+                ?: throw IOException("Could not open file descriptor for ${dataSpec.uri}")
+        }
         pfd = opened
         val stream = FileInputStream(opened.fileDescriptor)
         input = stream
@@ -45,8 +50,10 @@ class FileDescriptorDataSource(
         // Random-access seek directly on the fd — no re-read from the start.
         stream.channel.position(dataSpec.position)
 
-        val activeGrowingFile = waitForGrowth && dataSpec.uri.scheme == "file" &&
-            DownloadingFilesRegistry.isActivelyGrowing(dataSpec.uri.path.orEmpty())
+        val downloadKey = downloadKey(dataSpec.uri)
+        val activeGrowingFile = waitForGrowth &&
+            DownloadingFilesRegistry.isDownloading(downloadKey)
+        growingDownloadKey = downloadKey.takeIf { activeGrowingFile }
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
             dataSpec.length
         } else if (activeGrowingFile) {
@@ -72,8 +79,16 @@ class FileDescriptorDataSource(
         }
 
         var read = input?.read(buffer, offset, bytesToRead) ?: -1
-        if (read == -1 && waitForGrowth && waitForAppendedBytes()) {
-            read = input?.read(buffer, offset, length) ?: -1
+        if (read == -1 && waitForGrowth) {
+            if (waitForAppendedBytes()) {
+                read = input?.read(buffer, offset, length) ?: -1
+            } else if (growingDownloadKey?.let { key -> DownloadingFilesRegistry.isDownloading(key) } == true) {
+                // Returning END_OF_INPUT makes ProgressiveMediaSource believe a
+                // growing file finished at its current EOF. Report a recoverable
+                // source failure instead so HiPlayerEngine re-prepares once
+                // more bytes or container metadata arrive.
+                throw IOException("Growing download is awaiting more data")
+            }
         }
         if (read == -1) {
             if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining > 0) {
@@ -88,16 +103,29 @@ class FileDescriptorDataSource(
     }
 
     private fun waitForAppendedBytes(): Boolean {
-        val path = uri?.takeIf { it.scheme == "file" }?.path ?: return false
-        if (!DownloadingFilesRegistry.isActivelyGrowing(path)) return false
+        val activeUri = uri ?: return false
+        val downloadKey = growingDownloadKey ?: return false
+        if (!DownloadingFilesRegistry.isDownloading(downloadKey)) return false
         val channel = input?.channel ?: return false
         val deadline = SystemClock.elapsedRealtime() + 1_000L
         while (SystemClock.elapsedRealtime() < deadline) {
-            if (!DownloadingFilesRegistry.isActivelyGrowing(path)) return false
-            if (File(path).length() > channel.position()) return true
+            if (!DownloadingFilesRegistry.isDownloading(downloadKey)) return false
+            if (availableLength(activeUri) > channel.position()) return true
             SystemClock.sleep(100L)
         }
-        return File(path).length() > channel.position()
+        return availableLength(activeUri) > channel.position()
+    }
+
+    private fun downloadKey(uri: Uri): String =
+        if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
+
+    private fun availableLength(uri: Uri): Long = when (uri.scheme) {
+        "file" -> uri.path?.let(::File)?.length() ?: 0L
+        else -> runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                descriptor.statSize.coerceAtLeast(0L)
+            } ?: 0L
+        }.getOrDefault(0L)
     }
 
     override fun getUri(): Uri? = uri
@@ -111,6 +139,7 @@ class FileDescriptorDataSource(
                 pfd?.close()
             } finally {
                 pfd = null
+                growingDownloadKey = null
                 transferEnded()
             }
         }

@@ -6,20 +6,21 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.example.model.PendingDownloadFormat
 import com.example.model.VideoItem
 import com.example.player.DownloadingFilesRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
 
 object MediaScanner {
 
     private const val NEW_VIDEO_WINDOW_SECONDS = 24L * 60L * 60L
-    private val partialDownloadSuffixes = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
-    private val videoExtensions = setOf("mp4", "mkv", "webm", "mov", "avi", "ts", "m4v", "3gp", "flv", "wmv", "vob")
 
     suspend fun scanLocalVideos(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
         val videoList = mutableListOf<VideoItem>()
+        val activeGrowingContentUris = mutableSetOf<String>()
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -35,6 +36,7 @@ object MediaScanner {
             MediaStore.Video.Media.HEIGHT,
             MediaStore.Video.Media.MIME_TYPE,
             MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.DATE_MODIFIED,
             MediaStore.Video.Media.DATA
         )
 
@@ -56,6 +58,7 @@ object MediaScanner {
                 val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
                 val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
                 val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+                val modifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
                 val dataCol = cursor.getColumnIndex(MediaStore.Video.Media.DATA)
 
                 while (cursor.moveToNext()) {
@@ -68,9 +71,42 @@ object MediaScanner {
                     val mime = cursor.getString(mimeCol) ?: "video/mp4"
                     val dateAdded = cursor.getLong(dateCol)
                     val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
-                    if (dataPath.isNotBlank()) DownloadingFilesRegistry.markComplete(dataPath)
-
                     val contentUri = ContentUris.withAppendedId(collection, id)
+                    val lastModifiedMs = cursor.getLong(modifiedCol).coerceAtLeast(0L) * 1000L
+                    val growthKey = dataPath.ifBlank { contentUri.toString() }
+                    val looksLikeDownload = dataPath.contains("/download/", ignoreCase = true) || dataPath.isBlank()
+                    val isFinalNameGrowing = looksLikeDownload &&
+                        !PendingDownloadFormat.isPending(name) &&
+                        DownloadingFilesRegistry.observeFinalNameDownload(growthKey, size, lastModifiedMs)
+                    val rawFile = dataPath.takeIf(String::isNotBlank)?.let(::File)
+                    val playbackUri = if (isFinalNameGrowing && rawFile?.isFile == true && rawFile.canRead()) {
+                        Uri.fromFile(rawFile)
+                    } else {
+                        contentUri
+                    }
+                    val playbackKey = if (playbackUri.scheme == "file") {
+                        playbackUri.path.orEmpty()
+                    } else {
+                        playbackUri.toString()
+                    }
+                    if (isFinalNameGrowing) {
+                        // A readable raw file gives Media3 a stable descriptor
+                        // while a download manager appends bytes. Fall back to
+                        // the MediaStore URI only when scoped storage hides it.
+                        DownloadingFilesRegistry.markDownloading(playbackKey, size)
+                        if (playbackUri.scheme == "content") {
+                            activeGrowingContentUris += playbackUri.toString()
+                        }
+                    }
+                    if (!isFinalNameGrowing) {
+                        if (dataPath.isNotBlank()) DownloadingFilesRegistry.markComplete(dataPath)
+                        DownloadingFilesRegistry.markComplete(contentUri.toString())
+                    }
+                    val growingProgress = if (isFinalNameGrowing) {
+                        DownloadingFilesRegistry.progress(playbackKey)
+                    } else {
+                        null
+                    }
                     val folderName = if (dataPath.isNotEmpty()) {
                         val parent = File(dataPath).parentFile?.name
                         parent ?: "Internal Storage"
@@ -78,7 +114,7 @@ object MediaScanner {
                         "Videos"
                     }
 
-                    val is4k = (width >= 3840 || height >= 2160)
+                    val is4k = !isFinalNameGrowing && (width >= 3840 || height >= 2160)
                     val codec = when {
                         mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "HEVC (H.265)"
                         mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1 UHD"
@@ -89,22 +125,25 @@ object MediaScanner {
                     videoList.add(
                         VideoItem(
                             id = id,
-                            uri = contentUri,
+                            uri = playbackUri,
                             title = name,
-                            durationMs = duration,
+                            durationMs = if (isFinalNameGrowing) 0L else duration,
                             sizeBytes = size,
-                            width = width,
-                            height = height,
+                            width = if (isFinalNameGrowing) 0 else width,
+                            height = if (isFinalNameGrowing) 0 else height,
                             mimeType = mime,
                             dateAdded = dateAdded,
                             folderName = folderName,
                             path = dataPath,
                             isHdr = is4k,
                             hdrFormat = if (is4k) "HDR10 / Dolby Vision" else null,
-                            codec = codec,
-                            bitrate = if (duration > 0) (size * 8000L / duration) else 0L,
-                            isNewVideo = dateAdded > 0L &&
-                                (System.currentTimeMillis() / 1000L - dateAdded) in 0..NEW_VIDEO_WINDOW_SECONDS
+                            codec = if (isFinalNameGrowing) "Downloading" else codec,
+                            bitrate = if (!isFinalNameGrowing && duration > 0) (size * 8000L / duration) else 0L,
+                            isPartialDownload = isFinalNameGrowing,
+                            downloadedBytes = growingProgress?.downloadedBytes ?: 0L,
+                            downloadSpeedBytesPerSecond = growingProgress?.speedBytesPerSecond ?: 0L,
+                            isNewVideo = isFinalNameGrowing || (dateAdded > 0L &&
+                                (System.currentTimeMillis() / 1000L - dateAdded) in 0..NEW_VIDEO_WINDOW_SECONDS)
                         )
                     )
                 }
@@ -116,7 +155,12 @@ object MediaScanner {
         // A pending file can already be indexed by MediaStore with zero
         // duration. Replace that ordinary row with the growing-file entry so
         // the Video Library keeps its partial-download state and file URI.
-        val partialItems = scanPartialDownloadVideos(videoList)
+        val indexedVideoPaths = videoList.map { it.path }.filter(String::isNotBlank).toSet()
+        val partialItems = scanPartialDownloadVideos(
+            context = context,
+            activeGrowingContentUris = activeGrowingContentUris,
+            indexedVideoPaths = indexedVideoPaths
+        )
         val partialPaths = partialItems.map { it.path }.filter(String::isNotEmpty).toSet()
         if (partialPaths.isNotEmpty()) {
             videoList.removeAll { it.path in partialPaths }
@@ -131,28 +175,40 @@ object MediaScanner {
         videoList
     }
 
-    private fun scanPartialDownloadVideos(existing: List<VideoItem>): List<VideoItem> {
-        val knownPaths = existing.mapNotNull { it.path.takeIf(String::isNotEmpty) }.toMutableSet()
-        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!downloadDir.isDirectory) return emptyList()
+    private fun scanPartialDownloadVideos(
+        context: Context,
+        activeGrowingContentUris: Set<String>,
+        indexedVideoPaths: Set<String>
+    ): List<VideoItem> {
+        // The public Download path can differ across Android versions and OEMs.
+        // Try common aliases and keep only directories this process can read.
+        val candidates = listOf(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            File(Environment.getExternalStorageDirectory(), "Download"),
+            File(Environment.getExternalStorageDirectory(), "Downloads"),
+            File("/storage/emulated/0/Download"),
+            File("/sdcard/Download")
+        ).filter { it.isDirectory && it.canRead() }
+            .map { directory -> runCatching { directory.canonicalFile }.getOrDefault(directory) }
+            // /sdcard/Download and /storage/emulated/0/Download are often the
+            // same directory. Canonical identity prevents duplicate cards.
+            .distinctBy { it.absolutePath }
 
-        return runCatching {
-            downloadDir.walkTopDown()
-                .maxDepth(3)
-                .filter { it.isFile }
+        val pathItems = runCatching {
+            candidates.asSequence()
+                .flatMap { it.walkTopDown().maxDepth(3) }
+                .filter(File::isFile)
                 .mapNotNull { file ->
                     val lowerName = file.name.lowercase()
-                    val suffix = partialDownloadSuffixes.firstOrNull { lowerName.endsWith(it) } ?: return@mapNotNull null
-                    val originalName = file.name.dropLast(suffix.length)
+                    val suffix = PendingDownloadFormat.suffixFor(lowerName) ?: return@mapNotNull null
+                    val originalName = PendingDownloadFormat.originalName(file.name)
                     val extension = originalName.substringAfterLast('.', "").lowercase()
-                    if (extension !in videoExtensions) return@mapNotNull null
-
-                    // MediaStore may already contain this temporary path. The
-                    // partial entry must win because it carries the growing
-                    // URI and isPartialDownload=true.
-                    knownPaths.add(file.absolutePath)
+                    val playableExtension = extension.takeIf { it in PendingDownloadFormat.videoExtensions }
+                        ?: detectVideoContainer(file)
+                        ?: return@mapNotNull null
 
                     DownloadingFilesRegistry.markDownloading(file.absolutePath, file.length())
+                    val progress = DownloadingFilesRegistry.progress(file.absolutePath)
 
                     VideoItem(
                         id = file.absolutePath.hashCode().toLong(),
@@ -163,7 +219,7 @@ object MediaScanner {
                         // controls its library visibility and UI treatment.
                         durationMs = 0L,
                         sizeBytes = file.length(),
-                        mimeType = "video/$extension",
+                        mimeType = mimeTypeForExtension(playableExtension),
                         dateAdded = file.lastModified() / 1000L,
                         folderName = file.parentFile?.name ?: "Downloads",
                         path = file.absolutePath,
@@ -171,11 +227,188 @@ object MediaScanner {
                         height = 0,
                         codec = "Downloading",
                         isPartialDownload = true,
+                        downloadedBytes = progress?.downloadedBytes ?: file.length(),
+                        downloadSpeedBytesPerSecond = progress?.speedBytesPerSecond ?: 0L,
                         isNewVideo = true
                     )
                 }
+                .distinctBy { it.path }
                 .toList()
+                .also { found ->
+                    android.util.Log.d(
+                        "MediaScanner",
+                        "pending downloads found: ${found.size} across ${candidates.joinToString { it.absolutePath }}"
+                    )
+                }
+        }.getOrElse { error ->
+            android.util.Log.e("MediaScanner", "pending download scan failed", error)
+            emptyList()
+        }
+
+        // Several download managers write to the final name (for example,
+        // movie.mp4) from the first byte. A suffix-only detector then treats
+        // it as finished, even though Media3 reads it before the file is
+        // complete. Track recently modified video files whose length changes
+        // across scans and surface the active ones as normal DOWNLOADING cards.
+        val finalNameGrowingItems = runCatching {
+            candidates.asSequence()
+                .flatMap { it.walkTopDown().maxDepth(3) }
+                .filter(File::isFile)
+                .mapNotNull { file ->
+                    if (PendingDownloadFormat.isPending(file.name)) return@mapNotNull null
+                    // A MediaStore row is already watching this path above. Do
+                    // not recreate its registry state via the raw scanner.
+                    if (file.absolutePath in indexedVideoPaths) return@mapNotNull null
+                    val extension = file.extension.lowercase()
+                    if (extension !in PendingDownloadFormat.videoExtensions) return@mapNotNull null
+                    if (!DownloadingFilesRegistry.observeFinalNameDownload(
+                            key = file.absolutePath,
+                            sizeBytes = file.length(),
+                            lastModifiedMs = file.lastModified()
+                        )
+                    ) return@mapNotNull null
+                    val progress = DownloadingFilesRegistry.progress(file.absolutePath)
+
+                    VideoItem(
+                        id = file.absolutePath.hashCode().toLong(),
+                        uri = Uri.fromFile(file),
+                        title = file.name,
+                        durationMs = 0L,
+                        sizeBytes = file.length(),
+                        mimeType = mimeTypeForExtension(extension),
+                        dateAdded = file.lastModified() / 1000L,
+                        folderName = file.parentFile?.name ?: "Downloads",
+                        path = file.absolutePath,
+                        width = 0,
+                        height = 0,
+                        codec = "Downloading",
+                        isPartialDownload = true,
+                        downloadedBytes = progress?.downloadedBytes ?: file.length(),
+                        downloadSpeedBytesPerSecond = progress?.speedBytesPerSecond ?: 0L,
+                        isNewVideo = true
+                    )
+                }
+                .distinctBy { it.path }
+                .toList()
+        }.getOrElse { error ->
+            android.util.Log.w("MediaScanner", "final-name download scan failed", error)
+            emptyList()
+        }
+
+        // A browser can expose an unfinished item through the generic Files
+        // collection without registering it as Video media. Querying it gives
+        // us a content URI on scoped-storage devices before the download ends.
+        val mediaStoreItems = scanMediaStorePendingDownloads(context)
+        val contentUris = activeGrowingContentUris + mediaStoreItems.map { it.uri.toString() }
+        DownloadingFilesRegistry.markMissingContentDownloadsComplete(contentUris)
+
+        return (pathItems + finalNameGrowingItems + mediaStoreItems)
+            // Prefer the directly readable file discovered above. A pending
+            // entry can also appear in MediaStore Files with a different URI,
+            // which previously rendered a second identical download card.
+            .distinctBy { it.title.trim().lowercase() }
+    }
+
+    private fun scanMediaStorePendingDownloads(context: Context): List<VideoItem> {
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Files.getContentUri("external")
+        }
+        val projection = arrayOf(
+            MediaStore.Files.FileColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.DATA
+        )
+        val selection = PendingDownloadFormat.suffixes.joinToString(" OR ") {
+            "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+        }
+        val selectionArgs = PendingDownloadFormat.suffixes.map { "%$it" }.toTypedArray()
+
+        return runCatching {
+            context.contentResolver.query(
+                collection,
+                projection,
+                selection,
+                selectionArgs,
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+
+                buildList {
+                    while (cursor.moveToNext()) {
+                        val pendingName = cursor.getString(nameColumn) ?: continue
+                        PendingDownloadFormat.suffixFor(pendingName) ?: continue
+                        val originalName = PendingDownloadFormat.originalName(pendingName)
+                        val mimeType = cursor.getString(mimeColumn).orEmpty()
+                        val extension = originalName.substringAfterLast('.', "").lowercase()
+                        if (extension !in PendingDownloadFormat.videoExtensions && !mimeType.startsWith("video/", ignoreCase = true)) continue
+
+                        val id = cursor.getLong(idColumn)
+                        val uri = ContentUris.withAppendedId(collection, id)
+                        val size = cursor.getLong(sizeColumn).coerceAtLeast(0L)
+                        val dataPath = if (dataColumn >= 0) cursor.getString(dataColumn).orEmpty() else ""
+                        DownloadingFilesRegistry.markDownloading(uri.toString(), size)
+                        val progress = DownloadingFilesRegistry.progress(uri.toString())
+                        add(
+                            VideoItem(
+                                id = id,
+                                uri = uri,
+                                title = originalName,
+                                durationMs = 0L,
+                                sizeBytes = size,
+                                mimeType = mimeType.ifBlank { mimeTypeForExtension(extension) },
+                                dateAdded = cursor.getLong(modifiedColumn).coerceAtLeast(0L),
+                                folderName = dataPath.takeIf(String::isNotBlank)
+                                    ?.let { File(it).parentFile?.name }
+                                    ?: "Downloads",
+                                path = dataPath,
+                                width = 0,
+                                height = 0,
+                                codec = "Downloading",
+                                isPartialDownload = true,
+                                downloadedBytes = progress?.downloadedBytes ?: size,
+                                downloadSpeedBytesPerSecond = progress?.speedBytesPerSecond ?: 0L,
+                                isNewVideo = true
+                            )
+                        )
+                    }
+                }
+            } ?: emptyList()
+        }.onFailure { error ->
+            android.util.Log.w("MediaScanner", "MediaStore Files pending scan unavailable", error)
         }.getOrDefault(emptyList())
+    }
+
+    private fun detectVideoContainer(file: File): String? = runCatching {
+        val header = ByteArray(12)
+        val count = FileInputStream(file).use { input -> input.read(header) }
+        if (count < 4) return@runCatching null
+        when {
+            header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
+                header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte() -> "mkv"
+            count >= 8 && String(header, 4, 4, Charsets.US_ASCII) == "ftyp" -> "mp4"
+            header[0] == 0x47.toByte() -> "ts"
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun mimeTypeForExtension(extension: String): String = when (extension) {
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "mov" -> "video/quicktime"
+        "avi" -> "video/x-msvideo"
+        "ts" -> "video/mp2t"
+        "3gp" -> "video/3gpp"
+        else -> "video/mp4"
     }
 
     fun getDemoRemuxVideos(): List<VideoItem> {

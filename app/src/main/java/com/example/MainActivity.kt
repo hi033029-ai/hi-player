@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import com.example.model.PendingDownloadFormat
 import com.example.model.VideoItem
 import com.example.player.DownloadingFilesRegistry
 import com.example.ui.components.HiBottomNavigationBar
@@ -349,18 +350,11 @@ class MainActivity : ComponentActivity() {
                                                     fileManagerViewModel = fileManagerViewModel,
                                                     includeHeader = false,
                                                     onOpenVideo = { file ->
-                                                        val lowerName = file.name.lowercase()
-                                                        val isPartial = listOf(
-                                                            ".crdownload", ".download", ".part", ".partial", ".tmp"
-                                                        ).any(lowerName::endsWith)
+                                                        val isPartial = PendingDownloadFormat.isPending(file.name)
                                                         if (isPartial) {
                                                             DownloadingFilesRegistry.markDownloading(file.path, file.sizeBytes)
                                                         }
-                                                        val title = file.name
-                                                            .removeSuffix(".crdownload")
-                                                            .removeSuffix(".download")
-                                                            .removeSuffix(".part")
-                                                            .removeSuffix(".tmp")
+                                                        val title = PendingDownloadFormat.originalName(file.name)
                                                         val extension = title.substringAfterLast('.', "mp4").lowercase()
                                                         val mimeType = when (extension) {
                                                             "mkv" -> "video/x-matroska"
@@ -374,7 +368,7 @@ class MainActivity : ComponentActivity() {
                                                                 id = file.path.hashCode().toLong(),
                                                                 uri = Uri.fromFile(file.file),
                                                                 title = title,
-                                                                durationMs = if (isPartial) -1L else 0L,
+                                                                durationMs = 0L,
                                                                 sizeBytes = file.sizeBytes,
                                                                 width = if (isPartial) 0 else 1920,
                                                                 height = if (isPartial) 0 else 1080,

@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.model.ArchiveEntryInfo
 import com.example.model.FileItem
 import com.example.model.FileType
+import com.example.model.PendingDownloadFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -802,11 +803,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun normalizedDownloadName(file: File): String {
-        val name = file.name.lowercase(Locale.ROOT)
-        return listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
-            .firstOrNull { name.endsWith(it) }
-            ?.let { name.removeSuffix(it) }
-            ?: name
+        return PendingDownloadFormat.originalName(file.name).lowercase(Locale.ROOT)
     }
 
     private fun isVideoOrAudio(file: File): Boolean {

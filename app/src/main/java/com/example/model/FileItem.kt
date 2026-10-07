@@ -26,14 +26,10 @@ data class FileItem(
     val hasNewVideo: Boolean = false
 ) {
     val isPendingDownload: Boolean
-        get() = listOf(".crdownload", ".download", ".part", ".partial", ".tmp")
-            .any { name.endsWith(it, ignoreCase = true) }
+        get() = PendingDownloadFormat.isPending(name)
 
     val displayName: String
-        get() = listOf(".crdownload", ".download", ".partial", ".part", ".tmp")
-            .firstOrNull { name.endsWith(it, ignoreCase = true) }
-            ?.let { name.dropLast(it.length).ifBlank { name } }
-            ?: name
+        get() = PendingDownloadFormat.originalName(name)
 
     val formattedSize: String
         get() {

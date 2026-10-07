@@ -17,6 +17,7 @@ import com.example.data.PlayerPreferencesRepository
 import com.example.db.HiPlayerDatabase
 import com.example.db.PlaylistEntity
 import com.example.db.VideoEntity
+import com.example.model.PendingDownloadFormat
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -356,8 +357,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folders = _allVideos.map { videos ->
-        videos.filterNot { it.isPartialDownload }
-            .groupBy { it.folderName }
+        videos.groupBy { it.folderName }
             .map { (name, group) ->
                 VideoFolder(
                     name = name,
@@ -398,9 +398,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     name.endsWith(".webm") || name.endsWith(".mov") ||
                     name.endsWith(".avi") || name.endsWith(".ts") ||
                     name.endsWith(".m4v") || name.endsWith(".3gp") ||
-                    name.endsWith(".crdownload") || name.endsWith(".download") ||
-                    name.endsWith(".part") || name.endsWith(".partial") ||
-                    name.endsWith(".tmp")
+                    PendingDownloadFormat.isPending(name)
                 ) {
                     refreshVideos(silent = true)
                 }

@@ -60,6 +60,12 @@ data class VideoItem(
     val isFavorite: Boolean = false,
     val thumbnailUrl: String? = null,
     val isPartialDownload: Boolean = false,
+    /** Bytes currently observed on disk for a growing download. */
+    val downloadedBytes: Long = 0L,
+    /** Expected final size when the downloader reports one; zero means unknown. */
+    val downloadTotalBytes: Long = 0L,
+    /** Measured from real file-size changes, never simulated. */
+    val downloadSpeedBytesPerSecond: Long = 0L,
     val isNewVideo: Boolean = false
 ) {
     val resolutionBadge: VideoResolutionBadge
@@ -98,6 +104,43 @@ data class VideoItem(
                 else -> String.format("%.0f KB", kb)
             }
         }
+
+    val downloadProgressFraction: Float?
+        get() = if (downloadTotalBytes > 0L) {
+            (downloadedBytes.toDouble() / downloadTotalBytes.toDouble())
+                .toFloat()
+                .coerceIn(0f, 1f)
+        } else {
+            null
+        }
+
+    val formattedDownloadSpeed: String
+        get() = when {
+            downloadSpeedBytesPerSecond >= 1_048_576L ->
+                String.format("%.1f MB/s", downloadSpeedBytesPerSecond / 1_048_576.0)
+            downloadSpeedBytesPerSecond >= 1_024L ->
+                String.format("%.0f KB/s", downloadSpeedBytesPerSecond / 1_024.0)
+            downloadSpeedBytesPerSecond > 0L -> "$downloadSpeedBytesPerSecond B/s"
+            else -> "Waiting for data"
+        }
+
+    val formattedDownloadStatus: String
+        get() = if (downloadTotalBytes > 0L) {
+            "${formattedSize} / ${formatBytes(downloadTotalBytes)} • $formattedDownloadSpeed"
+        } else {
+            "${formattedSize} • $formattedDownloadSpeed"
+        }
+
+    private fun formatBytes(bytes: Long): String {
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1.0 -> String.format("%.2f GB", gb)
+            mb >= 1.0 -> String.format("%.1f MB", mb)
+            else -> String.format("%.0f KB", kb)
+        }
+    }
 
     val resolutionString: String
         get() = if (width > 0 && height > 0) "${width}x${height}" else "4K UHD"
