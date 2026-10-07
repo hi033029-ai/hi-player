@@ -879,6 +879,7 @@ fun PlayerScreen(
 
         // Error Card Overlay
         playerError?.let { err ->
+            val isDecoderCapabilityError = err.startsWith("This device cannot decode")
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -902,7 +903,7 @@ fun PlayerScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Playback Failed",
+                            text = if (isDecoderCapabilityError) "Video Not Supported" else "Playback Failed",
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold

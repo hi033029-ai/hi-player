@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
+import java.util.Locale
 
 object MediaScanner {
 
@@ -165,6 +166,17 @@ object MediaScanner {
         if (partialPaths.isNotEmpty()) {
             videoList.removeAll { it.path in partialPaths }
         }
+        // Some OEM MediaStore implementations expose a pending file through
+        // Video and Files collections with different (or blank) data paths.
+        // Remove that temporary Video row by its clean display name before the
+        // canonical partial item is added, without affecting completed videos.
+        val pendingTitles = partialItems.map { it.title.lowercase(Locale.ROOT) }.toSet()
+        if (pendingTitles.isNotEmpty()) {
+            videoList.removeAll { indexed ->
+                PendingDownloadFormat.isPending(indexed.title) &&
+                    PendingDownloadFormat.originalName(indexed.title).lowercase(Locale.ROOT) in pendingTitles
+            }
+        }
         videoList += partialItems
 
         // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
@@ -244,6 +256,11 @@ object MediaScanner {
             android.util.Log.e("MediaScanner", "pending download scan failed", error)
             emptyList()
         }
+        if (candidates.isNotEmpty()) {
+            DownloadingFilesRegistry.markMissingPendingFileDownloadsComplete(
+                pathItems.map { it.path }.filter(String::isNotBlank).toSet()
+            )
+        }
 
         // Several download managers write to the final name (for example,
         // movie.mp4) from the first byte. A suffix-only detector then treats
@@ -299,17 +316,30 @@ object MediaScanner {
         // collection without registering it as Video media. Querying it gives
         // us a content URI on scoped-storage devices before the download ends.
         val mediaStoreItems = scanMediaStorePendingDownloads(context)
-        val contentUris = activeGrowingContentUris + mediaStoreItems.map { it.uri.toString() }
-        DownloadingFilesRegistry.markMissingContentDownloadsComplete(contentUris)
+        if (mediaStoreItems != null) {
+            val contentUris = activeGrowingContentUris + mediaStoreItems.map { it.uri.toString() }
+            DownloadingFilesRegistry.markMissingContentDownloadsComplete(contentUris)
+        }
 
-        return (pathItems + finalNameGrowingItems + mediaStoreItems)
+        return (pathItems + finalNameGrowingItems + mediaStoreItems.orEmpty())
             // Prefer the directly readable file discovered above. A pending
             // entry can also appear in MediaStore Files with a different URI,
-            // which previously rendered a second identical download card.
-            .distinctBy { it.title.trim().lowercase() }
+            // which previously rendered a second identical download card. The
+            // parent-folder component preserves separate same-named files.
+            .distinctBy(::pendingMediaIdentity)
     }
 
-    private fun scanMediaStorePendingDownloads(context: Context): List<VideoItem> {
+    private fun pendingMediaIdentity(video: VideoItem): String {
+        val parent = video.path.takeIf(String::isNotBlank)
+            ?.let { path -> File(path).parentFile?.name }
+            ?: video.folderName
+        val normalizedParent = parent.trim().lowercase(Locale.ROOT)
+            .removeSuffix("s")
+            .ifBlank { "downloads" }
+        return "$normalizedParent\u0000${video.title.trim().lowercase(Locale.ROOT)}"
+    }
+
+    private fun scanMediaStorePendingDownloads(context: Context): List<VideoItem>? {
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
         } else {
@@ -385,7 +415,7 @@ object MediaScanner {
             } ?: emptyList()
         }.onFailure { error ->
             android.util.Log.w("MediaScanner", "MediaStore Files pending scan unavailable", error)
-        }.getOrDefault(emptyList())
+        }.getOrNull()
     }
 
     private fun detectVideoContainer(file: File): String? = runCatching {

@@ -56,7 +56,7 @@ class ExampleRobolectricTest {
   fun `test LibraryViewModel navigation modes and view modes`() {
     val context = ApplicationProvider.getApplicationContext<android.app.Application>()
     val libraryViewModel = com.example.viewmodel.LibraryViewModel(context)
-    assertEquals(com.example.viewmodel.LibraryNavMode.ALL_VIDEOS, libraryViewModel.navMode.value)
+    assertEquals(com.example.viewmodel.LibraryNavMode.FOLDERS, libraryViewModel.navMode.value)
     assertEquals(com.example.viewmodel.LibraryViewMode.LAYER_LIST, libraryViewModel.viewMode.value)
     
     libraryViewModel.toggleViewMode()

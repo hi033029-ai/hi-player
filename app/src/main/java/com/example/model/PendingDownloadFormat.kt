@@ -27,8 +27,14 @@ object PendingDownloadFormat {
 
     fun isPending(name: String): Boolean = suffixFor(name) != null
 
-    fun originalName(name: String): String = suffixFor(name)
-        ?.let { suffix -> name.dropLast(suffix.length) }
-        ?.ifBlank { name }
-        ?: name
+    fun originalName(name: String): String {
+        var normalized = name
+        while (true) {
+            val suffix = suffixFor(normalized) ?: break
+            val stripped = normalized.dropLast(suffix.length)
+            if (stripped.isBlank()) return name
+            normalized = stripped
+        }
+        return normalized
+    }
 }

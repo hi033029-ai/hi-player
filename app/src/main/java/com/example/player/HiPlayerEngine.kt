@@ -78,6 +78,10 @@ class HiPlayerEngine(
     private val context: Context,
     private val coroutineScope: CoroutineScope
 ) {
+    private companion object {
+        const val GROWING_INITIAL_GRACE_MS = 120_000L
+    }
+
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
@@ -292,12 +296,17 @@ class HiPlayerEngine(
     private var activeGrowingUri: Uri? = null
     private var growingRetryJob: Job? = null
     private var growingRetryAttempts = 0
+    private var growingPlaybackReachedReady = false
+    private var growingPlaybackGraceUntilMs = 0L
     var onVideoEnded: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
             if (playbackState == Player.STATE_READY) {
+                if (exoPlayer?.currentMediaItem?.localConfiguration?.uri == activeGrowingUri) {
+                    growingPlaybackReachedReady = true
+                }
                 val resumePosition = pendingResumePositionMs
                 if (resumePosition > 0L) {
                     pendingResumePositionMs = 0L
@@ -363,6 +372,10 @@ class HiPlayerEngine(
             if (isUnsupportedAudioRendererFailure(details) && recoverWithPlayableAudioTrack()) {
                 return
             }
+            if (isUnsupportedVideoRendererFailure(details)) {
+                _playerError.value = unsupportedVideoRendererMessage(details)
+                return
+            }
             val isDolbyVisionDecoderFailure = details.contains("dolby-vision") ||
                 details.contains("dolby vision") ||
                 (details.contains("mediacodecvideorenderer") && details.contains("hevc"))
@@ -383,12 +396,12 @@ class HiPlayerEngine(
                 }
                 return
             }
-            if (retryUri != null && isGrowingDownloadUri(retryUri)) {
+            if (retryUri != null && activeGrowingUri == retryUri && !growingPlaybackReachedReady) {
                 // Do not reject MP4/other containers immediately: if their
                 // metadata is at the beginning, they can play while growing;
                 // if it is at the end, retrying lets playback begin as soon as
                 // the index arrives.
-                if (DownloadingFilesRegistry.isDownloading(downloadRegistryKey(retryUri))) {
+                if (shouldKeepAwaitingGrowingData(retryUri)) {
                     // An MP4 whose metadata arrives at the end can need more
                     // than 30 seconds before its extractor becomes usable.
                     // Keep retrying while the file remains registered as an
@@ -697,6 +710,12 @@ class HiPlayerEngine(
             growingRetryJob = null
             growingRetryAttempts = 0
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
+            growingPlaybackReachedReady = false
+            growingPlaybackGraceUntilMs = if (activeGrowingUri != null) {
+                System.currentTimeMillis() + GROWING_INITIAL_GRACE_MS
+            } else {
+                0L
+            }
         }
         if (resetDecoderRetry) dolbyVisionRetryAttempted = false
         // Do not show caption tracks from a previously played film while this
@@ -842,6 +861,20 @@ class HiPlayerEngine(
         return PendingDownloadFormat.isPending(name)
     }
 
+    /**
+     * File observers, MediaStore and the five-second library scan do not fire
+     * at exactly the same time. Hold an opened growing source through a short
+     * gap before its first READY state, but never mask a renderer problem after
+     * a frame has already become playable.
+     */
+    private fun shouldKeepAwaitingGrowingData(uri: Uri): Boolean {
+        if (DownloadingFilesRegistry.isActivelyGrowing(downloadRegistryKey(uri))) {
+            growingPlaybackGraceUntilMs = System.currentTimeMillis() + GROWING_INITIAL_GRACE_MS
+            return true
+        }
+        return System.currentTimeMillis() < growingPlaybackGraceUntilMs
+    }
+
     private fun downloadRegistryKey(uri: Uri): String =
         if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
 
@@ -885,6 +918,8 @@ class HiPlayerEngine(
         growingRetryJob = null
         activeGrowingUri = null
         growingRetryAttempts = 0
+        growingPlaybackReachedReady = false
+        growingPlaybackGraceUntilMs = 0L
         exoPlayer?.let {
             it.playWhenReady = false
             it.pause()
@@ -959,6 +994,34 @@ class HiPlayerEngine(
                 details.contains("unsupported type") ||
                 details.contains("audio/true-hd") ||
                 details.contains("audio/vnd.dts"))
+
+    private fun isUnsupportedVideoRendererFailure(details: String): Boolean =
+        details.contains("mediacodecvideorenderer") &&
+            (details.contains("no_exceeds_capabilities") ||
+                details.contains("exceeds capabilities") ||
+                details.contains("format_supported=no"))
+
+    /**
+     * Video codec capability is owned by the device, not by the file source.
+     * Decoder fallback is already enabled, but the bundled extension is audio
+     * only; it cannot turn an unsupported 8K AV1 10-bit HDR stream into a
+     * playable video renderer. Keep this diagnostic short and actionable.
+     */
+    private fun unsupportedVideoRendererMessage(details: String): String {
+        val codec = when {
+            details.contains("video/av01") -> "AV1"
+            details.contains("video/hevc") || details.contains("video/h265") -> "HEVC"
+            details.contains("video/vp9") -> "VP9"
+            else -> "this video format"
+        }
+        val resolution = when {
+            details.contains("[7680, 4320") || details.contains("7680,4320") -> "8K"
+            details.contains("[3840, 2160") || details.contains("3840,2160") -> "4K"
+            else -> "high-resolution"
+        }
+        return "This device cannot decode $resolution $codec video at this profile. " +
+            "Try a lower-resolution copy or a device with $codec hardware decoding."
+    }
 
     private fun recoverWithPlayableAudioTrack(): Boolean {
         val player = exoPlayer ?: return false
@@ -1200,6 +1263,8 @@ class HiPlayerEngine(
         growingRetryJob = null
         activeGrowingUri = null
         growingRetryAttempts = 0
+        growingPlaybackReachedReady = false
+        growingPlaybackGraceUntilMs = 0L
         progressJob?.cancel()
         progressJob = null
         loudnessEnhancer?.release()

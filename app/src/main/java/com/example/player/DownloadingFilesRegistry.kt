@@ -1,5 +1,6 @@
 package com.example.player
 
+import com.example.model.PendingDownloadFormat
 import java.util.concurrent.ConcurrentHashMap
 
 /** Tracks files that are still being written so Media3 can wait at EOF. */
@@ -93,6 +94,21 @@ object DownloadingFilesRegistry {
     fun markMissingContentDownloadsComplete(activeContentUris: Set<String>) {
         activePaths.keys
             .filter { key -> key.startsWith("content://") && key !in activeContentUris }
+            .forEach(activePaths::remove)
+    }
+
+    /**
+     * Temporary browser files are often atomically renamed to their final
+     * media name. Remove the old path-only entry when the next scan no longer
+     * sees it, so a completed file cannot leave stale growing state behind.
+     */
+    fun markMissingPendingFileDownloadsComplete(activeFilePaths: Set<String>) {
+        activePaths.keys
+            .filter { key ->
+                key.startsWith("/") &&
+                    PendingDownloadFormat.isPending(key.substringAfterLast('/')) &&
+                    key !in activeFilePaths
+            }
             .forEach(activePaths::remove)
     }
 
