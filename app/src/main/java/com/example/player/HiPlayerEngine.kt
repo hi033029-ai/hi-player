@@ -447,11 +447,11 @@ class HiPlayerEngine(
         release()
 
         val renderersFactory = DefaultRenderersFactory(context).apply {
-            // Was EXTENSION_RENDERER_MODE_OFF, which disables software/FFmpeg
-            // fallback decoders entirely - any file using a codec the device's
-            // hardware decoder can't handle (common in large 4K/HDR remuxes
-            // with exotic audio/video codecs) would simply fail to play with
-            // no fallback. ON prefers hardware but allows software fallback.
+            // ON keeps hardware decoding as the default and automatically adds
+            // bundled extension renderers when hardware cannot support a track.
+            // This includes Libgav1 for AV1 video and the existing FFmpeg audio
+            // extension; it avoids forcing expensive software decoding on every
+            // ordinary video.
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
         }
@@ -1003,9 +1003,10 @@ class HiPlayerEngine(
 
     /**
      * Video codec capability is owned by the device, not by the file source.
-     * Decoder fallback is already enabled, but the bundled extension is audio
-     * only; it cannot turn an unsupported 8K AV1 10-bit HDR stream into a
-     * playable video renderer. Keep this diagnostic short and actionable.
+     * Libgav1 is loaded automatically for AV1 when hardware support is absent.
+     * Reaching this branch for AV1 therefore means the software fallback itself
+     * could not sustain or initialize the requested profile (commonly 8K/10-bit
+     * HDR on a memory-constrained phone), not merely that hardware is absent.
      */
     private fun unsupportedVideoRendererMessage(details: String): String {
         val codec = when {
@@ -1019,8 +1020,13 @@ class HiPlayerEngine(
             details.contains("[3840, 2160") || details.contains("3840,2160") -> "4K"
             else -> "high-resolution"
         }
-        return "This device cannot decode $resolution $codec video at this profile. " +
-            "Try a lower-resolution copy or a device with $codec hardware decoding."
+        return if (codec == "AV1") {
+            "Hardware AV1 decoding is unavailable and the automatic software fallback " +
+                "could not play this $resolution profile. Try a lower-resolution or SDR copy."
+        } else {
+            "This device cannot decode $resolution $codec video at this profile. " +
+                "Try a lower-resolution copy or a device with $codec hardware decoding."
+        }
     }
 
     private fun recoverWithPlayableAudioTrack(): Boolean {

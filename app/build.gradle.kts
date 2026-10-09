@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 46
-    versionName = "1.0.45"
+    versionCode = 47
+    versionName = "1.0.46"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -80,6 +80,10 @@ dependencies {
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
   // formats that may be unsupported by a device hardware decoder.
   implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))
+  // Official Media3 1.5.1 Libgav1 video renderer. DefaultRenderersFactory
+  // loads this automatically in EXTENSION_RENDERER_MODE_ON when hardware AV1
+  // decoding is unavailable on the device.
+  implementation(files("libs/media3-av1-decoder-release.aar"))
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)

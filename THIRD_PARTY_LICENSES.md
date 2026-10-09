@@ -8,8 +8,8 @@ Hi Player utilizes the following open-source libraries and components. We gratef
 - **Provider**: Google LLC / The Android Open Source Project
 - **License**: Apache License 2.0
 - **URL**: https://github.com/androidx/media
-- **Modules**: `media3-exoplayer`, `media3-ui`, `media3-session`, `media3-common`, `media3-extractor`
-- **Purpose**: Low-latency hardware-accelerated 4K/8K video playback, HDR10+, Dolby Vision/TrueHD/DTS audio decoding, subtitle rendering, and background playback service.
+- **Modules**: `media3-exoplayer`, `media3-ui`, `media3-session`, `media3-common`, `media3-extractor`, `media3-decoder-av1`
+- **Purpose**: Low-latency hardware video playback, automatic Libgav1 software fallback for unsupported AV1 hardware decoders, HDR/subtitle rendering, and background playback service. The locally built AV1 module includes Apache-2.0-licensed `libgav1` and `cpu_features`.
 
 ---
 
