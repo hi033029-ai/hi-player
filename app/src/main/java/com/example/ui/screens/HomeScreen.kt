@@ -185,7 +185,9 @@ fun HomeScreen(
     var isVideoSelectionMode by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<VideoItem?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
+    // Overflow-menu deletion is independent from long-press multi-select.
+    // A one-item delete must never turn on the library action bar.
+    var pendingDeleteVideos by remember { mutableStateOf<List<VideoItem>?>(null) }
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
@@ -350,7 +352,7 @@ fun HomeScreen(
                         TextButton(onClick = { showSelectionProperties = true }) {
                             Text("Properties", color = palette.primary, fontSize = 12.sp)
                         }
-                        TextButton(onClick = { showDeleteConfirm = true }) {
+                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
                             Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
                         }
                     } else {
@@ -396,7 +398,7 @@ fun HomeScreen(
                         TextButton(onClick = { showSelectionProperties = true }) {
                             Text("Properties", color = palette.primary, fontSize = 12.sp)
                         }
-                        TextButton(onClick = { showDeleteConfirm = true }) {
+                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
                             Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
                         }
                     },
@@ -1063,8 +1065,8 @@ fun HomeScreen(
                                         renameText = video.title.substringBeforeLast('.', video.title)
                                     },
                                     onDelete = {
-                                        selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
-                                        showDeleteConfirm = true
+                                        exitVideoSelectionMode()
+                                        pendingDeleteVideos = listOf(video)
                                     },
                                     modifier = with(this) {
                                         Modifier
@@ -1119,8 +1121,8 @@ fun HomeScreen(
                                         renameText = video.title.substringBeforeLast('.', video.title)
                                     },
                                     onDelete = {
-                                        selectedVideoPaths = setOf(videoKey(video)); isVideoSelectionMode = true
-                                        showDeleteConfirm = true
+                                        exitVideoSelectionMode()
+                                        pendingDeleteVideos = listOf(video)
                                     },
                                     modifier = with(this) {
                                         Modifier
@@ -1220,19 +1222,19 @@ fun HomeScreen(
         )
     }
 
-    if (showDeleteConfirm) {
+    pendingDeleteVideos?.let { videosToDelete ->
         AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete selected video${if (selectedVideos.size == 1) "" else "s"}?") },
-            text = { Text("This moves ${selectedVideos.size} file${if (selectedVideos.size == 1) "" else "s"} to Recycle Bin. You can restore them or permanently delete them later.") },
+            onDismissRequest = { pendingDeleteVideos = null },
+            title = { Text("Delete video${if (videosToDelete.size == 1) "" else "s"}?") },
+            text = { Text("This moves ${videosToDelete.size} file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. You can restore them or permanently delete them later.") },
             confirmButton = {
                 TextButton(onClick = {
-                    onMoveVideosToRecycleBin(selectedVideos)
-                    selectedVideoPaths = emptySet()
-                    showDeleteConfirm = false
+                    onMoveVideosToRecycleBin(videosToDelete)
+                    exitVideoSelectionMode()
+                    pendingDeleteVideos = null
                 }) { Text("Delete", color = Color(0xFFEF4444)) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { pendingDeleteVideos = null }) { Text("Cancel") } }
         )
     }
 }

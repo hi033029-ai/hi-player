@@ -29,7 +29,9 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:grantUriPermissions="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:supportsPictureInPicture="true"
             android:colorMode="hdr"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard"
@@ -45,8 +47,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="video/*" />
+                <!-- Some file managers label MKV and downloaded videos as
+                     generic binary data instead of video/* in their resolver. -->
+                <data android:mimeType="application/octet-stream" />
                 <data android:scheme="content" />
                 <data android:scheme="file" />
+            </intent-filter>
+
+            <!-- Offer Hi Player in Android's share/open suggestions when a
+                 file manager shares a video URI instead of issuing ACTION_VIEW. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
 

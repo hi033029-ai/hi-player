@@ -726,7 +726,7 @@ class HiPlayerEngine(
         _isHdrContent.value = false
         _is4kContent.value = false
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
-        if (!mediaMimeType.isNullOrBlank()) {
+        if (!mediaMimeType.isNullOrBlank() && mediaMimeType != "video/*" && mediaMimeType != "*/*") {
             // Supplying the known MediaStore MIME type lets Media3 select the
             // right progressive extractor immediately instead of relying only
             // on broad container sniffing for every large local file.
@@ -920,10 +920,13 @@ class HiPlayerEngine(
         growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
+        _isBackgroundPlayActive.value = false
         exoPlayer?.let {
             it.playWhenReady = false
-            it.pause()
+            it.stop()
         }
+        _isPlaying.value = false
+        _isBuffering.value = false
     }
 
     fun togglePlayPause() {

@@ -189,6 +189,7 @@ fun PlayerScreen(
 
     var areControlsVisible by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
+    var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
     var videoWidth by remember { mutableStateOf(0) }
     var videoHeight by remember { mutableStateOf(0) }
@@ -323,6 +324,17 @@ fun PlayerScreen(
         if (activeSheet != ActiveSheet.NONE) glSurfaceRef?.dismissHud()
     }
 
+    LaunchedEffect(isScreenLocked) {
+        if (isScreenLocked) {
+            // Locking hides all player controls. The compact transparent unlock
+            // icon is initially available, then screen taps toggle it.
+            areControlsVisible = false
+            showLockedUnlockControl = true
+        } else {
+            showLockedUnlockControl = false
+        }
+    }
+
     LaunchedEffect(aspectRatioMode) {
         // Ratio changes are user interactions; never leave the controls hidden
         // because the playback auto-hide timer fired at the same time.
@@ -435,6 +447,11 @@ fun PlayerScreen(
         }
         surface.onHdrLongPress = {}
         surface.isInteractionLocked = { isScreenLocked }
+        surface.onLockedScreenTap = {
+            if (isScreenLocked) {
+                showLockedUnlockControl = !showLockedUnlockControl
+            }
+        }
         surface.onPresetSelected = { preset ->
             playerViewModel.engine.setHdrColorPreset(preset)
             if (preset.name == ColorPresets.HDR_DISABLED.name) {
@@ -728,44 +745,11 @@ fun PlayerScreen(
             }
         }
 
-        // This status is driven by the bytes observed by MediaScanner, not a
-        // simulated stream. It remains deliberately small and transparent so
-        // it does not compete with the player's playback controls.
-        currentVideo?.takeIf { it.isPartialDownload && !isScreenLocked }?.let { video ->
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 58.dp)
-                    .background(Color.Black.copy(alpha = 0.36f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "LIVE GROWING VIDEO",
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
-                Text(
-                    text = video.formattedDownloadStatus,
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontSize = 10.sp
-                )
-                if (isBuffering && durationMs <= 0L) {
-                    Text(
-                        text = "Waiting for playable video data…",
-                        color = Color.White.copy(alpha = 0.72f),
-                        fontSize = 9.sp
-                    )
-                }
-            }
-        }
-
         // 2. UI Controls Overlay Layer
         ControlsOverlay(
             isVisible = areControlsVisible,
             isLocked = isScreenLocked,
+            showLockedUnlockControl = showLockedUnlockControl,
             isPlaying = isPlaying,
             isBuffering = isBuffering,
             currentPositionMs = currentPositionMs,
@@ -787,7 +771,8 @@ fun PlayerScreen(
             onToggleLock = {
                 val locking = !isScreenLocked
                 playerViewModel.engine.setScreenLocked(locking)
-                areControlsVisible = true
+                areControlsVisible = !locking
+                showLockedUnlockControl = locking
                 if (locking) {
                     playerViewModel.closeSheet()
                     showAspectPicker = false

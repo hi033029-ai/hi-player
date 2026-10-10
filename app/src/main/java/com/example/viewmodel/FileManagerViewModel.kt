@@ -349,7 +349,10 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                     completed == 0 -> "Couldn't move items to Recycle Bin"
                     else -> "Moved $completed to Recycle Bin, failed $failed"
                 }
-                deselectAll()
+                // A completed delete closes selection rather than leaving an
+                // empty action bar behind. This also prevents a delete invoked
+                // from the Video library from surfacing selection controls in Files.
+                clearSelection()
                 refreshCurrentDirectory(silent = true)
                 refreshRecycleBin()
                 onComplete(movedPaths)

@@ -114,6 +114,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var sleepTimerJob: Job? = null
     private var progressSyncJob: Job? = null
     private var hudDismissJob: Job? = null
+    // Settings and resume reads are asynchronous. Keep the job so navigation
+    // can cancel it before a closed player screen is prepared again.
+    private var playRequestJob: Job? = null
 
     init {
         HiMediaSessionService.sharedPlayer = engine.getPlayer()
@@ -130,11 +133,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playVideo(video: VideoItem, startPositionOverride: Long? = null) {
+        playRequestJob?.cancel()
         _currentVideo.value = video
         _showStartOverPrompt.value = false
         _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         fetchRatingFor(video)
-        viewModelScope.launch {
+        playRequestJob = viewModelScope.launch {
             // These are independent local reads. Fetch them together so player
             // preparation is not delayed by settings I/O followed by DAO I/O.
             val settingsDeferred = async { preferencesRepo.settingsFlow.first() }
@@ -169,6 +173,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             )
 
         }
+    }
+
+    /**
+     * Leaves the player without allowing a late settings/record read to prepare
+     * and start audio after the UI has returned to the library. PiP and explicit
+     * Background Play deliberately bypass this method.
+     */
+    fun stopForNavigation() {
+        playRequestJob?.cancel()
+        playRequestJob = null
+        _showStartOverPrompt.value = false
+        closeSheet()
+        engine.stopForNavigation()
+        // The library has already persisted the resume point before this path
+        // is called. Clearing the selected item prevents a disposed player
+        // surface from retaining its title, controls, or growing-download HUD
+        // while the main screen is recomposed.
+        _currentVideo.value = null
     }
 
     fun playCurrentVideoFromStart() {
@@ -517,6 +539,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
+        playRequestJob?.cancel()
         saveCurrentProgress()
         engine.release()
         super.onCleared()

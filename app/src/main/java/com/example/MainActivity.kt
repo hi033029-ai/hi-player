@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.model.PendingDownloadFormat
+import com.example.model.StreamUrlClassifier
 import com.example.model.VideoItem
 import com.example.player.DownloadingFilesRegistry
 import com.example.ui.components.HiBottomNavigationBar
@@ -82,6 +83,10 @@ class MainActivity : ComponentActivity() {
         const val PIP_ACTION_PREVIOUS = "com.example.hiplayer.PIP_PREVIOUS"
         const val PIP_ACTION_NEXT = "com.example.hiplayer.PIP_NEXT"
         const val PIP_ACTION_CANCEL = "com.example.hiplayer.PIP_CANCEL"
+        val SUPPORTED_EXTERNAL_VIDEO_EXTENSIONS = setOf(
+            "mp4", "m4v", "mkv", "webm", "mov", "avi", "ts", "mts",
+            "m2ts", "3gp", "flv", "wmv", "vob"
+        )
     }
 
     private val libraryViewModel: LibraryViewModel by viewModels()
@@ -90,6 +95,10 @@ class MainActivity : ComponentActivity() {
     private val fileManagerViewModel: FileManagerViewModel by viewModels()
 
     private val _isInPipMode = mutableStateOf(false)
+    // Android VIEW/SEND intents can arrive before Compose is created or while
+    // the library is visible. Keep the URI in Activity-owned state so Compose
+    // can switch to the Player only after its screen state exists.
+    private val pendingExternalVideoUri = mutableStateOf<Uri?>(null)
     private var pipTransitionRequested = false
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -118,11 +127,28 @@ class MainActivity : ComponentActivity() {
                 var recycleBinOpenRequest by remember { mutableStateOf(0) }
                 var globalSearchQuery by remember { mutableStateOf("") }
                 var streamUrl by remember { mutableStateOf("") }
+                var streamUrlError by remember { mutableStateOf<String?>(null) }
                 var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
                 val isPip = _isInPipMode.value
+                val externalVideoUri = pendingExternalVideoUri.value
+
+                // File managers, browsers, and share sheets route here through
+                // ACTION_VIEW/ACTION_SEND. Consume the URI only once the app has
+                // finished its startup gate, then navigate directly into Player.
+                LaunchedEffect(externalVideoUri, settingsLoaded, isShowingSplash) {
+                    val uri = externalVideoUri ?: return@LaunchedEffect
+                    if (!settingsLoaded || isShowingSplash) return@LaunchedEffect
+                    pendingExternalVideoUri.value = null
+                    libraryViewModel.addExternalVideo(uri) { video ->
+                        libraryViewModel.markVideoOpened(video)
+                        playerViewModel.playVideo(video)
+                        currentTab = NavTab.VIDEOS
+                        currentScreen = AppScreen.Player
+                    }
+                }
 
                 val videos by libraryViewModel.allVideos.collectAsState()
                 val audios by musicViewModel.audioList.collectAsState()
@@ -192,7 +218,7 @@ class MainActivity : ComponentActivity() {
                                 settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value -> {
                                     // The player utility action explicitly opted into audio-only playback.
                                 }
-                                else -> playerViewModel.engine.stopForNavigation()
+                                else -> playerViewModel.stopForNavigation()
                             }
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             currentScreen = AppScreen.Main
@@ -230,7 +256,7 @@ class MainActivity : ComponentActivity() {
                                                 // Intentionally left playing (audio-only is the point).
                                             }
                                             else -> {
-                                                playerViewModel.engine.stopForNavigation()
+                                                playerViewModel.stopForNavigation()
                                             }
                                         }
                                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -320,6 +346,9 @@ class MainActivity : ComponentActivity() {
                                                         currentTab = NavTab.SETTINGS
                                                     },
                                                     onMoveVideosToRecycleBin = { selectedVideos ->
+                                                        // Library overflow deletion must not inherit a stale
+                                                        // Files multi-select toolbar while the recycle-bin move runs.
+                                                        fileManagerViewModel.clearSelection()
                                                         fileManagerViewModel.moveVideosToRecycleBin(selectedVideos) { movedPaths ->
                                                             val moved = selectedVideos.filter { it.path in movedPaths }
                                                             libraryViewModel.removeVideoRecords(moved)
@@ -426,37 +455,58 @@ class MainActivity : ComponentActivity() {
 
                                 if (showStreamUrlDialog) {
                                     AlertDialog(
-                                        onDismissRequest = { showStreamUrlDialog = false },
-                                        title = { Text("Play Stream URL") },
+                                        onDismissRequest = {
+                                            streamUrlError = null
+                                            showStreamUrlDialog = false
+                                        },
+                                        title = { Text("Play direct stream") },
                                         text = {
                                             OutlinedTextField(
                                                 value = streamUrl,
-                                                onValueChange = { streamUrl = it },
+                                                onValueChange = {
+                                                    streamUrl = it
+                                                    streamUrlError = null
+                                                },
                                                 singleLine = true,
-                                                label = { Text("HTTP(S) video URL") },
-                                                placeholder = { Text("https://example.com/video.mp4") }
+                                                label = { Text("Direct video or stream URL") },
+                                                placeholder = { Text("https://example.com/stream.m3u8") },
+                                                isError = streamUrlError != null,
+                                                supportingText = {
+                                                    Text(
+                                                        streamUrlError
+                                                            ?: "MP4/WebM/MKV, HLS (.m3u8), or DASH (.mpd)"
+                                                    )
+                                                }
                                             )
                                         },
                                         confirmButton = {
                                             Button(onClick = {
-                                                val candidate = streamUrl.trim()
-                                                val parsed = runCatching { Uri.parse(candidate) }.getOrNull()
-                                                if (parsed != null && (parsed.scheme == "http" || parsed.scheme == "https") && parsed.host != null) {
+                                                val result = StreamUrlClassifier.classify(streamUrl)
+                                                if (result.isPlayableInHiPlayer) {
+                                                    val candidate = checkNotNull(result.normalizedUrl)
+                                                    val parsed = Uri.parse(candidate)
                                                     playerViewModel.playVideo(
                                                         VideoItem(
                                                             uri = parsed,
                                                             title = parsed.lastPathSegment ?: "Stream",
                                                             path = candidate,
-                                                            mimeType = "video/*"
+                                                            mimeType = result.mimeType ?: "video/*",
+                                                            folderName = "Online streams"
                                                         )
                                                     )
                                                     currentScreen = AppScreen.Player
+                                                    streamUrlError = null
                                                     showStreamUrlDialog = false
+                                                } else {
+                                                    streamUrlError = result.errorMessage
                                                 }
                                             }) { Text("Play") }
                                         },
                                         dismissButton = {
-                                            Button(onClick = { showStreamUrlDialog = false }) { Text("Cancel") }
+                                            Button(onClick = {
+                                                streamUrlError = null
+                                                showStreamUrlDialog = false
+                                            }) { Text("Cancel") }
                                         }
                                     )
                                 }
@@ -504,14 +554,30 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val action = intent?.action
-        val data: Uri? = intent?.data
+        val incoming = intent ?: return
+        val uri = when (incoming.action) {
+            Intent.ACTION_VIEW -> incoming.data
+            Intent.ACTION_SEND -> incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                ?: incoming.clipData?.getItemAt(0)?.uri
+            else -> null
+        } ?: return
 
-        if (action == Intent.ACTION_VIEW && data != null) {
-            libraryViewModel.addExternalVideo(data) { videoItem ->
-                playerViewModel.playVideo(videoItem)
-            }
+        if (isSupportedExternalVideo(incoming, uri)) {
+            pendingExternalVideoUri.value = uri
         }
+    }
+
+    private fun isSupportedExternalVideo(intent: Intent, uri: Uri): Boolean {
+        val mimeType = intent.type ?: contentResolver.getType(uri)
+        if (mimeType?.startsWith("video/", ignoreCase = true) == true) return true
+        if (mimeType.equals("application/octet-stream", ignoreCase = true)) return true
+
+        val extension = uri.lastPathSegment
+            ?.substringBefore('?')
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            .orEmpty()
+        return extension in SUPPORTED_EXTERNAL_VIDEO_EXTENSIONS
     }
 
     fun enterPipMode() {
@@ -572,7 +638,7 @@ class MainActivity : ComponentActivity() {
         playerViewModel.saveCurrentProgress()
         val settings = libraryViewModel.playerSettings.value
         if (!(settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
-            playerViewModel.engine.stopForNavigation()
+            playerViewModel.stopForNavigation()
         }
     }
 
@@ -586,7 +652,7 @@ class MainActivity : ComponentActivity() {
             pipTransitionRequested = false
         } else if (!(libraryViewModel.playerSettings.value.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
             pipTransitionRequested = false
-            playerViewModel.engine.stopForNavigation()
+            playerViewModel.stopForNavigation()
         }
         // Tapping the PiP window's own close/"cancel" control finishes the
         // activity, which triggers onStop() above and pauses playback there

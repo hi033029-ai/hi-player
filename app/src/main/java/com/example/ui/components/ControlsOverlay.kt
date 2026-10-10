@@ -94,6 +94,7 @@ import kotlin.math.roundToInt
 fun ControlsOverlay(
     isVisible: Boolean,
     isLocked: Boolean,
+    showLockedUnlockControl: Boolean,
     isPlaying: Boolean,
     isBuffering: Boolean,
     currentPositionMs: Long,
@@ -140,9 +141,10 @@ fun ControlsOverlay(
     val referenceAspectLabel = aspectRatioMode.displayName
     Box(modifier = modifier.fillMaxSize()) {
         if (isLocked) {
-            // Floating Unlock Button when locked
+            // The locked player remains clean. A single tap on the video toggles
+            // this compact unlock affordance; no regular controls are exposed.
             AnimatedVisibility(
-                visible = true,
+                visible = showLockedUnlockControl,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -152,15 +154,14 @@ fun ControlsOverlay(
                 IconButton(
                     onClick = onToggleLock,
                     modifier = Modifier
-                        .size(56.dp)
-                        .background(Color(0xCC0E1424), CircleShape)
+                        .size(40.dp)
                         .testTag("unlock_screen_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Unlock Controls",
                         tint = HiPrimaryCyan,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }

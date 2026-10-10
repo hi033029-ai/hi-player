@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -36,6 +37,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var player: ExoPlayer? = null
     private var downX = 0f
     private var downY = 0f
+    private var lockedTouchDownX = 0f
+    private var lockedTouchDownY = 0f
+    private var lockedTouchMoved = false
+    private val lockedTapSlopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private var lastX = 0f
     private var lastY = 0f
     private var horizontalScrub = false
@@ -101,6 +106,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onScrubMove: ((Long) -> Unit)? = null
     var onScrubEnd: (() -> Unit)? = null
     var isInteractionLocked: (() -> Boolean)? = null
+    /** Receives only a simple touch-up while locked; media gestures stay blocked. */
+    var onLockedScreenTap: (() -> Unit)? = null
     var onHdrToggle: (() -> Unit)? = null
     var onHdrLongPress: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
@@ -144,8 +151,29 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (isInteractionLocked?.invoke() == true) {
-            // The Compose unlock control remains above this media overlay; the
-            // native surface must not run seek, zoom, HUD, or playback gestures.
+            // Keep lock mode inert, except for a genuine single tap used to
+            // reveal or hide the compact Compose unlock icon. Do not feed the
+            // gesture detector in this branch: a locked video must not seek,
+            // pause, zoom, change volume/brightness, or open menus.
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    lockedTouchDownX = event.x
+                    lockedTouchDownY = event.y
+                    lockedTouchMoved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (
+                        kotlin.math.abs(event.x - lockedTouchDownX) > lockedTapSlopPx ||
+                        kotlin.math.abs(event.y - lockedTouchDownY) > lockedTapSlopPx
+                    ) {
+                        lockedTouchMoved = true
+                    }
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> lockedTouchMoved = true
+                MotionEvent.ACTION_UP -> {
+                    if (!lockedTouchMoved) onLockedScreenTap?.invoke()
+                }
+            }
             return true
         }
         gestureDetector.onTouchEvent(event)
