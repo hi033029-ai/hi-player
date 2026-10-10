@@ -48,7 +48,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.model.PendingDownloadFormat
+import com.example.model.PublicWebVideoResolver
 import com.example.model.StreamUrlClassifier
+import com.example.model.StreamUrlResult
 import com.example.model.VideoItem
 import com.example.player.DownloadingFilesRegistry
 import com.example.ui.components.HiBottomNavigationBar
@@ -70,6 +72,8 @@ import com.example.viewmodel.MusicViewModel
 import com.example.viewmodel.PlayerViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed class AppScreen {
     object Main : AppScreen()
@@ -128,12 +132,32 @@ class MainActivity : ComponentActivity() {
                 var globalSearchQuery by remember { mutableStateOf("") }
                 var streamUrl by remember { mutableStateOf("") }
                 var streamUrlError by remember { mutableStateOf<String?>(null) }
+                var isResolvingStreamUrl by remember { mutableStateOf(false) }
                 var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
                 val isPip = _isInPipMode.value
                 val externalVideoUri = pendingExternalVideoUri.value
+                val openResolvedStream: (StreamUrlResult) -> Unit = { result ->
+                    val candidate = checkNotNull(result.normalizedUrl)
+                    val parsed = Uri.parse(candidate)
+                    playerViewModel.playVideo(
+                        VideoItem(
+                            uri = parsed,
+                            title = result.displayTitle
+                                ?: parsed.lastPathSegment
+                                ?: "Stream",
+                            path = candidate,
+                            mimeType = result.mimeType ?: "video/*",
+                            folderName = "Online streams"
+                        )
+                    )
+                    currentScreen = AppScreen.Player
+                    streamUrlError = null
+                    isResolvingStreamUrl = false
+                    showStreamUrlDialog = false
+                }
 
                 // File managers, browsers, and share sheets route here through
                 // ACTION_VIEW/ACTION_SEND. Consume the URI only once the app has
@@ -456,10 +480,11 @@ class MainActivity : ComponentActivity() {
                                 if (showStreamUrlDialog) {
                                     AlertDialog(
                                         onDismissRequest = {
+                                            if (isResolvingStreamUrl) return@AlertDialog
                                             streamUrlError = null
                                             showStreamUrlDialog = false
                                         },
-                                        title = { Text("Play direct stream") },
+                                        title = { Text("Play stream") },
                                         text = {
                                             OutlinedTextField(
                                                 value = streamUrl,
@@ -468,13 +493,15 @@ class MainActivity : ComponentActivity() {
                                                     streamUrlError = null
                                                 },
                                                 singleLine = true,
-                                                label = { Text("Direct video or stream URL") },
+                                                label = { Text("Direct stream or HubCloud link") },
                                                 placeholder = { Text("https://example.com/stream.m3u8") },
                                                 isError = streamUrlError != null,
                                                 supportingText = {
                                                     Text(
-                                                        streamUrlError
-                                                            ?: "MP4/WebM/MKV, HLS (.m3u8), or DASH (.mpd)"
+                                                        if (isResolvingStreamUrl) {
+                                                            "Checking this public webpage for an exposed direct video…"
+                                                        } else streamUrlError
+                                                            ?: "MP4/WebM/MKV, HLS (.m3u8), DASH (.mpd), or HubCloud link"
                                                     )
                                                 }
                                             )
@@ -482,28 +509,30 @@ class MainActivity : ComponentActivity() {
                                         confirmButton = {
                                             Button(onClick = {
                                                 val result = StreamUrlClassifier.classify(streamUrl)
-                                                if (result.isPlayableInHiPlayer) {
-                                                    val candidate = checkNotNull(result.normalizedUrl)
-                                                    val parsed = Uri.parse(candidate)
-                                                    playerViewModel.playVideo(
-                                                        VideoItem(
-                                                            uri = parsed,
-                                                            title = parsed.lastPathSegment ?: "Stream",
-                                                            path = candidate,
-                                                            mimeType = result.mimeType ?: "video/*",
-                                                            folderName = "Online streams"
-                                                        )
-                                                    )
-                                                    currentScreen = AppScreen.Player
-                                                    streamUrlError = null
-                                                    showStreamUrlDialog = false
-                                                } else {
+                                                if (!result.isPlayableInHiPlayer) {
                                                     streamUrlError = result.errorMessage
+                                                } else if (!result.requiresWebResolution) {
+                                                    openResolvedStream(result)
+                                                } else {
+                                                    isResolvingStreamUrl = true
+                                                    streamUrlError = null
+                                                    scope.launch {
+                                                        val resolution = withContext(Dispatchers.IO) {
+                                                            PublicWebVideoResolver.resolve(streamUrl)
+                                                        }
+                                                        resolution.stream?.let(openResolvedStream)
+                                                            ?: run {
+                                                                isResolvingStreamUrl = false
+                                                                streamUrlError = resolution.errorMessage
+                                                            }
+                                                    }
                                                 }
-                                            }) { Text("Play") }
+                                            }, enabled = !isResolvingStreamUrl) {
+                                                Text(if (isResolvingStreamUrl) "Checking…" else "Play")
+                                            }
                                         },
                                         dismissButton = {
-                                            Button(onClick = {
+                                            Button(enabled = !isResolvingStreamUrl, onClick = {
                                                 streamUrlError = null
                                                 showStreamUrlDialog = false
                                             }) { Text("Cancel") }
