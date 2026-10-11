@@ -26,8 +26,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class DiscoverViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,10 +33,6 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
     private val mediaSources = MediaSourcePreferences(application)
 
     val sourceSettings = mediaSources.settings
-
-    val tmdbConfigured = preferences.settingsFlow
-        .map { true }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState = _uiState.asStateFlow()
@@ -92,7 +86,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "TMDB search failed: ${error.message ?: "check your network and key"}"
+                        errorMessage = "Catalog search failed: ${error.message ?: "check your network connection"}"
                     )
                 }
         }

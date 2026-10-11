@@ -64,7 +64,6 @@ fun DiscoverScreen(
 ) {
     val state by discoverViewModel.uiState.collectAsState()
     val sources by discoverViewModel.sourceSettings.collectAsState()
-    val tmdbConfigured by discoverViewModel.tmdbConfigured.collectAsState()
     val palette = LocalHiPalette.current
 
     Column(
@@ -78,8 +77,7 @@ fun DiscoverScreen(
                 loading = state.isLoading,
                 onQueryChanged = discoverViewModel::setQuery,
                 onSearch = discoverViewModel::searchTitles,
-                onOpenSettings = onOpenSettings,
-                tmdbConfigured = tmdbConfigured
+                onOpenSettings = onOpenSettings
             )
             state.errorMessage?.let { message ->
                 DiscoverMessage(message = message, isError = true)
@@ -100,7 +98,7 @@ fun DiscoverScreen(
                 ) {
                     item {
                         Text(
-                            text = "TMDB RESULTS",
+                            text = "CATALOG RESULTS",
                             color = palette.primary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
@@ -137,8 +135,7 @@ private fun DiscoverSearchHeader(
     loading: Boolean,
     onQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
-    onOpenSettings: () -> Unit,
-    tmdbConfigured: Boolean
+    onOpenSettings: () -> Unit
 ) {
     val palette = LocalHiPalette.current
     Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
@@ -183,7 +180,7 @@ private fun DiscoverSearchHeader(
             ) {
                 Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Search TMDB")
+                Text("Search catalog")
             }
 
         }
@@ -200,11 +197,11 @@ private fun DiscoverEmptyState(sourcesConnected: Boolean, onOpenSettings: () -> 
     ) {
         Icon(Icons.Default.Explore, contentDescription = null, tint = palette.primary, modifier = Modifier.size(52.dp))
         Spacer(Modifier.height(14.dp))
-        Text("Search movies and TV", color = palette.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "TMDB supplies free title details. Hi Player searches only your connected Jellyfin or WebDAV media library for a playable copy.",
-            color = palette.textSecondary,
+            Text("Search movies and TV", color = palette.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Search the free public catalog with no API key. Hi Player then searches only media sources you connect for playable copies.",
+                color = palette.textSecondary,
             fontSize = 12.sp
         )
         Spacer(Modifier.height(14.dp))

@@ -7,6 +7,12 @@ enum class DiscoverMediaType {
     TV
 }
 
+enum class DiscoverCatalogSource {
+    TMDB,
+    ITUNES,
+    TVMAZE
+}
+
 data class DiscoverTitle(
     val tmdbId: Long,
     val mediaType: DiscoverMediaType,
@@ -16,7 +22,8 @@ data class DiscoverTitle(
     val posterUrl: String? = null,
     val backdropUrl: String? = null,
     val rating: Double? = null,
-    val language: String? = null
+    val language: String? = null,
+    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.TMDB
 )
 
 data class DiscoverSeason(

@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -45,13 +44,11 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.DiscoverViewModel
 
-/** Source setup for the free Discover feature. TMDB has metadata only; the
- * media sources below are user-owned Jellyfin/WebDAV libraries. */
+/** Source setup for the free Discover feature. The catalog works without an
+ * account; playback searches only media sources the user has connected. */
 @Composable
 fun DiscoverSourceSettings(
     discoverViewModel: DiscoverViewModel,
-    tmdbApiKey: String,
-    onSaveTmdbApiKey: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sources by discoverViewModel.sourceSettings.collectAsState()
@@ -68,7 +65,7 @@ fun DiscoverSourceSettings(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
         )
         Text(
-            text = "TMDB provides free title information. Playback searches only your own Jellyfin server or WebDAV folder; no paid or third-party catalog is added.",
+            text = "Movie and TV search works without an API key. Playback searches only media sources you connect.",
             color = palette.textSecondary,
             fontSize = 11.sp,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 0.dp)
@@ -80,14 +77,6 @@ fun DiscoverSourceSettings(
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                SourceRow(
-                    icon = Icons.Default.Key,
-                    title = "TMDB metadata key",
-                    subtitle = if (tmdbApiKey.isBlank()) "Required for movie and season search. Free personal key." else "Free key saved on this device",
-                    action = if (tmdbApiKey.isBlank()) "Add key" else "Change",
-                    onAction = { dialog = SourceDialog.TMDB }
-                )
-                SourceDivider()
                 SourceRow(
                     icon = Icons.Default.CloudDone,
                     title = "Jellyfin server",
@@ -131,14 +120,6 @@ fun DiscoverSourceSettings(
     }
 
     when (dialog) {
-        SourceDialog.TMDB -> TmdbKeySetupDialog(
-            currentValue = tmdbApiKey,
-            onDismiss = { dialog = null },
-            onSave = {
-                onSaveTmdbApiKey(it)
-                dialog = null
-            }
-        )
         SourceDialog.JELLYFIN -> JellyfinSetupDialog(
             onDismiss = { dialog = null },
             onConnect = { baseUrl, username, password, onComplete ->
@@ -162,7 +143,7 @@ fun DiscoverSourceSettings(
     }
 }
 
-private enum class SourceDialog { TMDB, JELLYFIN, WEBDAV, GOOGLE_DRIVE }
+private enum class SourceDialog { JELLYFIN, WEBDAV, GOOGLE_DRIVE }
 
 @Composable
 private fun SourceRow(
@@ -198,30 +179,6 @@ private fun SourceRow(
 private fun SourceDivider() {
     val palette = LocalHiPalette.current
     androidx.compose.material3.HorizontalDivider(color = palette.surfaceBorder, modifier = Modifier.padding(horizontal = 14.dp))
-}
-
-@Composable
-private fun TmdbKeySetupDialog(currentValue: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    val palette = LocalHiPalette.current
-    var value by remember { mutableStateOf(currentValue) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = palette.surface,
-        title = { Text("Free TMDB API key", color = palette.textPrimary) },
-        text = {
-            Column {
-                Text("TMDB is used only for movie and TV metadata. Create a free personal key at themoviedb.org/settings/api.", color = palette.textSecondary, fontSize = 12.sp)
-                Spacer(Modifier.height(10.dp))
-                SourceTextField(value = value, onValueChange = { value = it }, label = "TMDB API key")
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onSave(value.trim()) }, enabled = value.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = palette.primary)) {
-                Text("Save")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = palette.textSecondary) } }
-    )
 }
 
 @Composable
@@ -400,7 +357,7 @@ private fun GoogleDriveSetupDialog(
                     )
                 )
                 error?.let {
-                    Text(text = it, color = palette.error, fontSize = 12.sp)
+                    Text(text = it, color = Color(0xFFD14343), fontSize = 12.sp)
                 }
             }
         },
@@ -416,7 +373,7 @@ private fun GoogleDriveSetupDialog(
                     }
                 }
             ) {
-                Text(if (isSaving) "Verifying..." else "Connect", color = palette.accent)
+                Text(if (isSaving) "Verifying..." else "Connect", color = palette.primary)
             }
         },
         dismissButton = {

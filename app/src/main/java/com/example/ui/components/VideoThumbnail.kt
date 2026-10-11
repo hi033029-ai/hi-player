@@ -38,7 +38,7 @@ fun VideoThumbnail(
     val palette = LocalHiPalette.current
     val cacheKey = remember(video.id, video.uri, video.path) {
         val p = video.path
-        if (!p.isNullOrEmpty()) p else video.uri.toString().ifEmpty { video.id }
+        if (!p.isNullOrEmpty()) p else video.uri.toString().ifEmpty { video.id.toString() }
     }
 
     var extractedBitmap by remember(cacheKey) {
@@ -90,7 +90,7 @@ fun VideoThumbnail(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(palette.surfaceSubtle)
+                    .background(palette.surfaceElevated)
             )
         }
     }

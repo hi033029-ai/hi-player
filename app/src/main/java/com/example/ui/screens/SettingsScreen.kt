@@ -306,8 +306,6 @@ fun SettingsScreen(
             SettingsSectionHeader(title = "Discover & Personal Media Sources", accentColor = palette.primary)
             DiscoverSourceSettings(
                 discoverViewModel = discoverViewModel,
-                tmdbApiKey = settings.tmdbApiKey,
-                onSaveTmdbApiKey = libraryViewModel::setTmdbApiKey,
                 modifier = Modifier.padding(horizontal = 0.dp)
             )
 
