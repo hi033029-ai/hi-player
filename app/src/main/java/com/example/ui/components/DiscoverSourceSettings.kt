@@ -1,4 +1,5 @@
 package com.example.ui.components
+import com.example.model.GoogleDriveConnection
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -97,6 +98,19 @@ fun DiscoverSourceSettings(
                     onAction = {
                         if (sources.jellyfin?.isConfigured == true) discoverViewModel.removeJellyfin()
                         else dialog = SourceDialog.JELLYFIN
+                    }
+                )
+                SourceDivider()
+                SourceRow(
+                    icon = Icons.Default.CloudDone,
+                    title = "Google Drive",
+                    subtitle = sources.googleDrive?.let { "Connected: ${it.displayName} (${it.accountName})" }
+                        ?: "Connect Google Drive for direct video playback",
+                    action = if (sources.googleDrive?.isConfigured == true) "Remove" else "Connect",
+                    destructive = sources.googleDrive?.isConfigured == true,
+                    onAction = {
+                        if (sources.googleDrive?.isConfigured == true) discoverViewModel.removeGoogleDrive()
+                        else dialog = SourceDialog.GOOGLE_DRIVE
                     }
                 )
                 SourceDivider()
