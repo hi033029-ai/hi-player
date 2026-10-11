@@ -53,14 +53,7 @@ object TmdbDiscoverClient {
             .toString()
 
         val json = getJson(url) ?: return@withContext DiscoverDetails(
-            tmdbId = title.tmdbId,
-            mediaType = title.mediaType,
-            title = title.title,
-            overview = title.overview,
-            releaseYear = title.releaseYear,
-            posterUrl = title.posterUrl,
-            backdropUrl = title.backdropUrl,
-            rating = title.rating,
+            title = title,
             genres = emptyList()
         )
 
@@ -73,18 +66,18 @@ object TmdbDiscoverClient {
             }
         }
 
-        DiscoverDetails(
-            tmdbId = title.tmdbId,
-            mediaType = title.mediaType,
-            title = title.title,
+        val runtime = json.optInt("runtime", 0).takeIf { it > 0 }
+            ?: json.optJSONArray("episode_run_time")?.optInt(0, 0)?.takeIf { it > 0 }
+
+        val updatedTitle = title.copy(
             overview = json.optString("overview", title.overview),
-            releaseYear = title.releaseYear,
-            posterUrl = title.posterUrl,
-            backdropUrl = title.backdropUrl,
-            rating = json.optDouble("vote_average", title.rating ?: 0.0).takeIf { it > 0.0 } ?: title.rating,
-            genres = genres,
-            tagline = json.optString("tagline").takeIf(String::isNotBlank),
-            status = json.optString("status").takeIf(String::isNotBlank)
+            rating = json.optDouble("vote_average", title.rating ?: 0.0).takeIf { it > 0.0 } ?: title.rating
+        )
+
+        DiscoverDetails(
+            title = updatedTitle,
+            runtimeMinutes = runtime,
+            genres = genres
         )
     }
 
