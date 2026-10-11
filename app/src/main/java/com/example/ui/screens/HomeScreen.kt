@@ -879,7 +879,11 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
+                        itemsIndexed(
+                            items = folders,
+                            key = { _, folder -> folder.name },
+                            contentType = { _, _ -> "folder_card" }
+                        ) { _, folder ->
                             FolderGridCard(
                                 name = folder.name,
                                 videoCount = folder.videoCount,
@@ -906,7 +910,11 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        itemsIndexed(folders, key = { _, folder -> folder.name }) { _, folder ->
+                        itemsIndexed(
+                            items = folders,
+                            key = { _, folder -> folder.name },
+                            contentType = { _, _ -> "folder_item" }
+                        ) { _, folder ->
                                     FolderItemRow(
                                         folder = folder,
                                         isSelected = selectedFolder == folder.name,
@@ -1044,7 +1052,11 @@ fun HomeScreen(
                                 )
                             }
                         }
-                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { _, video ->
+                        itemsIndexed(
+                            items = orderedFilteredVideos,
+                            key = { _, video -> video.id },
+                            contentType = { _, _ -> "video_grid_item" }
+                        ) { _, video ->
                             ReorderableItem(reorderableVideoGridState, key = video.id) { isDragging ->
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
@@ -1100,7 +1112,11 @@ fun HomeScreen(
                             }
                         }
                         // Video item rows
-                        itemsIndexed(orderedFilteredVideos, key = { _, video -> video.id }) { _, video ->
+                        itemsIndexed(
+                            items = orderedFilteredVideos,
+                            key = { _, video -> video.id },
+                            contentType = { _, _ -> "video_item" }
+                        ) { _, video ->
                             ReorderableItem(reorderableVideoListState, key = video.id) { isDragging ->
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
