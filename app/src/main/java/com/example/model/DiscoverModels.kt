@@ -45,6 +45,16 @@ data class JellyfinConnection(
         get() = baseUrl.isNotBlank() && accessToken.isNotBlank() && userId.isNotBlank()
 }
 
+data class GoogleDriveConnection(
+    val accountName: String,
+    val accessToken: String,
+    val folderId: String = "root",
+    val displayName: String = "Google Drive"
+) {
+    val isConfigured: Boolean
+        get() = accessToken.isNotBlank()
+}
+
 data class WebDavConnection(
     val folderUrl: String,
     val username: String,
@@ -57,10 +67,11 @@ data class WebDavConnection(
 
 data class MediaSourceSettings(
     val jellyfin: JellyfinConnection? = null,
-    val webDav: WebDavConnection? = null
+    val webDav: WebDavConnection? = null,
+    val googleDrive: GoogleDriveConnection? = null
 ) {
     val hasAnySource: Boolean
-        get() = jellyfin?.isConfigured == true || webDav?.isConfigured == true
+        get() = jellyfin?.isConfigured == true || webDav?.isConfigured == true || googleDrive?.isConfigured == true
 }
 
 data class RemoteMediaMatch(

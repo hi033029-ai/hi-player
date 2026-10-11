@@ -7,6 +7,7 @@ import com.example.data.JellyfinMediaSourceClient
 import com.example.data.MediaSourcePreferences
 import com.example.data.PlayerPreferencesRepository
 import com.example.data.TmdbDiscoverClient
+import com.example.data.GoogleDriveMediaSourceClient
 import com.example.data.WebDavMediaSourceClient
 import com.example.model.DiscoverDetails
 import com.example.model.DiscoverTitle
@@ -14,6 +15,7 @@ import com.example.model.DiscoverUiState
 import com.example.model.JellyfinConnection
 import com.example.model.MediaSourceSettings
 import com.example.model.RemoteMediaMatch
+import com.example.model.GoogleDriveConnection
 import com.example.model.WebDavConnection
 import com.example.player.RemoteStreamHeadersRegistry
 import kotlinx.coroutines.async
@@ -51,6 +53,9 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 }
                 settings.webDav?.takeIf { it.isConfigured }?.let { connection ->
                     RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
+                }
+                settings.googleDrive?.takeIf { it.isConfigured }?.let { connection ->
+                    RemoteStreamHeadersRegistry.register("https://www.googleapis.com/drive/v3/files", GoogleDriveMediaSourceClient.requestHeaders(connection))
                 }
             }
         }
@@ -173,6 +178,28 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun saveGoogleDrive(accountName: String, accessToken: String, displayName: String, onResult: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val connection = GoogleDriveConnection(
+                    accountName = accountName.trim(),
+                    accessToken = accessToken.trim(),
+                    displayName = displayName.trim().ifBlank { "Google Drive" }
+                )
+                require(connection.isConfigured) { "Enter Google Drive access token." }
+                GoogleDriveMediaSourceClient.verify(connection)
+                mediaSources.saveGoogleDrive(connection)
+                RemoteStreamHeadersRegistry.register("https://www.googleapis.com/drive/v3/files", GoogleDriveMediaSourceClient.requestHeaders(connection))
+            }
+            onResult(result)
+        }
+    }
+
+    fun removeGoogleDrive() {
+        RemoteStreamHeadersRegistry.clear("https://www.googleapis.com/drive/v3/files")
+        mediaSources.clearGoogleDrive()
+    }
+
     fun saveWebDav(folderUrl: String, username: String, password: String, displayName: String, onResult: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             val result = runCatching {
@@ -217,9 +244,14 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             val webDavSearch: Deferred<List<RemoteMediaMatch>>? = if (webDav?.isConfigured == true) {
                 async { runCatching { WebDavMediaSourceClient.search(webDav, query) }.getOrDefault(emptyList()) }
             } else null
+            val gDrive = settings.googleDrive
+            val gDriveSearch: Deferred<List<RemoteMediaMatch>>? = if (gDrive?.isConfigured == true) {
+                async { runCatching { GoogleDriveMediaSourceClient.search(gDrive, query) }.getOrDefault(emptyList()) }
+            } else null
             buildList {
                 jellyfinSearch?.await()?.let(::addAll)
                 webDavSearch?.await()?.let(::addAll)
+                gDriveSearch?.await()?.let(::addAll)
             }
         }
     }
