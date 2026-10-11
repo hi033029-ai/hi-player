@@ -551,7 +551,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         ratingFetchJob?.cancel()
         ratingFetchJob = viewModelScope.launch {
             val apiKey = preferencesRepo.settingsFlow.first().tmdbApiKey
-            if (apiKey.isBlank()) return@launch
             val parsed = TmdbRatingHelper.parseFilename(video.title)
             val rating = TmdbRatingHelper.fetchRating(apiKey, parsed.cleanTitle, parsed.year)
             if (isActive) {

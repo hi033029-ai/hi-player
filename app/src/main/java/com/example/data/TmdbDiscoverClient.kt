@@ -14,31 +14,42 @@ import java.net.URL
 /** Free TMDB metadata client. It never returns or searches for streaming URLs. */
 object TmdbDiscoverClient {
     private const val API_BASE = "https://api.themoviedb.org/3"
+    const val DEFAULT_API_KEY = "b4435cefc19ea78f0d86fa73117fe948"
     private const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
     suspend fun search(apiKey: String, query: String): List<DiscoverTitle> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank() || query.isBlank()) return@withContext emptyList()
+        if (query.isBlank()) return@withContext emptyList()
+        val effectiveKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
         val url = Uri.parse("$API_BASE/search/multi").buildUpon()
-            .appendQueryParameter("api_key", apiKey.trim())
+            .appendQueryParameter("api_key", effectiveKey)
             .appendQueryParameter("query", query.trim())
             .appendQueryParameter("include_adult", "false")
             .appendQueryParameter("language", "en-US")
             .build()
             .toString()
-        val results = getJson(url)?.optJSONArray("results") ?: return@withContext emptyList()
-        buildList {
-            for (index in 0 until results.length()) {
-                val entry = results.optJSONObject(index) ?: continue
-                parseTitle(entry)?.let(::add)
+        val results = getJson(url)?.optJSONArray("results")
+        val list = if (results != null && results.length() > 0) {
+            buildList {
+                for (index in 0 until results.length()) {
+                    val entry = results.optJSONObject(index) ?: continue
+                    parseTitle(entry)?.let(::add)
+                }
             }
+        } else {
+            emptyList()
         }
+
+        if (list.isNotEmpty()) return@withContext list
+
+        // Keyless public search fallback (TVMaze)
+        searchTvMaze(query)
     }
 
     suspend fun details(apiKey: String, title: DiscoverTitle): DiscoverDetails? = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext null
+        val effectiveKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
         val typePath = if (title.mediaType == DiscoverMediaType.TV) "tv" else "movie"
         val url = Uri.parse("$API_BASE/$typePath/${title.tmdbId}").buildUpon()
-            .appendQueryParameter("api_key", apiKey.trim())
+            .appendQueryParameter("api_key", effectiveKey)
             .appendQueryParameter("language", "en-US")
             .build()
             .toString()
@@ -73,6 +84,53 @@ object TmdbDiscoverClient {
             root.optJSONArray("episode_run_time")?.optInt(0, 0)?.takeIf { it > 0 }
         }
         DiscoverDetails(title = title, runtimeMinutes = runtime, genres = genres, seasons = seasons)
+    }
+
+    private fun searchTvMaze(query: String): List<DiscoverTitle> {
+        val encoded = Uri.encode(query.trim())
+        val url = "https://api.tvmaze.com/search/shows?q=$encoded"
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 10_000
+            readTimeout = 10_000
+            setRequestProperty("Accept", "application/json")
+        }
+        val text = try {
+            if (connection.responseCode !in 200..299) return emptyList()
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            return emptyList()
+        } finally {
+            connection.disconnect()
+        }
+
+        val array = try { JSONArray(text) } catch (e: Exception) { return emptyList() }
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i)?.optJSONObject("show") ?: continue
+                val name = item.optString("name").takeIf(String::isNotBlank) ?: continue
+                val premiered = item.optString("premiered")
+                val imgObj = item.optJSONObject("image")
+                val poster = imgObj?.optString("medium").orEmpty().ifBlank { imgObj?.optString("original") }
+                val rating = item.optJSONObject("rating")?.optDouble("average", 0.0)?.takeIf { it > 0.0 }
+                val summaryRaw = item.optString("summary")
+                val summaryClean = summaryRaw.replace(Regex("<[^>]*>"), "").trim()
+
+                add(
+                    DiscoverTitle(
+                        tmdbId = item.optLong("id", 0L),
+                        mediaType = DiscoverMediaType.TV,
+                        title = name,
+                        overview = summaryClean,
+                        releaseYear = premiered.take(4).takeIf { it.length == 4 },
+                        posterUrl = poster,
+                        backdropUrl = poster,
+                        rating = rating,
+                        language = item.optString("language").takeIf(String::isNotBlank)
+                    )
+                )
+            }
+        }
     }
 
     private fun parseTitle(entry: JSONObject): DiscoverTitle? {

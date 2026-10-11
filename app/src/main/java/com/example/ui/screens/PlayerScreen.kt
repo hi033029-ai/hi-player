@@ -68,7 +68,6 @@ import com.example.model.VideoItem
 import com.example.ui.components.AudioSettingsBottomSheet
 import com.example.ui.components.ControlsOverlay
 import com.example.ui.components.FetchSubtitleUrlDialog
-import com.example.ui.components.TmdbKeyDialog
 
 import com.example.ui.components.SubtitleCustomizationBottomSheet
 import com.example.ui.components.SubtitleSettingsBottomSheet
@@ -1004,14 +1003,6 @@ fun PlayerScreen(
             ActiveSheet.FETCH_SUBTITLE_URL_DIALOG -> {
                 FetchSubtitleUrlDialog(
                     onFetchUrl = { playerViewModel.fetchSubtitleFromUrl(it) },
-                    onDismiss = { playerViewModel.closeSheet() }
-                )
-            }
-            ActiveSheet.TMDB_KEY_DIALOG -> {
-                val savedKey by playerViewModel.tmdbApiKey.collectAsState()
-                TmdbKeyDialog(
-                    currentKey = savedKey,
-                    onSaveKey = { playerViewModel.setTmdbApiKey(it) },
                     onDismiss = { playerViewModel.closeSheet() }
                 )
             }
