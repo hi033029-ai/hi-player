@@ -1,0 +1,120 @@
+package com.example.data
+
+import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import com.example.model.JellyfinConnection
+import com.example.model.MediaSourceSettings
+import com.example.model.WebDavConnection
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Stores only user-owned Jellyfin/WebDAV connection details on this device.
+ * Passwords and access tokens are encrypted with the Android Keystore-backed
+ * [EncryptedSharedPreferences] store and are never appended to a stream URL.
+ */
+class MediaSourcePreferences(context: Context) {
+    private val appContext = context.applicationContext
+    private val preferences by lazy {
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            appContext,
+            FILE_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private val _settings = MutableStateFlow(readSettings())
+    val settings = _settings.asStateFlow()
+
+    fun saveJellyfin(connection: JellyfinConnection) {
+        preferences.edit()
+            .putString(KEY_JELLYFIN_BASE_URL, connection.baseUrl.trimEnd('/'))
+            .putString(KEY_JELLYFIN_USERNAME, connection.username)
+            .putString(KEY_JELLYFIN_PASSWORD, connection.password)
+            .putString(KEY_JELLYFIN_TOKEN, connection.accessToken)
+            .putString(KEY_JELLYFIN_USER_ID, connection.userId)
+            .putString(KEY_JELLYFIN_SERVER_NAME, connection.serverName)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun clearJellyfin() {
+        preferences.edit()
+            .remove(KEY_JELLYFIN_BASE_URL)
+            .remove(KEY_JELLYFIN_USERNAME)
+            .remove(KEY_JELLYFIN_PASSWORD)
+            .remove(KEY_JELLYFIN_TOKEN)
+            .remove(KEY_JELLYFIN_USER_ID)
+            .remove(KEY_JELLYFIN_SERVER_NAME)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun saveWebDav(connection: WebDavConnection) {
+        preferences.edit()
+            .putString(KEY_WEBDAV_FOLDER_URL, connection.folderUrl.trimEnd('/') + "/")
+            .putString(KEY_WEBDAV_USERNAME, connection.username)
+            .putString(KEY_WEBDAV_PASSWORD, connection.password)
+            .putString(KEY_WEBDAV_DISPLAY_NAME, connection.displayName)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun clearWebDav() {
+        preferences.edit()
+            .remove(KEY_WEBDAV_FOLDER_URL)
+            .remove(KEY_WEBDAV_USERNAME)
+            .remove(KEY_WEBDAV_PASSWORD)
+            .remove(KEY_WEBDAV_DISPLAY_NAME)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    private fun readSettings(): MediaSourceSettings {
+        val jellyfinBase = preferences.getString(KEY_JELLYFIN_BASE_URL, "").orEmpty()
+        val jellyfin = if (jellyfinBase.isBlank()) {
+            null
+        } else {
+            JellyfinConnection(
+                baseUrl = jellyfinBase,
+                username = preferences.getString(KEY_JELLYFIN_USERNAME, "").orEmpty(),
+                password = preferences.getString(KEY_JELLYFIN_PASSWORD, "").orEmpty(),
+                accessToken = preferences.getString(KEY_JELLYFIN_TOKEN, "").orEmpty(),
+                userId = preferences.getString(KEY_JELLYFIN_USER_ID, "").orEmpty(),
+                serverName = preferences.getString(KEY_JELLYFIN_SERVER_NAME, "Jellyfin").orEmpty()
+            )
+        }
+        val webDavFolder = preferences.getString(KEY_WEBDAV_FOLDER_URL, "").orEmpty()
+        val webDav = if (webDavFolder.isBlank()) {
+            null
+        } else {
+            WebDavConnection(
+                folderUrl = webDavFolder,
+                username = preferences.getString(KEY_WEBDAV_USERNAME, "").orEmpty(),
+                password = preferences.getString(KEY_WEBDAV_PASSWORD, "").orEmpty(),
+                displayName = preferences.getString(KEY_WEBDAV_DISPLAY_NAME, "WebDAV").orEmpty()
+            )
+        }
+        return MediaSourceSettings(jellyfin = jellyfin, webDav = webDav)
+    }
+
+    private companion object {
+        const val FILE_NAME = "hi_player_media_sources"
+        const val KEY_JELLYFIN_BASE_URL = "jellyfin_base_url"
+        const val KEY_JELLYFIN_USERNAME = "jellyfin_username"
+        const val KEY_JELLYFIN_PASSWORD = "jellyfin_password"
+        const val KEY_JELLYFIN_TOKEN = "jellyfin_token"
+        const val KEY_JELLYFIN_USER_ID = "jellyfin_user_id"
+        const val KEY_JELLYFIN_SERVER_NAME = "jellyfin_server_name"
+        const val KEY_WEBDAV_FOLDER_URL = "webdav_folder_url"
+        const val KEY_WEBDAV_USERNAME = "webdav_username"
+        const val KEY_WEBDAV_PASSWORD = "webdav_password"
+        const val KEY_WEBDAV_DISPLAY_NAME = "webdav_display_name"
+    }
+}

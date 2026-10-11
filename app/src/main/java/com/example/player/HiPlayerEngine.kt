@@ -23,6 +23,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDescriptorDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -521,7 +522,17 @@ class HiPlayerEngine(
                 )
             )
 
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        // Keep credentials out of the visible stream URL and Room history.
+        // The resolver adds a source's transient in-memory headers to every
+        // Media3 request, including HLS/DASH manifests and child segments.
+        val authenticatedHttpFactory = ResolvingDataSource.Factory(
+            httpDataSourceFactory,
+            ResolvingDataSource.Resolver { dataSpec ->
+                val headers = RemoteStreamHeadersRegistry.headersFor(dataSpec.uri)
+                if (headers.isEmpty()) dataSpec else dataSpec.withAdditionalHeaders(headers)
+            }
+        )
+        val dataSourceFactory = DefaultDataSource.Factory(context, authenticatedHttpFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(
             dataSourceFactory,
             createOptimizedExtractorsFactory()

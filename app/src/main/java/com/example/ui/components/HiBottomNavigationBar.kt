@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -67,6 +68,7 @@ fun HiBottomNavigationBar(
     val tabs = remember {
         listOf(
             TabSpec(NavTab.VIDEOS, "Videos", Icons.Default.Movie, "nav_item_videos"),
+            TabSpec(NavTab.DISCOVER, "Discover", Icons.Default.Explore, "nav_item_discover"),
             TabSpec(NavTab.MUSIC, "Music", Icons.Default.MusicNote, "nav_item_music"),
             TabSpec(NavTab.FILE_MANAGER, "Files", Icons.Default.Folder, "nav_item_files"),
             TabSpec(NavTab.SETTINGS, "Settings", Icons.Default.Settings, "nav_item_settings")

@@ -28,6 +28,8 @@ Hi Player utilizes the following open-source libraries and components. We gratef
   - `androidx.core:core-ktx`
 - **Purpose**: Declarative UI layout, reactive architecture, theme management, and system integration.
 
+`androidx.security:security-crypto` (Apache License 2.0) is also used for Android Keystore-backed encryption of user-owned Jellyfin and WebDAV connection credentials on the device.
+
 ---
 
 ### 3. Room Database

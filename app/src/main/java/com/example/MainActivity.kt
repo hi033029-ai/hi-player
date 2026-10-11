@@ -57,6 +57,7 @@ import com.example.ui.components.HiBottomNavigationBar
 import com.example.ui.components.HiNavigationBottomSheet
 import com.example.ui.components.NavTab
 import com.example.ui.components.HiPlayerHeader
+import com.example.ui.screens.DiscoverScreen
 import com.example.ui.screens.FileManagerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
@@ -67,6 +68,7 @@ import com.example.ui.theme.HiPlayerTheme
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.getCustomPalette
 import com.example.viewmodel.FileManagerViewModel
+import com.example.viewmodel.DiscoverViewModel
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
 import com.example.viewmodel.PlayerViewModel
@@ -97,6 +99,7 @@ class MainActivity : ComponentActivity() {
     private val playerViewModel: PlayerViewModel by viewModels()
     private val musicViewModel: MusicViewModel by viewModels()
     private val fileManagerViewModel: FileManagerViewModel by viewModels()
+    private val discoverViewModel: DiscoverViewModel by viewModels()
 
     private val _isInPipMode = mutableStateOf(false)
     // Android VIEW/SEND intents can arrive before Compose is created or while
@@ -381,6 +384,16 @@ class MainActivity : ComponentActivity() {
                                                     includeHeader = false
                                                 )
                                             }
+                                            NavTab.DISCOVER -> {
+                                                DiscoverScreen(
+                                                    discoverViewModel = discoverViewModel,
+                                                    onPlayRemote = { match ->
+                                                        playerViewModel.playVideo(match.toVideoItem())
+                                                        currentScreen = AppScreen.Player
+                                                    },
+                                                    onOpenSettings = { currentTab = NavTab.SETTINGS }
+                                                )
+                                            }
                                             NavTab.MUSIC -> {
                                                 MusicScreen(
                                                     musicViewModel = musicViewModel,
@@ -443,6 +456,7 @@ class MainActivity : ComponentActivity() {
                                             NavTab.SETTINGS -> {
                                                 SettingsScreen(
                                                     libraryViewModel = libraryViewModel,
+                                                    discoverViewModel = discoverViewModel,
                                                     onBack = { currentTab = NavTab.VIDEOS },
                                                     includeHeader = false
                                                 )

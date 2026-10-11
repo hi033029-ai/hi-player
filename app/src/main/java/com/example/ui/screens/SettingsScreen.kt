@@ -84,8 +84,10 @@ import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.theme.getCustomPalette
+import com.example.ui.components.DiscoverSourceSettings
 import com.example.ui.components.HiPlayerHeader
 import com.example.ui.components.ThemeCustomizationPanel
+import com.example.viewmodel.DiscoverViewModel
 import com.example.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -94,6 +96,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     libraryViewModel: LibraryViewModel,
+    discoverViewModel: DiscoverViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true
@@ -299,7 +302,16 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Playback & Multitasking
+            // 4. Discover metadata and the user's own remote media sources.
+            SettingsSectionHeader(title = "Discover & Personal Media Sources", accentColor = palette.primary)
+            DiscoverSourceSettings(
+                discoverViewModel = discoverViewModel,
+                tmdbApiKey = settings.tmdbApiKey,
+                onSaveTmdbApiKey = libraryViewModel::setTmdbApiKey,
+                modifier = Modifier.padding(horizontal = 0.dp)
+            )
+
+            // 5. Playback & Multitasking
             SettingsSectionHeader(title = "Playback & Multitasking", accentColor = palette.primary)
 
             Card(

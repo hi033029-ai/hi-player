@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -52,6 +53,7 @@ import com.example.ui.theme.LocalHiPalette
 
 enum class NavTab {
     VIDEOS,
+    DISCOVER,
     MUSIC,
     FILE_MANAGER,
     SETTINGS
@@ -177,7 +179,23 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 2. MUSIC
+            // 2. DISCOVER
+            NavHubTile(
+                title = "Discover",
+                subtitle = "TMDB metadata with your Jellyfin & WebDAV sources",
+                badge = "Sources",
+                icon = Icons.Default.Explore,
+                iconColor = palette.primary,
+                isSelected = currentTab == NavTab.DISCOVER,
+                onClick = {
+                    onTabSelected(NavTab.DISCOVER)
+                },
+                testTag = "hub_tab_discover"
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // 3. MUSIC
             NavHubTile(
                 title = "Music",
                 subtitle = "Lossless Audio, Equalizer & Background Play",
@@ -193,7 +211,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 3. FILE MANAGER
+            // 4. FILE MANAGER
             NavHubTile(
                 title = "File Manager",
                 subtitle = "Explore Storage, Downloads & Media Folders",
@@ -209,7 +227,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 4. SETTINGS
+            // 5. SETTINGS
             NavHubTile(
                 title = "Settings",
                 subtitle = "HW+ Decoder, 128MB Ultra-Buffer & Themes",
