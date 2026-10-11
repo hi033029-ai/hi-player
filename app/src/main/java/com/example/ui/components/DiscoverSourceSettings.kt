@@ -337,7 +337,7 @@ private fun GoogleDriveSetupDialog(
     onDismiss: () -> Unit,
     onSave: (account: String, token: String, name: String, onComplete: (Result<Unit>) -> Unit) -> Unit
 ) {
-    val palette = LocalHiColorPalette.current
+    val palette = LocalHiPalette.current
     var account by remember { mutableStateOf(current?.accountName.orEmpty()) }
     var token by remember { mutableStateOf(current?.accessToken.orEmpty()) }
     var name by remember { mutableStateOf(current?.displayName ?: "Google Drive") }
