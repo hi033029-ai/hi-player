@@ -5,6 +5,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.model.JellyfinConnection
 import com.example.model.MediaSourceSettings
+import com.example.model.GoogleDriveConnection
 import com.example.model.WebDavConnection
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,26 @@ class MediaSourcePreferences(context: Context) {
             .remove(KEY_JELLYFIN_TOKEN)
             .remove(KEY_JELLYFIN_USER_ID)
             .remove(KEY_JELLYFIN_SERVER_NAME)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun saveGoogleDrive(connection: GoogleDriveConnection) {
+        preferences.edit()
+            .putString(KEY_GDRIVE_ACCOUNT, connection.accountName)
+            .putString(KEY_GDRIVE_TOKEN, connection.accessToken)
+            .putString(KEY_GDRIVE_FOLDER, connection.folderId)
+            .putString(KEY_GDRIVE_NAME, connection.displayName)
+            .apply()
+        _settings.value = readSettings()
+    }
+
+    fun clearGoogleDrive() {
+        preferences.edit()
+            .remove(KEY_GDRIVE_ACCOUNT)
+            .remove(KEY_GDRIVE_TOKEN)
+            .remove(KEY_GDRIVE_FOLDER)
+            .remove(KEY_GDRIVE_NAME)
             .apply()
         _settings.value = readSettings()
     }
