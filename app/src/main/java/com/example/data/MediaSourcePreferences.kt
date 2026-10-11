@@ -122,7 +122,19 @@ class MediaSourcePreferences(context: Context) {
                 displayName = preferences.getString(KEY_WEBDAV_DISPLAY_NAME, "WebDAV").orEmpty()
             )
         }
-        return MediaSourceSettings(jellyfin = jellyfin, webDav = webDav)
+        val gDriveAccount = preferences.getString(KEY_GDRIVE_ACCOUNT, "").orEmpty()
+        val gDriveToken = preferences.getString(KEY_GDRIVE_TOKEN, "").orEmpty()
+        val googleDrive = if (gDriveAccount.isBlank() || gDriveToken.isBlank()) {
+            null
+        } else {
+            GoogleDriveConnection(
+                accountName = gDriveAccount,
+                accessToken = gDriveToken,
+                folderId = preferences.getString(KEY_GDRIVE_FOLDER, "root").orEmpty().ifEmpty { "root" },
+                displayName = preferences.getString(KEY_GDRIVE_NAME, "Google Drive").orEmpty().ifEmpty { "Google Drive" }
+            )
+        }
+        return MediaSourceSettings(jellyfin = jellyfin, webDav = webDav, googleDrive = googleDrive)
     }
 
     private companion object {
@@ -137,5 +149,9 @@ class MediaSourcePreferences(context: Context) {
         const val KEY_WEBDAV_USERNAME = "webdav_username"
         const val KEY_WEBDAV_PASSWORD = "webdav_password"
         const val KEY_WEBDAV_DISPLAY_NAME = "webdav_display_name"
+        const val KEY_GDRIVE_ACCOUNT = "gdrive_account"
+        const val KEY_GDRIVE_TOKEN = "gdrive_token"
+        const val KEY_GDRIVE_FOLDER = "gdrive_folder"
+        const val KEY_GDRIVE_NAME = "gdrive_name"
     }
 }

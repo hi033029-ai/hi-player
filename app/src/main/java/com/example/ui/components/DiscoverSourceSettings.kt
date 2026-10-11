@@ -360,7 +360,7 @@ private fun GoogleDriveSetupDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = palette.surfaceCard,
+        containerColor = palette.surfaceElevated,
         title = { Text("Connect Google Drive", color = palette.textPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -400,7 +400,7 @@ private fun GoogleDriveSetupDialog(
                     )
                 )
                 error?.let {
-                    Text(text = it, color = palette.accentRed, fontSize = 12.sp)
+                    Text(text = it, color = palette.error, fontSize = 12.sp)
                 }
             }
         },
@@ -416,7 +416,7 @@ private fun GoogleDriveSetupDialog(
                     }
                 }
             ) {
-                Text(if (isSaving) "Verifying..." else "Connect", color = palette.accentYellow)
+                Text(if (isSaving) "Verifying..." else "Connect", color = palette.accent)
             }
         },
         dismissButton = {
