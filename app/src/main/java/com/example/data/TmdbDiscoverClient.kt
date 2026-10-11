@@ -3,19 +3,18 @@ package com.example.data
 import android.net.Uri
 import com.example.model.DiscoverDetails
 import com.example.model.DiscoverMediaType
-import com.example.model.DiscoverSeason
 import com.example.model.DiscoverTitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Free TMDB metadata client. It never returns or searches for streaming URLs. */
 object TmdbDiscoverClient {
+
     private const val API_BASE = "https://api.themoviedb.org/3"
     const val DEFAULT_API_KEY = "b4435cefc19ea78f0d86fa73117fe948"
-    private const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
     suspend fun search(apiKey: String, query: String): List<DiscoverTitle> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
@@ -24,9 +23,9 @@ object TmdbDiscoverClient {
             .appendQueryParameter("api_key", effectiveKey)
             .appendQueryParameter("query", query.trim())
             .appendQueryParameter("include_adult", "false")
-            .appendQueryParameter("language", "en-US")
             .build()
             .toString()
+
         val results = getJson(url)?.optJSONArray("results")
         val list = if (results != null && results.length() > 0) {
             buildList {
@@ -41,7 +40,6 @@ object TmdbDiscoverClient {
 
         if (list.isNotEmpty()) return@withContext list
 
-        // Keyless public search fallback (TVMaze)
         searchTvMaze(query)
     }
 
@@ -50,40 +48,44 @@ object TmdbDiscoverClient {
         val typePath = if (title.mediaType == DiscoverMediaType.TV) "tv" else "movie"
         val url = Uri.parse("$API_BASE/$typePath/${title.tmdbId}").buildUpon()
             .appendQueryParameter("api_key", effectiveKey)
-            .appendQueryParameter("language", "en-US")
+            .appendQueryParameter("append_to_response", "credits,external_ids,videos")
             .build()
             .toString()
-        val root = getJson(url) ?: return@withContext null
-        val genres = root.optJSONArray("genres")?.let { array ->
-            buildList {
-                for (index in 0 until array.length()) {
-                    array.optJSONObject(index)?.optString("name")?.takeIf(String::isNotBlank)?.let(::add)
-                }
+
+        val json = getJson(url) ?: return@withContext DiscoverDetails(
+            tmdbId = title.tmdbId,
+            mediaType = title.mediaType,
+            title = title.title,
+            overview = title.overview,
+            releaseYear = title.releaseYear,
+            posterUrl = title.posterUrl,
+            backdropUrl = title.backdropUrl,
+            rating = title.rating,
+            genres = emptyList()
+        )
+
+        val genres = buildList {
+            val arr = json.optJSONArray("genres") ?: return@buildList
+            for (index in 0 until arr.length()) {
+                val item = arr.optJSONObject(index) ?: continue
+                val name = item.optString("name")
+                if (name.isNotBlank()) add(name)
             }
-        }.orEmpty()
-        val seasons = root.optJSONArray("seasons")?.let { array ->
-            buildList {
-                for (index in 0 until array.length()) {
-                    val season = array.optJSONObject(index) ?: continue
-                    val number = season.optInt("season_number", -1)
-                    if (number < 0) continue
-                    add(
-                        DiscoverSeason(
-                            seasonNumber = number,
-                            name = season.optString("name").ifBlank { "Season $number" },
-                            episodeCount = season.optInt("episode_count", 0),
-                            posterUrl = imageUrl(season.optString("poster_path"))
-                        )
-                    )
-                }
-            }
-        }.orEmpty()
-        val runtime = if (title.mediaType == DiscoverMediaType.MOVIE) {
-            root.optInt("runtime", 0).takeIf { it > 0 }
-        } else {
-            root.optJSONArray("episode_run_time")?.optInt(0, 0)?.takeIf { it > 0 }
         }
-        DiscoverDetails(title = title, runtimeMinutes = runtime, genres = genres, seasons = seasons)
+
+        DiscoverDetails(
+            tmdbId = title.tmdbId,
+            mediaType = title.mediaType,
+            title = title.title,
+            overview = json.optString("overview", title.overview),
+            releaseYear = title.releaseYear,
+            posterUrl = title.posterUrl,
+            backdropUrl = title.backdropUrl,
+            rating = json.optDouble("vote_average", title.rating ?: 0.0).takeIf { it > 0.0 } ?: title.rating,
+            genres = genres,
+            tagline = json.optString("tagline").takeIf(String::isNotBlank),
+            status = json.optString("status").takeIf(String::isNotBlank)
+        )
     }
 
     private fun searchTvMaze(query: String): List<DiscoverTitle> {
@@ -108,13 +110,19 @@ object TmdbDiscoverClient {
         return buildList {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i)?.optJSONObject("show") ?: continue
-                val name = item.optString("name").takeIf(String::isNotBlank) ?: continue
-                val premiered = item.optString("premiered")
+                val name = item.optString("name", "")
+                if (name.isBlank()) continue
+                val premiered = item.optString("premiered", "")
                 val imgObj = item.optJSONObject("image")
-                val poster = imgObj?.optString("medium").orEmpty().ifBlank { imgObj?.optString("original") }
-                val rating = item.optJSONObject("rating")?.optDouble("average", 0.0)?.takeIf { it > 0.0 }
-                val summaryRaw = item.optString("summary")
+                val posterMedium = imgObj?.optString("medium", "").orEmpty()
+                val posterOrig = imgObj?.optString("original", "").orEmpty()
+                val poster = if (posterMedium.isNotBlank()) posterMedium else posterOrig.takeIf(String::isNotBlank)
+                val ratingVal = item.optJSONObject("rating")?.optDouble("average", 0.0) ?: 0.0
+                val rating = if (ratingVal > 0.0) ratingVal else null
+                val summaryRaw = item.optString("summary", "")
                 val summaryClean = summaryRaw.replace(Regex("<[^>]*>"), "").trim()
+                val year = if (premiered.length >= 4) premiered.substring(0, 4) else null
+                val lang = item.optString("language", "").takeIf(String::isNotBlank)
 
                 add(
                     DiscoverTitle(
@@ -122,11 +130,11 @@ object TmdbDiscoverClient {
                         mediaType = DiscoverMediaType.TV,
                         title = name,
                         overview = summaryClean,
-                        releaseYear = premiered.take(4).takeIf { it.length == 4 },
+                        releaseYear = year,
                         posterUrl = poster,
                         backdropUrl = poster,
                         rating = rating,
-                        language = item.optString("language").takeIf(String::isNotBlank)
+                        language = lang
                     )
                 )
             }
@@ -134,31 +142,34 @@ object TmdbDiscoverClient {
     }
 
     private fun parseTitle(entry: JSONObject): DiscoverTitle? {
-        val type = when (entry.optString("media_type")) {
-            "movie" -> DiscoverMediaType.MOVIE
+        val mediaTypeStr = entry.optString("media_type")
+        val mediaType = when (mediaTypeStr) {
             "tv" -> DiscoverMediaType.TV
+            "movie" -> DiscoverMediaType.MOVIE
             else -> return null
         }
-        val name = if (type == DiscoverMediaType.MOVIE) entry.optString("title") else entry.optString("name")
-        if (name.isBlank()) return null
-        val date = if (type == DiscoverMediaType.MOVIE) entry.optString("release_date") else entry.optString("first_air_date")
+        val title = entry.optString("title").ifBlank { entry.optString("name") }
+        if (title.isBlank()) return null
+
+        val releaseDate = entry.optString("release_date").ifBlank { entry.optString("first_air_date") }
+        val posterPath = entry.optString("poster_path").takeIf(String::isNotBlank)
+        val backdropPath = entry.optString("backdrop_path").takeIf(String::isNotBlank)
+
         return DiscoverTitle(
             tmdbId = entry.optLong("id", 0L),
-            mediaType = type,
-            title = name,
+            mediaType = mediaType,
+            title = title,
             overview = entry.optString("overview"),
-            releaseYear = date.take(4).takeIf { it.length == 4 },
-            posterUrl = imageUrl(entry.optString("poster_path")),
-            backdropUrl = imageUrl(entry.optString("backdrop_path")),
+            releaseYear = releaseDate.take(4).takeIf { it.length == 4 },
+            posterUrl = posterPath?.let { "https://image.tmdb.org/t/p/w500$it" },
+            backdropUrl = backdropPath?.let { "https://image.tmdb.org/t/p/w780$it" },
             rating = entry.optDouble("vote_average", 0.0).takeIf { it > 0.0 },
-            language = entry.optString("original_language").takeIf { it.isNotBlank() }
+            language = entry.optString("original_language").takeIf(String::isNotBlank)
         )
     }
 
-    private fun imageUrl(path: String): String? = path.takeIf { it.isNotBlank() }?.let { "$IMAGE_BASE$it" }
-
-    private fun getJson(urlString: String): JSONObject? {
-        val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
+    private fun getJson(url: String): JSONObject? {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
             readTimeout = 10_000
@@ -166,7 +177,10 @@ object TmdbDiscoverClient {
         }
         return try {
             if (connection.responseCode !in 200..299) return null
-            connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
+            val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+            JSONObject(responseText)
+        } catch (_: Exception) {
+            null
         } finally {
             connection.disconnect()
         }
