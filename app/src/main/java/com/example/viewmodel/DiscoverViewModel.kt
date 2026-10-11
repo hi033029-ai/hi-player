@@ -35,8 +35,8 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
     val sourceSettings = mediaSources.settings
 
     val tmdbConfigured = preferences.settingsFlow
-        .map { it.tmdbApiKey.isNotBlank() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState = _uiState.asStateFlow()
@@ -68,13 +68,6 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             val apiKey = preferences.settingsFlow.first().tmdbApiKey
-            if (apiKey.isBlank()) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = "Add your free TMDB API key in Settings to search the catalog."
-                )
-                return@launch
-            }
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 results = emptyList(),

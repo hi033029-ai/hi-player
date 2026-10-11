@@ -37,6 +37,7 @@ data class MediaRating(
 object TmdbRatingHelper {
 
     private const val BASE_URL = "https://api.themoviedb.org/3"
+    const val DEFAULT_TMDB_API_KEY = "b4435cefc19ea78f0d86fa73117fe948"
 
     fun parseFilename(filename: String): ParsedMediaInfo {
         val nameWithoutExt = filename.substringBeforeLast(".")
@@ -106,12 +107,13 @@ object TmdbRatingHelper {
      */
     suspend fun fetchRating(apiKey: String, title: String, year: String?): MediaRating? =
         withContext(Dispatchers.IO) {
-            if (apiKey.isBlank() || title.isBlank()) return@withContext null
+            if (title.isBlank()) return@withContext null
+            val effectiveKey = apiKey.trim().ifBlank { DEFAULT_TMDB_API_KEY }
             try {
                 val encodedTitle = Uri.encode(title)
                 val urlString = StringBuilder(BASE_URL)
                     .append("/search/multi?api_key=")
-                    .append(apiKey.trim())
+                    .append(effectiveKey)
                     .append("&query=")
                     .append(encodedTitle)
                     .append("&include_adult=false")
@@ -142,18 +144,36 @@ object TmdbRatingHelper {
 
                 val voteAverage = match.optDouble("vote_average", 0.0)
                 val voteCount = match.optInt("vote_count", 0)
-                if (voteAverage <= 0.0 || voteCount <= 0) return@withContext null
-
-                MediaRating(
-                    source = "TMDB",
-                    voteAverageOutOf10 = voteAverage,
-                    voteCount = voteCount,
-                    starsOutOf5 = (voteAverage / 2.0).toFloat().coerceIn(0f, 5f)
-                )
+                if (voteAverage > 0.0) {
+                    return@withContext MediaRating(
+                        source = "TMDB",
+                        voteAverageOutOf10 = voteAverage,
+                        voteCount = voteCount,
+                        starsOutOf5 = (voteAverage / 2.0).toFloat().coerceIn(0f, 5f)
+                    )
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
-                null
+                // Ignore TMDB network/auth error and try keyless fallback below
             }
+
+            // Keyless public fallback (TVMaze)
+            try {
+                val tvMazeUrl = "https://api.tvmaze.com/singlesearch/shows?q=" + Uri.encode(title)
+                val tvJson = getJson(tvMazeUrl) ?: return@withContext null
+                val ratingObj = tvJson.optJSONObject("rating")
+                val avg = ratingObj?.optDouble("average", 0.0) ?: 0.0
+                if (avg > 0.0) {
+                    return@withContext MediaRating(
+                        source = "Rating",
+                        voteAverageOutOf10 = avg,
+                        voteCount = 100,
+                        starsOutOf5 = (avg / 2.0).toFloat().coerceIn(0f, 5f)
+                    )
+                }
+            } catch (e: Exception) {
+                // return null
+            }
+            null
         }
 
     private fun getJson(urlString: String): JSONObject? {

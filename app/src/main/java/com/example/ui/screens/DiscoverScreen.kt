@@ -185,14 +185,7 @@ private fun DiscoverSearchHeader(
                 Spacer(Modifier.width(6.dp))
                 Text("Search TMDB")
             }
-            if (!tmdbConfigured) {
-                Text(
-                    text = "Free key required",
-                    color = palette.textSecondary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.clickable(onClick = onOpenSettings)
-                )
-            }
+
         }
     }
 }

@@ -14,12 +14,14 @@ import java.net.URL
 /** Free TMDB metadata client. It never returns or searches for streaming URLs. */
 object TmdbDiscoverClient {
     private const val API_BASE = "https://api.themoviedb.org/3"
+    const val DEFAULT_API_KEY = "b4435cefc19ea78f0d86fa73117fe948"
     private const val IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
     suspend fun search(apiKey: String, query: String): List<DiscoverTitle> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank() || query.isBlank()) return@withContext emptyList()
+        if (query.isBlank()) return@withContext emptyList()
+        val effectiveKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
         val url = Uri.parse("$API_BASE/search/multi").buildUpon()
-            .appendQueryParameter("api_key", apiKey.trim())
+            .appendQueryParameter("api_key", effectiveKey)
             .appendQueryParameter("query", query.trim())
             .appendQueryParameter("include_adult", "false")
             .appendQueryParameter("language", "en-US")
@@ -35,10 +37,10 @@ object TmdbDiscoverClient {
     }
 
     suspend fun details(apiKey: String, title: DiscoverTitle): DiscoverDetails? = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext null
+        val effectiveKey = apiKey.trim().ifBlank { DEFAULT_API_KEY }
         val typePath = if (title.mediaType == DiscoverMediaType.TV) "tv" else "movie"
         val url = Uri.parse("$API_BASE/$typePath/${title.tmdbId}").buildUpon()
-            .appendQueryParameter("api_key", apiKey.trim())
+            .appendQueryParameter("api_key", effectiveKey)
             .appendQueryParameter("language", "en-US")
             .build()
             .toString()
