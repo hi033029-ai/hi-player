@@ -75,9 +75,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _videoScale = MutableStateFlow(1.0f)
     val videoScale = _videoScale.asStateFlow()
 
-    // Subtitle Customization
+    // Subtitle customization and player-window brightness are app preferences,
+    // not one-screen Compose state. Keeping them here lets a new player screen
+    // start exactly where the user left it.
     private val _subtitleStyle = MutableStateFlow(SubtitleStyleConfig())
     val subtitleStyle = _subtitleStyle.asStateFlow()
+
+    private val _playerBrightness = MutableStateFlow<Float?>(null)
+    val playerBrightness = _playerBrightness.asStateFlow()
 
     // Orientation
     private val _screenOrientation = MutableStateFlow(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR)
@@ -103,6 +108,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var sleepTimerJob: Job? = null
     private var progressSyncJob: Job? = null
     private var hudDismissJob: Job? = null
+    private var brightnessSaveJob: Job? = null
+    private var volumeSaveJob: Job? = null
     // Settings and resume reads are asynchronous. Keep the job so navigation
     // can cancel it before a closed player screen is prepared again.
     private var playRequestJob: Job? = null
@@ -118,6 +125,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 .map { it.enableHdrEnhance }
                 .distinctUntilChanged()
                 .collect { enabled -> engine.setHdrEnhanceActive(enabled) }
+        }
+
+        // Keep every global player control in sync with DataStore. Per-video
+        // state such as resume position and aspect ratio is intentionally kept
+        // in Room, while these controls apply to every playback session.
+        viewModelScope.launch {
+            preferencesRepo.settingsFlow.collect { settings ->
+                _subtitleStyle.value = SubtitleStyleConfig(
+                    fontSizeSp = settings.subtitleTextSizeSp,
+                    fontFamily = settings.subtitleFontFamily,
+                    textColorHex = settings.subtitleTextColorArgb,
+                    bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
+                    verticalOffsetDp = settings.subtitleVerticalOffsetDp,
+                )
+                _playerBrightness.value = settings.playerBrightnessPercent
+                    .takeIf { it >= 1 }
+                    ?.div(100f)
+                engine.setVolumeBoost(settings.volumeBoostPercent)
+                engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
+                engine.setAudioDelay(settings.audioDelayMs)
+                engine.setSubtitleOffset(settings.subtitleOffsetMs)
+                engine.setEqualizerPreset(settings.equalizerPreset)
+                if (settings.equalizerPreset == "Custom") {
+                    settings.equalizerBandsDb.forEachIndexed { index, gainDb ->
+                        engine.setCustomEqualizerBand(index, gainDb)
+                    }
+                }
+            }
         }
     }
 
@@ -137,6 +172,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 remuxUltraBuffer = settings.remuxUltraBufferMode,
                 tunneling = settings.enableTunneling
             )
+            restorePlayerControls(settings)
             // applyConfiguration creates a fresh ExoPlayer, so reapply the
             // persisted picture mode to the replacement instance.
             engine.setHdrEnhanceActive(settings.enableHdrEnhance)
@@ -235,7 +271,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     // Subtitle Customization
     fun updateSubtitleStyle(config: SubtitleStyleConfig) {
-        _subtitleStyle.value = config
+        val normalized = config.copy(
+            fontSizeSp = config.fontSizeSp.coerceIn(12, 48),
+            fontFamily = config.fontFamily.ifBlank { "SansSerif" },
+            bgOpacity = config.bgOpacity.coerceIn(0f, 1f),
+            verticalOffsetDp = config.verticalOffsetDp.coerceIn(0, 240),
+        )
+        _subtitleStyle.value = normalized
+        viewModelScope.launch {
+            preferencesRepo.setSubtitleStyle(
+                fontSizeSp = normalized.fontSizeSp,
+                fontFamily = normalized.fontFamily,
+                textColorArgb = normalized.textColorHex,
+                backgroundOpacityPercent = (normalized.bgOpacity * 100f).roundToInt(),
+                verticalOffsetDp = normalized.verticalOffsetDp,
+            )
+        }
     }
 
     // Orientation Switcher
@@ -343,11 +394,33 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        engine.setPlaybackSpeed(speed)
+        val normalized = speed.coerceIn(0.25f, 4f)
+        engine.setPlaybackSpeed(normalized)
+        viewModelScope.launch {
+            preferencesRepo.setPlaybackSpeedPercent((normalized * 100f).roundToInt())
+        }
     }
 
     fun setVolumeBoost(percent: Int) {
-        engine.setVolumeBoost(percent)
+        val normalized = percent.coerceIn(0, 100)
+        engine.setVolumeBoost(normalized)
+        viewModelScope.launch {
+            preferencesRepo.setVolumeBoostPercent(normalized)
+        }
+    }
+
+    fun setEqualizerPreset(preset: String) {
+        engine.setEqualizerPreset(preset)
+        viewModelScope.launch {
+            preferencesRepo.setEqualizer(engine.equalizerPreset.value, engine.equalizerBandsDb.value)
+        }
+    }
+
+    fun setCustomEqualizerBand(index: Int, gainDb: Float) {
+        engine.setCustomEqualizerBand(index, gainDb)
+        viewModelScope.launch {
+            preferencesRepo.setEqualizer(engine.equalizerPreset.value, engine.equalizerBandsDb.value)
+        }
     }
 
     fun selectAudioTrack(track: VideoTrackInfo) {
@@ -363,11 +436,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setAudioDelay(ms: Long) {
-        engine.setAudioDelay(ms)
+        val normalized = ms.coerceIn(-10_000L, 10_000L)
+        engine.setAudioDelay(normalized)
+        viewModelScope.launch {
+            preferencesRepo.setAudioDelayMs(normalized)
+        }
     }
 
     fun setSubtitleOffset(ms: Long) {
-        engine.setSubtitleOffset(ms)
+        val normalized = ms.coerceIn(-10_000L, 10_000L)
+        engine.setSubtitleOffset(normalized)
+        viewModelScope.launch {
+            preferencesRepo.setSubtitleOffsetMs(normalized)
+        }
     }
 
     val hdrEnhanceActive = engine.hdrEnhanceActive
@@ -403,9 +484,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     // Gesture Handlers
     fun onBrightnessGesture(delta: Float, windowBrightness: Float): Float {
-        val current = if (windowBrightness < 0f) 0.5f else windowBrightness
+        val current = when {
+            windowBrightness >= 0f -> windowBrightness
+            _playerBrightness.value != null -> _playerBrightness.value!!
+            else -> 0.5f
+        }
         val newLevel = (current + delta).coerceIn(0.01f, 1.0f)
         _brightnessLevel.value = newLevel
+        persistPlayerBrightness(newLevel)
         scheduleHudDismiss()
         return newLevel
     }
@@ -413,6 +499,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun onBrightnessGestureLevel(level: Float): Float {
         val newLevel = level.coerceIn(0.01f, 1.0f)
         _brightnessLevel.value = newLevel
+        persistPlayerBrightness(newLevel)
         scheduleHudDismiss()
         return newLevel
     }
@@ -427,18 +514,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val currentBoost = engine.volumeBoostPercent.value
             val newBoost = (currentBoost + (delta * 100).toInt()).coerceIn(0, 100)
             engine.setVolumeBoost(newBoost)
+            persistVolumeBoost(newBoost)
             _volumeLevel.value = 1.0f + (newBoost / 100f)
         } else if (delta < 0 && engine.volumeBoostPercent.value > 0) {
             // Decrease boost first
             val currentBoost = engine.volumeBoostPercent.value
             val newBoost = (currentBoost + (delta * 100).toInt()).coerceIn(0, 100)
             engine.setVolumeBoost(newBoost)
+            persistVolumeBoost(newBoost)
             _volumeLevel.value = 1.0f + (newBoost / 100f)
         } else {
             // Adjust system volume
             val step = (delta * maxVolume).toInt()
             val target = (currentVolume + step).coerceIn(0, maxVolume)
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+            persistPlayerVolume(target, maxVolume)
             _volumeLevel.value = target.toFloat() / maxVolume.toFloat()
         }
         scheduleHudDismiss()
@@ -453,8 +543,33 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetSystem, 0)
         val boost = ((target - 1f).coerceAtLeast(0f) * 100f).roundToInt().coerceIn(0, 100)
         engine.setVolumeBoost(boost)
+        persistPlayerVolume(targetSystem, maxVolume)
+        persistVolumeBoost(boost)
         _volumeLevel.value = target
         scheduleHudDismiss()
+    }
+
+    private fun persistPlayerBrightness(level: Float) {
+        _playerBrightness.value = level
+        brightnessSaveJob?.cancel()
+        brightnessSaveJob = viewModelScope.launch {
+            preferencesRepo.setPlayerBrightnessPercent((level * 100f).roundToInt())
+        }
+    }
+
+    private fun persistPlayerVolume(volume: Int, maxVolume: Int) {
+        if (maxVolume <= 0) return
+        val percent = (volume.toFloat() / maxVolume * 100f).roundToInt()
+        volumeSaveJob?.cancel()
+        volumeSaveJob = viewModelScope.launch {
+            preferencesRepo.setPlayerVolumePercent(percent)
+        }
+    }
+
+    private fun persistVolumeBoost(percent: Int) {
+        viewModelScope.launch {
+            preferencesRepo.setVolumeBoostPercent(percent)
+        }
     }
 
     fun onScrubStart() {
@@ -502,6 +617,41 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 engine.pause()
                 _sleepTimerMinutesLeft.value = null
+            }
+        }
+    }
+
+    private fun restorePlayerControls(settings: com.example.data.AppPlayerSettings) {
+        _subtitleStyle.value = SubtitleStyleConfig(
+            fontSizeSp = settings.subtitleTextSizeSp,
+            fontFamily = settings.subtitleFontFamily,
+            textColorHex = settings.subtitleTextColorArgb,
+            bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
+            verticalOffsetDp = settings.subtitleVerticalOffsetDp,
+        )
+        _playerBrightness.value = settings.playerBrightnessPercent
+            .takeIf { it >= 1 }
+            ?.div(100f)
+
+        engine.setVolumeBoost(settings.volumeBoostPercent)
+        engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
+        engine.setAudioDelay(settings.audioDelayMs)
+        engine.setSubtitleOffset(settings.subtitleOffsetMs)
+        engine.setEqualizerPreset(settings.equalizerPreset)
+        if (settings.equalizerPreset == "Custom") {
+            settings.equalizerBandsDb.forEachIndexed { index, gainDb ->
+                engine.setCustomEqualizerBand(index, gainDb)
+            }
+        }
+
+        // This is deliberately scoped to playback start. The app never adjusts
+        // the device's media volume merely because a user opens Hi Player.
+        val savedVolume = settings.playerVolumePercent
+        if (savedVolume >= 0) {
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (maxVolume > 0) {
+                val target = (savedVolume / 100f * maxVolume).roundToInt().coerceIn(0, maxVolume)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
             }
         }
     }

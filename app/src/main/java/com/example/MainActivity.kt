@@ -38,11 +38,14 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -522,59 +525,93 @@ class MainActivity : ComponentActivity() {
                                         titleContentColor = palette.textPrimary,
                                         textContentColor = palette.textSecondary,
                                         title = {
-                                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PlayCircle,
-                                                    contentDescription = null,
-                                                    tint = palette.primary
+                                            Card(
+                                                shape = RoundedCornerShape(14.dp),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = palette.primary.copy(alpha = if (palette.isDark) 0.14f else 0.12f)
                                                 )
-                                                Spacer(Modifier.width(10.dp))
-                                                Column {
-                                                    Text("Play stream", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                                    Text(
-                                                        "Open a direct video or a public video page",
-                                                        color = palette.textSecondary,
-                                                        fontSize = 12.sp
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PlayCircle,
+                                                        contentDescription = null,
+                                                        tint = palette.primary
                                                     )
+                                                    Spacer(Modifier.width(10.dp))
+                                                    Column {
+                                                        Text("Play stream", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                                        Text(
+                                                            "Open a direct video or public video page",
+                                                            color = palette.textSecondary,
+                                                            fontSize = 12.sp
+                                                        )
+                                                    }
                                                 }
                                             }
                                         },
                                         text = {
-                                            Column {
-                                                OutlinedTextField(
-                                                    value = streamUrl,
-                                                    onValueChange = {
-                                                        streamUrl = it
-                                                        streamUrlError = null
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    singleLine = true,
-                                                    leadingIcon = {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Link,
-                                                            contentDescription = null,
-                                                            tint = palette.primary
+                                            Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                                                Card(
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    colors = CardDefaults.cardColors(containerColor = palette.surface),
+                                                ) {
+                                                    OutlinedTextField(
+                                                        value = streamUrl,
+                                                        onValueChange = {
+                                                            streamUrl = it
+                                                            streamUrlError = null
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(6.dp),
+                                                        singleLine = true,
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Link,
+                                                                contentDescription = null,
+                                                                tint = palette.primary
+                                                            )
+                                                        },
+                                                        label = { Text("Video or stream link") },
+                                                        placeholder = { Text("https://example.com/video.m3u8") },
+                                                        isError = streamUrlError != null,
+                                                        supportingText = {
+                                                            Text(
+                                                                streamUrlError ?: if (isResolvingStreamUrl) {
+                                                                    "Looking for a public direct video source…"
+                                                                } else {
+                                                                    "Direct MP4, MKV, HLS, DASH, or a public webpage"
+                                                                }
+                                                            )
+                                                        },
+                                                        colors = OutlinedTextFieldDefaults.colors(
+                                                            focusedBorderColor = palette.primary,
+                                                            unfocusedBorderColor = palette.surfaceBorder,
+                                                            focusedTextColor = palette.textPrimary,
+                                                            unfocusedTextColor = palette.textPrimary,
+                                                            focusedLabelColor = palette.primary,
+                                                            unfocusedLabelColor = palette.textSecondary,
+                                                            cursorColor = palette.primary,
                                                         )
-                                                    },
-                                                    label = { Text("Video or stream link") },
-                                                    placeholder = { Text("https://example.com/video.m3u8") },
-                                                    isError = streamUrlError != null,
-                                                    supportingText = {
-                                                        Text(
-                                                            streamUrlError ?: if (isResolvingStreamUrl) {
-                                                                "Looking for a public direct video source…"
-                                                            } else {
-                                                                "Direct MP4, MKV, HLS, DASH, or a public webpage"
-                                                            }
-                                                        )
-                                                    }
-                                                )
+                                                    )
+                                                }
                                                 Spacer(Modifier.height(12.dp))
-                                                Text(
-                                                    "Hi Player plays direct media with its own controls. For an ordinary public webpage, it checks standard public video metadata without using logins, cookies, or protected streams.",
-                                                    color = palette.textSecondary,
-                                                    fontSize = 12.sp
-                                                )
+                                                Card(
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = palette.primary.copy(alpha = if (palette.isDark) 0.09f else 0.08f)
+                                                    )
+                                                ) {
+                                                    Text(
+                                                        "Hi Player plays direct media with its own controls. For an ordinary public webpage, it checks standard public video metadata without using logins, cookies, or protected streams.",
+                                                        color = palette.textSecondary,
+                                                        fontSize = 12.sp,
+                                                        modifier = Modifier.padding(12.dp)
+                                                    )
+                                                }
                                             }
                                         },
                                         confirmButton = {

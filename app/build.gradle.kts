@@ -1,5 +1,10 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
+val tmdbReadAccessToken = System.getenv("TMDB_READ_ACCESS_TOKEN")
+  .orEmpty()
+  .replace("\\", "\\\\")
+  .replace("\"", "\\\"")
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -16,8 +21,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 54
-    versionName = "1.0.53"
+    versionCode = 55
+    versionName = "1.0.54"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -44,9 +49,15 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+      // The current TMDB Developer Plan is personal-use only. Do not ship its
+      // credential in a public release APK. A public/commercial release needs
+      // TMDB's appropriate agreement and a controlled backend.
+      buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"\"")
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
+      // Supplied by the secure task connector at build time; never committed.
+      buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"$tmdbReadAccessToken\"")
     }
   }
   compileOptions {

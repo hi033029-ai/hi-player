@@ -184,6 +184,7 @@ fun PlayerScreen(
 
     // HUD States
     val brightnessLevel by playerViewModel.brightnessLevel.collectAsState()
+    val rememberedPlayerBrightness by playerViewModel.playerBrightness.collectAsState()
     val volumeLevel by playerViewModel.volumeLevel.collectAsState()
     val scrubTimeMs by playerViewModel.scrubTimeMs.collectAsState()
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
@@ -398,6 +399,7 @@ fun PlayerScreen(
         }
         surface.currentBrightnessLevel = {
             playerViewModel.brightnessLevel.value
+                ?: playerViewModel.playerBrightness.value
                 ?: activity?.window?.attributes?.screenBrightness
                 ?: 0.5f
         }
@@ -477,11 +479,6 @@ fun PlayerScreen(
         }
 
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window?.let { w ->
-            val lp = w.attributes
-            lp.screenBrightness = 1.0f
-            w.attributes = lp
-        }
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -492,6 +489,18 @@ fun PlayerScreen(
                 lp.screenBrightness = originalBrightness ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 w.attributes = lp
             }
+        }
+    }
+
+    // A remembered player brightness is applied only to the active player
+    // window. The DisposableEffect above restores the activity's original
+    // value as soon as playback closes.
+    LaunchedEffect(activity, rememberedPlayerBrightness) {
+        val brightness = rememberedPlayerBrightness ?: return@LaunchedEffect
+        activity?.window?.let { window ->
+            val attributes = window.attributes
+            attributes.screenBrightness = brightness.coerceIn(0.01f, 1.0f)
+            window.attributes = attributes
         }
     }
 
@@ -977,14 +986,14 @@ fun PlayerScreen(
                     selectedPreset = equalizerPreset,
                     customBandsDb = equalizerBandsDb,
                     onSelectPreset = {
-                        playerViewModel.engine.setEqualizerPreset(it)
+                        playerViewModel.setEqualizerPreset(it)
                         equalizerInteractionTick++
                         if (it != "Custom") {
                             playerViewModel.closeSheet()
                         }
                     },
                     onCustomBandChange = { index, gainDb ->
-                        playerViewModel.engine.setCustomEqualizerBand(index, gainDb)
+                        playerViewModel.setCustomEqualizerBand(index, gainDb)
                         equalizerInteractionTick++
                     },
                     onDismiss = { playerViewModel.closeSheet() },

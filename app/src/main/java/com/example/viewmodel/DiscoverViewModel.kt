@@ -50,10 +50,50 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+        loadHome()
     }
 
     fun setQuery(query: String) {
         _uiState.value = _uiState.value.copy(query = query, errorMessage = null)
+        if (query.isBlank() && _uiState.value.results.isNotEmpty()) {
+            loadHome()
+        }
+    }
+
+    /** Loads TMDB metadata-only sections when Discover opens or search is cleared. */
+    fun loadHome() {
+        if (_uiState.value.isLoadingHome) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isLoadingHome = true,
+                results = emptyList(),
+                googleDriveFiles = emptyList(),
+                googleDriveMessage = null,
+                selectedDetails = null,
+                sourceMatches = emptyList(),
+                errorMessage = null,
+                sourceMessage = null,
+            )
+            runCatching { PublicCatalogClient.home() }
+                .onSuccess { sections ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingHome = false,
+                        homeSections = sections,
+                        errorMessage = if (sections.isEmpty()) {
+                            "TMDB did not return any titles. Please try again."
+                        } else {
+                            null
+                        },
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingHome = false,
+                        homeSections = emptyList(),
+                        errorMessage = "TMDB Discover is unavailable: ${error.message ?: "check your network connection"}",
+                    )
+                }
+        }
     }
 
     fun searchTitles() {
@@ -65,6 +105,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
+                homeSections = emptyList(),
                 results = emptyList(),
                 googleDriveFiles = emptyList(),
                 googleDriveMessage = null,
@@ -102,6 +143,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isBrowsingGoogleDrive = true,
+                homeSections = emptyList(),
                 results = emptyList(),
                 googleDriveFiles = emptyList(),
                 googleDriveMessage = null,

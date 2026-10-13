@@ -141,7 +141,7 @@ fun GoogleDriveAccountCard(
                         text = if (connection?.isConfigured == true) {
                             connection.accountName
                         } else {
-                            "Use your Google Drive videos in Hi Player"
+                            "Choose an account and one Drive video folder"
                         },
                         color = palette.textSecondary,
                         fontSize = 11.5.sp,
@@ -210,7 +210,7 @@ fun GoogleDriveAccountCard(
                 )
             } else {
                 Text(
-                    text = "Choose your Google account first, then select the exact Google Drive folder that contains your videos. Hi Player never asks for or stores your Google password.",
+                    text = "Next, Android opens Google Drive's folder picker. Select the exact folder that holds your videos; Hi Player can read only that folder and never receives your Google password.",
                     color = palette.textSecondary,
                     fontSize = 11.5.sp,
                     lineHeight = 16.sp
@@ -227,7 +227,7 @@ fun GoogleDriveAccountCard(
                     )
                 ) {
                     Text(
-                        text = if (isConnecting) "Connecting…" else "Continue with Google",
+                        text = if (isConnecting) "Opening Google Drive…" else "Choose account & Drive folder",
                         fontWeight = FontWeight.Bold
                     )
                 }

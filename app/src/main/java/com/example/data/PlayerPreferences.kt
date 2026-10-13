@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -45,23 +46,42 @@ enum class HwAccelerationMode(val id: String, val displayName: String, val descr
     }
 }
 
+/**
+ * App-owned player settings persisted in DataStore. Device media volume is
+ * intentionally only restored after the user starts playback; opening the app
+ * or browsing the library never changes the device's current volume.
+ */
 data class AppPlayerSettings(
     val themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
     val isFirstLaunch: Boolean = true,
     val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.HW,
     val hardwareDecoding: Boolean = true,
-    val remuxUltraBufferMode: Boolean = false, // 128MB buffer for 4K UHD Blu-ray
+    val remuxUltraBufferMode: Boolean = false,
     val enableTunneling: Boolean = false,
-    val enableWideColorGamut: Boolean = true, // Fix 4K dull colors
-    val enableHdrEnhance: Boolean = false, // Fix 4K color washed out/distortion
+    val enableWideColorGamut: Boolean = true,
+    val enableHdrEnhance: Boolean = false,
     val backgroundPlayEnabled: Boolean = false,
     val autoPipEnabled: Boolean = false,
     val seekStepSeconds: Int = 10,
     val defaultAspectRatio: String = "FIT",
     val subtitleTextSizeSp: Int = 18,
-    val uiTextSizeSp: Int = 14,
     val subtitleTextColorHex: String = "#FFFFFF",
     val subtitleBackgroundHex: String = "#80000000",
+    val subtitleFontFamily: String = "SansSerif",
+    val subtitleTextColorArgb: Long = 0xFFFFFFFF,
+    val subtitleBackgroundOpacityPercent: Int = 60,
+    val subtitleVerticalOffsetDp: Int = 24,
+    /** -1 means the player has not yet been given a brightness value. */
+    val playerBrightnessPercent: Int = -1,
+    /** -1 means preserve the device's current media volume for now. */
+    val playerVolumePercent: Int = -1,
+    val volumeBoostPercent: Int = 0,
+    val playbackSpeedPercent: Int = 100,
+    val equalizerPreset: String = "Flat",
+    val equalizerBandsDb: List<Float> = List(5) { 0f },
+    val audioDelayMs: Long = 0L,
+    val subtitleOffsetMs: Long = 0L,
+    val uiTextSizeSp: Int = 14,
     val customThemeTextHex: String = "#0F172A",
     val customThemeBackgroundHex: String = "#F8FAFC",
     val customThemePrimaryHex: String = "#0056B3",
@@ -71,7 +91,6 @@ data class AppPlayerSettings(
     val customThemePrimaryOpacity: Int = 100,
     val customThemeSurfaceOpacity: Int = 100,
     val nightAudioMode: Boolean = false,
-    val volumeBoostPercent: Int = 0, // 0 to 100 boost on top of 100%
     val openSubtitlesApiKey: String = "",
     val openSubtitlesUsername: String = "",
     val openSubtitlesPassword: String = ""
@@ -93,8 +112,24 @@ class PlayerPreferencesRepository(private val context: Context) {
         val SEEK_STEP = intPreferencesKey("seek_step_seconds")
         val ASPECT_RATIO = stringPreferencesKey("default_aspect_ratio")
         val SUBTITLE_SIZE = intPreferencesKey("subtitle_text_size")
-        val UI_TEXT_SIZE = intPreferencesKey("ui_text_size_v2")
         val SUBTITLE_COLOR = stringPreferencesKey("subtitle_text_color")
+        val SUBTITLE_FONT_FAMILY = stringPreferencesKey("subtitle_font_family")
+        val SUBTITLE_COLOR_ARGB = longPreferencesKey("subtitle_text_color_argb")
+        val SUBTITLE_BACKGROUND_OPACITY = intPreferencesKey("subtitle_background_opacity_percent")
+        val SUBTITLE_VERTICAL_OFFSET = intPreferencesKey("subtitle_vertical_offset_dp")
+        val PLAYER_BRIGHTNESS = intPreferencesKey("player_brightness_percent")
+        val PLAYER_VOLUME = intPreferencesKey("player_volume_percent")
+        val VOLUME_BOOST = intPreferencesKey("volume_boost_percent")
+        val PLAYBACK_SPEED = intPreferencesKey("playback_speed_percent")
+        val EQUALIZER_PRESET = stringPreferencesKey("equalizer_preset")
+        val EQUALIZER_BAND_0 = intPreferencesKey("equalizer_band_0_centidb")
+        val EQUALIZER_BAND_1 = intPreferencesKey("equalizer_band_1_centidb")
+        val EQUALIZER_BAND_2 = intPreferencesKey("equalizer_band_2_centidb")
+        val EQUALIZER_BAND_3 = intPreferencesKey("equalizer_band_3_centidb")
+        val EQUALIZER_BAND_4 = intPreferencesKey("equalizer_band_4_centidb")
+        val AUDIO_DELAY_MS = longPreferencesKey("audio_delay_ms")
+        val SUBTITLE_OFFSET_MS = longPreferencesKey("subtitle_offset_ms")
+        val UI_TEXT_SIZE = intPreferencesKey("ui_text_size_v2")
         val CUSTOM_TEXT = stringPreferencesKey("custom_theme_text")
         val CUSTOM_BACKGROUND = stringPreferencesKey("custom_theme_background")
         val CUSTOM_PRIMARY = stringPreferencesKey("custom_theme_primary")
@@ -114,6 +149,13 @@ class PlayerPreferencesRepository(private val context: Context) {
         val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.HW.id
         val isFirst = prefs[Keys.IS_FIRST_LAUNCH] ?: true
         val hwMode = HwAccelerationMode.fromId(hwStr)
+        val equalizerBands = listOf(
+            prefs[Keys.EQUALIZER_BAND_0] ?: 0,
+            prefs[Keys.EQUALIZER_BAND_1] ?: 0,
+            prefs[Keys.EQUALIZER_BAND_2] ?: 0,
+            prefs[Keys.EQUALIZER_BAND_3] ?: 0,
+            prefs[Keys.EQUALIZER_BAND_4] ?: 0,
+        ).map { it / 100f }
 
         AppPlayerSettings(
             themeMode = AppThemeMode.fromId(themeStr),
@@ -125,15 +167,24 @@ class PlayerPreferencesRepository(private val context: Context) {
             enableWideColorGamut = prefs[Keys.WIDE_COLOR_GAMUT] ?: false,
             enableHdrEnhance = prefs[Keys.HDR_ENHANCE] ?: false,
             backgroundPlayEnabled = prefs[Keys.BG_PLAY] ?: false,
-            // Auto PiP is usable only after the user explicitly confirms it
-            // in Settings. This also invalidates any legacy enabled flag that
-            // may have been written before the consent dialog existed.
             autoPipEnabled = (prefs[Keys.AUTO_PIP] ?: false) && (prefs[Keys.PIP_CONSENT] ?: false),
             seekStepSeconds = prefs[Keys.SEEK_STEP] ?: 10,
             defaultAspectRatio = prefs[Keys.ASPECT_RATIO] ?: "FIT",
             subtitleTextSizeSp = prefs[Keys.SUBTITLE_SIZE] ?: 18,
-            uiTextSizeSp = prefs[Keys.UI_TEXT_SIZE] ?: 14,
             subtitleTextColorHex = prefs[Keys.SUBTITLE_COLOR] ?: "#FFFFFF",
+            subtitleFontFamily = prefs[Keys.SUBTITLE_FONT_FAMILY] ?: "SansSerif",
+            subtitleTextColorArgb = prefs[Keys.SUBTITLE_COLOR_ARGB] ?: 0xFFFFFFFF,
+            subtitleBackgroundOpacityPercent = (prefs[Keys.SUBTITLE_BACKGROUND_OPACITY] ?: 60).coerceIn(0, 100),
+            subtitleVerticalOffsetDp = (prefs[Keys.SUBTITLE_VERTICAL_OFFSET] ?: 24).coerceIn(0, 240),
+            playerBrightnessPercent = (prefs[Keys.PLAYER_BRIGHTNESS] ?: -1).coerceIn(-1, 100),
+            playerVolumePercent = (prefs[Keys.PLAYER_VOLUME] ?: -1).coerceIn(-1, 100),
+            volumeBoostPercent = (prefs[Keys.VOLUME_BOOST] ?: 0).coerceIn(0, 100),
+            playbackSpeedPercent = (prefs[Keys.PLAYBACK_SPEED] ?: 100).coerceIn(25, 400),
+            equalizerPreset = prefs[Keys.EQUALIZER_PRESET] ?: "Flat",
+            equalizerBandsDb = equalizerBands,
+            audioDelayMs = (prefs[Keys.AUDIO_DELAY_MS] ?: 0L).coerceIn(-10_000L, 10_000L),
+            subtitleOffsetMs = (prefs[Keys.SUBTITLE_OFFSET_MS] ?: 0L).coerceIn(-10_000L, 10_000L),
+            uiTextSizeSp = prefs[Keys.UI_TEXT_SIZE] ?: 14,
             customThemeTextHex = prefs[Keys.CUSTOM_TEXT] ?: "#0F172A",
             customThemeBackgroundHex = prefs[Keys.CUSTOM_BACKGROUND] ?: "#F8FAFC",
             customThemePrimaryHex = prefs[Keys.CUSTOM_PRIMARY] ?: "#0056B3",
@@ -168,11 +219,7 @@ class PlayerPreferencesRepository(private val context: Context) {
     suspend fun setHardwareDecoding(enabled: Boolean) {
         context.dataStore.edit {
             it[Keys.HW_DECODING] = enabled
-            if (!enabled) {
-                it[Keys.HW_ACCEL_MODE] = HwAccelerationMode.SW.id
-            } else {
-                it[Keys.HW_ACCEL_MODE] = HwAccelerationMode.HW.id
-            }
+            it[Keys.HW_ACCEL_MODE] = if (enabled) HwAccelerationMode.HW.id else HwAccelerationMode.SW.id
         }
     }
 
@@ -212,7 +259,60 @@ class PlayerPreferencesRepository(private val context: Context) {
     }
 
     suspend fun setSubtitleTextSize(sizeSp: Int) {
-        context.dataStore.edit { it[Keys.SUBTITLE_SIZE] = sizeSp }
+        context.dataStore.edit { it[Keys.SUBTITLE_SIZE] = sizeSp.coerceIn(12, 48) }
+    }
+
+    suspend fun setSubtitleStyle(
+        fontSizeSp: Int,
+        fontFamily: String,
+        textColorArgb: Long,
+        backgroundOpacityPercent: Int,
+        verticalOffsetDp: Int,
+    ) {
+        context.dataStore.edit {
+            it[Keys.SUBTITLE_SIZE] = fontSizeSp.coerceIn(12, 48)
+            it[Keys.SUBTITLE_FONT_FAMILY] = fontFamily.ifBlank { "SansSerif" }
+            it[Keys.SUBTITLE_COLOR_ARGB] = textColorArgb
+            it[Keys.SUBTITLE_COLOR] = "#%08X".format(textColorArgb)
+            it[Keys.SUBTITLE_BACKGROUND_OPACITY] = backgroundOpacityPercent.coerceIn(0, 100)
+            it[Keys.SUBTITLE_VERTICAL_OFFSET] = verticalOffsetDp.coerceIn(0, 240)
+        }
+    }
+
+    suspend fun setPlayerBrightnessPercent(percent: Int) {
+        context.dataStore.edit { it[Keys.PLAYER_BRIGHTNESS] = percent.coerceIn(1, 100) }
+    }
+
+    suspend fun setPlayerVolumePercent(percent: Int) {
+        context.dataStore.edit { it[Keys.PLAYER_VOLUME] = percent.coerceIn(0, 100) }
+    }
+
+    suspend fun setVolumeBoostPercent(percent: Int) {
+        context.dataStore.edit { it[Keys.VOLUME_BOOST] = percent.coerceIn(0, 100) }
+    }
+
+    suspend fun setPlaybackSpeedPercent(percent: Int) {
+        context.dataStore.edit { it[Keys.PLAYBACK_SPEED] = percent.coerceIn(25, 400) }
+    }
+
+    suspend fun setEqualizer(preset: String, bandsDb: List<Float>) {
+        val normalizedBands = List(5) { index -> bandsDb.getOrElse(index) { 0f }.coerceIn(-12f, 12f) }
+        context.dataStore.edit {
+            it[Keys.EQUALIZER_PRESET] = preset.trim().ifBlank { "Flat" }
+            it[Keys.EQUALIZER_BAND_0] = (normalizedBands[0] * 100f).toInt()
+            it[Keys.EQUALIZER_BAND_1] = (normalizedBands[1] * 100f).toInt()
+            it[Keys.EQUALIZER_BAND_2] = (normalizedBands[2] * 100f).toInt()
+            it[Keys.EQUALIZER_BAND_3] = (normalizedBands[3] * 100f).toInt()
+            it[Keys.EQUALIZER_BAND_4] = (normalizedBands[4] * 100f).toInt()
+        }
+    }
+
+    suspend fun setAudioDelayMs(delayMs: Long) {
+        context.dataStore.edit { it[Keys.AUDIO_DELAY_MS] = delayMs.coerceIn(-10_000L, 10_000L) }
+    }
+
+    suspend fun setSubtitleOffsetMs(offsetMs: Long) {
+        context.dataStore.edit { it[Keys.SUBTITLE_OFFSET_MS] = offsetMs.coerceIn(-10_000L, 10_000L) }
     }
 
     suspend fun setUiTextSize(sizeSp: Int) {

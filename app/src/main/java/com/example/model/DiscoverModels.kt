@@ -8,8 +8,7 @@ enum class DiscoverMediaType {
 }
 
 enum class DiscoverCatalogSource {
-    ITUNES,
-    TVMAZE
+    TMDB
 }
 
 data class DiscoverTitle(
@@ -22,21 +21,35 @@ data class DiscoverTitle(
     val backdropUrl: String? = null,
     val rating: Double? = null,
     val language: String? = null,
-    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.ITUNES
+    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.TMDB,
 )
 
 data class DiscoverSeason(
     val seasonNumber: Int,
     val name: String,
     val episodeCount: Int = 0,
-    val posterUrl: String? = null
+    val posterUrl: String? = null,
+)
+
+data class DiscoverCastMember(
+    val id: Long,
+    val name: String,
+    val character: String? = null,
+    val profileUrl: String? = null,
 )
 
 data class DiscoverDetails(
     val title: DiscoverTitle,
     val runtimeMinutes: Int? = null,
     val genres: List<String> = emptyList(),
-    val seasons: List<DiscoverSeason> = emptyList()
+    val seasons: List<DiscoverSeason> = emptyList(),
+    val cast: List<DiscoverCastMember> = emptyList(),
+)
+
+data class DiscoverHomeSection(
+    val id: String,
+    val title: String,
+    val titles: List<DiscoverTitle>,
 )
 
 data class JellyfinConnection(
@@ -45,7 +58,7 @@ data class JellyfinConnection(
     val password: String,
     val accessToken: String,
     val userId: String,
-    val serverName: String = "Jellyfin"
+    val serverName: String = "Jellyfin",
 ) {
     val isConfigured: Boolean
         get() = baseUrl.isNotBlank() && accessToken.isNotBlank() && userId.isNotBlank()
@@ -54,7 +67,7 @@ data class JellyfinConnection(
 data class GoogleDriveConnection(
     val accountName: String = "Google Drive",
     val documentTreeUri: String,
-    val displayName: String = "Google Drive"
+    val displayName: String = "Google Drive",
 ) {
     val isConfigured: Boolean
         get() = documentTreeUri.isNotBlank()
@@ -64,7 +77,7 @@ data class WebDavConnection(
     val folderUrl: String,
     val username: String,
     val password: String,
-    val displayName: String = "WebDAV"
+    val displayName: String = "WebDAV",
 ) {
     val isConfigured: Boolean
         get() = folderUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
@@ -73,7 +86,7 @@ data class WebDavConnection(
 data class MediaSourceSettings(
     val jellyfin: JellyfinConnection? = null,
     val webDav: WebDavConnection? = null,
-    val googleDrive: GoogleDriveConnection? = null
+    val googleDrive: GoogleDriveConnection? = null,
 ) {
     val hasAnySource: Boolean
         get() = jellyfin?.isConfigured == true || webDav?.isConfigured == true || googleDrive?.isConfigured == true
@@ -95,7 +108,7 @@ data class RemoteMediaMatch(
     val hdrFormat: String? = null,
     val codec: String = "Remote stream",
     val audioLabels: List<String> = emptyList(),
-    val artworkUrl: String? = null
+    val artworkUrl: String? = null,
 ) {
     val is4k: Boolean
         get() = width >= 3840 || height >= 2160
@@ -115,14 +128,16 @@ data class RemoteMediaMatch(
         hdrFormat = hdrFormat,
         codec = codec,
         audioChannels = 0,
-        thumbnailUrl = artworkUrl
+        thumbnailUrl = artworkUrl,
     )
 }
 
 data class DiscoverUiState(
     val query: String = "",
     val isLoading: Boolean = false,
+    val isLoadingHome: Boolean = false,
     val isBrowsingGoogleDrive: Boolean = false,
+    val homeSections: List<DiscoverHomeSection> = emptyList(),
     val results: List<DiscoverTitle> = emptyList(),
     val googleDriveFiles: List<RemoteMediaMatch> = emptyList(),
     val googleDriveMessage: String? = null,
@@ -130,5 +145,5 @@ data class DiscoverUiState(
     val sourceMatches: List<RemoteMediaMatch> = emptyList(),
     val isSearchingSources: Boolean = false,
     val errorMessage: String? = null,
-    val sourceMessage: String? = null
+    val sourceMessage: String? = null,
 )
