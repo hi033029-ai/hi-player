@@ -13,29 +13,33 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * High-performance in-memory LRU cache and background extractor for video thumbnails.
- * Prevents main thread jank and redundant extraction during rapid LazyColumn scrolling.
+ * Memory-bounded thumbnail cache and background extractor for video lists.
+ *
+ * Frames are scaled before caching so browsing a folder of 4K videos cannot
+ * fill the heap with full-resolution bitmaps or cause scroll-time GC stalls.
  */
 object VideoThumbnailCache {
 
-    // Cache sized to 25% of available heap memory for fast scroll frame rendering
-    private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
-    private val cacheSize = maxMemory / 4
+    private const val TARGET_WIDTH = 380
+    private const val TARGET_HEIGHT = 240
+    private const val MIN_CACHE_KB = 24 * 1024
+    private const val MAX_CACHE_KB = 96 * 1024
 
-    private val memoryCache = object : LruCache<String, Bitmap>(cacheSize) {
-        override fun sizeOf(key: String, bitmap: Bitmap): Int {
-            return bitmap.byteCount / 1024
-        }
+    private val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
+    private val cacheSizeKb = (maxMemoryKb / 8).coerceIn(MIN_CACHE_KB, MAX_CACHE_KB)
+
+    private val memoryCache = object : LruCache<String, Bitmap>(cacheSizeKb) {
+        override fun sizeOf(key: String, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
 
-    private val mutex = Mutex()
+    // Serializing retrieval avoids several hardware decoders competing while a
+    // LazyColumn is flung quickly. Work remains on Dispatchers.IO.
+    private val extractorMutex = Mutex()
 
     fun get(key: String): Bitmap? = memoryCache.get(key)
 
     fun put(key: String, bitmap: Bitmap) {
-        if (key.isNotBlank()) {
-            memoryCache.put(key, bitmap)
-        }
+        if (key.isNotBlank() && !bitmap.isRecycled) memoryCache.put(key, bitmap)
     }
 
     suspend fun loadOrExtract(
@@ -43,52 +47,147 @@ object VideoThumbnailCache {
         key: String,
         uri: Uri,
         filePath: String,
-        targetWidth: Int = 380,
-        targetHeight: Int = 240
+        targetWidth: Int = TARGET_WIDTH,
+        targetHeight: Int = TARGET_HEIGHT
     ): Bitmap? = withContext(Dispatchers.IO) {
         if (key.isBlank()) return@withContext null
-
         get(key)?.let { return@withContext it }
 
-        var bitmap: Bitmap? = null
+        extractorMutex.withLock {
+            get(key)?.let { return@withLock it }
 
-        // 1. ContentResolver.loadThumbnail for Android Q+ (fast hardware decoder)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uri != Uri.EMPTY && uri.scheme == "content") {
-            try {
-                bitmap = context.contentResolver.loadThumbnail(uri, Size(targetWidth, targetHeight), null)
-            } catch (_: Exception) {}
+            val bitmap = loadFromContentResolver(context, uri, targetWidth, targetHeight)
+                ?: extractFromUri(context, uri, targetWidth, targetHeight)
+                ?: extractFromPath(filePath, targetWidth, targetHeight)
+
+            bitmap?.let { put(key, it) }
+            bitmap
         }
+    }
 
-        // 2. MediaMetadataRetriever on Uri
-        if (bitmap == null && uri != Uri.EMPTY) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, uri)
-                bitmap = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.frameAtTime
-            } catch (_: Exception) {
-            } finally {
-                try { retriever.release() } catch (_: Exception) {}
+    private fun loadFromContentResolver(
+        context: Context,
+        uri: Uri,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || uri == Uri.EMPTY || uri.scheme != "content") return null
+        return runCatching {
+            context.contentResolver.loadThumbnail(uri, Size(targetWidth, targetHeight), null)
+        }.getOrNull()
+    }
+
+    private fun extractFromUri(
+        context: Context,
+        uri: Uri,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        if (uri == Uri.EMPTY) return null
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            extractUsefulFrame(retriever, targetWidth, targetHeight)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    private fun extractFromPath(
+        filePath: String,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        if (filePath.isBlank()) return null
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(filePath)
+            extractUsefulFrame(retriever, targetWidth, targetHeight)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
+    /**
+     * A frame at exactly one second is often a studio-black intro. Prefer a
+     * small, scaled frame a little further into the media and retain a valid
+     * fallback when the source only exposes one keyframe.
+     */
+    private fun extractUsefulFrame(
+        retriever: MediaMetadataRetriever,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            ?.toLongOrNull()
+            ?.coerceAtLeast(0L)
+            ?: 0L
+        val preferredMs = when {
+            durationMs <= 0L -> 2_000L
+            else -> (durationMs / 10L).coerceIn(1_500L, 6_000L)
+        }
+        val candidateTimesUs = linkedSetOf(
+            preferredMs * 1_000L,
+            2_000_000L,
+            1_000_000L
+        )
+        var fallback: Bitmap? = null
+
+        for (timeUs in candidateTimesUs) {
+            val frame = scaledFrameAt(retriever, timeUs, targetWidth, targetHeight) ?: continue
+            if (fallback == null) fallback = frame
+            if (!isMostlyBlack(frame)) return frame
+        }
+        return fallback
+    }
+
+    private fun scaledFrameAt(
+        retriever: MediaMetadataRetriever,
+        timeUs: Long,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap? {
+        val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            retriever.getScaledFrameAtTime(
+                timeUs,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                targetWidth,
+                targetHeight
+            )
+        } else {
+            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        } ?: return null
+
+        if (frame.width <= targetWidth && frame.height <= targetHeight) return frame
+        val scale = minOf(targetWidth.toFloat() / frame.width, targetHeight.toFloat() / frame.height)
+        val width = (frame.width * scale).toInt().coerceAtLeast(1)
+        val height = (frame.height * scale).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(frame, width, height, true)
+        if (scaled !== frame) frame.recycle()
+        return scaled
+    }
+
+    private fun isMostlyBlack(bitmap: Bitmap): Boolean {
+        val sampleWidth = bitmap.width.coerceAtMost(12)
+        val sampleHeight = bitmap.height.coerceAtMost(8)
+        if (sampleWidth == 0 || sampleHeight == 0) return true
+        val xStep = (bitmap.width / sampleWidth).coerceAtLeast(1)
+        val yStep = (bitmap.height / sampleHeight).coerceAtLeast(1)
+        var brightnessTotal = 0L
+        var samples = 0
+        for (y in 0 until bitmap.height step yStep) {
+            for (x in 0 until bitmap.width step xStep) {
+                val color = bitmap.getPixel(x, y)
+                brightnessTotal += (android.graphics.Color.red(color) + android.graphics.Color.green(color) + android.graphics.Color.blue(color)) / 3
+                samples++
+                if (samples >= 96) break
             }
+            if (samples >= 96) break
         }
-
-        // 3. MediaMetadataRetriever on file path
-        if (bitmap == null && filePath.isNotEmpty()) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(filePath)
-                bitmap = retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.frameAtTime
-            } catch (_: Exception) {
-            } finally {
-                try { retriever.release() } catch (_: Exception) {}
-            }
-        }
-
-        bitmap?.let {
-            put(key, it)
-        }
-
-        bitmap
+        return samples == 0 || brightnessTotal / samples < 14L
     }
 }

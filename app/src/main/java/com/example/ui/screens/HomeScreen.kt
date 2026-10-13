@@ -15,7 +15,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -191,7 +190,13 @@ fun HomeScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
-    fun videoKey(video: VideoItem): String = video.path.ifBlank { video.uri.toString() }
+    // Imported, SAF, and growing downloads can share a MediaStore ID of zero.
+    // Use their path/URI as the key so Compose never reuses a visible row's
+    // thumbnail or overflow state when the library list is scrolled.
+    fun videoKey(video: VideoItem): String = video.path.ifBlank {
+        video.uri.toString().takeIf { it.isNotBlank() && it != Uri.EMPTY.toString() }
+            ?: "video:${video.id}:${video.title}"
+    }
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
     }
@@ -486,38 +491,7 @@ fun HomeScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(palette.surface)
-                        .pointerInput(navMode) {
-                            var accumulatedDrag = 0f
-                            detectHorizontalDragGestures(
-                                onHorizontalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    accumulatedDrag += dragAmount
-                                    if (kotlin.math.abs(accumulatedDrag) >= 56f) {
-                                        val modes = listOf(
-                                            LibraryNavMode.FOLDERS,
-                                            LibraryNavMode.ALL_VIDEOS,
-                                            LibraryNavMode.RECENT,
-                                            LibraryNavMode.TREE_FOLDERS,
-                                            LibraryNavMode.FAVORITES
-                                        )
-                                        val currentIndex = modes.indexOf(navMode).coerceAtLeast(0)
-                                        val nextIndex = if (accumulatedDrag < 0f) {
-                                            (currentIndex + 1).coerceAtMost(modes.lastIndex)
-                                        } else {
-                                            (currentIndex - 1).coerceAtLeast(0)
-                                        }
-                                        if (nextIndex != currentIndex) {
-                                            libraryViewModel.selectFolder(null)
-                                            libraryViewModel.setNavMode(modes[nextIndex])
-                                        }
-                                        accumulatedDrag = 0f
-                                    }
-                                },
-                                onDragEnd = { accumulatedDrag = 0f },
-                                onDragCancel = { accumulatedDrag = 0f }
-                            )
-                        },
+                        .background(palette.surface),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     LazyRow(
@@ -526,9 +500,7 @@ fun HomeScreen(
                         contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        // The parent owns horizontal drags so every swipe changes
-                        // the active library mode instead of fighting LazyRow.
-                        userScrollEnabled = false
+                        userScrollEnabled = true
                     ) {
                         items(navOptions, key = { it.first.name }) { option ->
                             val (mode, label, icon) = option
@@ -864,7 +836,7 @@ fun HomeScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         state = folderGridState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -897,7 +869,7 @@ fun HomeScreen(
                     LazyColumn(
                         state = folderListState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (showContinueWatching) {
@@ -934,7 +906,7 @@ fun HomeScreen(
                 } else {
                     LazyColumn(
                         state = treeListState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
@@ -1037,7 +1009,7 @@ fun HomeScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         state = videoGridState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -1054,10 +1026,10 @@ fun HomeScreen(
                         }
                         itemsIndexed(
                             items = orderedFilteredVideos,
-                            key = { _, video -> video.id },
+                            key = { _, video -> videoKey(video) },
                             contentType = { _, _ -> "video_grid_item" }
                         ) { _, video ->
-                            ReorderableItem(reorderableVideoGridState, key = video.id) { isDragging ->
+                            ReorderableItem(reorderableVideoGridState, key = videoKey(video)) { isDragging ->
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1097,7 +1069,7 @@ fun HomeScreen(
 
                     LazyColumn(
                         state = videoListState,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 24.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
@@ -1114,10 +1086,10 @@ fun HomeScreen(
                         // Video item rows
                         itemsIndexed(
                             items = orderedFilteredVideos,
-                            key = { _, video -> video.id },
+                            key = { _, video -> videoKey(video) },
                             contentType = { _, _ -> "video_item" }
                         ) { _, video ->
-                            ReorderableItem(reorderableVideoListState, key = video.id) { isDragging ->
+                            ReorderableItem(reorderableVideoListState, key = videoKey(video)) { isDragging ->
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)

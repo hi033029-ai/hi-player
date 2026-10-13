@@ -97,6 +97,7 @@ class HiPlayerEngine(
     private var configuredHwDecoding: Boolean? = null
     private var configuredRemuxUltraBuffer: Boolean? = null
     private var configuredTunneling: Boolean? = null
+    private var resumeAfterForeground = false
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
@@ -457,7 +458,10 @@ class HiPlayerEngine(
             setEnableDecoderFallback(true)
         }
 
-        // Buffer tuning for smooth playback of large/high-bitrate files.
+        // Buffer tuning for smooth playback of large/high-bitrate files and
+        // remote streams. Two minutes is a maximum time target, not an
+        // unlimited allocation: the byte ceiling protects phones from trying
+        // to retain a full two minutes of 4K HDR in RAM.
         // Previously this generous buffering only applied when the user had
         // manually enabled a hidden "Remux Ultra Buffer" setting - everyone
         // else got ExoPlayer's small default buffers, which is exactly what
@@ -467,31 +471,33 @@ class HiPlayerEngine(
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                     10_000,   // Keep a safety buffer without delaying first frame.
-                    60_000,   // Continue buffering in the background for 4K.
+                    120_000,  // Prefetch up to two minutes for remote forward seeks.
                     250,      // Start local playback after a short preroll.
                     1_000     // Recover quickly after a rebuffer.
                 )
-                .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB cache buffer
+                .setTargetBufferBytes(192 * 1024 * 1024) // Safe cap for 4K/HDR phones.
                 .setBackBuffer(0, false)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                // Stop at either the two-minute target or the memory cap.
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
                 .build()
         } else {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                     8_000,    // Avoid waiting for a long initial 4K buffer.
-                    45_000,   // Continue filling after playback begins.
+                    120_000,  // Prefetch up to two minutes when bandwidth permits.
                     250,      // Fast first-frame startup for local media.
                     1_000     // Quick recovery after a rebuffer.
                 )
                 // Reserve a bounded allocator for high-bitrate local media.
                 // This improves 4K/HDR rebuffering without reading the full
                 // file into memory or changing any UI/player behavior.
-                .setTargetBufferBytes(128 * 1024 * 1024)
+                .setTargetBufferBytes(192 * 1024 * 1024)
                 // Preserve a short decoded range behind the playhead so quick
                 // reverse seeks do not immediately trigger another disk read.
                 .setBackBuffer(0, false)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                // Keeps 4K/HDR buffering bounded on memory-constrained phones.
+                .setPrioritizeTimeOverSizeThresholds(false)
                 .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
                 .build()
         }
@@ -923,6 +929,23 @@ class HiPlayerEngine(
         exoPlayer?.pause()
     }
 
+    /** Pauses for a temporary app switch without removing the active stream. */
+    fun pauseForAppBackground() {
+        val player = exoPlayer ?: return
+        resumeAfterForeground = player.playWhenReady || player.isPlaying
+        player.pause()
+        _isPlaying.value = false
+    }
+
+    /** Resumes only a stream that the activity lifecycle paused. */
+    fun resumeAfterAppForeground() {
+        val player = exoPlayer ?: return
+        if (resumeAfterForeground && _playerError.value == null && player.currentMediaItem != null) {
+            player.play()
+        }
+        resumeAfterForeground = false
+    }
+
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
         growingRetryJob?.cancel()
@@ -931,6 +954,7 @@ class HiPlayerEngine(
         growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
+        resumeAfterForeground = false
         _isBackgroundPlayActive.value = false
         exoPlayer?.let {
             it.playWhenReady = false
@@ -1285,6 +1309,7 @@ class HiPlayerEngine(
         growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
+        resumeAfterForeground = false
         progressJob?.cancel()
         progressJob = null
         loudnessEnhancer?.release()

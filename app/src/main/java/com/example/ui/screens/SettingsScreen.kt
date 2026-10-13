@@ -1,12 +1,14 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -24,6 +26,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -85,6 +89,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.theme.getCustomPalette
 import com.example.ui.components.DiscoverSourceSettings
+import com.example.ui.components.GoogleDriveAccountCard
 import com.example.ui.components.HiPlayerHeader
 import com.example.ui.components.ThemeCustomizationPanel
 import com.example.viewmodel.DiscoverViewModel
@@ -108,6 +113,11 @@ fun SettingsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var showCustomTheme by remember { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
     var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
+    var showAccountSources by remember { mutableStateOf(true) }
+    var showThemes by remember { mutableStateOf(false) }
+    var showTextSize by remember { mutableStateOf(false) }
+    var showDecoder by remember { mutableStateOf(false) }
+    var showPlayback by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -133,9 +143,29 @@ fun SettingsScreen(
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            // 1. Theme & Appearance (Horizontal Form)
-            SettingsSectionHeader(title = "App Theme & Visual Style (Horizontal)", accentColor = palette.primary)
+            SettingsCollapsibleSection(
+                title = "Google account & media sources",
+                subtitle = "Sign in, then manage Google Drive, Jellyfin, and WebDAV",
+                expanded = showAccountSources,
+                onToggle = { showAccountSources = !showAccountSources }
+            ) {
+                GoogleDriveAccountCard(
+                    discoverViewModel = discoverViewModel,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                DiscoverSourceSettings(
+                    discoverViewModel = discoverViewModel,
+                    modifier = Modifier.padding(horizontal = 0.dp)
+                )
+            }
 
+            // 1. Theme & Appearance (Horizontal Form)
+            SettingsCollapsibleSection(
+                title = "Themes & appearance",
+                subtitle = "Choose presets or customize your colors",
+                expanded = showThemes,
+                onToggle = { showThemes = !showThemes }
+            ) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
@@ -196,9 +226,15 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
+            }
 
             // 2. Global Text Size
-            SettingsSectionHeader(title = "Text Size", accentColor = palette.primary)
+            SettingsCollapsibleSection(
+                title = "Text size",
+                subtitle = "Adjust text used throughout the player",
+                expanded = showTextSize,
+                onToggle = { showTextSize = !showTextSize }
+            ) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
@@ -242,10 +278,15 @@ fun SettingsScreen(
                     }
                 }
             }
+            }
 
             // 3. Hardware Decoder Mode
-            SettingsSectionHeader(title = "Decoder & Hardware Acceleration", accentColor = palette.primary)
-
+            SettingsCollapsibleSection(
+                title = "Decoder & hardware acceleration",
+                subtitle = "Choose automatic, hardware, or software decoding",
+                expanded = showDecoder,
+                onToggle = { showDecoder = !showDecoder }
+            ) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
@@ -301,17 +342,15 @@ fun SettingsScreen(
                     }
                 }
             }
+            }
 
-            // 4. Discover metadata and the user's own remote media sources.
-            SettingsSectionHeader(title = "Discover & Personal Media Sources", accentColor = palette.primary)
-            DiscoverSourceSettings(
-                discoverViewModel = discoverViewModel,
-                modifier = Modifier.padding(horizontal = 0.dp)
-            )
-
-            // 5. Playback & Multitasking
-            SettingsSectionHeader(title = "Playback & Multitasking", accentColor = palette.primary)
-
+            // 4. Playback & Multitasking
+            SettingsCollapsibleSection(
+                title = "Playback & multitasking",
+                subtitle = "Background audio and picture-in-picture",
+                expanded = showPlayback,
+                onToggle = { showPlayback = !showPlayback }
+            ) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
@@ -339,6 +378,7 @@ fun SettingsScreen(
                         }
                     )
                 }
+            }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -371,14 +411,50 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsSectionHeader(title: String, accentColor: Color) {
-    Text(
-        text = title,
-        color = accentColor.copy(alpha = 0.75f),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 4.dp)
-    )
+private fun SettingsCollapsibleSection(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val palette = LocalHiPalette.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(modifier = Modifier.animateContentSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(subtitle, color = palette.textSecondary, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Hide $title" else "Show $title",
+                    tint = palette.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            if (expanded) {
+                HorizontalDivider(color = palette.surfaceBorder)
+                Column(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                    content = content
+                )
+            }
+        }
+    }
 }
 
 @Composable

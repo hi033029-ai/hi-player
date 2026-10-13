@@ -22,18 +22,30 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +58,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.model.PendingDownloadFormat
 import com.example.model.PublicWebVideoResolver
@@ -308,13 +322,18 @@ class MainActivity : ComponentActivity() {
                                                 fileManagerViewModel.refreshAll()
                                             },
                                             onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
-                                            extraActions = if (currentTab == NavTab.FILE_MANAGER) {
-                                                {
+                                            extraActions = {
+                                                if (currentTab != NavTab.FILE_MANAGER) {
+                                                    IconButton(onClick = { currentTab = NavTab.DISCOVER }) {
+                                                        Icon(Icons.Default.Explore, contentDescription = "Discover", tint = palette.textPrimary)
+                                                    }
+                                                }
+                                                if (currentTab == NavTab.FILE_MANAGER) {
                                                     IconButton(onClick = { recycleBinOpenRequest++ }) {
                                                         Icon(Icons.Default.DeleteSweep, contentDescription = "Recycle Bin", tint = palette.textPrimary)
                                                     }
                                                 }
-                                            } else null
+                                            }
                                         )
                                     },
                                     bottomBar = {
@@ -498,30 +517,69 @@ class MainActivity : ComponentActivity() {
                                             streamUrlError = null
                                             showStreamUrlDialog = false
                                         },
-                                        title = { Text("Play stream") },
-                                        text = {
-                                            OutlinedTextField(
-                                                value = streamUrl,
-                                                onValueChange = {
-                                                    streamUrl = it
-                                                    streamUrlError = null
-                                                },
-                                                singleLine = true,
-                                                label = { Text("Direct stream or HubCloud link") },
-                                                placeholder = { Text("https://example.com/stream.m3u8") },
-                                                isError = streamUrlError != null,
-                                                supportingText = {
+                                        shape = RoundedCornerShape(24.dp),
+                                        containerColor = palette.surfaceElevated,
+                                        titleContentColor = palette.textPrimary,
+                                        textContentColor = palette.textSecondary,
+                                        title = {
+                                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayCircle,
+                                                    contentDescription = null,
+                                                    tint = palette.primary
+                                                )
+                                                Spacer(Modifier.width(10.dp))
+                                                Column {
+                                                    Text("Play stream", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                                                     Text(
-                                                        if (isResolvingStreamUrl) {
-                                                            "Checking this public webpage for an exposed direct video…"
-                                                        } else streamUrlError
-                                                            ?: "MP4/WebM/MKV, HLS (.m3u8), DASH (.mpd), or HubCloud link"
+                                                        "Open a direct video or a public video page",
+                                                        color = palette.textSecondary,
+                                                        fontSize = 12.sp
                                                     )
                                                 }
-                                            )
+                                            }
+                                        },
+                                        text = {
+                                            Column {
+                                                OutlinedTextField(
+                                                    value = streamUrl,
+                                                    onValueChange = {
+                                                        streamUrl = it
+                                                        streamUrlError = null
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    singleLine = true,
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Link,
+                                                            contentDescription = null,
+                                                            tint = palette.primary
+                                                        )
+                                                    },
+                                                    label = { Text("Video or stream link") },
+                                                    placeholder = { Text("https://example.com/video.m3u8") },
+                                                    isError = streamUrlError != null,
+                                                    supportingText = {
+                                                        Text(
+                                                            streamUrlError ?: if (isResolvingStreamUrl) {
+                                                                "Looking for a public direct video source…"
+                                                            } else {
+                                                                "Direct MP4, MKV, HLS, DASH, or a public webpage"
+                                                            }
+                                                        )
+                                                    }
+                                                )
+                                                Spacer(Modifier.height(12.dp))
+                                                Text(
+                                                    "Hi Player plays direct media with its own controls. For an ordinary public webpage, it checks standard public video metadata without using logins, cookies, or protected streams.",
+                                                    color = palette.textSecondary,
+                                                    fontSize = 12.sp
+                                                )
+                                            }
                                         },
                                         confirmButton = {
-                                            Button(onClick = {
+                                            Button(
+                                                onClick = {
                                                 val result = StreamUrlClassifier.classify(streamUrl)
                                                 if (!result.isPlayableInHiPlayer) {
                                                     streamUrlError = result.errorMessage
@@ -541,15 +599,36 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                     }
                                                 }
-                                            }, enabled = !isResolvingStreamUrl) {
-                                                Text(if (isResolvingStreamUrl) "Checking…" else "Play")
+                                                },
+                                                enabled = !isResolvingStreamUrl,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = palette.primary,
+                                                    contentColor = if (palette.isDark) Color.Black else Color.White
+                                                )
+                                            ) {
+                                                if (isResolvingStreamUrl) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.height(18.dp).width(18.dp),
+                                                        color = if (palette.isDark) Color.Black else Color.White,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("Checking")
+                                                } else {
+                                                    Icon(Icons.Default.PlayCircle, contentDescription = null)
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("Play in Hi Player")
+                                                }
                                             }
                                         },
                                         dismissButton = {
-                                            Button(enabled = !isResolvingStreamUrl, onClick = {
-                                                streamUrlError = null
-                                                showStreamUrlDialog = false
-                                            }) { Text("Cancel") }
+                                            TextButton(
+                                                enabled = !isResolvingStreamUrl,
+                                                onClick = {
+                                                    streamUrlError = null
+                                                    showStreamUrlDialog = false
+                                                }
+                                            ) { Text("Cancel", color = palette.textPrimary) }
                                         }
                                     )
                                 }
@@ -681,7 +760,14 @@ class MainActivity : ComponentActivity() {
         playerViewModel.saveCurrentProgress()
         val settings = libraryViewModel.playerSettings.value
         if (!(settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
-            playerViewModel.stopForNavigation()
+            playerViewModel.pauseForAppBackground()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!isInPictureInPictureMode && !pipTransitionRequested) {
+            playerViewModel.resumeAfterAppForeground()
         }
     }
 

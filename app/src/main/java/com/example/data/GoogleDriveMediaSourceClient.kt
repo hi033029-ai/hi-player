@@ -1,139 +1,114 @@
 package com.example.data
 
+import android.content.Context
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import com.example.model.GoogleDriveConnection
 import com.example.model.RemoteMediaMatch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
- * Direct client for browsing and streaming media files from Google Drive v3 REST API.
- * Uses OAuth 2.0 Access Token to query Drive files and builds direct streaming URIs
- * compatible with ExoPlayer / Media3 via authenticated HttpDataSource headers.
+ * Browses a Google Drive folder selected through Android's Storage Access
+ * Framework. Authentication and account selection are handled by the Google
+ * Drive document provider, so no OAuth token or custom Google client ID is
+ * stored in Hi Player.
  */
 object GoogleDriveMediaSourceClient {
 
-    private const val DRIVE_API_BASE = "https://www.googleapis.com/drive/v3/files"
+    private const val MAX_FILES_TO_SCAN = 600
+    private const val MAX_FOLDER_DEPTH = 4
 
-    private val httpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .build()
-    }
+    fun isGoogleDriveTree(uri: Uri): Boolean =
+        uri.authority?.contains("docs.storage", ignoreCase = true) == true
 
-    /**
-     * Common video extensions scanned from Google Drive.
-     */
-    private val VIDEO_MIME_TYPES = setOf(
-        "video/mp4",
-        "video/x-matroska",
-        "video/webm",
-        "video/quicktime",
-        "video/x-msvideo",
-        "video/mpeg",
-        "video/3gpp"
-    )
+    fun selectedFolderName(context: Context, treeUri: Uri): String =
+        DocumentFile.fromTreeUri(context, treeUri)?.name?.takeIf { it.isNotBlank() }
+            ?: "Google Drive folder"
 
-    fun requestHeaders(connection: GoogleDriveConnection): Map<String, String> {
-        return mapOf(
-            "Authorization" to "Bearer ${connection.accessToken.trim()}"
-        )
-    }
-
-    suspend fun verify(connection: GoogleDriveConnection): Unit = withContext(Dispatchers.IO) {
-        val testUrl = "$DRIVE_API_BASE?pageSize=1&fields=files(id,name)"
-        val request = Request.Builder()
-            .url(testUrl)
-            .header("Authorization", "Bearer ${connection.accessToken.trim()}")
-            .get()
-            .build()
-
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val code = response.code
-                val errBody = response.body?.string().orEmpty()
-                val message = if (code == 401) {
-                    "Google Drive access token expired or invalid."
-                } else {
-                    "Google Drive error ($code): $errBody"
-                }
-                throw IllegalStateException(message)
-            }
+    suspend fun verify(context: Context, connection: GoogleDriveConnection): Unit = withContext(Dispatchers.IO) {
+        val root = DocumentFile.fromTreeUri(context, Uri.parse(connection.documentTreeUri))
+            ?: throw IllegalStateException("The selected Google Drive folder is unavailable.")
+        if (!root.isDirectory) {
+            throw IllegalStateException("Select a Google Drive folder, not an individual file.")
         }
+        // Force an inexpensive provider read now, so permission problems are
+        // reported while connecting rather than during Discover search.
+        runCatching { root.listFiles() }
+            .getOrElse { throw IllegalStateException("Hi Player cannot read this Google Drive folder.", it) }
     }
 
     suspend fun search(
+        context: Context,
         connection: GoogleDriveConnection,
         query: String
     ): List<RemoteMediaMatch> = withContext(Dispatchers.IO) {
         if (!connection.isConfigured) return@withContext emptyList()
+        val root = DocumentFile.fromTreeUri(context, Uri.parse(connection.documentTreeUri))
+            ?: return@withContext emptyList()
+        val cleanQuery = query.trim().lowercase()
 
-        val cleanQuery = query.trim().replace("'", "\\'")
-        // Search for video files matching name in Drive
-        val qFilter = "trashed = false and mimeType contains 'video/'" +
-                if (cleanQuery.isNotBlank()) " and name contains '$cleanQuery'" else ""
+        scanVideos(root)
+            .asSequence()
+            .filter { file -> cleanQuery.isBlank() || file.name.orEmpty().contains(cleanQuery, ignoreCase = true) }
+            .map { file -> file.toRemoteMatch(connection) }
+            .sortedBy { it.title.lowercase() }
+            .toList()
+    }
 
-        val url = Uri.parse(DRIVE_API_BASE).buildUpon()
-            .appendQueryParameter("q", qFilter)
-            .appendQueryParameter("pageSize", "50")
-            .appendQueryParameter("fields", "files(id,name,mimeType,size,videoMediaMetadata,thumbnailLink)")
-            .build()
-            .toString()
+    private fun scanVideos(root: DocumentFile): List<DocumentFile> {
+        val videos = mutableListOf<DocumentFile>()
+        val pendingFolders = ArrayDeque<Pair<DocumentFile, Int>>()
+        pendingFolders.add(root to 0)
 
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer ${connection.accessToken.trim()}")
-            .get()
-            .build()
-
-        val json = httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@withContext emptyList()
-            JSONObject(response.body?.string() ?: return@withContext emptyList())
-        }
-
-        val filesArray = json.optJSONArray("files") ?: return@withContext emptyList()
-        val headers = requestHeaders(connection)
-
-        buildList {
-            for (i in 0 until filesArray.length()) {
-                val file = filesArray.optJSONObject(i) ?: continue
-                val id = file.optString("id")
-                val name = file.optString("name")
-                val mimeType = file.optString("mimeType", "video/mp4")
-                val size = file.optLong("size", 0L)
-                val thumb = file.optString("thumbnailLink").takeIf(String::isNotBlank)
-
-                val videoMeta = file.optJSONObject("videoMediaMetadata")
-                val width = videoMeta?.optInt("width", 0) ?: 0
-                val height = videoMeta?.optInt("height", 0) ?: 0
-                val durationMs = videoMeta?.optLong("durationMillis", 0L) ?: 0L
-
-                // Direct streaming media link for ExoPlayer:
-                // GET https://www.googleapis.com/drive/v3/files/{id}?alt=media
-                val streamUri = Uri.parse("$DRIVE_API_BASE/$id?alt=media")
-
-                add(
-                    RemoteMediaMatch(
-                        id = "gdrive:$id",
-                        sourceName = connection.displayName,
-                        title = name,
-                        subtitle = "Google Drive",
-                        streamUri = streamUri,
-                        streamMimeType = mimeType,
-                        requestHeaders = headers,
-                        width = width,
-                        height = height,
-                        durationMs = durationMs,
-                        sizeBytes = size,
-                        artworkUrl = thumb
-                    )
-                )
+        while (pendingFolders.isNotEmpty() && videos.size < MAX_FILES_TO_SCAN) {
+            val (folder, depth) = pendingFolders.removeFirst()
+            val children = runCatching { folder.listFiles().toList() }.getOrDefault(emptyList())
+            for (child in children) {
+                when {
+                    child.isDirectory && depth < MAX_FOLDER_DEPTH -> pendingFolders.add(child to depth + 1)
+                    child.isFile && isVideo(child) -> videos += child
+                }
+                if (videos.size >= MAX_FILES_TO_SCAN) break
             }
         }
+        return videos
     }
+
+    private fun isVideo(file: DocumentFile): Boolean {
+        val mimeType = file.type.orEmpty()
+        if (mimeType.startsWith("video/", ignoreCase = true)) return true
+        return file.name.orEmpty().substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+    }
+
+    private fun DocumentFile.toRemoteMatch(connection: GoogleDriveConnection): RemoteMediaMatch {
+        val fileName = name.orEmpty().ifBlank { "Google Drive video" }
+        val mimeType = type?.takeIf { it.startsWith("video/", ignoreCase = true) }
+            ?: mimeTypeForName(fileName)
+        return RemoteMediaMatch(
+            id = "gdrive-document:$uri",
+            sourceName = connection.displayName,
+            title = fileName,
+            subtitle = "Google Drive",
+            streamUri = uri,
+            streamMimeType = mimeType,
+            sizeBytes = length().coerceAtLeast(0L),
+            codec = "Google Drive"
+        )
+    }
+
+    private fun mimeTypeForName(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "mov" -> "video/quicktime"
+        "avi" -> "video/x-msvideo"
+        "ts", "mts", "m2ts" -> "video/mp2t"
+        "3gp", "3gpp" -> "video/3gpp"
+        else -> "video/mp4"
+    }
+
+    private val VIDEO_EXTENSIONS = setOf(
+        "mp4", "m4v", "mkv", "webm", "mov", "avi", "mpeg", "mpg",
+        "ts", "mts", "m2ts", "3gp", "3gpp", "flv", "wmv", "vob"
+    )
 }

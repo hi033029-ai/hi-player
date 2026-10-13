@@ -49,9 +49,6 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarHalf
-import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
@@ -80,10 +77,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
-import com.example.ui.theme.HiAccentAmber
 import com.example.ui.theme.HiPrimaryCyan
 import com.example.ui.theme.LocalHiUiMetrics
-import com.example.util.MediaRating
 import com.example.ui.components.HdrIcon
 import com.example.ui.components.PlayPauseButton
 import com.example.ui.components.SkipButton
@@ -105,7 +100,6 @@ fun ControlsOverlay(
     playbackSpeed: Float,
     isBgPlayActive: Boolean,
     videoScale: Float = 1.0f,
-    rating: MediaRating? = null,
     isHdrSwitching: Boolean = false,
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
@@ -223,13 +217,12 @@ fun ControlsOverlay(
                         )
                         Text(
                             text = video?.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-                                ?: video?.title ?: "Unknown file",
+                                ?: video?.title ?: "Stream",
                             color = Color.White.copy(alpha = 0.68f),
                             fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        rating?.let { RatingStarsBadge(it) }
                     }
 
                 }
@@ -277,7 +270,6 @@ fun ControlsOverlay(
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
                         PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
-                        rating?.let { RatingStarsBadge(it) }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     // Timebar and Timestamps
@@ -545,32 +537,5 @@ private fun formatDuration(millis: Long): String {
         String.format("%d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format("%02d:%02d", minutes, seconds)
-    }
-}
-
-/** Compact 5-star rating badge shown next to the codec tag in the player's title row. */
-@Composable
-private fun RatingStarsBadge(rating: MediaRating) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        repeat(5) { index ->
-            val starFill = (rating.starsOutOf5 - index).coerceIn(0f, 1f)
-            Icon(
-                imageVector = when {
-                    starFill >= 0.75f -> Icons.Default.Star
-                    starFill >= 0.25f -> Icons.Default.StarHalf
-                    else -> Icons.Default.StarOutline
-                },
-                contentDescription = null,
-                tint = HiAccentAmber,
-                modifier = Modifier.size(11.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(3.dp))
-        Text(
-            text = String.format("%.1f", rating.voteAverageOutOf10),
-            color = Color.White.copy(alpha = 0.85f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium
-        )
     }
 }

@@ -8,13 +8,12 @@ enum class DiscoverMediaType {
 }
 
 enum class DiscoverCatalogSource {
-    TMDB,
     ITUNES,
     TVMAZE
 }
 
 data class DiscoverTitle(
-    val tmdbId: Long,
+    val catalogId: Long,
     val mediaType: DiscoverMediaType,
     val title: String,
     val overview: String,
@@ -23,7 +22,7 @@ data class DiscoverTitle(
     val backdropUrl: String? = null,
     val rating: Double? = null,
     val language: String? = null,
-    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.TMDB
+    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.ITUNES
 )
 
 data class DiscoverSeason(
@@ -53,13 +52,12 @@ data class JellyfinConnection(
 }
 
 data class GoogleDriveConnection(
-    val accountName: String,
-    val accessToken: String,
-    val folderId: String = "root",
+    val accountName: String = "Google Drive",
+    val documentTreeUri: String,
     val displayName: String = "Google Drive"
 ) {
     val isConfigured: Boolean
-        get() = accessToken.isNotBlank()
+        get() = documentTreeUri.isNotBlank()
 }
 
 data class WebDavConnection(
@@ -124,7 +122,10 @@ data class RemoteMediaMatch(
 data class DiscoverUiState(
     val query: String = "",
     val isLoading: Boolean = false,
+    val isBrowsingGoogleDrive: Boolean = false,
     val results: List<DiscoverTitle> = emptyList(),
+    val googleDriveFiles: List<RemoteMediaMatch> = emptyList(),
+    val googleDriveMessage: String? = null,
     val selectedDetails: DiscoverDetails? = null,
     val sourceMatches: List<RemoteMediaMatch> = emptyList(),
     val isSearchingSources: Boolean = false,

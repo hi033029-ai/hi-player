@@ -1,5 +1,4 @@
 package com.example.ui.components
-import com.example.model.GoogleDriveConnection
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,21 +55,6 @@ fun DiscoverSourceSettings(
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
 
     Column(modifier = modifier) {
-        Text(
-            text = "DISCOVER & PERSONAL MEDIA SOURCES",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = palette.primary,
-            letterSpacing = 0.8.sp,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        )
-        Text(
-            text = "Movie and TV search works without an API key. Playback searches only media sources you connect.",
-            color = palette.textSecondary,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 0.dp)
-        )
-        Spacer(Modifier.height(8.dp))
         Card(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
@@ -87,19 +71,6 @@ fun DiscoverSourceSettings(
                     onAction = {
                         if (sources.jellyfin?.isConfigured == true) discoverViewModel.removeJellyfin()
                         else dialog = SourceDialog.JELLYFIN
-                    }
-                )
-                SourceDivider()
-                SourceRow(
-                    icon = Icons.Default.CloudDone,
-                    title = "Google Drive",
-                    subtitle = sources.googleDrive?.let { "Connected: ${it.displayName} (${it.accountName})" }
-                        ?: "Connect Google Drive for direct video playback",
-                    action = if (sources.googleDrive?.isConfigured == true) "Remove" else "Connect",
-                    destructive = sources.googleDrive?.isConfigured == true,
-                    onAction = {
-                        if (sources.googleDrive?.isConfigured == true) discoverViewModel.removeGoogleDrive()
-                        else dialog = SourceDialog.GOOGLE_DRIVE
                     }
                 )
                 SourceDivider()
@@ -126,13 +97,6 @@ fun DiscoverSourceSettings(
                 discoverViewModel.connectJellyfin(baseUrl, username, password, onComplete)
             }
         )
-        SourceDialog.GOOGLE_DRIVE -> GoogleDriveSetupDialog(
-            current = sources.googleDrive,
-            onDismiss = { dialog = null },
-            onSave = { account, token, name, onComplete ->
-                discoverViewModel.saveGoogleDrive(account, token, name, onComplete)
-            }
-        )
         SourceDialog.WEBDAV -> WebDavSetupDialog(
             onDismiss = { dialog = null },
             onConnect = { url, username, password, name, onComplete ->
@@ -143,7 +107,7 @@ fun DiscoverSourceSettings(
     }
 }
 
-private enum class SourceDialog { JELLYFIN, WEBDAV, GOOGLE_DRIVE }
+private enum class SourceDialog { JELLYFIN, WEBDAV }
 
 @Composable
 private fun SourceRow(
@@ -299,87 +263,5 @@ private fun SourceTextField(
             unfocusedLabelColor = palette.textSecondary
         ),
         modifier = Modifier.fillMaxWidth()
-    )
-}
-
-@Composable
-private fun GoogleDriveSetupDialog(
-    current: com.example.model.GoogleDriveConnection?,
-    onDismiss: () -> Unit,
-    onSave: (account: String, token: String, name: String, onComplete: (Result<Unit>) -> Unit) -> Unit
-) {
-    val palette = LocalHiPalette.current
-    var account by remember { mutableStateOf(current?.accountName.orEmpty()) }
-    var token by remember { mutableStateOf(current?.accessToken.orEmpty()) }
-    var name by remember { mutableStateOf(current?.displayName ?: "Google Drive") }
-    var isSaving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = palette.surfaceElevated,
-        title = { Text("Connect Google Drive", color = palette.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Connect your Google Drive account using an OAuth 2.0 access token to stream videos without downloading.",
-                    color = palette.textSecondary,
-                    fontSize = 12.sp
-                )
-                OutlinedTextField(
-                    value = account,
-                    onValueChange = { account = it },
-                    label = { Text("Google Account Email") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary
-                    )
-                )
-                OutlinedTextField(
-                    value = token,
-                    onValueChange = { token = it },
-                    label = { Text("OAuth Access Token") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary
-                    )
-                )
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Display Name") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary
-                    )
-                )
-                error?.let {
-                    Text(text = it, color = Color(0xFFD14343), fontSize = 12.sp)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !isSaving && token.isNotBlank(),
-                onClick = {
-                    isSaving = true
-                    error = null
-                    onSave(account, token, name) { result ->
-                        isSaving = false
-                        result.onSuccess { onDismiss() }.onFailure { error = it.message ?: "Could not connect to Google Drive." }
-                    }
-                }
-            ) {
-                Text(if (isSaving) "Verifying..." else "Connect", color = palette.primary)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = palette.textSecondary)
-            }
-        }
     )
 }

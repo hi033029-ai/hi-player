@@ -29,10 +29,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -151,9 +153,9 @@ fun PlayerScreen(
     val subtitleOffsetMs by playerViewModel.engine.subtitleOffsetMs.collectAsState()
     val activeSheet by playerViewModel.activeSheet.collectAsState()
     val showStartOverPrompt by playerViewModel.showStartOverPrompt.collectAsState()
-    val currentRating by playerViewModel.currentRating.collectAsState()
     val sleepTimerMinutes by playerViewModel.sleepTimerMinutesLeft.collectAsState()
     val playerError by playerViewModel.engine.playerError.collectAsState()
+    val isNetworkStream = currentVideo?.uri?.scheme?.lowercase() in setOf("http", "https")
     // New features state
     val videoScale by playerViewModel.videoScale.collectAsState()
     val subtitleStyle by playerViewModel.subtitleStyle.collectAsState()
@@ -759,7 +761,6 @@ fun PlayerScreen(
             playbackSpeed = playbackSpeed,
             isBgPlayActive = isBgPlayActive,
             videoScale = videoScale,
-            rating = currentRating,
             onTogglePlayPause = { playerViewModel.togglePlayPause() },
             onSeekTo = { playerViewModel.seekTo(it) },
             onRewind10 = { playerViewModel.seekRelative(-10_000L) },
@@ -844,6 +845,38 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
+
+        // Network streams can pause while the next media segment arrives. Keep
+        // the feedback compact, centred, and strictly transient: it is visible
+        // only while playback is actually stalled and disappears immediately as
+        // soon as Media3 resumes rendering.
+        if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
+            Card(
+                modifier = Modifier.align(Alignment.Center),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xB8141E2E))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Column {
+                        Text("Buffering", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Speed, contentDescription = null, tint = Color.White.copy(alpha = 0.72f), modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Waiting for network data", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
 
         if (showStartOverPrompt && !isScreenLocked) {
             Button(

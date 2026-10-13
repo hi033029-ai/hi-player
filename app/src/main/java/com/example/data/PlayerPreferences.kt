@@ -72,7 +72,6 @@ data class AppPlayerSettings(
     val customThemeSurfaceOpacity: Int = 100,
     val nightAudioMode: Boolean = false,
     val volumeBoostPercent: Int = 0, // 0 to 100 boost on top of 100%
-    val tmdbApiKey: String = "",
     val openSubtitlesApiKey: String = "",
     val openSubtitlesUsername: String = "",
     val openSubtitlesPassword: String = ""
@@ -105,7 +104,6 @@ class PlayerPreferencesRepository(private val context: Context) {
         val CUSTOM_PRIMARY_OPACITY = intPreferencesKey("custom_theme_primary_opacity")
         val CUSTOM_SURFACE_OPACITY = intPreferencesKey("custom_theme_surface_opacity")
         val NIGHT_AUDIO = booleanPreferencesKey("night_audio_mode")
-        val TMDB_API_KEY = stringPreferencesKey("tmdb_api_key")
         val OS_API_KEY = stringPreferencesKey("opensubtitles_api_key")
         val OS_USERNAME = stringPreferencesKey("opensubtitles_username")
         val OS_PASSWORD = stringPreferencesKey("opensubtitles_password")
@@ -145,7 +143,6 @@ class PlayerPreferencesRepository(private val context: Context) {
             customThemePrimaryOpacity = prefs[Keys.CUSTOM_PRIMARY_OPACITY] ?: 100,
             customThemeSurfaceOpacity = prefs[Keys.CUSTOM_SURFACE_OPACITY] ?: 100,
             nightAudioMode = prefs[Keys.NIGHT_AUDIO] ?: false,
-            tmdbApiKey = prefs[Keys.TMDB_API_KEY] ?: "",
             openSubtitlesApiKey = prefs[Keys.OS_API_KEY] ?: "",
             openSubtitlesUsername = prefs[Keys.OS_USERNAME] ?: "",
             openSubtitlesPassword = prefs[Keys.OS_PASSWORD] ?: ""
@@ -247,10 +244,6 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     suspend fun setNightAudioMode(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NIGHT_AUDIO] = enabled }
-    }
-
-    suspend fun setTmdbApiKey(key: String) {
-        context.dataStore.edit { it[Keys.TMDB_API_KEY] = key }
     }
 
     suspend fun setOpenSubtitlesCredentials(apiKey: String, username: String, password: String) {

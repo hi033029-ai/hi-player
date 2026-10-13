@@ -1,13 +1,14 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.JellyfinMediaSourceClient
 import com.example.data.MediaSourcePreferences
-import com.example.data.PlayerPreferencesRepository
-import com.example.data.TmdbDiscoverClient
 import com.example.data.GoogleDriveMediaSourceClient
+import com.example.data.PublicCatalogClient
 import com.example.data.WebDavMediaSourceClient
 import com.example.model.DiscoverDetails
 import com.example.model.DiscoverTitle
@@ -29,7 +30,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class DiscoverViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferences = PlayerPreferencesRepository(application)
     private val mediaSources = MediaSourcePreferences(application)
 
     val sourceSettings = mediaSources.settings
@@ -48,9 +48,6 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 settings.webDav?.takeIf { it.isConfigured }?.let { connection ->
                     RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
                 }
-                settings.googleDrive?.takeIf { it.isConfigured }?.let { connection ->
-                    RemoteStreamHeadersRegistry.register("https://www.googleapis.com/drive/v3/files", GoogleDriveMediaSourceClient.requestHeaders(connection))
-                }
             }
         }
     }
@@ -66,21 +63,22 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             return
         }
         viewModelScope.launch {
-            val apiKey = preferences.settingsFlow.first().tmdbApiKey
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 results = emptyList(),
+                googleDriveFiles = emptyList(),
+                googleDriveMessage = null,
                 selectedDetails = null,
                 sourceMatches = emptyList(),
                 errorMessage = null,
                 sourceMessage = null
             )
-            runCatching { TmdbDiscoverClient.search(apiKey, query) }
+            runCatching { PublicCatalogClient.search(query) }
                 .onSuccess { results ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         results = results,
-                        errorMessage = if (results.isEmpty()) "No TMDB titles matched \"$query\"." else null
+                        errorMessage = if (results.isEmpty()) "No catalog titles matched \"$query\"." else null
                     )
                 }
                 .onFailure { error ->
@@ -92,9 +90,48 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun browseGoogleDrive() {
+        val connection = sourceSettings.value.googleDrive
+        if (connection?.isConfigured != true) {
+            _uiState.value = _uiState.value.copy(
+                googleDriveFiles = emptyList(),
+                googleDriveMessage = "Connect a Google Drive folder in Settings first."
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                isBrowsingGoogleDrive = true,
+                results = emptyList(),
+                googleDriveFiles = emptyList(),
+                googleDriveMessage = null,
+                selectedDetails = null,
+                errorMessage = null
+            )
+            runCatching {
+                GoogleDriveMediaSourceClient.search(getApplication(), connection, query = "")
+            }.onSuccess { files ->
+                _uiState.value = _uiState.value.copy(
+                    isBrowsingGoogleDrive = false,
+                    googleDriveFiles = files,
+                    googleDriveMessage = if (files.isEmpty()) {
+                        "No supported video files were found in ${connection.displayName}."
+                    } else {
+                        "${files.size} video file${if (files.size == 1) "" else "s"} in ${connection.displayName}"
+                    }
+                )
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    isBrowsingGoogleDrive = false,
+                    googleDriveFiles = emptyList(),
+                    googleDriveMessage = error.message ?: "Could not read the selected Google Drive folder."
+                )
+            }
+        }
+    }
+
     fun selectTitle(title: DiscoverTitle) {
         viewModelScope.launch {
-            val apiKey = preferences.settingsFlow.first().tmdbApiKey
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 selectedDetails = null,
@@ -102,7 +139,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 errorMessage = null,
                 sourceMessage = null
             )
-            val details = runCatching { TmdbDiscoverClient.details(apiKey, title) }.getOrNull()
+            val details = runCatching { PublicCatalogClient.details(title) }.getOrNull()
                 ?: DiscoverDetails(title = title)
             _uiState.value = _uiState.value.copy(isLoading = false, selectedDetails = details)
             searchConnectedSources(details.title)
@@ -123,7 +160,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         if (!sources.hasAnySource) {
             _uiState.value = _uiState.value.copy(
                 sourceMatches = emptyList(),
-                sourceMessage = "Connect a Jellyfin server or WebDAV folder in Settings to find your own playable copies."
+                sourceMessage = "Connect Google Drive, a Jellyfin server, or a WebDAV folder in Settings to find your own playable copies."
             )
             return
         }
@@ -172,25 +209,35 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun saveGoogleDrive(accountName: String, accessToken: String, displayName: String, onResult: (Result<Unit>) -> Unit) {
+    fun saveGoogleDriveFolder(
+        treeUri: Uri,
+        accountName: String,
+        onResult: (Result<Unit>) -> Unit
+    ) {
         viewModelScope.launch {
             val result = runCatching {
+                val app = getApplication<Application>()
+                require(accountName.isNotBlank()) { "Choose a Google account before selecting a Drive folder." }
+                require(GoogleDriveMediaSourceClient.isGoogleDriveTree(treeUri)) {
+                    "Choose a folder inside the Google Drive provider."
+                }
+                app.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
                 val connection = GoogleDriveConnection(
                     accountName = accountName.trim(),
-                    accessToken = accessToken.trim(),
-                    displayName = displayName.trim().ifBlank { "Google Drive" }
+                    documentTreeUri = treeUri.toString(),
+                    displayName = GoogleDriveMediaSourceClient.selectedFolderName(app, treeUri)
                 )
-                require(connection.isConfigured) { "Enter Google Drive access token." }
-                GoogleDriveMediaSourceClient.verify(connection)
+                GoogleDriveMediaSourceClient.verify(app, connection)
                 mediaSources.saveGoogleDrive(connection)
-                RemoteStreamHeadersRegistry.register("https://www.googleapis.com/drive/v3/files", GoogleDriveMediaSourceClient.requestHeaders(connection))
             }
             onResult(result)
         }
     }
 
     fun removeGoogleDrive() {
-        RemoteStreamHeadersRegistry.clear("https://www.googleapis.com/drive/v3/files")
         mediaSources.clearGoogleDrive()
     }
 
@@ -240,7 +287,10 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             } else null
             val gDrive = settings.googleDrive
             val gDriveSearch: Deferred<List<RemoteMediaMatch>>? = if (gDrive?.isConfigured == true) {
-                async { runCatching { GoogleDriveMediaSourceClient.search(gDrive, query) }.getOrDefault(emptyList()) }
+                async {
+                    runCatching { GoogleDriveMediaSourceClient.search(getApplication(), gDrive, query) }
+                        .getOrDefault(emptyList())
+                }
             } else null
             buildList {
                 jellyfinSearch?.await()?.let(::addAll)

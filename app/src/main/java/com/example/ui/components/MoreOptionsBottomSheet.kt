@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Speed
@@ -54,7 +53,6 @@ fun MoreOptionsBottomSheet(
     onOpenAudioSettings: () -> Unit,
     onOpenVideoSettings: () -> Unit,
     onOpenTelemetry: () -> Unit,
-    onOpenRatingKey: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -78,7 +76,7 @@ fun MoreOptionsBottomSheet(
                 color = HiTextPrimary
             )
             Text(
-                text = "Subtitles, OMDb IMDb lookup key, audio delay & decoders",
+                text = "Subtitles, audio delay, and decoder controls",
                 fontSize = 12.sp,
                 color = HiTextSecondary
             )
@@ -159,15 +157,6 @@ fun MoreOptionsBottomSheet(
                 }
             )
 
-            MoreOptionRow(
-                icon = Icons.Default.Key,
-                title = "TMDB Rating Key",
-                subtitle = "Set your free TMDB API key to show star ratings",
-                onClick = {
-                    onDismiss()
-                    onOpenRatingKey()
-                }
-            )
         }
     }
 }

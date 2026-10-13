@@ -246,7 +246,7 @@ fun VideoItemCard(
                         fontSize = 13.5.sp
                     ),
                     color = palette.textPrimary,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
@@ -587,7 +587,7 @@ fun VideoGridCard(
                             fontSize = 12.sp
                         ),
                         color = palette.textPrimary,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )

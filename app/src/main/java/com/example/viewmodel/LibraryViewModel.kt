@@ -672,12 +672,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setTmdbApiKey(key: String) {
-        viewModelScope.launch {
-            preferencesRepo.setTmdbApiKey(key.trim())
-        }
-    }
-
     fun setUiTextSize(sizeSp: Int) {
         viewModelScope.launch {
             preferencesRepo.setUiTextSize(sizeSp)

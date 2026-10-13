@@ -93,4 +93,33 @@ class StreamUrlClassifierTest {
         assertEquals("https://cdn.example.test/media/feature.mp4", result.normalizedUrl)
         assertEquals("Public Feature", result.displayTitle)
     }
+
+    @Test
+    fun extensionlessMp4ProbeUsesNativeProgressivePlayback() {
+        val sample = byteArrayOf(0, 0, 0, 24) + "ftypisom".toByteArray(StandardCharsets.US_ASCII)
+
+        val result = PublicWebVideoResolver.classifyDirectProbe(
+            finalUrl = "https://cdn.example.test/play?id=opaque-token",
+            contentType = "application/octet-stream",
+            sample = sample
+        )
+
+        requireNotNull(result)
+        assertTrue(result.isPlayableInHiPlayer)
+        assertEquals(StreamUrlKind.PROGRESSIVE, result.kind)
+        assertEquals(MimeTypes.VIDEO_MP4, result.mimeType)
+    }
+
+    @Test
+    fun hlsPayloadProbeUsesNativeHlsPlayback() {
+        val result = PublicWebVideoResolver.classifyDirectProbe(
+            finalUrl = "https://cdn.example.test/play?id=live-token",
+            contentType = "application/octet-stream",
+            sample = "#EXTM3U\n#EXT-X-VERSION:3\n".toByteArray(StandardCharsets.UTF_8)
+        )
+
+        requireNotNull(result)
+        assertEquals(StreamUrlKind.HLS, result.kind)
+        assertEquals(MimeTypes.APPLICATION_M3U8, result.mimeType)
+    }
 }

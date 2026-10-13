@@ -14,8 +14,6 @@ import com.example.model.VideoItem
 import com.example.model.VideoTrackInfo
 import com.example.player.HiMediaSessionService
 import com.example.player.HiPlayerEngine
-import com.example.util.MediaRating
-import com.example.util.TmdbRatingHelper
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -40,7 +38,6 @@ enum class ActiveSheet {
     SUBTITLE_SETTINGS,
     DECODER_TELEMETRY,
     SUBTITLE_CUSTOMIZATION,
-    TMDB_KEY_DIALOG,
     FETCH_SUBTITLE_URL_DIALOG
 }
 
@@ -65,14 +62,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _showStartOverPrompt = MutableStateFlow(false)
     val showStartOverPrompt = _showStartOverPrompt.asStateFlow()
-
-    private val _currentRating = MutableStateFlow<MediaRating?>(null)
-    val currentRating = _currentRating.asStateFlow()
-    private var ratingFetchJob: Job? = null
-
-    val tmdbApiKey = preferencesRepo.settingsFlow
-        .map { it.tmdbApiKey }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     /** Whether SDR playback may request a wide-gamut output surface. */
     val wideColorGamutEnabled = preferencesRepo.settingsFlow
@@ -137,7 +126,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _currentVideo.value = video
         _showStartOverPrompt.value = false
         _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
-        fetchRatingFor(video)
         playRequestJob = viewModelScope.launch {
             // These are independent local reads. Fetch them together so player
             // preparation is not delayed by settings I/O followed by DAO I/O.
@@ -191,6 +179,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // surface from retaining its title, controls, or growing-download HUD
         // while the main screen is recomposed.
         _currentVideo.value = null
+    }
+
+    /** Keeps a selected stream intact when the app is temporarily backgrounded. */
+    fun pauseForAppBackground() {
+        playRequestJob?.cancel()
+        playRequestJob = null
+        engine.pauseForAppBackground()
+    }
+
+    /** Resumes only a stream that was actively paused by the app lifecycle. */
+    fun resumeAfterAppForeground() {
+        engine.resumeAfterAppForeground()
     }
 
     fun playCurrentVideoFromStart() {
@@ -545,26 +545,4 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         super.onCleared()
     }
 
-    /** Cleans the video's filename and looks up a public TMDB rating for it. */
-    private fun fetchRatingFor(video: VideoItem) {
-        _currentRating.value = null
-        ratingFetchJob?.cancel()
-        ratingFetchJob = viewModelScope.launch {
-            val apiKey = preferencesRepo.settingsFlow.first().tmdbApiKey
-            val parsed = TmdbRatingHelper.parseFilename(video.title)
-            val rating = TmdbRatingHelper.fetchRating(apiKey, parsed.cleanTitle, parsed.year)
-            if (isActive) {
-                _currentRating.value = rating
-            }
-        }
-    }
-
-    fun setTmdbApiKey(key: String) {
-        viewModelScope.launch {
-            preferencesRepo.setTmdbApiKey(key)
-            // Re-fetch immediately for the video currently playing so the
-            // badge appears without needing to reopen the file.
-            _currentVideo.value?.let { fetchRatingFor(it) }
-        }
-    }
 }

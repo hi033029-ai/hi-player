@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +68,12 @@ fun DiscoverScreen(
     val state by discoverViewModel.uiState.collectAsState()
     val sources by discoverViewModel.sourceSettings.collectAsState()
     val palette = LocalHiPalette.current
+    var showSourceChooser by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val connectedSourceCount = listOf(
+        sources.googleDrive?.isConfigured == true,
+        sources.jellyfin?.isConfigured == true,
+        sources.webDav?.isConfigured == true
+    ).count { it }
 
     Column(
         modifier = modifier
@@ -75,25 +84,43 @@ fun DiscoverScreen(
             DiscoverSearchHeader(
                 query = state.query,
                 loading = state.isLoading,
+                driveConnected = sources.googleDrive?.isConfigured == true,
+                browsingDrive = state.isBrowsingGoogleDrive,
+                connectedSourceCount = connectedSourceCount,
                 onQueryChanged = discoverViewModel::setQuery,
                 onSearch = discoverViewModel::searchTitles,
-                onOpenSettings = onOpenSettings
+                onBrowseDrive = discoverViewModel::browseGoogleDrive,
+                onShowSourceChooser = { showSourceChooser = true }
             )
             state.errorMessage?.let { message ->
                 DiscoverMessage(message = message, isError = true)
             }
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (state.isLoading || state.isBrowsingGoogleDrive) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator(color = palette.primary)
                 }
+            } else if (state.googleDriveFiles.isNotEmpty() || state.googleDriveMessage != null) {
+                GoogleDriveFilesContent(
+                    files = state.googleDriveFiles,
+                    message = state.googleDriveMessage,
+                    modifier = Modifier.weight(1f),
+                    onPlay = { match ->
+                        discoverViewModel.preparePlayback(match)
+                        onPlayRemote(match)
+                    }
+                )
             } else if (state.results.isEmpty() && state.errorMessage == null) {
                 DiscoverEmptyState(
                     sourcesConnected = sources.hasAnySource,
-                    onOpenSettings = onOpenSettings
+                    modifier = Modifier.weight(1f),
+                    onShowSourceChooser = { showSourceChooser = true }
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 18.dp)
                 ) {
                     item {
@@ -106,7 +133,7 @@ fun DiscoverScreen(
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
                         )
                     }
-                    items(state.results, key = { "tmdb-${it.mediaType}-${it.tmdbId}" }) { title ->
+                    items(state.results, key = { "catalog-${it.catalogSource}-${it.mediaType}-${it.catalogId}" }) { title ->
                         DiscoverTitleRow(title = title, onClick = { discoverViewModel.selectTitle(title) })
                     }
                 }
@@ -119,7 +146,7 @@ fun DiscoverScreen(
                 matches = state.sourceMatches,
                 onBack = discoverViewModel::closeDetails,
                 onSearchSources = { discoverViewModel.searchConnectedSources(state.selectedDetails!!.title) },
-                onOpenSettings = onOpenSettings,
+                onShowSourceChooser = { showSourceChooser = true },
                 onPlayRemote = { match ->
                     discoverViewModel.preparePlayback(match)
                     onPlayRemote(match)
@@ -127,15 +154,29 @@ fun DiscoverScreen(
             )
         }
     }
+    if (showSourceChooser) {
+        DiscoverSourceChooser(
+            connectedSourceCount = connectedSourceCount,
+            onDismiss = { showSourceChooser = false },
+            onOpenSettings = {
+                showSourceChooser = false
+                onOpenSettings()
+            }
+        )
+    }
 }
 
 @Composable
 private fun DiscoverSearchHeader(
     query: String,
     loading: Boolean,
+    driveConnected: Boolean,
+    browsingDrive: Boolean,
+    connectedSourceCount: Int,
     onQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
-    onOpenSettings: () -> Unit
+    onBrowseDrive: () -> Unit,
+    onShowSourceChooser: () -> Unit
 ) {
     val palette = LocalHiPalette.current
     Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
@@ -146,7 +187,7 @@ private fun DiscoverSearchHeader(
                 Text("Discover", color = palette.textPrimary, fontWeight = FontWeight.Bold, fontSize = 21.sp)
                 Text("Find metadata, then play only from your sources", color = palette.textSecondary, fontSize = 11.sp)
             }
-            IconButton(onClick = onOpenSettings) {
+            IconButton(onClick = onShowSourceChooser) {
                 Icon(Icons.Default.Settings, contentDescription = "Discover source settings", tint = palette.textSecondary)
             }
         }
@@ -182,16 +223,92 @@ private fun DiscoverSearchHeader(
                 Spacer(Modifier.width(6.dp))
                 Text("Search catalog")
             }
-
+            if (driveConnected) {
+                Button(
+                    onClick = onBrowseDrive,
+                    enabled = !loading && !browsingDrive,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = palette.surfaceElevated,
+                        contentColor = palette.primary
+                    )
+                ) {
+                    Icon(Icons.Default.CloudDone, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Drive files")
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(palette.surfaceElevated)
+                .clickable(onClick = onShowSourceChooser)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.CloudDone, contentDescription = null, tint = palette.primary, modifier = Modifier.size(19.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (connectedSourceCount == 0) "Connect personal media" else "$connectedSourceCount source${if (connectedSourceCount == 1) "" else "s"} connected",
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text("Google Drive, Jellyfin, or WebDAV", color = palette.textSecondary, fontSize = 10.5.sp)
+            }
+            Text("Manage", color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun DiscoverEmptyState(sourcesConnected: Boolean, onOpenSettings: () -> Unit) {
+private fun GoogleDriveFilesContent(
+    files: List<RemoteMediaMatch>,
+    message: String?,
+    modifier: Modifier = Modifier,
+    onPlay: (RemoteMediaMatch) -> Unit
+) {
+    val palette = LocalHiPalette.current
+    LazyColumn(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 18.dp)
+    ) {
+        item {
+            Text(
+                text = "GOOGLE DRIVE VIDEOS",
+                color = palette.primary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 0.8.sp,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+            )
+            message?.let {
+                Text(
+                    text = it,
+                    color = palette.textSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 0.dp)
+                )
+            }
+        }
+        items(files, key = { it.id }) { match ->
+            RemoteMediaRow(match = match, onPlay = { onPlay(match) })
+        }
+    }
+}
+
+@Composable
+private fun DiscoverEmptyState(
+    sourcesConnected: Boolean,
+    modifier: Modifier = Modifier,
+    onShowSourceChooser: () -> Unit
+) {
     val palette = LocalHiPalette.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(28.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -200,19 +317,96 @@ private fun DiscoverEmptyState(sourcesConnected: Boolean, onOpenSettings: () -> 
             Text("Search movies and TV", color = palette.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Search the free public catalog with no API key. Hi Player then searches only media sources you connect for playable copies.",
+                "Search the free public catalog, then choose a match available in your own connected media source.",
                 color = palette.textSecondary,
             fontSize = 12.sp
         )
         Spacer(Modifier.height(14.dp))
         Button(
-            onClick = onOpenSettings,
+            onClick = onShowSourceChooser,
             colors = ButtonDefaults.buttonColors(containerColor = palette.primary, contentColor = if (palette.isDark) Color.Black else Color.White)
         ) {
             Icon(if (sourcesConnected) Icons.Default.Settings else Icons.Default.CloudDone, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (sourcesConnected) "Manage sources" else "Connect a source")
+            Text(if (sourcesConnected) "Manage connected sources" else "Choose a source")
         }
+    }
+}
+
+@Composable
+private fun DiscoverSourceChooser(
+    connectedSourceCount: Int,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val palette = LocalHiPalette.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = palette.surfaceElevated,
+        title = { Text("Choose a media source", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    if (connectedSourceCount == 0) {
+                        "Connect only personal libraries or folders you are allowed to access."
+                    } else {
+                        "$connectedSourceCount source${if (connectedSourceCount == 1) " is" else "s are"} already connected."
+                    },
+                    color = palette.textSecondary,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                SourceChooserOption(
+                    icon = Icons.Default.CloudDone,
+                    title = "Google Drive",
+                    detail = "Choose your Google account and a video folder",
+                    onClick = onOpenSettings
+                )
+                SourceChooserOption(
+                    icon = Icons.Default.Explore,
+                    title = "Jellyfin",
+                    detail = "Connect a free Jellyfin media library you manage",
+                    onClick = onOpenSettings
+                )
+                SourceChooserOption(
+                    icon = Icons.Default.Storage,
+                    title = "WebDAV",
+                    detail = "Connect a folder you control",
+                    onClick = onOpenSettings
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Close", color = palette.primary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun SourceChooserOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit
+) {
+    val palette = LocalHiPalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(11.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(detail, color = palette.textSecondary, fontSize = 10.5.sp)
+        }
+        Text("Connect", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
     }
 }
 
@@ -269,7 +463,7 @@ private fun DiscoverDetailsContent(
     matches: List<RemoteMediaMatch>,
     onBack: () -> Unit,
     onSearchSources: () -> Unit,
-    onOpenSettings: () -> Unit,
+    onShowSourceChooser: () -> Unit,
     onPlayRemote: (RemoteMediaMatch) -> Unit
 ) {
     val palette = LocalHiPalette.current
@@ -313,7 +507,7 @@ private fun DiscoverDetailsContent(
             }
             if (matches.isEmpty() && !isSearchingSources) {
                 Button(
-                    onClick = onOpenSettings,
+                    onClick = onShowSourceChooser,
                     colors = ButtonDefaults.buttonColors(containerColor = palette.surfaceElevated, contentColor = palette.primary),
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
                 ) {

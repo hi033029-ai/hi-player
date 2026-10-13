@@ -11,9 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Stores only user-owned Jellyfin/WebDAV connection details on this device.
- * Passwords and access tokens are encrypted with the Android Keystore-backed
- * [EncryptedSharedPreferences] store and are never appended to a stream URL.
+ * Stores user-owned Jellyfin/WebDAV credentials and Google Drive folder grants
+ * on this device. Sensitive server credentials are encrypted with the Android
+ * Keystore-backed [EncryptedSharedPreferences] store and never enter a URL.
  */
 class MediaSourcePreferences(context: Context) {
     private val appContext = context.applicationContext
@@ -60,9 +60,10 @@ class MediaSourcePreferences(context: Context) {
     fun saveGoogleDrive(connection: GoogleDriveConnection) {
         preferences.edit()
             .putString(KEY_GDRIVE_ACCOUNT, connection.accountName)
-            .putString(KEY_GDRIVE_TOKEN, connection.accessToken)
-            .putString(KEY_GDRIVE_FOLDER, connection.folderId)
+            .putString(KEY_GDRIVE_DOCUMENT_TREE_URI, connection.documentTreeUri)
             .putString(KEY_GDRIVE_NAME, connection.displayName)
+            .remove(LEGACY_KEY_GDRIVE_TOKEN)
+            .remove(LEGACY_KEY_GDRIVE_FOLDER)
             .apply()
         _settings.value = readSettings()
     }
@@ -70,9 +71,10 @@ class MediaSourcePreferences(context: Context) {
     fun clearGoogleDrive() {
         preferences.edit()
             .remove(KEY_GDRIVE_ACCOUNT)
-            .remove(KEY_GDRIVE_TOKEN)
-            .remove(KEY_GDRIVE_FOLDER)
+            .remove(KEY_GDRIVE_DOCUMENT_TREE_URI)
             .remove(KEY_GDRIVE_NAME)
+            .remove(LEGACY_KEY_GDRIVE_TOKEN)
+            .remove(LEGACY_KEY_GDRIVE_FOLDER)
             .apply()
         _settings.value = readSettings()
     }
@@ -123,14 +125,13 @@ class MediaSourcePreferences(context: Context) {
             )
         }
         val gDriveAccount = preferences.getString(KEY_GDRIVE_ACCOUNT, "").orEmpty()
-        val gDriveToken = preferences.getString(KEY_GDRIVE_TOKEN, "").orEmpty()
-        val googleDrive = if (gDriveAccount.isBlank() || gDriveToken.isBlank()) {
+        val gDriveTreeUri = preferences.getString(KEY_GDRIVE_DOCUMENT_TREE_URI, "").orEmpty()
+        val googleDrive = if (gDriveTreeUri.isBlank()) {
             null
         } else {
             GoogleDriveConnection(
-                accountName = gDriveAccount,
-                accessToken = gDriveToken,
-                folderId = preferences.getString(KEY_GDRIVE_FOLDER, "root").orEmpty().ifEmpty { "root" },
+                accountName = gDriveAccount.ifBlank { "Google Drive" },
+                documentTreeUri = gDriveTreeUri,
                 displayName = preferences.getString(KEY_GDRIVE_NAME, "Google Drive").orEmpty().ifEmpty { "Google Drive" }
             )
         }
@@ -150,8 +151,9 @@ class MediaSourcePreferences(context: Context) {
         const val KEY_WEBDAV_PASSWORD = "webdav_password"
         const val KEY_WEBDAV_DISPLAY_NAME = "webdav_display_name"
         const val KEY_GDRIVE_ACCOUNT = "gdrive_account"
-        const val KEY_GDRIVE_TOKEN = "gdrive_token"
-        const val KEY_GDRIVE_FOLDER = "gdrive_folder"
+        const val KEY_GDRIVE_DOCUMENT_TREE_URI = "gdrive_document_tree_uri"
         const val KEY_GDRIVE_NAME = "gdrive_name"
+        const val LEGACY_KEY_GDRIVE_TOKEN = "gdrive_token"
+        const val LEGACY_KEY_GDRIVE_FOLDER = "gdrive_folder"
     }
 }

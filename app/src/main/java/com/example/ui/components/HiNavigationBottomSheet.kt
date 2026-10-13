@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -133,7 +132,7 @@ fun HiNavigationBottomSheet(
                             }
                         }
                         Text(
-                            text = "Videos • Music • File Manager • Settings",
+                        text = "Videos • Discover • Music • File Manager • Settings",
                             fontSize = 10.5.sp,
                             color = palette.textSecondary
                         )
@@ -179,23 +178,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 2. DISCOVER
-            NavHubTile(
-                title = "Discover",
-                subtitle = "TMDB metadata with your Jellyfin & WebDAV sources",
-                badge = "Sources",
-                icon = Icons.Default.Explore,
-                iconColor = palette.primary,
-                isSelected = currentTab == NavTab.DISCOVER,
-                onClick = {
-                    onTabSelected(NavTab.DISCOVER)
-                },
-                testTag = "hub_tab_discover"
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // 3. MUSIC
+            // 2. MUSIC
             NavHubTile(
                 title = "Music",
                 subtitle = "Lossless Audio, Equalizer & Background Play",
@@ -211,7 +194,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 4. FILE MANAGER
+            // 3. FILE MANAGER
             NavHubTile(
                 title = "File Manager",
                 subtitle = "Explore Storage, Downloads & Media Folders",
@@ -227,7 +210,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 5. SETTINGS
+            // 4. SETTINGS
             NavHubTile(
                 title = "Settings",
                 subtitle = "HW+ Decoder, 128MB Ultra-Buffer & Themes",
