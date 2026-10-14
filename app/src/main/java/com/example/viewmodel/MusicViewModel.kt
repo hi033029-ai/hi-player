@@ -2,9 +2,11 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.content.ContentUris
+import android.media.MediaMetadataRetriever
 import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,6 +25,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Locale
 
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -424,12 +428,75 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             e.printStackTrace()
         }
 
+        // WhatsApp voice notes and audio files are sometimes not indexed as
+        // Music by MediaStore. Include only its well-known shared-media
+        // directories that Android lets us read, then deduplicate by path.
+        tracks += scanKnownMessengerAudio(tracks.map { it.path }.filter(String::isNotBlank).toSet())
+        val uniqueTracks = tracks.distinctBy { track -> track.path.ifBlank { track.uri.toString() } }
+
         // Add built-in sample demo tracks if device audio is empty so user can experience music features immediately
-        if (tracks.isEmpty()) {
-            tracks.addAll(getDemoTracks())
+        if (uniqueTracks.isEmpty()) {
+            return getDemoTracks()
         }
 
-        return tracks
+        return uniqueTracks
+    }
+
+    private fun scanKnownMessengerAudio(indexedPaths: Set<String>): List<AudioItem> {
+        val storageRoot = Environment.getExternalStorageDirectory()
+        val candidates = listOf(
+            File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio"),
+            File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes"),
+            File(storageRoot, "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Audio"),
+            File(storageRoot, "WhatsApp/Media/WhatsApp Audio"),
+            File(storageRoot, "WhatsApp/Media/WhatsApp Voice Notes"),
+            File(storageRoot, "WhatsApp Business/Media/WhatsApp Business Audio"),
+        ).filter { it.isDirectory && it.canRead() }
+            .map { directory -> runCatching { directory.canonicalFile }.getOrDefault(directory) }
+            .distinctBy(File::getAbsolutePath)
+
+        val audioExtensions = setOf("mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma", "alac")
+        return candidates.asSequence()
+            .flatMap { directory -> directory.walkTopDown().maxDepth(4) }
+            .filter(File::isFile)
+            .filter { file -> file.extension.lowercase(Locale.ROOT) in audioExtensions }
+            .filterNot { file -> file.absolutePath in indexedPaths }
+            .mapNotNull(::toMessengerAudioItem)
+            .distinctBy { it.path }
+            .toList()
+    }
+
+    private fun toMessengerAudioItem(file: File): AudioItem {
+        // An unreadable embedded duration must not hide a legitimate WhatsApp
+        // file. Media3 can still attempt playback from its readable file URI.
+        val duration = runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(file.absolutePath)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?: 0L
+            } finally {
+                retriever.release()
+            }
+        }.getOrDefault(0L)
+        return AudioItem(
+            id = file.absolutePath.hashCode().toLong(),
+            uri = Uri.fromFile(file),
+            title = file.nameWithoutExtension,
+            artist = "WhatsApp",
+            album = file.parentFile?.name ?: "WhatsApp Audio",
+            durationMs = duration,
+            sizeBytes = file.length(),
+            path = file.absolutePath,
+            mimeType = when (file.extension.lowercase(Locale.ROOT)) {
+                "opus" -> "audio/opus"
+                "ogg" -> "audio/ogg"
+                "m4a" -> "audio/mp4"
+                else -> "audio/*"
+            },
+            dateAdded = file.lastModified() / 1000L,
+        )
     }
 
     private fun getDemoTracks(): List<AudioItem> {

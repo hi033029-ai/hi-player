@@ -114,6 +114,7 @@ import coil.request.ImageRequest
 import com.example.R
 import com.example.model.ArchiveEntryInfo
 import com.example.model.FileItem
+import com.example.ui.components.FilePreviewThumbnail
 import com.example.ui.theme.HiAccentAmber
 import com.example.ui.theme.HiCinemaBlack
 import com.example.ui.theme.HiPrimaryCyan
@@ -673,7 +674,9 @@ fun FileManagerScreen(
                             onNavigateFolder = { fileManagerViewModel.navigateTo(it) },
                             onNavigateUp = { fileManagerViewModel.navigateUp() },
                             onOpenFile = { openFile(it) },
-                            onContentScrolled = { atTop -> showQuickPanels = atTop },
+                            // Keep panels mounted: removing one above an active
+                            // Lazy list changes its viewport height mid-gesture.
+                            onContentScrolled = {},
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -707,7 +710,7 @@ fun FileManagerScreen(
                             onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                             onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
                             onOpenFile = { openFile(it) },
-                            onContentScrolled = { atTop -> showQuickPanels = atTop },
+                            onContentScrolled = {},
                             isSelectionMode = isSelectionMode,
                             selectedPaths = selectedPaths,
                             onItemLongClick = { fileManagerViewModel.enterSelectionMode(it) },
@@ -2258,20 +2261,13 @@ fun GenericFileItemCard(
                 SelectionCheckCircle(isSelected = isSelected)
                 Spacer(modifier = Modifier.width(8.dp))
             }
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(badgeBg),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = badgeTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            FilePreviewThumbnail(
+                item = item,
+                fallbackIcon = icon,
+                fallbackBackground = badgeBg,
+                fallbackTint = badgeTint,
+                modifier = Modifier.size(38.dp),
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 

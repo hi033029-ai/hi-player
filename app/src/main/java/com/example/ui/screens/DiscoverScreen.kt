@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -46,9 +47,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +73,7 @@ fun DiscoverScreen(
     discoverViewModel: DiscoverViewModel,
     onPlayRemote: (RemoteMediaMatch) -> Unit,
     onOpenSettings: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val state by discoverViewModel.uiState.collectAsState()
@@ -80,6 +85,18 @@ fun DiscoverScreen(
         sources.jellyfin?.isConfigured == true,
         sources.webDav?.isConfigured == true
     ).count { it }
+
+    // Discover is opened above a library tab rather than being a root Android
+    // destination. Back therefore closes title details first, then restores
+    // the tab the user was viewing instead of allowing Android to finish the
+    // activity.
+    BackHandler(enabled = !showSourceChooser) {
+        if (state.selectedDetails != null) {
+            discoverViewModel.closeDetails()
+        } else {
+            onBack()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -203,20 +220,10 @@ private fun DiscoverSearchHeader(
                 focusedLabelColor = palette.primary,
                 unfocusedLabelColor = palette.textSecondary
             ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(
-                onClick = onSearch,
-                enabled = query.isNotBlank() && !loading,
-                colors = ButtonDefaults.buttonColors(containerColor = palette.primary, contentColor = if (palette.isDark) Color.Black else Color.White)
-            ) {
-                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Search")
-            }
-        }
     }
 }
 

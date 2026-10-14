@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -179,12 +180,83 @@ object MediaScanner {
         }
         videoList += partialItems
 
+        // WhatsApp can keep media outside the MediaStore collection until a
+        // gallery scan runs, especially in its Android/media app folder. Scan
+        // only the known video directories the app can read; never scan private
+        // chats or arbitrary storage trees.
+        val indexedPathsAfterMediaStore = videoList.map { it.path }
+            .filter(String::isNotBlank)
+            .toSet()
+        videoList += scanKnownMessengerVideos(indexedPathsAfterMediaStore)
+
         // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
         if (videoList.isEmpty()) {
             videoList.addAll(getDemoRemuxVideos())
         }
 
-        videoList
+        videoList.distinctBy { video -> video.path.ifBlank { video.uri.toString() } }
+    }
+
+    private fun scanKnownMessengerVideos(indexedPaths: Set<String>): List<VideoItem> {
+        val storageRoot = Environment.getExternalStorageDirectory()
+        val candidates = listOf(
+            File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video"),
+            File(storageRoot, "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video"),
+            File(storageRoot, "WhatsApp/Media/WhatsApp Video"),
+            File(storageRoot, "WhatsApp Business/Media/WhatsApp Business Video"),
+        ).filter { it.isDirectory && it.canRead() }
+            .map { directory -> runCatching { directory.canonicalFile }.getOrDefault(directory) }
+            .distinctBy(File::getAbsolutePath)
+
+        return candidates.asSequence()
+            .flatMap { directory -> directory.walkTopDown().maxDepth(4) }
+            .filter(File::isFile)
+            .filter { file -> file.extension.lowercase(Locale.ROOT) in PendingDownloadFormat.videoExtensions }
+            .filterNot { file -> PendingDownloadFormat.isPending(file.name) || file.absolutePath in indexedPaths }
+            .map(::toMessengerVideoItem)
+            .distinctBy { it.path }
+            .toList()
+    }
+
+    private fun toMessengerVideoItem(file: File): VideoItem {
+        val metadata = runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+            retriever.setDataSource(file.absolutePath)
+            Triple(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull()
+                ?: 0L,
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull()
+                ?: 0,
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull()
+                ?: 0,
+            )
+            } finally {
+                retriever.release()
+            }
+        }.getOrDefault(Triple(0L, 0, 0))
+        val (duration, width, height) = metadata
+        val is4k = width >= 3840 || height >= 2160
+        return VideoItem(
+            id = file.absolutePath.hashCode().toLong(),
+            uri = Uri.fromFile(file),
+            title = file.name,
+            durationMs = duration,
+            sizeBytes = file.length(),
+            width = width,
+            height = height,
+            mimeType = mimeTypeForExtension(file.extension.lowercase(Locale.ROOT)),
+            dateAdded = file.lastModified() / 1000L,
+            folderName = file.parentFile?.name ?: "WhatsApp Video",
+            path = file.absolutePath,
+            isHdr = is4k,
+            hdrFormat = if (is4k) "HDR10 / Dolby Vision" else null,
+            codec = if (is4k) "HEVC Remux" else "AVC (H.264)",
+            bitrate = if (duration > 0) file.length() * 8000L / duration else 0L,
+        )
     }
 
     private fun scanPartialDownloadVideos(

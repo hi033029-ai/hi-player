@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.ColorLens
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.HdrOn
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -103,6 +105,7 @@ fun SettingsScreen(
     libraryViewModel: LibraryViewModel,
     discoverViewModel: DiscoverViewModel,
     onBack: () -> Unit,
+    onOpenBrowser: () -> Unit = {},
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true
 ) {
@@ -157,6 +160,46 @@ fun SettingsScreen(
                     discoverViewModel = discoverViewModel,
                     modifier = Modifier.padding(horizontal = 0.dp)
                 )
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                    .clickable(onClick = onOpenBrowser)
+                    .testTag("open_private_browser"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                elevation = CardDefaults.cardElevation(0.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = null,
+                        tint = palette.primary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Private browser", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Search the web, play direct media, download files, and block common ads",
+                            color = palette.textSecondary,
+                            fontSize = 10.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "Open browser",
+                        tint = palette.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
 
             // 1. Theme & Appearance (Horizontal Form)

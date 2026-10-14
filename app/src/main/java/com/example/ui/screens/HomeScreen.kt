@@ -91,7 +91,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -163,6 +162,7 @@ fun HomeScreen(
     val isLoading by libraryViewModel.isLoading.collectAsState()
     val historyRecords by libraryViewModel.historyRecords.collectAsState()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsState()
+    val catalogMetadata by libraryViewModel.catalogMetadata.collectAsState()
     val playerSettings by libraryViewModel.playerSettings.collectAsState()
     val deleteProgress by libraryViewModel.deleteProgress.collectAsState()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
@@ -215,7 +215,14 @@ fun HomeScreen(
         selectedFolder == null &&
         (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null) &&
         continueWatchingVideos.isNotEmpty()
-    val currentVideoHeaderOffset = rememberUpdatedState(if (showContinueWatching) 1 else 0)
+    val currentVideoHeaderOffset = rememberUpdatedState(
+        when {
+            !selectionMode && showContinueWatching -> 2
+            !selectionMode -> 1
+            showContinueWatching -> 1
+            else -> 0
+        }
+    )
     val videoListState = rememberLazyListState()
     val reorderableVideoListState = rememberReorderableLazyListState(videoListState) { from, to ->
         val items = currentOrderedVideos.value
@@ -244,15 +251,6 @@ fun HomeScreen(
     val folderGridState = rememberLazyGridState()
     val treeListState = rememberLazyListState()
     val libraryModeRowState = rememberLazyListState()
-    val isLibraryContentScrolled by remember {
-        derivedStateOf {
-            videoListState.firstVisibleItemIndex > 0 || videoListState.firstVisibleItemScrollOffset > 0 ||
-                videoGridState.firstVisibleItemIndex > 0 || videoGridState.firstVisibleItemScrollOffset > 0 ||
-                folderListState.firstVisibleItemIndex > 0 || folderListState.firstVisibleItemScrollOffset > 0 ||
-                folderGridState.firstVisibleItemIndex > 0 || folderGridState.firstVisibleItemScrollOffset > 0 ||
-                treeListState.firstVisibleItemIndex > 0 || treeListState.firstVisibleItemScrollOffset > 0
-        }
-    }
     val searchFocusRequester = remember { FocusRequester() }
     LaunchedEffect(isSearchActive) {
         if (isSearchActive) searchFocusRequester.requestFocus()
@@ -312,106 +310,12 @@ fun HomeScreen(
         libraryViewModel.navigateTreeUp()
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = palette.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            if (includeHeader && !selectionMode) TopAppBar(
-                modifier = Modifier.fillMaxWidth(),
-                navigationIcon = {
-                    if (selectionMode) {
-                        IconButton(onClick = { exitVideoSelectionMode() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
-                        }
-                    }
-                },
-                title = {
-                    if (selectionMode) {
-                        Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold)
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            com.example.ui.components.HiPlayerLogoBadge(
-                                size = uiMetrics.logoSize
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Hi Player",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 24.sp,
-                                    color = palette.textPrimary
-                                )
-                            }
-                        }
-                    }
-                },
-                actions = {
-                    if (selectionMode) {
-                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
-                            Text("Select all", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
-                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { showSelectionProperties = true }) {
-                            Text("Properties", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
-                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
-                        }
-                    } else {
-                        IconButton(
-                            onClick = { libraryViewModel.refreshVideos() },
-                            modifier = Modifier.testTag("refresh_videos_button")
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = palette.textPrimary)
-                        }
-                    }
-                },
-                // Let Material3 consume the status-bar inset. The previous
-                // fixed-height modifier measured the app bar over the inset,
-                // which made the header merge into the notification area.
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = palette.surface
-                )
-            )
-        },
-        floatingActionButton = {}
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            if (selectionMode) {
-                TopAppBar(
-                    title = { Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = { exitVideoSelectionMode() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
-                        }
-                    },
-                    actions = {
-                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
-                            Text("Select all", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
-                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { showSelectionProperties = true }) {
-                            Text("Properties", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
-                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
-                        }
-                    },
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-                )
-            }
-            if (!selectionMode && !isLibraryContentScrolled) {
+    // These controls must be a scrollable content item, not a sibling above a
+    // Lazy list. Keeping them outside the list made the folder name and search
+    // look permanently fixed; removing them on scroll made the viewport jump.
+    val libraryControls: @Composable () -> Unit = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (!selectionMode) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -478,9 +382,10 @@ fun HomeScreen(
                     }
                 }
             }
-            // Compact root-only mode cards. They are horizontally scrollable on
-            // narrow phones and intentionally disappear while the library content scrolls.
-            if (selectedFolder == null && searchQuery.isBlank() && !isLibraryContentScrolled) {
+            // Keep these controls mounted while the media list scrolls. Removing
+            // a toolbar above a Lazy list changes its viewport height mid-gesture
+            // and was the source of the visible jump in the recording.
+            if (selectedFolder == null && searchQuery.isBlank()) {
                 val navOptions = listOf(
                     Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
                     Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
@@ -547,7 +452,7 @@ fun HomeScreen(
             }
 
                 // 3. FOLDER NAVIGATION BREADCRUMB & STATUS BAR
-                if (selectedFolder != null && !isLibraryContentScrolled) {
+                if (selectedFolder != null) {
                     // Inside Folder Header Bar
                     Row(
                         modifier = Modifier
@@ -653,7 +558,7 @@ fun HomeScreen(
                             }
                         }
                     }
-                } else if (navMode != LibraryNavMode.FOLDERS && !isLibraryContentScrolled) {
+                } else if (navMode != LibraryNavMode.FOLDERS) {
                     // Status & Toolbar when in main view
                     Row(
                         modifier = Modifier
@@ -786,6 +691,108 @@ fun HomeScreen(
                         }
                     }
                 }
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = palette.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            if (includeHeader && !selectionMode) TopAppBar(
+                modifier = Modifier.fillMaxWidth(),
+                navigationIcon = {
+                    if (selectionMode) {
+                        IconButton(onClick = { exitVideoSelectionMode() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
+                        }
+                    }
+                },
+                title = {
+                    if (selectionMode) {
+                        Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            com.example.ui.components.HiPlayerLogoBadge(
+                                size = uiMetrics.logoSize
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Hi Player",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 24.sp,
+                                    color = palette.textPrimary
+                                )
+                            }
+                        }
+                    }
+                },
+                actions = {
+                    if (selectionMode) {
+                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
+                            Text("Select all", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
+                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showSelectionProperties = true }) {
+                            Text("Properties", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
+                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { libraryViewModel.refreshVideos() },
+                            modifier = Modifier.testTag("refresh_videos_button")
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = palette.textPrimary)
+                        }
+                    }
+                },
+                // Let Material3 consume the status-bar inset. The previous
+                // fixed-height modifier measured the app bar over the inset,
+                // which made the header merge into the notification area.
+                windowInsets = TopAppBarDefaults.windowInsets,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = palette.surface
+                )
+            )
+        },
+        floatingActionButton = {}
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { exitVideoSelectionMode() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
+                            Text("Select all", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
+                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { showSelectionProperties = true }) {
+                            Text("Properties", color = palette.primary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
+                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
+                        }
+                    },
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
+                )
+            }
             // 4. PLAN SHEET CONTENT CANVAS
             // Keep branch-specific fillMaxSize() lists below the toolbar/header.
             // A weighted canvas prevents them from drawing underneath the controls.
@@ -841,6 +848,9 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!selectionMode) {
+                            item(span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
+                        }
                         if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
@@ -872,6 +882,9 @@ fun HomeScreen(
                         contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (!selectionMode) {
+                            item { libraryControls() }
+                        }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -910,6 +923,9 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!selectionMode) {
+                            item { libraryControls() }
+                        }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -981,6 +997,9 @@ fun HomeScreen(
                                 )
                             }
                             items(node.directVideos, key = { it.id }) { video ->
+                                LaunchedEffect(videoKey(video)) {
+                                    libraryViewModel.requestCatalogMetadata(video)
+                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -988,6 +1007,7 @@ fun HomeScreen(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
+                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     onClick = { onVideoSelected(video) },
                                     onFavoriteToggle = { isFav ->
                                         libraryViewModel.toggleFavorite(video, isFav)
@@ -1014,6 +1034,9 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
+                        if (!selectionMode) {
+                            item(span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
+                        }
                         if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
@@ -1030,6 +1053,9 @@ fun HomeScreen(
                             contentType = { _, _ -> "video_grid_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoGridState, key = videoKey(video)) { isDragging ->
+                                LaunchedEffect(videoKey(video)) {
+                                    libraryViewModel.requestCatalogMetadata(video)
+                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1037,6 +1063,7 @@ fun HomeScreen(
                                 VideoGridCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
+                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
@@ -1073,6 +1100,9 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
+                        if (!selectionMode) {
+                            item { libraryControls() }
+                        }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -1090,6 +1120,9 @@ fun HomeScreen(
                             contentType = { _, _ -> "video_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoListState, key = videoKey(video)) { isDragging ->
+                                LaunchedEffect(videoKey(video)) {
+                                    libraryViewModel.requestCatalogMetadata(video)
+                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1097,6 +1130,7 @@ fun HomeScreen(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
+                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },

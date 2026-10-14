@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyRow
@@ -123,7 +124,6 @@ fun MusicScreen(
     val currentPos by musicViewModel.currentPositionMs.collectAsState()
     val duration by musicViewModel.durationMs.collectAsState()
     val searchQuery by musicViewModel.searchQuery.collectAsState()
-    val selectedFilter by musicViewModel.selectedFilter.collectAsState()
     val continueWatchingVideos by (libraryViewModel?.continueWatchingVideos
         ?: flowOf(emptyList<LibraryViewModel.ContinueWatchingItem>()))
         .collectAsState(initial = emptyList())
@@ -144,7 +144,7 @@ fun MusicScreen(
     }
     var viewMenuExpanded by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var libraryMode by remember { mutableStateOf("All MP3") }
+    var libraryMode by remember { mutableStateOf("All Music") }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
     }
@@ -155,6 +155,7 @@ fun MusicScreen(
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
     var audioSort by remember { mutableStateOf("Name") }
+    var selectedCollection by remember { mutableStateOf<String?>(null) }
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
 
     val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
@@ -169,26 +170,26 @@ fun MusicScreen(
         enabled = compactAudioView
     )
 
-    val filteredList = remember(audioList, searchQuery, selectedFilter, audioSort, libraryMode) {
+    val filteredList = remember(audioList, searchQuery, audioSort, libraryMode, selectedCollection) {
         audioList.filter { track ->
             val matchesQuery = searchQuery.isBlank() ||
                     track.title.contains(searchQuery, ignoreCase = true) ||
                     track.artist.contains(searchQuery, ignoreCase = true) ||
                     track.album.contains(searchQuery, ignoreCase = true)
 
-            val matchesFilter = when (selectedFilter) {
-                "Lossless FLAC" -> track.path.endsWith(".flac", ignoreCase = true)
-                "Hi-Res WAV" -> track.path.endsWith(".wav", ignoreCase = true)
-                "MP3 Audio" -> track.path.endsWith(".mp3", ignoreCase = true)
-                else -> true
-            }
-
             val matchesLibrary = when (libraryMode) {
-                "All MP3" -> track.path.endsWith(".mp3", ignoreCase = true)
                 "Playlists" -> track.isFavorite
                 else -> true
             }
-            matchesQuery && matchesFilter && matchesLibrary
+            val matchesCollection = selectedCollection?.let { collection ->
+                when (libraryMode) {
+                    "Folders" -> track.path.substringBeforeLast('/', "").substringAfterLast('/', "Music") == collection
+                    "Albums" -> track.album.ifBlank { "Unknown album" } == collection
+                    "Artists" -> track.artist.ifBlank { "Unknown artist" } == collection
+                    else -> true
+                }
+            } ?: true
+            matchesQuery && matchesLibrary && matchesCollection
         }.let { list ->
             when (audioSort) {
                 "Custom" -> list
@@ -203,6 +204,18 @@ fun MusicScreen(
                 }
             }
         }
+    }
+
+    // Folders, albums, and artists are genuine grouped views rather than a
+    // flat track list merely sorted by that field. The selected sort still
+    // determines ordering inside each group.
+    val groupedAudio = remember(filteredList, libraryMode) {
+        when (libraryMode) {
+            "Folders" -> filteredList.groupBy { it.path.substringBeforeLast('/', "").substringAfterLast('/', "Music") }
+            "Albums" -> filteredList.groupBy { it.album.ifBlank { "Unknown album" } }
+            "Artists" -> filteredList.groupBy { it.artist.ifBlank { "Unknown artist" } }
+            else -> emptyMap()
+        }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
     }
 
     Column(
@@ -222,14 +235,17 @@ fun MusicScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth().testTag("music_library_categories")
                 ) {
-                    listOf("All MP3", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
+                    listOf("All Music", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
                         item {
                             val isSelected = libraryMode == option
                             Row(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(9.dp))
                                     .background(if (isSelected) palette.primary else palette.surfaceElevated)
-                                    .clickable { libraryMode = option }
+                                    .clickable {
+                                        libraryMode = option
+                                        selectedCollection = null
+                                    }
                                     .padding(horizontal = 14.dp, vertical = 8.dp)
                                     .testTag("music_library_category_$option"),
                                 verticalAlignment = Alignment.CenterVertically
@@ -248,39 +264,15 @@ fun MusicScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                        .padding(start = 14.dp, top = 2.dp, end = 14.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("All", "MP3 Audio").forEach { filter ->
-                        val isSelected = selectedFilter == filter
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(9.dp))
-                                .background(if (isSelected) palette.primary.copy(alpha = 0.16f) else palette.surfaceElevated)
-                                .clickable { musicViewModel.setFilter(filter) }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .testTag("audio_filter_$filter"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (filter == "All") Icons.Default.Audiotrack else Icons.Default.MusicNote,
-                                contentDescription = filter,
-                                tint = if (isSelected) palette.primary else palette.textSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = filter,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) palette.primary else palette.textPrimary
-                            )
+                    if (selectedCollection != null) {
+                        TextButton(onClick = { selectedCollection = null }) {
+                            Text("All $libraryMode", color = palette.primary, fontSize = 11.sp)
                         }
                     }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box {
                         IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
                             Icon(
@@ -290,18 +282,19 @@ fun MusicScreen(
                             )
                         }
                         DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
-                            DropdownMenuItem(text = { Text("Vertical") }, onClick = {
+                            DropdownMenuItem(text = { Text("List") }, onClick = {
                                 compactAudioView = false
                                 musicPreferences.edit().putBoolean("horizontal_view", false).apply()
                                 viewMenuExpanded = false
                             })
-                            DropdownMenuItem(text = { Text("Horizontal") }, onClick = {
+                            DropdownMenuItem(text = { Text("Grid") }, onClick = {
                                 compactAudioView = true
                                 musicPreferences.edit().putBoolean("horizontal_view", true).apply()
                                 viewMenuExpanded = false
                             })
                         }
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
                     Box {
                         IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.testTag("audio_sort_button")) {
                             Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
@@ -317,7 +310,6 @@ fun MusicScreen(
                     }
                 }
             }
-        }
         }
 
         // Keep the toolbar outside the list so it remains available when a
@@ -352,6 +344,56 @@ fun MusicScreen(
                         )
                     }
                 }
+            } else if (groupedAudio.isNotEmpty() && selectedCollection == null) {
+                // Artists, albums, and folders are collections, not simply a
+                // flat track list sorted by one field. Open a collection to
+                // show only the tracks that belong to it.
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 148.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    gridItems(groupedAudio.entries.toList(), key = { entry -> "audio_collection_${entry.key}" }) { entry ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedCollection = entry.key },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                            elevation = CardDefaults.cardElevation(0.dp),
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Icon(
+                                    imageVector = when (libraryMode) {
+                                        "Artists" -> Icons.Default.Headphones
+                                        "Albums" -> Icons.Default.Audiotrack
+                                        else -> Icons.Default.MusicNote
+                                    },
+                                    contentDescription = null,
+                                    tint = palette.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = entry.key,
+                                    color = palette.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "${entry.value.size} ${if (entry.value.size == 1) "track" else "tracks"}",
+                                    color = palette.textSecondary,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        }
+                    }
+                }
             } else {
                 if (compactAudioView) {
                     LazyVerticalGrid(
@@ -361,28 +403,82 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
                     ) {
-                        gridItems(filteredList, key = { it.id }) { track ->
-                            val isSelected = currentTrack?.id == track.id
-                            AudioTrackCard(
-                                track = track,
-                                isSelected = isSelected,
-                                isPlaying = isSelected && isPlaying,
-                                onClick = { musicViewModel.playTrack(track) },
-                                modifier = Modifier
-                                    .padding(4.dp)
-                                    .reorderableDrag(
-                                        itemIndex = filteredList.indexOf(track),
-                                        itemCount = filteredList.size,
-                                        thresholdPx = reorderThresholdPx,
-                                        onMove = { from, to ->
-                                            audioSort = "Custom"
-                                            musicViewModel.moveTrackInDisplayOrder(
-                                                filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
-                                                filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
-                                            )
-                                        }
+                        if (groupedAudio.isNotEmpty()) {
+                            groupedAudio.forEach { (groupName, tracks) ->
+                                item(key = "audio_grid_group_$groupName", span = { GridItemSpan(maxLineSpan) }) {
+                                    Text(
+                                        text = groupName,
+                                        color = palette.primary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
                                     )
-                            )
+                                }
+                                gridItems(tracks, key = { track -> "audio_grid_${groupName}_${track.id}" }) { track ->
+                                    val isSelected = currentTrack?.id == track.id
+                                    AudioTrackCard(
+                                        track = track,
+                                        isSelected = isSelected,
+                                        isPlaying = isSelected && isPlaying,
+                                        onClick = { musicViewModel.playTrack(track) },
+                                        modifier = Modifier.padding(4.dp),
+                                    )
+                                }
+                            }
+                        } else {
+                            gridItems(filteredList, key = { it.id }) { track ->
+                                val isSelected = currentTrack?.id == track.id
+                                AudioTrackCard(
+                                    track = track,
+                                    isSelected = isSelected,
+                                    isPlaying = isSelected && isPlaying,
+                                    onClick = { musicViewModel.playTrack(track) },
+                                    modifier = Modifier
+                                        .padding(4.dp)
+                                        .reorderableDrag(
+                                            itemIndex = filteredList.indexOf(track),
+                                            itemCount = filteredList.size,
+                                            thresholdPx = reorderThresholdPx,
+                                            onMove = { from, to ->
+                                                audioSort = "Custom"
+                                                musicViewModel.moveTrackInDisplayOrder(
+                                                    filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
+                                                    filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
+                                                )
+                                            }
+                                        )
+                                )
+                            }
+                        }
+                    }
+                } else if (groupedAudio.isNotEmpty()) {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        groupedAudio.forEach { (groupName, tracks) ->
+                            item(key = "audio_group_$groupName") {
+                                Text(
+                                    text = groupName,
+                                    color = palette.primary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                                )
+                            }
+                            items(tracks, key = { track -> "audio_${groupName}_${track.id}" }) { track ->
+                                val isSelected = currentTrack?.id == track.id
+                                AudioTrackCard(
+                                    track = track,
+                                    isSelected = isSelected,
+                                    isPlaying = isSelected && isPlaying,
+                                    onClick = { musicViewModel.playTrack(track) }
+                                )
+                            }
                         }
                     }
                 } else {

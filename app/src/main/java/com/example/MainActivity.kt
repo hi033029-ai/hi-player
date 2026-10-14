@@ -79,6 +79,7 @@ import com.example.ui.screens.FileManagerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
 import com.example.ui.screens.PlayerScreen
+import com.example.ui.screens.PrivateBrowserScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.HiPlayerTheme
@@ -97,6 +98,7 @@ import kotlinx.coroutines.withContext
 sealed class AppScreen {
     object Main : AppScreen()
     object Player : AppScreen()
+    object Browser : AppScreen()
 }
 
 class MainActivity : ComponentActivity() {
@@ -145,6 +147,7 @@ class MainActivity : ComponentActivity() {
                 val palette = LocalHiPalette.current
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
                 var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }
+                var returnTabFromDiscover by remember { mutableStateOf(NavTab.VIDEOS) }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
                 var showGlobalSearchDialog by remember { mutableStateOf(false) }
                 var showStreamUrlDialog by remember { mutableStateOf(false) }
@@ -266,6 +269,8 @@ class MainActivity : ComponentActivity() {
                             }
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             currentScreen = AppScreen.Main
+                        } else if (currentScreen == AppScreen.Browser) {
+                            currentScreen = AppScreen.Main
                         }
                     }
 
@@ -311,6 +316,23 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
+                            currentScreen == AppScreen.Browser -> {
+                                PrivateBrowserScreen(
+                                    onBack = { currentScreen = AppScreen.Main },
+                                    onPlayDirectMedia = { url ->
+                                        val result = StreamUrlClassifier.classify(url)
+                                        if (result.isPlayableInHiPlayer && !result.requiresWebResolution) {
+                                            openResolvedStream(result)
+                                        } else {
+                                            android.widget.Toast.makeText(
+                                                this@MainActivity,
+                                                "Open a direct MP4, MKV, HLS, or DASH link to play in Hi Player.",
+                                                android.widget.Toast.LENGTH_SHORT,
+                                            ).show()
+                                        }
+                                    },
+                                )
+                            }
                             else -> {
                                 Scaffold(
                                     modifier = Modifier.fillMaxSize(),
@@ -326,8 +348,11 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
                                             extraActions = {
-                                                if (currentTab != NavTab.FILE_MANAGER) {
-                                                    IconButton(onClick = { currentTab = NavTab.DISCOVER }) {
+                                                if (currentTab != NavTab.FILE_MANAGER && currentTab != NavTab.DISCOVER) {
+                                                    IconButton(onClick = {
+                                                        returnTabFromDiscover = currentTab
+                                                        currentTab = NavTab.DISCOVER
+                                                    }) {
                                                         Icon(Icons.Default.Explore, contentDescription = "Discover", tint = palette.textPrimary)
                                                     }
                                                 }
@@ -413,7 +438,8 @@ class MainActivity : ComponentActivity() {
                                                         playerViewModel.playVideo(match.toVideoItem())
                                                         currentScreen = AppScreen.Player
                                                     },
-                                                    onOpenSettings = { currentTab = NavTab.SETTINGS }
+                                                    onOpenSettings = { currentTab = NavTab.SETTINGS },
+                                                    onBack = { currentTab = returnTabFromDiscover }
                                                 )
                                             }
                                             NavTab.MUSIC -> {
@@ -480,6 +506,7 @@ class MainActivity : ComponentActivity() {
                                                     libraryViewModel = libraryViewModel,
                                                     discoverViewModel = discoverViewModel,
                                                     onBack = { currentTab = NavTab.VIDEOS },
+                                                    onOpenBrowser = { currentScreen = AppScreen.Browser },
                                                     includeHeader = false
                                                 )
                                             }

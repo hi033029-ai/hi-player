@@ -58,6 +58,7 @@ import coil.request.ImageRequest
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
 import com.example.ui.theme.LocalHiPalette
+import com.example.viewmodel.LibraryCatalogMetadata
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -73,6 +74,7 @@ fun VideoItemCard(
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
+    catalogMetadata: LibraryCatalogMetadata? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -201,9 +203,8 @@ fun VideoItemCard(
                     )
                 }
 
-                // Playback progress for completed videos; real observed disk
-                // growth for active downloads. Unknown final sizes are shown
-                // indeterminate rather than being given a fake percentage.
+                // Download progress stays on the thumbnail. Resume progress is
+                // displayed below the title where it is easier to read.
                 when {
                     video.isPartialDownload && video.downloadProgressFraction != null -> {
                         LinearProgressIndicator(
@@ -215,14 +216,6 @@ fun VideoItemCard(
                     }
                     video.isPartialDownload -> {
                         LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
-                        )
-                    }
-                    progressFraction > 0f -> {
-                        LinearProgressIndicator(
-                            progress = { progressFraction },
                             modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
                             color = palette.primary,
                             trackColor = Color(0x66FFFFFF)
@@ -248,6 +241,30 @@ fun VideoItemCard(
                     color = palette.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+
+                if (!video.isPartialDownload && progressFraction > 0f) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = palette.primary,
+                        trackColor = palette.surfaceBorder,
+                    )
+                }
+
+                // Reserve one compact line before the asynchronous metadata
+                // result arrives, so a card does not grow under the user's
+                // finger and shift the Lazy list while they are scrolling.
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = catalogMetadata?.primaryLabel().orEmpty(),
+                    fontSize = 10.5.sp,
+                    color = palette.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    minLines = 1,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
 
                 Spacer(modifier = Modifier.height(3.dp))
@@ -415,6 +432,7 @@ fun VideoGridCard(
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
+    catalogMetadata: LibraryCatalogMetadata? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -539,9 +557,8 @@ fun VideoGridCard(
                     )
                 }
 
-                // Use actual observed download growth for partial files. A
-                // downloader normally does not expose a final size, so this
-                // remains indeterminate until one is known.
+                // Download progress stays on the thumbnail. Resume progress is
+                // displayed below the file title with the other metadata.
                 when {
                     video.isPartialDownload && video.downloadProgressFraction != null -> {
                         LinearProgressIndicator(
@@ -553,14 +570,6 @@ fun VideoGridCard(
                     }
                     video.isPartialDownload -> {
                         LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
-                        )
-                    }
-                    progressFraction > 0f -> {
-                        LinearProgressIndicator(
-                            progress = { progressFraction },
                             modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
                             color = palette.primary,
                             trackColor = Color(0x66FFFFFF)
@@ -656,6 +665,27 @@ fun VideoGridCard(
                     }
                 }
 
+                if (!video.isPartialDownload && progressFraction > 0f) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { progressFraction },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = palette.primary,
+                        trackColor = palette.surfaceBorder,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = catalogMetadata?.primaryLabel().orEmpty(),
+                    fontSize = 10.sp,
+                    color = palette.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    minLines = 1,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
                 Spacer(modifier = Modifier.height(3.dp))
 
                 Row(
@@ -681,3 +711,6 @@ fun VideoGridCard(
         }
     }
 }
+
+private fun LibraryCatalogMetadata.primaryLabel(): String =
+    rating?.let { score -> "TMDB ★ %.1f".format(score) }.orEmpty()
