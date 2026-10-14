@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         Orbit YouTube Ad Skipper
-// @namespace    orbit.browser
+// @name         Hi Browser YouTube Ad Skipper
+// @namespace    hi.browser
 // @version      1.0
 // @description  Strips ad data from YouTube player responses, skips leftover ads, hides ad slots
 // @match        *://*.youtube.com/*

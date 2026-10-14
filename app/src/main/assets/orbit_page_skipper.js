@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         Orbit Page Skipper
-// @namespace    orbit.browser
+// @name         Hi Browser Page Skipper
+// @namespace    hi.browser
 // @version      1.0
 // @description  Speeds up countdown/wait pages, hides ads, banners and fake buttons
 // @match        *://*/*

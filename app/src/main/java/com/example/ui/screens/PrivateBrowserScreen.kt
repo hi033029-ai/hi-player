@@ -159,7 +159,7 @@ fun PrivateBrowserScreen(
     var currentUrl by remember { mutableStateOf("") }
     var showStartPage by remember { mutableStateOf(true) }
     var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.DUCKDUCKGO) }
-    var pageTitle by remember { mutableStateOf("Orbit Browser") }
+    var pageTitle by remember { mutableStateOf("Hi Browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
@@ -172,7 +172,7 @@ fun PrivateBrowserScreen(
         val restoredTab = tabs.firstOrNull { it.id == activeTabId }
         address = restoredTab?.url.orEmpty()
         currentUrl = restoredTab?.url.orEmpty()
-        pageTitle = restoredTab?.title ?: "Orbit Browser"
+        pageTitle = restoredTab?.title ?: "Hi Browser"
         showStartPage = restoredTab?.url.isNullOrBlank()
     }
 
@@ -223,7 +223,7 @@ fun PrivateBrowserScreen(
         webView?.stopLoading()
         address = ""
         currentUrl = ""
-        pageTitle = if (activeTab?.privateTab == true) "Private tab" else "Orbit Browser"
+        pageTitle = if (activeTab?.privateTab == true) "Private tab" else "Hi Browser"
         loadingProgress = 0
         rendererGone = false
         activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
@@ -479,7 +479,7 @@ fun PrivateBrowserScreen(
                                     if (activeTabId == tabId) loadingProgress = progress
                                 }
                                 override fun onReceivedTitle(view: WebView, title: String?) {
-                                    val value = title?.takeIf(String::isNotBlank) ?: view.url ?: "Orbit Browser"
+                                    val value = title?.takeIf(String::isNotBlank) ?: view.url ?: "Hi Browser"
                                     updateTab(tabId) { it.copy(title = value, url = view.url ?: it.url) }
                                     if (activeTabId == tabId) pageTitle = value
                                 }
@@ -549,7 +549,7 @@ fun PrivateBrowserScreen(
     if (showTabsDialog) {
         AlertDialog(
             onDismissRequest = { showTabsDialog = false },
-            title = { Text("Orbit Browser tabs (${tabs.size})") },
+            title = { Text("Hi Browser tabs (${tabs.size})") },
             text = {
                 Column {
                     LazyColumn(modifier = Modifier.height(260.dp)) {
@@ -658,7 +658,7 @@ private fun BrowserStartPage(
             modifier = Modifier.size(48.dp),
         )
         Spacer(Modifier.height(14.dp))
-        Text("Orbit Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Text("Hi Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text(
             "Search the web or enter a website address",

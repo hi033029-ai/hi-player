@@ -184,7 +184,7 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Orbit Browser", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("Hi Browser", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(
                             "Tabs, bookmarks, history, reader mode, downloads, and ad blocking",
                             color = palette.textSecondary,

@@ -11,7 +11,7 @@ import java.net.URL
 
 internal data class OrbitBrowserEntry(val title: String, val url: String)
 
-/** Small private-app-storage store for Orbit Browser's user-owned browser data. */
+/** Small private-app-storage store for Hi Browser's user-owned browser data. */
 internal class OrbitBrowserStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE)
 
