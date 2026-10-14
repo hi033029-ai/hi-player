@@ -184,9 +184,9 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Private browser", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("Orbit Browser", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            "Search the web, play direct media, download files, and block common ads",
+                            "Tabs, bookmarks, history, reader mode, downloads, and ad blocking",
                             color = palette.textSecondary,
                             fontSize = 10.5.sp,
                             maxLines = 2,

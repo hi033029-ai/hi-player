@@ -1,0 +1,21 @@
+! Orbit default filters (subset of Adblock Plus / EasyList syntax)
+||doubleclick.net^
+||googlesyndication.com^
+||googleads.g.doubleclick.net^
+||pagead2.googlesyndication.com^
+||static.doubleclick.net^
+||youtube.com/api/stats/ads
+||youtube.com/pagead/
+||youtube.com/ptracking
+||youtube.com/get_midroll_
+||youtube.com/youtubei/v1/player/ad_break
+/pagead/js/
+/pagead/ads?
+##.adsbygoogle
+##ins.adsbygoogle
+##.ad-banner
+##.ad-container
+##.sponsored-ad
+###ad-banner
+###ads
+###sidebar-ads

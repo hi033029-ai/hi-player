@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
+import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -25,8 +27,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,20 +38,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -58,24 +68,32 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.StreamUrlClassifier
+import org.json.JSONObject
+import org.json.JSONTokener
 import com.example.ui.theme.LocalHiPalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,11 +102,43 @@ import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-/**
- * Normal WebView browsing with a deliberately transparent, bundled host
- * blocklist. It never extracts protected streams or bypasses a website's
- * playback, login, DRM, payment, or access controls.
- */
+private data class OrbitBrowserTab(
+    val id: Int,
+    val privateTab: Boolean,
+    val webView: WebView? = null,
+    val url: String = "",
+    val title: String = "New tab",
+    val desktop: Boolean = false,
+)
+
+private enum class OrbitEntryList { BOOKMARKS, HISTORY }
+
+private val orbitBrowserTabsSaver = listSaver<List<OrbitBrowserTab>, Any>(
+    save = { tabs ->
+        tabs.flatMap { tab ->
+            listOf(
+                tab.id,
+                tab.privateTab,
+                if (tab.privateTab) "" else tab.url,
+                if (tab.privateTab) "Private tab" else tab.title,
+                tab.desktop,
+            )
+        }
+    },
+    restore = { saved ->
+        saved.chunked(5).mapNotNull { values ->
+            val id = values.getOrNull(0) as? Int ?: return@mapNotNull null
+            OrbitBrowserTab(
+                id = id,
+                privateTab = values.getOrNull(1) as? Boolean ?: false,
+                url = values.getOrNull(2) as? String ?: "",
+                title = values.getOrNull(3) as? String ?: "New tab",
+                desktop = values.getOrNull(4) as? Boolean ?: false,
+            )
+        }
+    },
+)
+
 @Composable
 fun PrivateBrowserScreen(
     onBack: () -> Unit,
@@ -97,71 +147,157 @@ fun PrivateBrowserScreen(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    val blockedHosts = remember { BrowserAdBlockList.load(context) }
-    var webView by remember { mutableStateOf<WebView?>(null) }
+    val store = remember(context) { OrbitBrowserStore(context) }
+    val downloads by BrowserDownloads.downloads.collectAsState()
+    var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
+    val latestTabs by rememberUpdatedState(tabs)
+    var activeTabId by rememberSaveable { mutableIntStateOf(1) }
+    var nextTabId by rememberSaveable { mutableIntStateOf(2) }
+    val activeTab = tabs.firstOrNull { it.id == activeTabId }
+    val webView = activeTab?.webView
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
-    var pendingUrl by remember { mutableStateOf<String?>(null) }
     var showStartPage by remember { mutableStateOf(true) }
-    var searchProvider by remember { mutableStateOf(BrowserSearchProvider.GOOGLE) }
-    var pageTitle by remember { mutableStateOf("Private browser") }
+    var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.DUCKDUCKGO) }
+    var pageTitle by remember { mutableStateOf("Orbit Browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
-    val downloads by BrowserDownloads.downloads.collectAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showTabsDialog by remember { mutableStateOf(false) }
+    var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
+    var entriesVersion by remember { mutableIntStateOf(0) }
+    val downloadsActive = downloads.any { it.isActive }
+
+    LaunchedEffect(activeTabId) {
+        val restoredTab = tabs.firstOrNull { it.id == activeTabId }
+        address = restoredTab?.url.orEmpty()
+        currentUrl = restoredTab?.url.orEmpty()
+        pageTitle = restoredTab?.title ?: "Orbit Browser"
+        showStartPage = restoredTab?.url.isNullOrBlank()
+    }
+
+    fun updateTab(id: Int, transform: (OrbitBrowserTab) -> OrbitBrowserTab) {
+        tabs = tabs.map { if (it.id == id) transform(it) else it }
+    }
+
+    fun openNewTab(privateTab: Boolean, initialUrl: String = "") {
+        if (tabs.size >= 12) {
+            Toast.makeText(context, "Close a tab before opening another (12-tab limit)", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val id = nextTabId++
+        tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl)
+        activeTabId = id
+        address = initialUrl
+        currentUrl = initialUrl
+        pageTitle = if (privateTab) "Private tab" else "New tab"
+        loadingProgress = 0
+        showStartPage = initialUrl.isBlank()
+        rendererGone = false
+    }
+
+    fun activateTab(tab: OrbitBrowserTab) {
+        activeTabId = tab.id
+        address = tab.url
+        currentUrl = tab.url
+        pageTitle = tab.title
+        showStartPage = address.isBlank()
+        loadingProgress = 0
+        rendererGone = false
+    }
 
     fun loadAddress(raw: String) {
         val destination = normalizeBrowserInput(raw, searchProvider) ?: return
         address = destination
         currentUrl = destination
-        pendingUrl = destination
+        pageTitle = destination
         showStartPage = false
-        webView?.loadUrl(destination)
+        rendererGone = false
+        val tab = activeTab ?: return
+        updateTab(tab.id) { it.copy(url = destination, title = destination) }
+        val existing = tab.webView
+        if (existing != null) existing.loadUrl(destination)
     }
 
     fun showBrowserHome() {
         webView?.stopLoading()
-        webView?.destroy()
-        webView = null
         address = ""
         currentUrl = ""
-        pendingUrl = null
-        pageTitle = "Private browser"
+        pageTitle = if (activeTab?.privateTab == true) "Private tab" else "Orbit Browser"
         loadingProgress = 0
         rendererGone = false
+        activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
         showStartPage = true
     }
 
+    fun toggleDesktopSite() {
+        val tab = activeTab ?: return
+        val desktop = !tab.desktop
+        updateTab(tab.id) { it.copy(desktop = desktop) }
+        tab.webView?.let { view ->
+            view.settings.userAgentString = if (desktop) DESKTOP_USER_AGENT else null
+            view.settings.useWideViewPort = desktop
+            view.settings.loadWithOverviewMode = desktop
+            view.reload()
+        }
+    }
+
+    fun setDarkMode(enabled: Boolean) {
+        store.darkMode = enabled
+        tabs.forEach { tab -> tab.webView?.let { applyOrbitDarkMode(it, enabled) } }
+    }
+
+    fun addBookmark() {
+        val url = currentUrl
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return
+        if (store.isBookmarked(url)) store.removeBookmark(url)
+        else store.addBookmark(OrbitBrowserEntry(pageTitle.ifBlank { url }, url))
+        entriesVersion++
+    }
+
+    fun readCurrentPage() {
+        val view = webView ?: return
+        view.evaluateJavascript(OrbitReaderMode.extractionScript) { raw ->
+            val json = runCatching { JSONTokener(raw).nextValue() as? String }.getOrNull()
+            val payload = runCatching { json?.let { JSONObject(it) } }.getOrNull()
+            val items = payload?.optJSONArray("items")
+            if (items == null || items.length() == 0) {
+                Toast.makeText(context, "No readable article found", Toast.LENGTH_SHORT).show()
+            } else {
+                val baseUrl = view.url ?: currentUrl
+                view.loadDataWithBaseURL(baseUrl, OrbitReaderMode.html(payload.optString("title", pageTitle), items), "text/html", "utf-8", null)
+            }
+        }
+    }
+
     BackHandler {
-        val view = webView
         when {
-            view?.canGoBack() == true -> view.goBack()
+            webView?.canGoBack() == true -> webView?.goBack()
             !showStartPage -> showBrowserHome()
+            tabs.size > 1 -> {
+                val old = activeTab
+                old?.webView?.let(::disposeOrbitWebView)
+                tabs = tabs.filterNot { it.id == activeTabId }
+                tabs.firstOrNull()?.let(::activateTab)
+            }
             else -> onBack()
         }
     }
 
-    // Do not key this effect to [webView]. AndroidView assigns the reference
-    // during its first composition; a key change would dispose the previous
-    // effect and destroy that newly created WebView before it can load.
     DisposableEffect(Unit) {
-        onDispose {
-            webView?.stopLoading()
-            webView?.destroy()
-        }
+        onDispose { latestTabs.mapNotNull { it.webView }.forEach(::disposeOrbitWebView) }
     }
 
-    val hasActiveDownloads = downloads.any { it.isActive }
-    LaunchedEffect(hasActiveDownloads) {
-        while (hasActiveDownloads) {
+    LaunchedEffect(context) { OrbitBrowserFilterEngine.load(context) }
+    LaunchedEffect(downloadsActive) {
+        while (downloadsActive) {
             BrowserDownloads.refresh(context)
             delay(650L)
         }
     }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.background),
+        modifier = modifier.fillMaxSize().background(palette.background),
     ) {
         if (showStartPage) {
             BrowserStartPage(
@@ -170,189 +306,331 @@ fun PrivateBrowserScreen(
                 provider = searchProvider,
                 onProviderChange = { searchProvider = it },
                 onSearch = { loadAddress(address) },
+                onManageTabs = { showTabsDialog = true },
+                privateTab = activeTab?.privateTab == true,
+                adBlockEnabled = store.adBlock,
             )
         } else {
             Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(palette.surface)
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = {
-                if (webView?.canGoBack() == true) webView?.goBack() else showBrowserHome()
-            }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
-            }
-            OutlinedTextField(
-                value = address,
-                onValueChange = { address = it },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-                placeholder = { Text("Search the web or enter a link", fontSize = 13.sp) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = palette.textPrimary,
-                    unfocusedTextColor = palette.textPrimary,
-                    focusedBorderColor = palette.primary,
-                    unfocusedBorderColor = palette.surfaceBorder,
-                    focusedContainerColor = palette.surfaceElevated,
-                    unfocusedContainerColor = palette.surfaceElevated,
-                ),
-                modifier = Modifier.weight(1f),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { loadAddress(address) }),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
-                ),
-            )
-            IconButton(onClick = { webView?.reload() }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = palette.textPrimary)
-            }
-        }
-
-        if (loadingProgress in 1..99) {
-            LinearProgressIndicator(
-                progress = { loadingProgress / 100f },
-                color = palette.primary,
-                trackColor = palette.surfaceBorder,
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(palette.surface)
-                .padding(horizontal = 12.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(onClick = { showBrowserHome() }) {
-                Icon(Icons.Default.Home, contentDescription = "Home", tint = palette.textSecondary)
-            }
-            Text(
-                text = pageTitle,
-                color = palette.textSecondary,
-                fontSize = 11.sp,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            Button(
-                onClick = { onPlayDirectMedia(currentUrl) },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 3.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.height(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Play link", fontSize = 11.sp)
+                IconButton(onClick = { if (webView?.canGoBack() == true) webView?.goBack() else showBrowserHome() }) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
+                }
+                IconButton(onClick = { if (webView?.canGoForward() == true) webView?.goForward() }) {
+                    Icon(Icons.Default.ArrowForward, contentDescription = "Forward", tint = palette.textPrimary)
+                }
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
+                    placeholder = { Text("Search or enter a website", fontSize = 12.sp) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = palette.textPrimary, unfocusedTextColor = palette.textPrimary,
+                        focusedBorderColor = palette.primary, unfocusedBorderColor = palette.surfaceBorder,
+                        focusedContainerColor = palette.surfaceElevated, unfocusedContainerColor = palette.surfaceElevated,
+                    ),
+                    modifier = Modifier.weight(1f),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { loadAddress(address) }),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
+                )
+                IconButton(onClick = { webView?.reload() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = palette.textPrimary)
+                }
+                Box {
+                    Text(
+                        text = tabs.size.toString(), color = palette.textPrimary, fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 10.dp).clickable { showTabsDialog = true },
+                    )
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("New tab") }, onClick = { menuExpanded = false; openNewTab(false) })
+                        DropdownMenuItem(text = { Text("New private tab") }, onClick = { menuExpanded = false; openNewTab(true) })
+                        DropdownMenuItem(text = { Text("Tabs (${tabs.size})") }, onClick = { menuExpanded = false; showTabsDialog = true })
+                        DropdownMenuItem(
+                            text = { Text(if (store.isBookmarked(currentUrl)) "Remove bookmark" else "Add bookmark") },
+                            onClick = { menuExpanded = false; addBookmark() },
+                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+                        )
+                        DropdownMenuItem(text = { Text("Bookmarks") }, onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ })
+                        DropdownMenuItem(text = { Text("History") }, onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ })
+                        DropdownMenuItem(text = { Text("Reader mode") }, onClick = { menuExpanded = false; readCurrentPage() })
+                        DropdownMenuItem(text = { Text(if (store.darkMode) "Light mode" else "Dark mode") }, onClick = { menuExpanded = false; setDarkMode(!store.darkMode) })
+                        DropdownMenuItem(text = { Text(if (activeTab?.desktop == true) "Mobile site" else "Desktop site") }, onClick = { menuExpanded = false; toggleDesktopSite() })
+                        DropdownMenuItem(text = { Text(if (store.adBlock) "Turn ad blocker off" else "Turn ad blocker on") }, onClick = { menuExpanded = false; store.adBlock = !store.adBlock; webView?.reload() })
+                        DropdownMenuItem(text = { Text(if (store.pageSkipper) "Turn page skipper off" else "Turn page skipper on") }, onClick = { menuExpanded = false; store.pageSkipper = !store.pageSkipper; webView?.reload() })
+                        DropdownMenuItem(text = { Text(if (store.youtubeAdSkip) "Turn YouTube ad skip off" else "Turn YouTube ad skip on") }, onClick = { menuExpanded = false; store.youtubeAdSkip = !store.youtubeAdSkip; webView?.reload() })
+                        DropdownMenuItem(text = { Text("Update filter lists") }, onClick = {
+                            menuExpanded = false
+                            Toast.makeText(context, "Updating filter lists…", Toast.LENGTH_SHORT).show()
+                            Thread {
+                                val ok = OrbitBrowserFilterEngine.update(context)
+                                android.os.Handler(context.mainLooper).post {
+                                    Toast.makeText(context, if (ok) "Updated ${OrbitBrowserFilterEngine.ruleCount()} rules" else "Filter update failed", Toast.LENGTH_SHORT).show()
+                                    webView?.reload()
+                                }
+                            }.start()
+                        })
+                        DropdownMenuItem(text = { Text("Share page") }, onClick = {
+                            menuExpanded = false
+                            if (currentUrl.isNotBlank()) runCatching {
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
+                            }
+                        })
+                        DropdownMenuItem(text = { Text("Downloads") }, onClick = {
+                            menuExpanded = false
+                            runCatching { context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
+                        })
+                        DropdownMenuItem(text = { Text("Close tab") }, onClick = {
+                            menuExpanded = false
+                            val oldId = activeTabId
+                            val old = tabs.firstOrNull { it.id == oldId }
+                            old?.webView?.let(::disposeOrbitWebView)
+                            if (tabs.size > 1) {
+                                tabs = tabs.filterNot { it.id == oldId }
+                                tabs.firstOrNull()?.let(::activateTab)
+                            } else {
+                                tabs = listOf(OrbitBrowserTab(id = nextTabId++, privateTab = false))
+                                activeTabId = tabs.first().id
+                                showStartPage = true
+                                address = ""
+                                currentUrl = ""
+                            }
+                        })
+                    }
+                }
             }
-            IconButton(onClick = {
-                BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
-            }) {
-                Icon(Icons.Default.Download, contentDescription = "Download direct file", tint = palette.textPrimary)
-            }
-        }
 
-        BrowserDownloadPanel(
-            downloads = downloads,
-            onClearCompleted = BrowserDownloads::clearCompleted,
-        )
+            if (loadingProgress in 1..99) {
+                LinearProgressIndicator(
+                    progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(onClick = { showBrowserHome() }) {
+                    Icon(Icons.Default.Home, contentDescription = "Browser home", tint = palette.textSecondary)
+                }
+                Text(
+                    text = (if (activeTab?.privateTab == true) "Private • " else "") + pageTitle,
+                    color = palette.textSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { if (currentUrl.isNotBlank()) runCatching {
+                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
+                } }) { Icon(Icons.Default.Share, contentDescription = "Share", tint = palette.textPrimary) }
+                Button(
+                    onClick = { onPlayDirectMedia(currentUrl) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 0.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                    enabled = currentUrl.startsWith("http://") || currentUrl.startsWith("https://"),
+                ) {
+                    Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.height(16.dp))
+                    Spacer(Modifier.width(4.dp)); Text("Play link", fontSize = 11.sp)
+                }
+                IconButton(onClick = { BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "") }) {
+                    Icon(Icons.Default.Download, contentDescription = "Download", tint = palette.textPrimary)
+                }
+            }
+            BrowserDownloadPanel(downloads = downloads, onClearCompleted = BrowserDownloads::clearCompleted)
         }
 
         if (rendererGone) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text("Browser page closed to free memory", color = palette.textPrimary)
+            Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("The browser page closed to free memory", color = palette.textPrimary)
                 Spacer(Modifier.height(10.dp))
-                Button(onClick = { rendererGone = false }) { Text("Reload browser") }
+                Button(onClick = { rendererGone = false; activeTab?.let { showStartPage = it.url.isBlank() } }) { Text("Reload browser") }
             }
-        } else if (!showStartPage) {
-            AndroidView(
-                factory = { viewContext ->
-                    WebView(viewContext).apply {
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            databaseEnabled = false
-                            cacheMode = WebSettings.LOAD_DEFAULT
-                            allowFileAccess = false
-                            allowContentAccess = false
-                            setSupportMultipleWindows(false)
-                            mediaPlaybackRequiresUserGesture = true
-                            builtInZoomControls = true
-                            displayZoomControls = false
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        } else if (!showStartPage && activeTab != null) {
+            key(activeTab.id) {
+                AndroidView(
+                    factory = { viewContext ->
+                        val tabId = activeTab.id
+                        val view = activeTab.webView ?: WebView(viewContext).apply {
+                            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                            settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                databaseEnabled = false
+                                cacheMode = if (activeTab.privateTab) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+                                allowFileAccess = false
+                                allowContentAccess = false
+                                setSupportMultipleWindows(false)
+                                mediaPlaybackRequiresUserGesture = true
+                                builtInZoomControls = true
+                                displayZoomControls = false
+                                useWideViewPort = activeTab.desktop
+                                loadWithOverviewMode = activeTab.desktop
+                                userAgentString = if (activeTab.desktop) DESKTOP_USER_AGENT else null
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
                             }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                safeBrowsingEnabled = true
-                            }
-                        }
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onProgressChanged(view: WebView, progress: Int) {
-                                loadingProgress = progress
-                            }
-
-                            override fun onReceivedTitle(view: WebView, title: String?) {
-                                pageTitle = title?.takeIf(String::isNotBlank) ?: "Private browser"
-                            }
-                        }
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                                val uri = request.url
-                                return if (uri.scheme in setOf("http", "https")) {
-                                    false
-                                } else {
-                                    runCatching {
-                                        viewContext.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri))
-                                    }.isSuccess
+                            applyOrbitDarkMode(this, store.darkMode)
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onProgressChanged(view: WebView, progress: Int) {
+                                    if (activeTabId == tabId) loadingProgress = progress
+                                }
+                                override fun onReceivedTitle(view: WebView, title: String?) {
+                                    val value = title?.takeIf(String::isNotBlank) ?: view.url ?: "Orbit Browser"
+                                    updateTab(tabId) { it.copy(title = value, url = view.url ?: it.url) }
+                                    if (activeTabId == tabId) pageTitle = value
                                 }
                             }
-
-                            override fun onPageFinished(view: WebView, url: String) {
-                                currentUrl = url
-                                address = url
-                                loadingProgress = 100
-                            }
-
-                            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-                                val host = request.url.host?.lowercase().orEmpty()
-                                return if (BrowserAdBlockList.isBlocked(host, blockedHosts)) {
-                                    WebResourceResponse(
-                                        "text/plain",
-                                        "UTF-8",
-                                        ByteArrayInputStream(ByteArray(0)),
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                                    val uri = request.url
+                                    if (uri.scheme == "http" || uri.scheme == "https") return false
+                                    if (uri.scheme in setOf("mailto", "tel", "sms")) {
+                                        runCatching { viewContext.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                                    }
+                                    return true
+                                }
+                                override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                                    if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
+                                    updateTab(tabId) { it.copy(url = url) }
+                                    if (activeTabId == tabId) {
+                                        currentUrl = url
+                                        address = url
+                                        loadingProgress = 1
+                                    }
+                                }
+                                override fun onPageFinished(view: WebView, url: String) {
+                                    if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
+                                    updateTab(tabId) { it.copy(url = url, title = view.title ?: it.title) }
+                                    if (activeTabId == tabId) {
+                                        currentUrl = url
+                                        address = url
+                                        pageTitle = view.title?.takeIf(String::isNotBlank) ?: url
+                                        loadingProgress = 100
+                                    }
+                                    if (!activeTab.privateTab) store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
+                                    val host = Uri.parse(url).host
+                                    val css = OrbitBrowserFilterEngine.cosmeticCss(host, store.adBlock)
+                                    if (css.isNotBlank()) view.evaluateJavascript(
+                                        "(function(){var s=document.getElementById('__orbit_filter_css');if(!s){s=document.createElement('style');s.id='__orbit_filter_css';(document.head||document.documentElement).appendChild(s);}s.textContent=" + JSONObject.quote(css) + ";})();",
+                                        null,
                                     )
-                                } else {
-                                    super.shouldInterceptRequest(view, request)
+                                    if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
+                                    if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
+                                }
+                                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                                    val filtered = OrbitBrowserFilterEngine.shouldBlock(request.url, store.adBlock)
+                                    return if (filtered) WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0))) else null
+                                }
+                                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                                    runCatching { view.destroy() }
+                                    updateTab(tabId) { it.copy(webView = null) }
+                                    if (activeTabId == tabId) rendererGone = true
+                                    return true
                                 }
                             }
-
-                            override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
-                                view.destroy()
-                                rendererGone = true
-                                return true
-                            }
+                            setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+                                BrowserDownloads.enqueue(viewContext, url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType)
+                            })
+                            if (activeTab.url.isNotBlank()) loadUrl(activeTab.url)
                         }
-                        setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                            BrowserDownloads.enqueue(viewContext, url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType)
-                        })
-                        CookieManager.getInstance().setAcceptCookie(true)
-                        pendingUrl?.let(::loadUrl)
-                        webView = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
+                        updateTab(tabId) { it.copy(webView = view) }
+                        view
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
+
+    if (showTabsDialog) {
+        AlertDialog(
+            onDismissRequest = { showTabsDialog = false },
+            title = { Text("Orbit Browser tabs (${tabs.size})") },
+            text = {
+                Column {
+                    LazyColumn(modifier = Modifier.height(260.dp)) {
+                        itemsIndexed(tabs, key = { _, tab -> tab.id }) { _, tab ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clickable { activateTab(tab); showTabsDialog = false }.padding(vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text((if (tab.privateTab) "Private • " else "") + tab.title, modifier = Modifier.weight(1f), maxLines = 1)
+                                IconButton(onClick = {
+                                    tab.webView?.let(::disposeOrbitWebView)
+                                    val remaining = tabs.filterNot { it.id == tab.id }
+                                    if (remaining.isEmpty()) {
+                                        val fresh = OrbitBrowserTab(id = nextTabId++, privateTab = false)
+                                        tabs = listOf(fresh); activeTabId = fresh.id; showStartPage = true; currentUrl = ""; address = ""
+                                    } else {
+                                        tabs = remaining
+                                        if (activeTabId == tab.id) activateTab(remaining.first())
+                                    }
+                                }) { Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}") }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(false) }) { Text("New tab") } },
+            dismissButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(true) }) { Text("Private tab") } },
+        )
+    }
+
+    entryList?.let { listType ->
+        val items = remember(listType, entriesVersion) {
+            if (listType == OrbitEntryList.BOOKMARKS) store.bookmarks() else store.history()
+        }
+        AlertDialog(
+            onDismissRequest = { entryList = null },
+            title = { Text(if (listType == OrbitEntryList.BOOKMARKS) "Bookmarks" else "History") },
+            text = {
+                if (items.isEmpty()) Text(if (listType == OrbitEntryList.BOOKMARKS) "No bookmarks yet" else "No browsing history")
+                else LazyColumn(modifier = Modifier.height(320.dp)) {
+                    itemsIndexed(items, key = { _, item -> item.url }) { _, item ->
+                        Column(Modifier.fillMaxWidth().clickable {
+                            entryList = null
+                            loadAddress(item.url)
+                        }.padding(vertical = 9.dp)) {
+                            Text(item.title, maxLines = 1, color = palette.textPrimary)
+                            Text(item.url, maxLines = 1, fontSize = 11.sp, color = palette.textSecondary)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { entryList = null }) { Text("Close") } },
+            dismissButton = if (listType == OrbitEntryList.HISTORY) ({
+                TextButton(onClick = { store.clearHistory(); entriesVersion++ }) { Text("Clear history") }
+            }) else null,
+        )
+    }
 }
+
+private fun disposeOrbitWebView(webView: WebView) {
+    runCatching {
+        webView.stopLoading()
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.destroy()
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+private fun injectOrbitAsset(webView: WebView, context: Context, name: String) {
+    runCatching { context.assets.open(name).bufferedReader().use { it.readText().take(100_000) } }
+        .onSuccess { script -> webView.post { webView.evaluateJavascript(script, null) } }
+}
+
+@Suppress("DEPRECATION")
+private fun applyOrbitDarkMode(webView: WebView, enabled: Boolean) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        webView.settings.forceDark = if (enabled) WebSettings.FORCE_DARK_ON else WebSettings.FORCE_DARK_OFF
+    }
+}
+
+private const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 @Composable
 private fun BrowserStartPage(
@@ -361,6 +639,9 @@ private fun BrowserStartPage(
     provider: BrowserSearchProvider,
     onProviderChange: (BrowserSearchProvider) -> Unit,
     onSearch: () -> Unit,
+    onManageTabs: () -> Unit,
+    privateTab: Boolean,
+    adBlockEnabled: Boolean,
 ) {
     val palette = LocalHiPalette.current
     Column(
@@ -377,13 +658,20 @@ private fun BrowserStartPage(
             modifier = Modifier.size(48.dp),
         )
         Spacer(Modifier.height(14.dp))
-        Text("Hi Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Text("Orbit Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
         Text(
             "Search the web or enter a website address",
             color = palette.textSecondary,
             fontSize = 13.sp,
         )
+        TextButton(onClick = onManageTabs) { Text("Tabs · New private tab", color = palette.primary) }
+        if (privateTab) {
+            Text(
+                "This tab won't be added to history. WebView cookies may still be shared with regular tabs.",
+                color = palette.textTertiary, fontSize = 10.sp, lineHeight = 13.sp,
+            )
+        }
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = query,
@@ -442,7 +730,8 @@ private fun BrowserStartPage(
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            "Common third-party ad and tracker hosts are blocked. Website sign-in, access, payments, and protected playback remain controlled by each site.",
+            (if (adBlockEnabled) "Common third-party ad and tracker hosts are blocked. " else "Ad blocking is off. ") +
+                "Website sign-in, access, payments, and protected playback remain controlled by each site.",
             color = palette.textTertiary,
             fontSize = 10.5.sp,
             lineHeight = 14.sp,
@@ -685,17 +974,4 @@ private fun formatBytes(value: Long): String = when {
     value < 1_024L * 1_024L -> "%.1f KB".format(value / 1_024.0)
     value < 1_024L * 1_024L * 1_024L -> "%.1f MB".format(value / (1_024.0 * 1_024.0))
     else -> "%.2f GB".format(value / (1_024.0 * 1_024.0 * 1_024.0))
-}
-
-private object BrowserAdBlockList {
-    fun load(context: Context): Set<String> = runCatching {
-        context.assets.open("adblock_hosts.txt").bufferedReader().useLines { lines ->
-            lines.map(String::trim)
-                .filter { host -> host.isNotBlank() && !host.startsWith('#') }
-                .toSet()
-        }
-    }.getOrDefault(emptySet())
-
-    fun isBlocked(host: String, blockedHosts: Set<String>): Boolean =
-        host.isNotBlank() && blockedHosts.any { blocked -> host == blocked || host.endsWith(".$blocked") }
 }
