@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
@@ -68,7 +69,8 @@ fun HiBottomNavigationBar(
         listOf(
             TabSpec(NavTab.VIDEOS, "Videos", Icons.Default.Movie, "nav_item_videos"),
             TabSpec(NavTab.MUSIC, "Music", Icons.Default.MusicNote, "nav_item_music"),
-            TabSpec(NavTab.FILE_MANAGER, "Files", Icons.Default.Folder, "nav_item_files"),
+            TabSpec(NavTab.BROWSER, "Browser", Icons.Default.Language, "nav_item_browser"),
+            TabSpec(NavTab.FILE_MANAGER, "File Manager", Icons.Default.Folder, "nav_item_files"),
             TabSpec(NavTab.SETTINGS, "Settings", Icons.Default.Settings, "nav_item_settings")
         )
     }

@@ -58,6 +58,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +80,7 @@ import com.example.ui.screens.FileManagerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
 import com.example.ui.screens.PlayerScreen
-import com.example.ui.screens.PrivateBrowserScreen
+import com.example.ui.screens.HiBrowserScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.HiPlayerTheme
@@ -98,7 +99,6 @@ import kotlinx.coroutines.withContext
 sealed class AppScreen {
     object Main : AppScreen()
     object Player : AppScreen()
-    object Browser : AppScreen()
 }
 
 class MainActivity : ComponentActivity() {
@@ -160,6 +160,7 @@ class MainActivity : ComponentActivity() {
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
+                val mainTabStateHolder = rememberSaveableStateHolder()
                 val isPip = _isInPipMode.value
                 val externalVideoUri = pendingExternalVideoUri.value
                 val openResolvedStream: (StreamUrlResult) -> Unit = { result ->
@@ -269,8 +270,6 @@ class MainActivity : ComponentActivity() {
                             }
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                             currentScreen = AppScreen.Main
-                        } else if (currentScreen == AppScreen.Browser) {
-                            currentScreen = AppScreen.Main
                         }
                     }
 
@@ -316,53 +315,38 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
-                            currentScreen == AppScreen.Browser -> {
-                                PrivateBrowserScreen(
-                                    onBack = { currentScreen = AppScreen.Main },
-                                    onPlayDirectMedia = { url ->
-                                        val result = StreamUrlClassifier.classify(url)
-                                        if (result.isPlayableInHiPlayer && !result.requiresWebResolution) {
-                                            openResolvedStream(result)
-                                        } else {
-                                            android.widget.Toast.makeText(
-                                                this@MainActivity,
-                                                "Open a direct MP4, MKV, HLS, or DASH link to play in Hi Player.",
-                                                android.widget.Toast.LENGTH_SHORT,
-                                            ).show()
-                                        }
-                                    },
-                                )
-                            }
                             else -> {
                                 Scaffold(
                                     modifier = Modifier.fillMaxSize(),
                                     containerColor = palette.background,
                                     topBar = {
-                                        HiPlayerHeader(
-                                            showSearch = false,
-                                            onSearchClick = null,
-                                            onRefreshClick = {
-                                                libraryViewModel.refreshVideos()
-                                                musicViewModel.loadAudioTracks()
-                                                fileManagerViewModel.refreshAll()
-                                            },
-                                            onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
-                                            extraActions = {
-                                                if (currentTab != NavTab.FILE_MANAGER && currentTab != NavTab.DISCOVER) {
-                                                    IconButton(onClick = {
-                                                        returnTabFromDiscover = currentTab
-                                                        currentTab = NavTab.DISCOVER
-                                                    }) {
-                                                        Icon(Icons.Default.Explore, contentDescription = "Discover", tint = palette.textPrimary)
+                                        if (currentTab != NavTab.BROWSER) {
+                                            HiPlayerHeader(
+                                                showSearch = false,
+                                                onSearchClick = null,
+                                                onRefreshClick = {
+                                                    libraryViewModel.refreshVideos()
+                                                    musicViewModel.loadAudioTracks()
+                                                    fileManagerViewModel.refreshAll()
+                                                },
+                                                onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
+                                                extraActions = {
+                                                    if (currentTab != NavTab.FILE_MANAGER && currentTab != NavTab.DISCOVER) {
+                                                        IconButton(onClick = {
+                                                            returnTabFromDiscover = currentTab
+                                                            currentTab = NavTab.DISCOVER
+                                                        }) {
+                                                            Icon(Icons.Default.Explore, contentDescription = "Discover", tint = palette.textPrimary)
+                                                        }
+                                                    }
+                                                    if (currentTab == NavTab.FILE_MANAGER) {
+                                                        IconButton(onClick = { recycleBinOpenRequest++ }) {
+                                                            Icon(Icons.Default.DeleteSweep, contentDescription = "Recycle Bin", tint = palette.textPrimary)
+                                                        }
                                                     }
                                                 }
-                                                if (currentTab == NavTab.FILE_MANAGER) {
-                                                    IconButton(onClick = { recycleBinOpenRequest++ }) {
-                                                        Icon(Icons.Default.DeleteSweep, contentDescription = "Recycle Bin", tint = palette.textPrimary)
-                                                    }
-                                                }
-                                            }
-                                        )
+                                            )
+                                        }
                                     },
                                     bottomBar = {
                                         Column {
@@ -459,6 +443,26 @@ class MainActivity : ComponentActivity() {
                                                     libraryViewModel = libraryViewModel
                                                 )
                                             }
+                                            NavTab.BROWSER -> {
+                                                mainTabStateHolder.SaveableStateProvider("hi_browser") {
+                                                    HiBrowserScreen(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        onBack = { currentTab = NavTab.VIDEOS },
+                                                        onPlayDirectMedia = { url ->
+                                                            val result = StreamUrlClassifier.classify(url)
+                                                            if (result.isPlayableInHiPlayer && !result.requiresWebResolution) {
+                                                                openResolvedStream(result)
+                                                            } else {
+                                                                android.widget.Toast.makeText(
+                                                                    this@MainActivity,
+                                                                    "Open a direct MP4, MKV, HLS, or DASH link to play in Hi Player.",
+                                                                    android.widget.Toast.LENGTH_SHORT,
+                                                                ).show()
+                                                            }
+                                                        },
+                                                    )
+                                                }
+                                            }
                                             NavTab.FILE_MANAGER -> {
                                                 FileManagerScreen(
                                                     fileManagerViewModel = fileManagerViewModel,
@@ -506,7 +510,6 @@ class MainActivity : ComponentActivity() {
                                                     libraryViewModel = libraryViewModel,
                                                     discoverViewModel = discoverViewModel,
                                                     onBack = { currentTab = NavTab.VIDEOS },
-                                                    onOpenBrowser = { currentScreen = AppScreen.Browser },
                                                     includeHeader = false
                                                 )
                                             }

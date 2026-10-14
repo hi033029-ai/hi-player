@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
@@ -54,6 +55,7 @@ enum class NavTab {
     VIDEOS,
     DISCOVER,
     MUSIC,
+    BROWSER,
     FILE_MANAGER,
     SETTINGS
 }
@@ -132,7 +134,7 @@ fun HiNavigationBottomSheet(
                             }
                         }
                         Text(
-                        text = "Videos • Discover • Music • File Manager • Settings",
+                        text = "Videos • Discover • Music • Browser • File Manager • Settings",
                             fontSize = 10.5.sp,
                             color = palette.textSecondary
                         )
@@ -194,7 +196,21 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 3. FILE MANAGER
+            // 3. BROWSER
+            NavHubTile(
+                title = "Hi Browser",
+                subtitle = "Browse, bookmark, download, and read the web",
+                badge = "Web",
+                icon = Icons.Default.Language,
+                iconColor = palette.primary,
+                isSelected = currentTab == NavTab.BROWSER,
+                onClick = { onTabSelected(NavTab.BROWSER) },
+                testTag = "hub_tab_browser"
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // 4. FILE MANAGER
             NavHubTile(
                 title = "File Manager",
                 subtitle = "Explore Storage, Downloads & Media Folders",
@@ -210,7 +226,7 @@ fun HiNavigationBottomSheet(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // 4. SETTINGS
+            // 5. SETTINGS
             NavHubTile(
                 title = "Settings",
                 subtitle = "HW+ Decoder, 128MB Ultra-Buffer & Themes",

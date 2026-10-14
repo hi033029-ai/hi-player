@@ -82,6 +82,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -101,6 +105,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.WeakHashMap
 
 private data class OrbitBrowserTab(
     val id: Int,
@@ -112,6 +117,38 @@ private data class OrbitBrowserTab(
 )
 
 private enum class OrbitEntryList { BOOKMARKS, HISTORY }
+
+private object HiBrowserDocumentScripts {
+    private val handlers = WeakHashMap<WebView, MutableList<ScriptHandler>>()
+
+    fun isSupported(): Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+
+    fun apply(webView: WebView, context: Context, store: OrbitBrowserStore) {
+        remove(webView)
+        if (!isSupported()) return
+        val registered = mutableListOf<ScriptHandler>()
+        if (store.pageSkipper) {
+            readAsset(context, "orbit_page_skipper.js")?.let {
+                registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
+            }
+        }
+        if (store.youtubeAdSkip) {
+            readAsset(context, "orbit_youtube.js")?.let {
+                registered += WebViewCompat.addDocumentStartJavaScript(
+                    webView, it, setOf("https://*.youtube.com", "https://youtube.com"),
+                )
+            }
+        }
+        if (registered.isNotEmpty()) handlers[webView] = registered
+    }
+
+    fun remove(webView: WebView) {
+        handlers.remove(webView)?.forEach { handler -> runCatching { handler.remove() } }
+    }
+
+    private fun readAsset(context: Context, name: String): String? =
+        runCatching { context.assets.open(name).bufferedReader().use { it.readText().take(100_000) } }.getOrNull()
+}
 
 private val orbitBrowserTabsSaver = listSaver<List<OrbitBrowserTab>, Any>(
     save = { tabs ->
@@ -140,7 +177,7 @@ private val orbitBrowserTabsSaver = listSaver<List<OrbitBrowserTab>, Any>(
 )
 
 @Composable
-fun PrivateBrowserScreen(
+fun HiBrowserScreen(
     onBack: () -> Unit,
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -206,6 +243,18 @@ fun PrivateBrowserScreen(
         rendererGone = false
     }
 
+    fun closeTab(tabId: Int) {
+        val closing = tabs.firstOrNull { it.id == tabId } ?: return
+        val remaining = tabs.filterNot { it.id == tabId }
+        closing.webView?.let(::disposeOrbitWebView)
+        tabs = remaining
+        if (remaining.isEmpty()) {
+            openNewTab(privateTab = false)
+        } else if (activeTabId == tabId) {
+            activateTab(remaining.first())
+        }
+    }
+
     fun loadAddress(raw: String) {
         val destination = normalizeBrowserInput(raw, searchProvider) ?: return
         address = destination
@@ -247,6 +296,11 @@ fun PrivateBrowserScreen(
         tabs.forEach { tab -> tab.webView?.let { applyOrbitDarkMode(it, enabled) } }
     }
 
+    fun refreshDocumentScripts() {
+        tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store) } }
+        webView?.reload()
+    }
+
     fun addBookmark() {
         val url = currentUrl
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
@@ -275,10 +329,7 @@ fun PrivateBrowserScreen(
             webView?.canGoBack() == true -> webView?.goBack()
             !showStartPage -> showBrowserHome()
             tabs.size > 1 -> {
-                val old = activeTab
-                old?.webView?.let(::disposeOrbitWebView)
-                tabs = tabs.filterNot { it.id == activeTabId }
-                tabs.firstOrNull()?.let(::activateTab)
+                closeTab(activeTabId)
             }
             else -> onBack()
         }
@@ -362,8 +413,8 @@ fun PrivateBrowserScreen(
                         DropdownMenuItem(text = { Text(if (store.darkMode) "Light mode" else "Dark mode") }, onClick = { menuExpanded = false; setDarkMode(!store.darkMode) })
                         DropdownMenuItem(text = { Text(if (activeTab?.desktop == true) "Mobile site" else "Desktop site") }, onClick = { menuExpanded = false; toggleDesktopSite() })
                         DropdownMenuItem(text = { Text(if (store.adBlock) "Turn ad blocker off" else "Turn ad blocker on") }, onClick = { menuExpanded = false; store.adBlock = !store.adBlock; webView?.reload() })
-                        DropdownMenuItem(text = { Text(if (store.pageSkipper) "Turn page skipper off" else "Turn page skipper on") }, onClick = { menuExpanded = false; store.pageSkipper = !store.pageSkipper; webView?.reload() })
-                        DropdownMenuItem(text = { Text(if (store.youtubeAdSkip) "Turn YouTube ad skip off" else "Turn YouTube ad skip on") }, onClick = { menuExpanded = false; store.youtubeAdSkip = !store.youtubeAdSkip; webView?.reload() })
+                        DropdownMenuItem(text = { Text(if (store.pageSkipper) "Turn page skipper off" else "Turn page skipper on") }, onClick = { menuExpanded = false; store.pageSkipper = !store.pageSkipper; refreshDocumentScripts() })
+                        DropdownMenuItem(text = { Text(if (store.youtubeAdSkip) "Turn YouTube ad skip off" else "Turn YouTube ad skip on") }, onClick = { menuExpanded = false; store.youtubeAdSkip = !store.youtubeAdSkip; refreshDocumentScripts() })
                         DropdownMenuItem(text = { Text("Update filter lists") }, onClick = {
                             menuExpanded = false
                             Toast.makeText(context, "Updating filter lists…", Toast.LENGTH_SHORT).show()
@@ -387,19 +438,7 @@ fun PrivateBrowserScreen(
                         })
                         DropdownMenuItem(text = { Text("Close tab") }, onClick = {
                             menuExpanded = false
-                            val oldId = activeTabId
-                            val old = tabs.firstOrNull { it.id == oldId }
-                            old?.webView?.let(::disposeOrbitWebView)
-                            if (tabs.size > 1) {
-                                tabs = tabs.filterNot { it.id == oldId }
-                                tabs.firstOrNull()?.let(::activateTab)
-                            } else {
-                                tabs = listOf(OrbitBrowserTab(id = nextTabId++, privateTab = false))
-                                activeTabId = tabs.first().id
-                                showStartPage = true
-                                address = ""
-                                currentUrl = ""
-                            }
+                            closeTab(activeTabId)
                         })
                     }
                 }
@@ -473,6 +512,7 @@ fun PrivateBrowserScreen(
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
                             }
                             applyOrbitDarkMode(this, store.darkMode)
+                            HiBrowserDocumentScripts.apply(this, viewContext, store)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                             webChromeClient = object : WebChromeClient() {
                                 override fun onProgressChanged(view: WebView, progress: Int) {
@@ -518,15 +558,17 @@ fun PrivateBrowserScreen(
                                         "(function(){var s=document.getElementById('__orbit_filter_css');if(!s){s=document.createElement('style');s.id='__orbit_filter_css';(document.head||document.documentElement).appendChild(s);}s.textContent=" + JSONObject.quote(css) + ";})();",
                                         null,
                                     )
-                                    if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
-                                    if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
+                                    if (!HiBrowserDocumentScripts.isSupported()) {
+                                        if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
+                                        if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
+                                    }
                                 }
                                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                                     val filtered = OrbitBrowserFilterEngine.shouldBlock(request.url, store.adBlock)
                                     return if (filtered) WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0))) else null
                                 }
                                 override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
-                                    runCatching { view.destroy() }
+                                    disposeOrbitWebView(view)
                                     updateTab(tabId) { it.copy(webView = null) }
                                     if (activeTabId == tabId) rendererGone = true
                                     return true
@@ -560,15 +602,7 @@ fun PrivateBrowserScreen(
                             ) {
                                 Text((if (tab.privateTab) "Private • " else "") + tab.title, modifier = Modifier.weight(1f), maxLines = 1)
                                 IconButton(onClick = {
-                                    tab.webView?.let(::disposeOrbitWebView)
-                                    val remaining = tabs.filterNot { it.id == tab.id }
-                                    if (remaining.isEmpty()) {
-                                        val fresh = OrbitBrowserTab(id = nextTabId++, privateTab = false)
-                                        tabs = listOf(fresh); activeTabId = fresh.id; showStartPage = true; currentUrl = ""; address = ""
-                                    } else {
-                                        tabs = remaining
-                                        if (activeTabId == tab.id) activateTab(remaining.first())
-                                    }
+                                    closeTab(tab.id)
                                 }) { Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}") }
                             }
                         }
@@ -610,6 +644,7 @@ fun PrivateBrowserScreen(
 }
 
 private fun disposeOrbitWebView(webView: WebView) {
+    HiBrowserDocumentScripts.remove(webView)
     runCatching {
         webView.stopLoading()
         (webView.parent as? ViewGroup)?.removeView(webView)
@@ -625,7 +660,15 @@ private fun injectOrbitAsset(webView: WebView, context: Context, name: String) {
 
 @Suppress("DEPRECATION")
 private fun applyOrbitDarkMode(webView: WebView, enabled: Boolean) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    when {
+        WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING) ->
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, enabled)
+        WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK) ->
+            WebSettingsCompat.setForceDark(
+                webView.settings,
+                if (enabled) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF,
+            )
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
         webView.settings.forceDark = if (enabled) WebSettings.FORCE_DARK_ON else WebSettings.FORCE_DARK_OFF
     }
 }
