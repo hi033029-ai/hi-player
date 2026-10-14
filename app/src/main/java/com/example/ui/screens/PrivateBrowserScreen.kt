@@ -34,19 +34,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -79,8 +84,6 @@ import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-private const val BROWSER_HOME = "https://www.google.com/"
-
 /**
  * Normal WebView browsing with a deliberately transparent, bundled host
  * blocklist. It never extracts protected streams or bypasses a website's
@@ -96,26 +99,51 @@ fun PrivateBrowserScreen(
     val palette = LocalHiPalette.current
     val blockedHosts = remember { BrowserAdBlockList.load(context) }
     var webView by remember { mutableStateOf<WebView?>(null) }
-    var address by remember { mutableStateOf(BROWSER_HOME) }
-    var currentUrl by remember { mutableStateOf(BROWSER_HOME) }
+    var address by remember { mutableStateOf("") }
+    var currentUrl by remember { mutableStateOf("") }
+    var pendingUrl by remember { mutableStateOf<String?>(null) }
+    var showStartPage by remember { mutableStateOf(true) }
+    var searchProvider by remember { mutableStateOf(BrowserSearchProvider.GOOGLE) }
     var pageTitle by remember { mutableStateOf("Private browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
     val downloads by BrowserDownloads.downloads.collectAsState()
 
     fun loadAddress(raw: String) {
-        val destination = normalizeBrowserInput(raw)
+        val destination = normalizeBrowserInput(raw, searchProvider) ?: return
         address = destination
         currentUrl = destination
+        pendingUrl = destination
+        showStartPage = false
         webView?.loadUrl(destination)
+    }
+
+    fun showBrowserHome() {
+        webView?.stopLoading()
+        webView?.destroy()
+        webView = null
+        address = ""
+        currentUrl = ""
+        pendingUrl = null
+        pageTitle = "Private browser"
+        loadingProgress = 0
+        rendererGone = false
+        showStartPage = true
     }
 
     BackHandler {
         val view = webView
-        if (view?.canGoBack() == true) view.goBack() else onBack()
+        when {
+            view?.canGoBack() == true -> view.goBack()
+            !showStartPage -> showBrowserHome()
+            else -> onBack()
+        }
     }
 
-    DisposableEffect(webView) {
+    // Do not key this effect to [webView]. AndroidView assigns the reference
+    // during its first composition; a key change would dispose the previous
+    // effect and destroy that newly created WebView before it can load.
+    DisposableEffect(Unit) {
         onDispose {
             webView?.stopLoading()
             webView?.destroy()
@@ -135,7 +163,16 @@ fun PrivateBrowserScreen(
             .fillMaxSize()
             .background(palette.background),
     ) {
-        Row(
+        if (showStartPage) {
+            BrowserStartPage(
+                query = address,
+                onQueryChange = { address = it },
+                provider = searchProvider,
+                onProviderChange = { searchProvider = it },
+                onSearch = { loadAddress(address) },
+            )
+        } else {
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(palette.surface)
@@ -143,7 +180,7 @@ fun PrivateBrowserScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = {
-                if (webView?.canGoBack() == true) webView?.goBack() else onBack()
+                if (webView?.canGoBack() == true) webView?.goBack() else showBrowserHome()
             }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
             }
@@ -189,7 +226,7 @@ fun PrivateBrowserScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            IconButton(onClick = { loadAddress(BROWSER_HOME) }) {
+            IconButton(onClick = { showBrowserHome() }) {
                 Icon(Icons.Default.Home, contentDescription = "Home", tint = palette.textSecondary)
             }
             Text(
@@ -219,6 +256,7 @@ fun PrivateBrowserScreen(
             downloads = downloads,
             onClearCompleted = BrowserDownloads::clearCompleted,
         )
+        }
 
         if (rendererGone) {
             Column(
@@ -230,7 +268,7 @@ fun PrivateBrowserScreen(
                 Spacer(Modifier.height(10.dp))
                 Button(onClick = { rendererGone = false }) { Text("Reload browser") }
             }
-        } else {
+        } else if (!showStartPage) {
             AndroidView(
                 factory = { viewContext ->
                     WebView(viewContext).apply {
@@ -306,13 +344,109 @@ fun PrivateBrowserScreen(
                             BrowserDownloads.enqueue(viewContext, url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType)
                         })
                         CookieManager.getInstance().setAcceptCookie(true)
-                        loadUrl(BROWSER_HOME)
+                        pendingUrl?.let(::loadUrl)
                         webView = this
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+@Composable
+private fun BrowserStartPage(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    provider: BrowserSearchProvider,
+    onProviderChange: (BrowserSearchProvider) -> Unit,
+    onSearch: () -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Language,
+            contentDescription = null,
+            tint = palette.primary,
+            modifier = Modifier.size(48.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        Text("Hi Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "Search the web or enter a website address",
+            color = palette.textSecondary,
+            fontSize = 13.sp,
+        )
+        Spacer(Modifier.height(24.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
+            trailingIcon = {
+                IconButton(onClick = onSearch) {
+                    Icon(Icons.Default.ArrowForward, contentDescription = "Search", tint = palette.primary)
+                }
+            },
+            placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 13.sp) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = palette.textPrimary,
+                unfocusedTextColor = palette.textPrimary,
+                focusedBorderColor = palette.primary,
+                unfocusedBorderColor = palette.surfaceBorder,
+                focusedContainerColor = palette.surfaceElevated,
+                unfocusedContainerColor = palette.surfaceElevated,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSearch() }),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Search,
+            ),
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+        ) {
+            BrowserSearchProvider.entries.forEach { option ->
+                FilterChip(
+                    selected = option == provider,
+                    onClick = { onProviderChange(option) },
+                    label = { Text(option.displayName, fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = palette.primary,
+                        selectedLabelColor = Color.White,
+                        containerColor = palette.surfaceElevated,
+                        labelColor = palette.textPrimary,
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = onSearch,
+            enabled = query.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+        ) {
+            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.height(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Search with ${provider.displayName}")
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "Common third-party ad and tracker hosts are blocked. Website sign-in, access, payments, and protected playback remain controlled by each site.",
+            color = palette.textTertiary,
+            fontSize = 10.5.sp,
+            lineHeight = 14.sp,
+        )
     }
 }
 
@@ -415,11 +549,25 @@ private fun BrowserDownloadPanel(
     }
 }
 
-private fun normalizeBrowserInput(raw: String): String {
+private enum class BrowserSearchProvider(
+    val displayName: String,
+    private val searchBaseUrl: String,
+) {
+    GOOGLE("Google", "https://www.google.com/search?q="),
+    BING("Bing", "https://www.bing.com/search?q="),
+    DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q="),
+    ;
+
+    fun searchUrl(query: String): String =
+        searchBaseUrl + URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+}
+
+private fun normalizeBrowserInput(raw: String, provider: BrowserSearchProvider): String? {
     val value = raw.trim()
+    if (value.isBlank()) return null
     if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) return value
     if (value.contains('.') && !value.contains(' ')) return "https://$value"
-    return "https://www.google.com/search?q=" + URLEncoder.encode(value, StandardCharsets.UTF_8.name())
+    return provider.searchUrl(value)
 }
 
 private object BrowserDownloads {

@@ -51,6 +51,35 @@ object PublicCatalogClient {
         parseTitles(json.optJSONArray("results")).take(40)
     }
 
+    /**
+     * A title-only lookup for files in the local media library. Unlike a mixed
+     * search, the media type is explicit and a filename year can narrow broad
+     * titles such as "The King" without changing Discover's normal search.
+     */
+    suspend fun searchLibraryTitle(
+        query: String,
+        mediaType: DiscoverMediaType,
+        releaseYear: String? = null,
+    ): List<DiscoverTitle> = withContext(Dispatchers.IO) {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return@withContext emptyList()
+        val params = mutableMapOf(
+            "query" to cleanQuery,
+            "include_adult" to "false",
+        )
+        releaseYear?.takeIf { it.length == 4 }?.let { year ->
+            when (mediaType) {
+                DiscoverMediaType.MOVIE -> params["primary_release_year"] = year
+                DiscoverMediaType.TV -> params["first_air_date_year"] = year
+            }
+        }
+        val path = when (mediaType) {
+            DiscoverMediaType.MOVIE -> "/search/movie"
+            DiscoverMediaType.TV -> "/search/tv"
+        }
+        parseTitles(getJson(path = path, query = params).optJSONArray("results")).take(40)
+    }
+
     suspend fun details(title: DiscoverTitle): DiscoverDetails = withContext(Dispatchers.IO) {
         val mediaPath = when (title.mediaType) {
             DiscoverMediaType.MOVIE -> "/movie/${title.catalogId}"

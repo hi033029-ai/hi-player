@@ -155,27 +155,50 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         if (video.isPartialDownload || video.uri == Uri.EMPTY) return
         val key = video.path.ifBlank { video.uri.toString() }
         if (key.isBlank() || key in catalogMetadataRequests || key in _catalogMetadata.value) return
+        if ((catalogMetadataRetryAfter[key] ?: 0L) > System.currentTimeMillis()) return
         val lookup = parseLibraryTitle(video.title) ?: return
         catalogMetadataRequests += key
         viewModelScope.launch {
             val metadata = catalogMetadataSemaphore.withPermit {
                 runCatching {
-                    val candidates = PublicCatalogClient.search(lookup.query)
-                val title = chooseCatalogTitle(candidates, lookup) ?: return@runCatching null
-                // Keep a steady bounded request cadence for the free personal
-                // TMDB credential while the full local library is resolved.
-                delay(100L)
-                title.rating?.let { rating -> LibraryCatalogMetadata(rating = rating) }
+                    val desiredType = if (lookup.seasonNumber != null) DiscoverMediaType.TV else DiscoverMediaType.MOVIE
+                    val yearCandidates = PublicCatalogClient.searchLibraryTitle(
+                        query = lookup.query,
+                        mediaType = desiredType,
+                        releaseYear = lookup.releaseYear,
+                    )
+                    val title = chooseCatalogTitle(yearCandidates, lookup)
+                        ?: if (lookup.releaseYear != null) {
+                            chooseCatalogTitle(
+                                PublicCatalogClient.searchLibraryTitle(
+                                    query = lookup.query,
+                                    mediaType = desiredType,
+                                ),
+                                lookup,
+                            )
+                        } else null
+                    if (title == null) return@runCatching null
+                    // Keep a steady bounded request cadence for the free
+                    // personal TMDB credential while the library resolves.
+                    delay(160L)
+                    title.rating?.let { rating -> LibraryCatalogMetadata(rating = rating) }
                 }.getOrNull()
             }
             if (metadata != null) {
                 _catalogMetadata.value = _catalogMetadata.value + (key to metadata)
+                catalogMetadataRetryAfter.remove(key)
+            } else {
+                // A metadata request can recover after a filename rename or
+                // transient network/API problem, without polling continuously.
+                catalogMetadataRequests.remove(key)
+                catalogMetadataRetryAfter[key] = System.currentTimeMillis() + CATALOG_RETRY_DELAY_MS
             }
         }
     }
 
     private data class LibraryTitleLookup(
         val query: String,
+        val releaseYear: String? = null,
         val seasonNumber: Int? = null,
         val episodeNumber: Int? = null,
     )
@@ -185,6 +208,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .replace(Regex("[._]+"), " ")
             .trim()
         if (withoutExtension.isBlank()) return null
+        val releaseYear = RELEASE_YEAR_PATTERN.find(withoutExtension)?.value
         val seasonMatch = SEASON_EPISODE_PATTERN.find(withoutExtension)
             ?: SEASON_PATTERN.find(withoutExtension)
         val season = seasonMatch?.groups?.get(1)?.value?.toIntOrNull()
@@ -198,7 +222,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .replace(Regex("\\s+"), " ")
             .trim()
         return titlePart.takeIf { it.length >= 2 }?.let {
-            LibraryTitleLookup(query = it, seasonNumber = season, episodeNumber = episode)
+            LibraryTitleLookup(
+                query = it,
+                releaseYear = releaseYear,
+                seasonNumber = season,
+                episodeNumber = episode,
+            )
         }
     }
 
@@ -218,7 +247,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     normalizedTitle.contains(normalizedQuery) || normalizedQuery.contains(normalizedTitle) -> 70
                     else -> 0
                 }
-                title to titleScore
+                val yearScore = when {
+                    lookup.releaseYear == null -> 0
+                    title.releaseYear == lookup.releaseYear -> 12
+                    else -> 0
+                }
+                title to (titleScore + yearScore)
             }
             .filter { (_, score) -> score >= 70 }
             .maxByOrNull { (_, score) -> score }
@@ -229,6 +263,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
 
     private companion object {
+        const val CATALOG_RETRY_DELAY_MS = 60_000L
+        val RELEASE_YEAR_PATTERN = Regex("\\b(?:19|20|21)\\d{2}\\b")
         val SEASON_EPISODE_PATTERN = Regex("(?i)\\bS(\\d{1,2})[ ._-]*E(\\d{1,3})\\b")
         val SEASON_PATTERN = Regex("(?i)\\b(?:S|Season)[ ._-]?(\\d{1,2})\\b")
         val MEDIA_RELEASE_MARKERS = Regex(
@@ -261,6 +297,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _catalogMetadata = MutableStateFlow<Map<String, LibraryCatalogMetadata>>(emptyMap())
     val catalogMetadata = _catalogMetadata.asStateFlow()
     private val catalogMetadataRequests = mutableSetOf<String>()
+    private val catalogMetadataRetryAfter = mutableMapOf<String, Long>()
     private val catalogMetadataSemaphore = Semaphore(permits = 2)
     private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
     val deleteProgress = _deleteProgress.asStateFlow()
