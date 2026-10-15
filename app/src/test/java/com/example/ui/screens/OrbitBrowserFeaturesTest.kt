@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.example.model.StreamUrlClassifier
 import org.json.JSONArray
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -51,5 +52,23 @@ class OrbitBrowserFeaturesTest {
         assertFalse(html.contains("<img src=x onerror"))
         assertTrue(html.contains("&lt;script&gt;"))
         assertTrue(html.contains("&lt;img"))
+    }
+
+    @Test
+    fun youtubeHostsStayInBrowserAndDirectMediaIsPlayableInHiPlayer() {
+        listOf(
+            "https://www.youtube.com/watch?v=abc",
+            "https://youtu.be/abc",
+            "https://www.youtube-nocookie.com/embed/abc",
+        ).forEach { assertTrue(isOrbitYoutube(it)) }
+        assertFalse(isOrbitYoutube("https://videos.example.org/watch/123"))
+
+        val mp4 = StreamUrlClassifier.classify("https://cdn.example.org/media/clip.mp4?token=abc")
+        val hls = StreamUrlClassifier.classify("https://cdn.example.org/live/playlist.m3u8")
+        assertTrue(mp4.isPlayableInHiPlayer)
+        assertFalse(mp4.requiresWebResolution)
+        assertTrue(hls.isPlayableInHiPlayer)
+        assertFalse(hls.requiresWebResolution)
+        assertFalse(StreamUrlClassifier.classify("https://www.youtube.com/watch?v=abc").isPlayableInHiPlayer)
     }
 }

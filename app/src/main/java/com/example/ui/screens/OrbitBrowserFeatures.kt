@@ -228,5 +228,7 @@ internal object OrbitReaderMode {
 
 internal fun isOrbitYoutube(url: String): Boolean = runCatching {
     val host = Uri.parse(url).host?.lowercase().orEmpty()
-    host == "youtube.com" || host.endsWith(".youtube.com")
+    host == "youtu.be" ||
+        host == "youtube.com" || host.endsWith(".youtube.com") ||
+        host == "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")
 }.getOrDefault(false)

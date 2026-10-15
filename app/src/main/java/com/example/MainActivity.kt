@@ -449,15 +449,51 @@ class MainActivity : ComponentActivity() {
                                                         modifier = Modifier.fillMaxSize(),
                                                         onBack = { currentTab = NavTab.VIDEOS },
                                                         onPlayDirectMedia = { url ->
-                                                            val result = StreamUrlClassifier.classify(url)
-                                                            if (result.isPlayableInHiPlayer && !result.requiresWebResolution) {
-                                                                openResolvedStream(result)
+                                                            val uri = Uri.parse(url)
+                                                            if (uri.scheme == "content") {
+                                                                val mimeType = contentResolver.getType(uri) ?: "video/*"
+                                                                playerViewModel.playVideo(
+                                                                    VideoItem(
+                                                                        uri = uri,
+                                                                        title = uri.lastPathSegment ?: "Downloaded video",
+                                                                        path = url,
+                                                                        mimeType = mimeType,
+                                                                        folderName = "Downloads",
+                                                                    )
+                                                                )
+                                                                currentScreen = AppScreen.Player
                                                             } else {
-                                                                android.widget.Toast.makeText(
-                                                                    this@MainActivity,
-                                                                    "Open a direct MP4, MKV, HLS, or DASH link to play in Hi Player.",
-                                                                    android.widget.Toast.LENGTH_SHORT,
-                                                                ).show()
+                                                                val result = StreamUrlClassifier.classify(url)
+                                                                when {
+                                                                    result.isPlayableInHiPlayer && !result.requiresWebResolution -> openResolvedStream(result)
+                                                                    result.isPlayableInHiPlayer && result.requiresWebResolution -> {
+                                                                        android.widget.Toast.makeText(
+                                                                            this@MainActivity,
+                                                                            "Checking this page for a public video stream…",
+                                                                            android.widget.Toast.LENGTH_SHORT,
+                                                                        ).show()
+                                                                        scope.launch {
+                                                                            val resolution = withContext(Dispatchers.IO) {
+                                                                                PublicWebVideoResolver.resolve(url)
+                                                                            }
+                                                                            val stream = resolution.stream
+                                                                            if (stream != null) {
+                                                                                openResolvedStream(stream)
+                                                                            } else {
+                                                                                android.widget.Toast.makeText(
+                                                                                    this@MainActivity,
+                                                                                    resolution.errorMessage ?: "No public video stream was found on this page.",
+                                                                                    android.widget.Toast.LENGTH_LONG,
+                                                                                ).show()
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    else -> android.widget.Toast.makeText(
+                                                                        this@MainActivity,
+                                                                        result.errorMessage ?: "This page does not expose a video stream that Hi Player can play.",
+                                                                        android.widget.Toast.LENGTH_LONG,
+                                                                    ).show()
+                                                                }
                                                             }
                                                         },
                                                     )

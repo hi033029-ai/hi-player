@@ -8,9 +8,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -104,6 +106,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 import org.json.JSONTokener
 import com.example.ui.theme.LocalHiPalette
+import com.example.model.StreamUrlClassifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,6 +154,11 @@ private object HiBrowserDocumentScripts {
                 )
             }
         }
+        registered += WebViewCompat.addDocumentStartJavaScript(
+            webView,
+            HI_BROWSER_VIDEO_HOOK_SCRIPT,
+            setOf("*"),
+        )
         if (registered.isNotEmpty()) handlers[webView] = registered
     }
 
@@ -204,12 +212,14 @@ fun HiBrowserScreen(
     var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
     var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
     val latestTabs by rememberUpdatedState(tabs)
+    val latestOnPlayDirectMedia by rememberUpdatedState(onPlayDirectMedia)
     var activeTabId by rememberSaveable { mutableIntStateOf(1) }
     var nextTabId by rememberSaveable { mutableIntStateOf(2) }
     val activeTab = tabs.firstOrNull { it.id == activeTabId }
     val webView = activeTab?.webView
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
+    var detectedVideoUrl by remember { mutableStateOf<String?>(null) }
     var showStartPage by remember { mutableStateOf(true) }
     var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.DUCKDUCKGO) }
     var pageTitle by remember { mutableStateOf("Hi Browser") }
@@ -275,6 +285,11 @@ fun HiBrowserScreen(
 
     fun loadAddress(raw: String) {
         val destination = normalizeBrowserInput(raw, searchProvider) ?: return
+        val stream = StreamUrlClassifier.classify(destination)
+        if (!isOrbitYoutube(destination) && stream.isPlayableInHiPlayer && !stream.requiresWebResolution) {
+            onPlayDirectMedia(destination)
+            return
+        }
         address = destination
         currentUrl = destination
         pageTitle = destination
@@ -383,6 +398,17 @@ fun HiBrowserScreen(
         while (downloadsActive) {
             BrowserDownloads.refresh(context)
             delay(650L)
+        }
+    }
+    LaunchedEffect(activeTabId, currentUrl, showStartPage, webView) {
+        detectedVideoUrl = null
+        if (showStartPage || webView == null || isOrbitYoutube(currentUrl)) return@LaunchedEffect
+        while (true) {
+            webView.evaluateJavascript(HI_BROWSER_VIDEO_DETECT_SCRIPT) { raw ->
+                val found = runCatching { JSONTokener(raw).nextValue() as? String }.getOrNull()
+                detectedVideoUrl = found?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            }
+            delay(1_500L)
         }
     }
 
@@ -510,11 +536,13 @@ fun HiBrowserScreen(
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("Play link in Hi Player") },
-                            leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
-                            onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
-                        )
+                        if (!isOrbitYoutube(currentUrl)) {
+                            DropdownMenuItem(
+                                text = { Text("Play link in Hi Player") },
+                                leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
+                                onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Close tab") },
                             leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
@@ -554,6 +582,26 @@ fun HiBrowserScreen(
                     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
                 } }) { Icon(Icons.Default.Share, contentDescription = "Share", tint = palette.textPrimary) }
             }
+            detectedVideoUrl?.takeIf { !isOrbitYoutube(currentUrl) }?.let { videoUrl ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = palette.primary)
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Online video detected", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Use Hi Player's video controls", color = palette.textSecondary, fontSize = 10.sp)
+                        }
+                        TextButton(onClick = { onPlayDirectMedia(videoUrl) }) { Text("Play") }
+                    }
+                }
+            }
         }
 
         if (rendererGone) {
@@ -588,6 +636,25 @@ fun HiBrowserScreen(
                             }
                             applyOrbitDarkMode(this, store.darkMode)
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
+                            val browserWebView = this
+                            var lastUserTouchAt = 0L
+                            browserWebView.setOnTouchListener { _, event ->
+                                if (event.actionMasked == MotionEvent.ACTION_UP) lastUserTouchAt = SystemClock.uptimeMillis()
+                                false
+                            }
+                            addJavascriptInterface(
+                                HiBrowserVideoBridge { mediaUrl ->
+                                    browserWebView.post {
+                                        val pageUrl = browserWebView.url.orEmpty()
+                                        val recentUserTouch = lastUserTouchAt > 0L &&
+                                            SystemClock.uptimeMillis() - lastUserTouchAt <= 8_000L
+                                        if (recentUserTouch && activeTabId == tabId && !isOrbitYoutube(pageUrl) && !isOrbitYoutube(mediaUrl)) {
+                                            latestOnPlayDirectMedia(mediaUrl)
+                                        }
+                                    }
+                                },
+                                "HiBrowserNative",
+                            )
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                             webChromeClient = object : WebChromeClient() {
                                 override fun onProgressChanged(view: WebView, progress: Int) {
@@ -602,7 +669,16 @@ fun HiBrowserScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val uri = request.url
-                                    if (uri.scheme == "http" || uri.scheme == "https") return false
+                                    if (uri.scheme == "http" || uri.scheme == "https") {
+                                        if (request.isForMainFrame && !isOrbitYoutube(uri.toString())) {
+                                            val stream = StreamUrlClassifier.classify(uri.toString())
+                                            if (stream.isPlayableInHiPlayer && !stream.requiresWebResolution) {
+                                                latestOnPlayDirectMedia(uri.toString())
+                                                return true
+                                            }
+                                        }
+                                        return false
+                                    }
                                     if (uri.scheme in setOf("mailto", "tel", "sms")) {
                                         runCatching { viewContext.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
                                     }
@@ -636,6 +712,7 @@ fun HiBrowserScreen(
                                     if (!HiBrowserDocumentScripts.isSupported()) {
                                         if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
                                         if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
+                                        if (!isOrbitYoutube(url)) view.evaluateJavascript(HI_BROWSER_VIDEO_HOOK_SCRIPT, null)
                                     }
                                 }
                                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -758,11 +835,76 @@ fun HiBrowserScreen(
 private fun disposeOrbitWebView(webView: WebView) {
     HiBrowserDocumentScripts.remove(webView)
     runCatching {
+        webView.removeJavascriptInterface("HiBrowserNative")
         webView.stopLoading()
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
     }
 }
+
+private class HiBrowserVideoBridge(private val onPlay: (String) -> Unit) {
+    @JavascriptInterface
+    fun playVideo(rawUrl: String?) {
+        val value = rawUrl?.trim()?.takeIf(String::isNotBlank) ?: return
+        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return
+        if (uri.scheme in setOf("http", "https") && !uri.host.isNullOrBlank() && !isOrbitYoutube(value)) {
+            onPlay(value)
+        }
+    }
+}
+
+private const val HI_BROWSER_VIDEO_DETECT_SCRIPT = """
+(function(){
+  function sourceFor(video){
+    var source=video.currentSrc||video.src||Array.from(video.querySelectorAll('source[src]')).map(function(s){return s.src;}).find(Boolean)||'';
+    if(/^https?:\/\//i.test(source)) return source;
+    if(/^(blob:|data:)/i.test(source)) return window.location.href;
+    return '';
+  }
+  var video=Array.from(document.querySelectorAll('video')).find(function(item){return !!sourceFor(item);});
+  return video?sourceFor(video):'';
+})()
+"""
+
+private const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
+(function(){
+  var host=(window.location.hostname||'').toLowerCase();
+  if(host==='youtu.be'||/(^|\.)youtube(?:-nocookie)?\.com$/.test(host)) return;
+  if(window.__hiBrowserNativeVideoHooked) return;
+  window.__hiBrowserNativeVideoHooked=true;
+  function sourceFor(video){
+    var source=video.currentSrc||video.src||Array.from(video.querySelectorAll('source[src]')).map(function(s){return s.src;}).find(Boolean)||'';
+    if(/^https?:\/\//i.test(source)) return source;
+    return '';
+  }
+  function isYoutubeUrl(value){
+    try{
+      var sourceHost=new URL(value).hostname.toLowerCase();
+      return sourceHost==='youtu.be'||sourceHost==='youtube.com'||sourceHost.endsWith('.youtube.com')||sourceHost==='youtube-nocookie.com'||sourceHost.endsWith('.youtube-nocookie.com');
+    }catch(e){return false;}
+  }
+  function requestNative(video){
+    if(video.__hiBrowserHandoffSent) return;
+    var source=sourceFor(video);
+    if(!source||isYoutubeUrl(source)||!window.HiBrowserNative||typeof window.HiBrowserNative.playVideo!=='function') return;
+    video.__hiBrowserHandoffSent=true;
+    try{video.pause();}catch(e){}
+    try{window.HiBrowserNative.playVideo(source);}catch(e){}
+  }
+  function hook(video){
+    if(video.__hiBrowserNativeHooked) return;
+    video.__hiBrowserNativeHooked=true;
+    video.addEventListener('play',function(){requestNative(video);},true);
+    video.addEventListener('click',function(event){
+      if(event.isTrusted&&video.paused) requestNative(video);
+    },true);
+  }
+  function scan(){document.querySelectorAll('video').forEach(hook);}
+  var observer=new MutationObserver(scan);
+  function install(){scan();if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});}
+  if(document.documentElement) install(); else document.addEventListener('DOMContentLoaded',install,{once:true});
+})()
+"""
 
 @SuppressLint("SetJavaScriptEnabled")
 private fun injectOrbitAsset(webView: WebView, context: Context, name: String) {
