@@ -36,8 +36,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -57,7 +61,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -90,7 +95,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
@@ -117,6 +124,13 @@ private data class OrbitBrowserTab(
 )
 
 private enum class OrbitEntryList { BOOKMARKS, HISTORY }
+
+private data class BrowserQuickLink(
+    val label: String,
+    val url: String?,
+    val icon: ImageVector,
+    val tint: Color,
+)
 
 private object HiBrowserDocumentScripts {
     private val handlers = WeakHashMap<WebView, MutableList<ScriptHandler>>()
@@ -201,6 +215,7 @@ fun HiBrowserScreen(
     var rendererGone by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showTabsDialog by remember { mutableStateOf(false) }
+    var showDownloadsDialog by remember { mutableStateOf(false) }
     var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
     var entriesVersion by remember { mutableIntStateOf(0) }
     val downloadsActive = downloads.any { it.isActive }
@@ -358,6 +373,13 @@ fun HiBrowserScreen(
                 onProviderChange = { searchProvider = it },
                 onSearch = { loadAddress(address) },
                 onManageTabs = { showTabsDialog = true },
+                onVisitWebsite = { loadAddress(it) },
+                onOpenBookmarks = { entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
+                onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
+                onOpenDownloads = { showDownloadsDialog = true },
+                tabCount = tabs.size,
+                bookmarks = store.bookmarks(),
+                recentPages = store.history(),
                 privateTab = activeTab?.privateTab == true,
                 adBlockEnabled = store.adBlock,
             )
@@ -383,6 +405,7 @@ fun HiBrowserScreen(
                         focusedBorderColor = palette.primary, unfocusedBorderColor = palette.surfaceBorder,
                         focusedContainerColor = palette.surfaceElevated, unfocusedContainerColor = palette.surfaceElevated,
                     ),
+                    shape = RoundedCornerShape(15.dp),
                     modifier = Modifier.weight(1f),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { loadAddress(address) }),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
@@ -432,9 +455,14 @@ fun HiBrowserScreen(
                                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
                             }
                         })
-                        DropdownMenuItem(text = { Text("Downloads") }, onClick = {
+                        DropdownMenuItem(text = { Text("Downloads") }, onClick = { menuExpanded = false; showDownloadsDialog = true })
+                        DropdownMenuItem(text = { Text("Download current URL") }, onClick = {
                             menuExpanded = false
-                            runCatching { context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
+                            BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
+                        })
+                        DropdownMenuItem(text = { Text("Play link in Hi Player") }, onClick = {
+                            menuExpanded = false
+                            onPlayDirectMedia(currentUrl)
                         })
                         DropdownMenuItem(text = { Text("Close tab") }, onClick = {
                             menuExpanded = false
@@ -458,27 +486,22 @@ fun HiBrowserScreen(
                 IconButton(onClick = { showBrowserHome() }) {
                     Icon(Icons.Default.Home, contentDescription = "Browser home", tint = palette.textSecondary)
                 }
-                Text(
-                    text = (if (activeTab?.privateTab == true) "Private • " else "") + pageTitle,
-                    color = palette.textSecondary, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = (if (activeTab?.privateTab == true) "Private • " else "") + pageTitle,
+                        color = palette.textPrimary, fontSize = 11.sp, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = Uri.parse(currentUrl).host.orEmpty(),
+                        color = palette.textTertiary, fontSize = 9.sp, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 IconButton(onClick = { if (currentUrl.isNotBlank()) runCatching {
                     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
                 } }) { Icon(Icons.Default.Share, contentDescription = "Share", tint = palette.textPrimary) }
-                Button(
-                    onClick = { onPlayDirectMedia(currentUrl) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                    enabled = currentUrl.startsWith("http://") || currentUrl.startsWith("https://"),
-                ) {
-                    Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.height(16.dp))
-                    Spacer(Modifier.width(4.dp)); Text("Play link", fontSize = 11.sp)
-                }
-                IconButton(onClick = { BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "") }) {
-                    Icon(Icons.Default.Download, contentDescription = "Download", tint = palette.textPrimary)
-                }
             }
-            BrowserDownloadPanel(downloads = downloads, onClearCompleted = BrowserDownloads::clearCompleted)
         }
 
         if (rendererGone) {
@@ -588,6 +611,18 @@ fun HiBrowserScreen(
         }
     }
 
+    if (showDownloadsDialog) {
+        BrowserDownloadsDialog(
+            downloads = downloads,
+            onClearCompleted = BrowserDownloads::clearCompleted,
+            onDismiss = { showDownloadsDialog = false },
+            onOpenSystemDownloads = {
+                showDownloadsDialog = false
+                runCatching { context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
+            },
+        )
+    }
+
     if (showTabsDialog) {
         AlertDialog(
             onDismissRequest = { showTabsDialog = false },
@@ -683,6 +718,13 @@ private fun BrowserStartPage(
     onProviderChange: (BrowserSearchProvider) -> Unit,
     onSearch: () -> Unit,
     onManageTabs: () -> Unit,
+    onVisitWebsite: (String) -> Unit,
+    onOpenBookmarks: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    tabCount: Int,
+    bookmarks: List<OrbitBrowserEntry>,
+    recentPages: List<OrbitBrowserEntry>,
     privateTab: Boolean,
     adBlockEnabled: Boolean,
 ) {
@@ -690,96 +732,234 @@ private fun BrowserStartPage(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Icon(
-            imageVector = Icons.Default.Language,
-            contentDescription = null,
-            tint = palette.primary,
-            modifier = Modifier.size(48.dp),
-        )
-        Spacer(Modifier.height(14.dp))
-        Text("Hi Browser", color = palette.textPrimary, fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-        Spacer(Modifier.height(5.dp))
-        Text(
-            "Search the web or enter a website address",
-            color = palette.textSecondary,
-            fontSize = 13.sp,
-        )
-        TextButton(onClick = onManageTabs) { Text("Tabs · New private tab", color = palette.primary) }
-        if (privateTab) {
-            Text(
-                "This tab won't be added to history. WebView cookies may still be shared with regular tabs.",
-                color = palette.textTertiary, fontSize = 10.sp, lineHeight = 13.sp,
-            )
-        }
-        Spacer(Modifier.height(24.dp))
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-            trailingIcon = {
-                IconButton(onClick = onSearch) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = "Search", tint = palette.primary)
-                }
-            },
-            placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 13.sp) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = palette.textPrimary,
-                unfocusedTextColor = palette.textPrimary,
-                focusedBorderColor = palette.primary,
-                unfocusedBorderColor = palette.surfaceBorder,
-                focusedContainerColor = palette.surfaceElevated,
-                unfocusedContainerColor = palette.surfaceElevated,
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSearch() }),
-            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                imeAction = androidx.compose.ui.text.input.ImeAction.Search,
-            ),
-        )
-        Spacer(Modifier.height(14.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            BrowserSearchProvider.entries.forEach { option ->
-                FilterChip(
-                    selected = option == provider,
-                    onClick = { onProviderChange(option) },
-                    label = { Text(option.displayName, fontSize = 11.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = palette.primary,
-                        selectedLabelColor = Color.White,
-                        containerColor = palette.surfaceElevated,
-                        labelColor = palette.textPrimary,
-                    ),
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(palette.primary.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(25.dp))
+                }
+                Spacer(Modifier.width(11.dp))
+                Column {
+                    Text("Hi Browser", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Browse at your pace", color = palette.textSecondary, fontSize = 11.sp)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onManageTabs) { Text("$tabCount tabs", color = palette.textPrimary, fontSize = 11.sp) }
+                IconButton(onClick = onOpenDownloads) {
+                    Icon(Icons.Default.Download, contentDescription = "Downloads", tint = palette.textSecondary)
+                }
             }
         }
-        Spacer(Modifier.height(20.dp))
-        Button(
-            onClick = onSearch,
-            enabled = query.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-        ) {
-            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.height(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Search with ${provider.displayName}")
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                if (privateTab) "A private space to browse." else "The web, your way.",
+                color = palette.textPrimary,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text("Search or enter a website address", color = palette.textSecondary, fontSize = 13.sp)
         }
-        Spacer(Modifier.height(14.dp))
-        Text(
-            (if (adBlockEnabled) "Common third-party ad and tracker hosts are blocked. " else "Ad blocking is off. ") +
-                "Website sign-in, access, payments, and protected playback remain controlled by each site.",
-            color = palette.textTertiary,
-            fontSize = 10.5.sp,
-            lineHeight = 14.sp,
-        )
+
+        if (privateTab) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        "This tab is not saved to history. Site cookies may still be shared with regular tabs.",
+                        color = palette.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
+                    trailingIcon = {
+                        IconButton(onClick = onSearch) {
+                            Icon(Icons.Default.ArrowForward, contentDescription = "Go", tint = palette.primary)
+                        }
+                    },
+                    placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(15.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary,
+                        focusedBorderColor = palette.primary,
+                        unfocusedBorderColor = palette.surfaceBorder,
+                        focusedContainerColor = palette.surfaceElevated,
+                        unfocusedContainerColor = palette.surfaceElevated,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSearch() }),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
+                    ),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                ) {
+                    BrowserSearchProvider.entries.forEach { option ->
+                        FilterChip(
+                            selected = option == provider,
+                            onClick = { onProviderChange(option) },
+                            label = { Text(option.displayName, fontSize = 10.sp, maxLines = 1) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = palette.primary,
+                                selectedLabelColor = Color.White,
+                                containerColor = palette.surfaceElevated,
+                                labelColor = palette.textPrimary,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("Quick access", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            val links = listOf(
+                BrowserQuickLink("Google", "https://www.google.com", Icons.Default.Search, Color(0xFF4285F4)),
+                BrowserQuickLink("YouTube", "https://m.youtube.com", Icons.Default.PlayCircle, Color(0xFFFF3030)),
+                BrowserQuickLink("Wikipedia", "https://www.wikipedia.org", Icons.Default.Language, palette.primary),
+                BrowserQuickLink("Bookmarks", null, Icons.Default.Bookmark, Color(0xFFF2A900)),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                links.forEach { link ->
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { link.url?.let(onVisitWebsite) ?: onOpenBookmarks() },
+                        shape = RoundedCornerShape(17.dp),
+                        colors = CardDefaults.cardColors(containerColor = palette.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 11.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.size(34.dp).clip(CircleShape).background(link.tint.copy(alpha = 0.13f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(link.icon, contentDescription = null, tint = link.tint, modifier = Modifier.size(19.dp))
+                            }
+                            Text(link.label, color = palette.textSecondary, fontSize = 9.5.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+
+        val recent = (bookmarks + recentPages).distinctBy { it.url }.take(3)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("Pick up where you left off", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = onOpenHistory) { Text("History", color = palette.primary, fontSize = 10.sp) }
+            }
+            if (recent.isEmpty()) {
+                Text("Your bookmarks and recent pages will appear here.", color = palette.textTertiary, fontSize = 11.sp)
+            } else {
+                recent.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(palette.surface)
+                            .clickable { onVisitWebsite(item.url) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Language, contentDescription = null, tint = palette.textTertiary, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(item.title, color = palette.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(Uri.parse(item.url).host.orEmpty(), color = palette.textTertiary, fontSize = 9.sp, maxLines = 1)
+                        }
+                        Icon(Icons.Default.ArrowForward, contentDescription = "Open ${item.title}", tint = palette.textTertiary, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+        ) {
+            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off", color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Common third-party ad and tracker requests", color = palette.textSecondary, fontSize = 9.5.sp)
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun BrowserDownloadsDialog(
+    downloads: List<BrowserDownload>,
+    onClearCompleted: () -> Unit,
+    onDismiss: () -> Unit,
+    onOpenSystemDownloads: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Downloads") },
+        text = {
+            if (downloads.isEmpty()) {
+                Text("Your browser downloads will appear here.")
+            } else {
+                BrowserDownloadPanel(downloads = downloads, onClearCompleted = onClearCompleted)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = { TextButton(onClick = onOpenSystemDownloads) { Text("Android downloads") } },
+    )
 }
 
 @Composable
