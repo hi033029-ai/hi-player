@@ -20,11 +20,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
@@ -59,6 +55,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -74,6 +71,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -94,7 +92,6 @@ import androidx.webkit.WebViewFeature
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
@@ -104,6 +101,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONObject
+import org.json.JSONArray
 import org.json.JSONTokener
 import com.example.ui.theme.LocalHiPalette
 import kotlinx.coroutines.delay
@@ -200,6 +198,10 @@ fun HiBrowserScreen(
     val palette = LocalHiPalette.current
     val store = remember(context) { OrbitBrowserStore(context) }
     val downloads by BrowserDownloads.downloads.collectAsState()
+    var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
+    var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
+    var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
+    var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
     var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
     val latestTabs by rememberUpdatedState(tabs)
     var activeTabId by rememberSaveable { mutableIntStateOf(1) }
@@ -214,6 +216,7 @@ fun HiBrowserScreen(
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var showBrowserSettings by remember { mutableStateOf(false) }
     var showTabsDialog by remember { mutableStateOf(false) }
     var showDownloadsDialog by remember { mutableStateOf(false) }
     var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
@@ -308,7 +311,25 @@ fun HiBrowserScreen(
 
     fun setDarkMode(enabled: Boolean) {
         store.darkMode = enabled
+        darkModeEnabled = enabled
         tabs.forEach { tab -> tab.webView?.let { applyOrbitDarkMode(it, enabled) } }
+    }
+
+    fun setAdBlockEnabled(enabled: Boolean) {
+        store.adBlock = enabled
+        adBlockEnabled = enabled
+        webView?.reload()
+    }
+
+    fun updateFilterLists() {
+        Toast.makeText(context, "Updating filter lists…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val ok = OrbitBrowserFilterEngine.update(context)
+            android.os.Handler(context.mainLooper).post {
+                Toast.makeText(context, if (ok) "Updated ${OrbitBrowserFilterEngine.ruleCount()} rules" else "Filter update failed", Toast.LENGTH_SHORT).show()
+                webView?.reload()
+            }
+        }.start()
     }
 
     fun refreshDocumentScripts() {
@@ -354,7 +375,10 @@ fun HiBrowserScreen(
         onDispose { latestTabs.mapNotNull { it.webView }.forEach(::disposeOrbitWebView) }
     }
 
-    LaunchedEffect(context) { OrbitBrowserFilterEngine.load(context) }
+    LaunchedEffect(context) {
+        OrbitBrowserFilterEngine.load(context)
+        BrowserDownloads.restore(context)
+    }
     LaunchedEffect(downloadsActive) {
         while (downloadsActive) {
             BrowserDownloads.refresh(context)
@@ -377,11 +401,12 @@ fun HiBrowserScreen(
                 onOpenBookmarks = { entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
                 onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
                 onOpenDownloads = { showDownloadsDialog = true },
+                onOpenSettings = { showBrowserSettings = true },
                 tabCount = tabs.size,
                 bookmarks = store.bookmarks(),
                 recentPages = store.history(),
                 privateTab = activeTab?.privateTab == true,
-                adBlockEnabled = store.adBlock,
+                adBlockEnabled = adBlockEnabled,
             )
         } else {
             Row(
@@ -413,61 +438,88 @@ fun HiBrowserScreen(
                 IconButton(onClick = { webView?.reload() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = palette.textPrimary)
                 }
+                Text(
+                    text = tabs.size.toString(), color = palette.textPrimary, fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 10.dp).clickable { showTabsDialog = true },
+                )
                 Box {
-                    Text(
-                        text = tabs.size.toString(), color = palette.textPrimary, fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 10.dp).clickable { showTabsDialog = true },
-                    )
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(text = { Text("New tab") }, onClick = { menuExpanded = false; openNewTab(false) })
-                        DropdownMenuItem(text = { Text("New private tab") }, onClick = { menuExpanded = false; openNewTab(true) })
-                        DropdownMenuItem(text = { Text("Tabs (${tabs.size})") }, onClick = { menuExpanded = false; showTabsDialog = true })
+                        DropdownMenuItem(
+                            text = { Text("New tab") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            onClick = { menuExpanded = false; openNewTab(false) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New private tab") },
+                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
+                            onClick = { menuExpanded = false; openNewTab(true) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Tabs (${tabs.size})") },
+                            leadingIcon = { Icon(Icons.Default.MoreVert, contentDescription = null) },
+                            onClick = { menuExpanded = false; showTabsDialog = true },
+                        )
                         DropdownMenuItem(
                             text = { Text(if (store.isBookmarked(currentUrl)) "Remove bookmark" else "Add bookmark") },
-                            onClick = { menuExpanded = false; addBookmark() },
                             leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+                            onClick = { menuExpanded = false; addBookmark() },
                         )
-                        DropdownMenuItem(text = { Text("Bookmarks") }, onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ })
-                        DropdownMenuItem(text = { Text("History") }, onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ })
-                        DropdownMenuItem(text = { Text("Reader mode") }, onClick = { menuExpanded = false; readCurrentPage() })
-                        DropdownMenuItem(text = { Text(if (store.darkMode) "Light mode" else "Dark mode") }, onClick = { menuExpanded = false; setDarkMode(!store.darkMode) })
-                        DropdownMenuItem(text = { Text(if (activeTab?.desktop == true) "Mobile site" else "Desktop site") }, onClick = { menuExpanded = false; toggleDesktopSite() })
-                        DropdownMenuItem(text = { Text(if (store.adBlock) "Turn ad blocker off" else "Turn ad blocker on") }, onClick = { menuExpanded = false; store.adBlock = !store.adBlock; webView?.reload() })
-                        DropdownMenuItem(text = { Text(if (store.pageSkipper) "Turn page skipper off" else "Turn page skipper on") }, onClick = { menuExpanded = false; store.pageSkipper = !store.pageSkipper; refreshDocumentScripts() })
-                        DropdownMenuItem(text = { Text(if (store.youtubeAdSkip) "Turn YouTube ad skip off" else "Turn YouTube ad skip on") }, onClick = { menuExpanded = false; store.youtubeAdSkip = !store.youtubeAdSkip; refreshDocumentScripts() })
-                        DropdownMenuItem(text = { Text("Update filter lists") }, onClick = {
-                            menuExpanded = false
-                            Toast.makeText(context, "Updating filter lists…", Toast.LENGTH_SHORT).show()
-                            Thread {
-                                val ok = OrbitBrowserFilterEngine.update(context)
-                                android.os.Handler(context.mainLooper).post {
-                                    Toast.makeText(context, if (ok) "Updated ${OrbitBrowserFilterEngine.ruleCount()} rules" else "Filter update failed", Toast.LENGTH_SHORT).show()
-                                    webView?.reload()
+                        DropdownMenuItem(
+                            text = { Text("Bookmarks") },
+                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+                            onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("History") },
+                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                            onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reader mode") },
+                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
+                            onClick = { menuExpanded = false; readCurrentPage() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Downloads") },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                            onClick = { menuExpanded = false; showDownloadsDialog = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Download current URL") },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Browser settings") },
+                            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                            onClick = { menuExpanded = false; showBrowserSettings = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share page") },
+                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                if (currentUrl.isNotBlank()) runCatching {
+                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
                                 }
-                            }.start()
-                        })
-                        DropdownMenuItem(text = { Text("Share page") }, onClick = {
-                            menuExpanded = false
-                            if (currentUrl.isNotBlank()) runCatching {
-                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
-                            }
-                        })
-                        DropdownMenuItem(text = { Text("Downloads") }, onClick = { menuExpanded = false; showDownloadsDialog = true })
-                        DropdownMenuItem(text = { Text("Download current URL") }, onClick = {
-                            menuExpanded = false
-                            BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
-                        })
-                        DropdownMenuItem(text = { Text("Play link in Hi Player") }, onClick = {
-                            menuExpanded = false
-                            onPlayDirectMedia(currentUrl)
-                        })
-                        DropdownMenuItem(text = { Text("Close tab") }, onClick = {
-                            menuExpanded = false
-                            closeTab(activeTabId)
-                        })
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Play link in Hi Player") },
+                            leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
+                            onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Close tab") },
+                            leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                            onClick = { menuExpanded = false; closeTab(activeTabId) },
+                        )
                     }
                 }
             }
@@ -614,12 +666,37 @@ fun HiBrowserScreen(
     if (showDownloadsDialog) {
         BrowserDownloadsDialog(
             downloads = downloads,
-            onClearCompleted = BrowserDownloads::clearCompleted,
+            onCancel = { BrowserDownloads.cancel(context, it) },
+            onRetry = { BrowserDownloads.retry(context, it) },
+            onRemove = { BrowserDownloads.removeFromList(context, it) },
+            onPlayDownload = { BrowserDownloads.playInPlayer(context, it, onPlayDirectMedia) },
+            onClearCompleted = { BrowserDownloads.clearCompleted(context) },
             onDismiss = { showDownloadsDialog = false },
-            onOpenSystemDownloads = {
-                showDownloadsDialog = false
-                runCatching { context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) }
+        )
+    }
+
+    if (showBrowserSettings) {
+        BrowserSettingsDialog(
+            darkMode = darkModeEnabled,
+            adBlock = adBlockEnabled,
+            pageSkipper = pageSkipperEnabled,
+            youtubeAdSkip = youtubeAdSkipEnabled,
+            desktopSite = activeTab?.desktop == true,
+            onDarkModeChange = { setDarkMode(it) },
+            onAdBlockChange = { setAdBlockEnabled(it) },
+            onPageSkipperChange = { enabled ->
+                store.pageSkipper = enabled
+                pageSkipperEnabled = enabled
+                refreshDocumentScripts()
             },
+            onYoutubeAdSkipChange = { enabled ->
+                store.youtubeAdSkip = enabled
+                youtubeAdSkipEnabled = enabled
+                refreshDocumentScripts()
+            },
+            onDesktopSiteChange = { enabled -> if (enabled != (activeTab?.desktop == true)) toggleDesktopSite() },
+            onUpdateFilterLists = { updateFilterLists() },
+            onDismiss = { showBrowserSettings = false },
         )
     }
 
@@ -722,6 +799,7 @@ private fun BrowserStartPage(
     onOpenBookmarks: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenSettings: () -> Unit,
     tabCount: Int,
     bookmarks: List<OrbitBrowserEntry>,
     recentPages: List<OrbitBrowserEntry>,
@@ -761,6 +839,9 @@ private fun BrowserStartPage(
                 TextButton(onClick = onManageTabs) { Text("$tabCount tabs", color = palette.textPrimary, fontSize = 11.sp) }
                 IconButton(onClick = onOpenDownloads) {
                     Icon(Icons.Default.Download, contentDescription = "Downloads", tint = palette.textSecondary)
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Browser settings", tint = palette.textSecondary)
                 }
             }
         }
@@ -941,122 +1022,177 @@ private fun BrowserStartPage(
 }
 
 @Composable
-private fun BrowserDownloadsDialog(
-    downloads: List<BrowserDownload>,
-    onClearCompleted: () -> Unit,
+private fun BrowserSettingsDialog(
+    darkMode: Boolean,
+    adBlock: Boolean,
+    pageSkipper: Boolean,
+    youtubeAdSkip: Boolean,
+    desktopSite: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
+    onAdBlockChange: (Boolean) -> Unit,
+    onPageSkipperChange: (Boolean) -> Unit,
+    onYoutubeAdSkipChange: (Boolean) -> Unit,
+    onDesktopSiteChange: (Boolean) -> Unit,
+    onUpdateFilterLists: () -> Unit,
     onDismiss: () -> Unit,
-    onOpenSystemDownloads: () -> Unit,
 ) {
+    val palette = LocalHiPalette.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Downloads") },
+        title = { Text("Browser settings") },
         text = {
-            if (downloads.isEmpty()) {
-                Text("Your browser downloads will appear here.")
-            } else {
-                BrowserDownloadPanel(downloads = downloads, onClearCompleted = onClearCompleted)
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("APPEARANCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                BrowserSettingsSwitchRow("Dark theme", "Use Hi Browser's dark page styling", darkMode, onDarkModeChange)
+                Text("PRIVACY AND CONTENT", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common third-party requests", adBlock, onAdBlockChange)
+                BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
+                BrowserSettingsSwitchRow("YouTube ad skip", "Try to skip supported YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
+                Text("SITE PREFERENCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                BrowserSettingsSwitchRow("Desktop site", "Request desktop layout for this tab", desktopSite, onDesktopSiteChange)
+                TextButton(onClick = onUpdateFilterLists) { Text("Update filter lists") }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onOpenSystemDownloads) { Text("Android downloads") } },
     )
 }
 
 @Composable
-private fun BrowserDownloadPanel(
-    downloads: List<BrowserDownload>,
-    onClearCompleted: () -> Unit,
+private fun BrowserSettingsSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
-    if (downloads.isEmpty()) return
     val palette = LocalHiPalette.current
-    val active = downloads.any { it.isActive }
-    val downloadPulse by rememberInfiniteTransition(label = "downloadPulse").animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(700), repeatMode = RepeatMode.Reverse),
-        label = "downloadPulseAlpha",
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(palette.surfaceElevated)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        downloads.takeLast(3).forEach { download ->
-            val fraction = if (download.totalBytes > 0) {
-                (download.downloadedBytes.toFloat() / download.totalBytes.toFloat()).coerceIn(0f, 1f)
-            } else 0f
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = when (download.status) {
-                        BrowserDownloadStatus.COMPLETED -> Icons.Default.CheckCircle
-                        BrowserDownloadStatus.FAILED -> Icons.Default.ErrorOutline
-                        else -> Icons.Default.Download
-                    },
-                    contentDescription = null,
-                    tint = when (download.status) {
-                        BrowserDownloadStatus.FAILED -> Color(0xFFEF4444)
-                        BrowserDownloadStatus.COMPLETED -> Color(0xFF22C55E)
-                        else -> palette.primary
-                    },
-                    modifier = Modifier.graphicsLayer(
-                        alpha = if (download.status == BrowserDownloadStatus.RUNNING) downloadPulse else 1f,
-                    ),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = download.fileName,
-                        color = palette.textPrimary,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = when (download.status) {
-                            BrowserDownloadStatus.RUNNING -> "${formatBytes(download.downloadedBytes)} of ${formatBytes(download.totalBytes)}  •  ${formatBytes(download.speedBytesPerSecond)}/s"
-                            BrowserDownloadStatus.PAUSED -> "Paused • ${formatBytes(download.downloadedBytes)} downloaded"
-                            BrowserDownloadStatus.COMPLETED -> "Download complete • ${formatBytes(download.downloadedBytes)}"
-                            BrowserDownloadStatus.FAILED -> "Download failed"
-                        },
-                        color = palette.textSecondary,
-                        fontSize = 10.5.sp,
-                        maxLines = 1,
-                    )
-                }
-                if (download.status == BrowserDownloadStatus.RUNNING) {
-                    Text(
-                        text = if (download.totalBytes > 0) "${(fraction * 100).toInt()}%" else "LIVE",
-                        color = palette.primary,
-                        fontSize = 11.sp,
-                    )
-                }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+            Text(title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(description, color = palette.textSecondary, fontSize = 10.sp, lineHeight = 14.sp)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun BrowserDownloadsDialog(
+    downloads: List<BrowserDownload>,
+    onCancel: (Long) -> Unit,
+    onRetry: (Long) -> Unit,
+    onRemove: (Long) -> Unit,
+    onPlayDownload: (Long) -> Unit,
+    onClearCompleted: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Downloads")
+                Text("Saved to Android/Downloads", color = palette.textSecondary, fontSize = 11.sp)
             }
-            if (download.status == BrowserDownloadStatus.RUNNING || download.status == BrowserDownloadStatus.PAUSED) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        color = palette.primary,
-                        trackColor = palette.surfaceBorder,
-                        modifier = Modifier.fillMaxWidth().height(5.dp),
-                    )
-                    if (download.status == BrowserDownloadStatus.RUNNING && fraction == 0f) {
-                        LinearProgressIndicator(
-                            color = palette.primary.copy(alpha = 0.55f),
-                            trackColor = Color.Transparent,
-                            modifier = Modifier.fillMaxWidth().height(5.dp),
-                        )
+        },
+        text = {
+            if (downloads.isEmpty()) {
+                Text("Your browser downloads will appear here.", color = palette.textSecondary)
+            } else {
+                Column {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                        itemsIndexed(downloads, key = { _, download -> download.id }) { _, download ->
+                            BrowserDownloadRow(
+                                download = download,
+                                onCancel = { onCancel(download.id) },
+                                onRetry = { onRetry(download.id) },
+                                onRemove = { onRemove(download.id) },
+                                onPlay = { onPlayDownload(download.id) },
+                            )
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.surfaceBorder))
+                        }
+                    }
+                    if (downloads.none { it.isActive }) {
+                        TextButton(onClick = onClearCompleted, modifier = Modifier.align(Alignment.End)) {
+                            Text("Clear completed")
+                        }
                     }
                 }
             }
-        }
-        if (!active) {
-            Text(
-                text = "Clear download status",
-                color = palette.primary,
-                fontSize = 11.sp,
-                modifier = Modifier.align(Alignment.End).clickable(onClick = onClearCompleted),
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun BrowserDownloadRow(
+    download: BrowserDownload,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit,
+    onRemove: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    val fraction = if (download.totalBytes > 0L) {
+        (download.downloadedBytes.toFloat() / download.totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val isVideo = download.mimeType?.startsWith("video/") == true ||
+        download.fileName.substringAfterLast('.', "").lowercase() in setOf("mp4", "m4v", "mkv", "webm", "mov", "avi", "3gp")
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = when (download.status) {
+                    BrowserDownloadStatus.COMPLETED -> Icons.Default.CheckCircle
+                    BrowserDownloadStatus.FAILED -> Icons.Default.ErrorOutline
+                    else -> Icons.Default.Download
+                },
+                contentDescription = null,
+                tint = when (download.status) {
+                    BrowserDownloadStatus.FAILED -> Color(0xFFEF4444)
+                    BrowserDownloadStatus.COMPLETED -> Color(0xFF22A06B)
+                    else -> palette.primary
+                },
             )
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text(download.fileName, color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = when (download.status) {
+                        BrowserDownloadStatus.RUNNING -> "${formatBytes(download.downloadedBytes)} of ${formatBytes(download.totalBytes)} • ${formatBytes(download.speedBytesPerSecond)}/s"
+                        BrowserDownloadStatus.PAUSED -> "Paused by Android • ${formatBytes(download.downloadedBytes)} downloaded"
+                        BrowserDownloadStatus.COMPLETED -> "Saved to Downloads • ${formatBytes(download.downloadedBytes)}"
+                        BrowserDownloadStatus.FAILED -> "Download failed"
+                    },
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                )
+            }
+            if (download.status == BrowserDownloadStatus.RUNNING && download.totalBytes > 0L) {
+                Text("${(fraction * 100).toInt()}%", color = palette.primary, fontSize = 10.sp)
+            }
+        }
+        if (download.isActive) {
+            LinearProgressIndicator(
+                progress = { fraction },
+                color = palette.primary,
+                trackColor = palette.surfaceBorder,
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            when (download.status) {
+                BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.PAUSED -> TextButton(onClick = onCancel) { Text("Cancel") }
+                BrowserDownloadStatus.FAILED -> {
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                    TextButton(onClick = onRemove) { Text("Remove") }
+                }
+                BrowserDownloadStatus.COMPLETED -> {
+                    if (isVideo) TextButton(onClick = onPlay) { Text("Play in Hi Player") }
+                    TextButton(onClick = onRemove) { Text("Remove") }
+                }
+            }
         }
     }
 }
@@ -1086,6 +1222,21 @@ private object BrowserDownloads {
     private val _downloads = MutableStateFlow<List<BrowserDownload>>(emptyList())
     val downloads = _downloads.asStateFlow()
     private val samples = mutableMapOf<Long, DownloadSample>()
+    private var restoreAttempted = false
+
+    fun restore(context: Context) {
+        if (restoreAttempted) {
+            refresh(context)
+            return
+        }
+        restoreAttempted = true
+        val savedIds = runCatching {
+            val json = JSONArray(context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREFS_IDS, "[]"))
+            (0 until json.length()).mapNotNull { json.optLong(it).takeIf { id -> id > 0L } }
+        }.getOrDefault(emptyList())
+        _downloads.value = savedIds.distinct().map { BrowserDownload(id = it, fileName = "Download") }
+        refresh(context)
+    }
 
     fun enqueue(
         context: Context,
@@ -1093,6 +1244,7 @@ private object BrowserDownloads {
         userAgent: String,
         contentDisposition: String,
         mimeType: String? = null,
+        fileNameOverride: String? = null,
     ) {
         val uri = Uri.parse(rawUrl)
         if (uri.scheme !in setOf("http", "https")) {
@@ -1100,7 +1252,7 @@ private object BrowserDownloads {
             return
         }
         runCatching {
-            val filename = URLUtil.guessFileName(rawUrl, contentDisposition, mimeType)
+            val filename = (fileNameOverride ?: URLUtil.guessFileName(rawUrl, contentDisposition, mimeType))
                 .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                 .take(120)
             val request = DownloadManager.Request(uri)
@@ -1117,9 +1269,15 @@ private object BrowserDownloads {
             mimeType?.takeIf(String::isNotBlank)?.let(request::setMimeType)
             val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val id = manager.enqueue(request)
-            _downloads.value = _downloads.value + BrowserDownload(id = id, fileName = filename)
+            _downloads.value = _downloads.value + BrowserDownload(
+                id = id,
+                fileName = filename,
+                sourceUrl = rawUrl,
+                mimeType = mimeType,
+            )
+            persistIds(context)
         }.onSuccess {
-            Toast.makeText(context, "Download added to Android Downloads", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Download started • saved to Downloads", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(context, "Could not start this download", Toast.LENGTH_SHORT).show()
         }
@@ -1137,6 +1295,8 @@ private object BrowserDownloads {
                 val bytesColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
                 val totalColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
                 val titleColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                val uriColumn = cursor.getColumnIndex(DownloadManager.COLUMN_URI)
+                val mimeColumn = cursor.getColumnIndex(DownloadManager.COLUMN_MEDIA_TYPE)
                 val now = SystemClock.elapsedRealtime()
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -1161,6 +1321,8 @@ private object BrowserDownloads {
                         totalBytes = cursor.getLong(totalColumn).coerceAtLeast(0L),
                         speedBytesPerSecond = if (status == BrowserDownloadStatus.RUNNING) speed else 0L,
                         status = status,
+                        sourceUrl = if (uriColumn >= 0) cursor.getString(uriColumn) ?: old?.sourceUrl else old?.sourceUrl,
+                        mimeType = if (mimeColumn >= 0) cursor.getString(mimeColumn) ?: old?.mimeType else old?.mimeType,
                     )
                 }
             }
@@ -1170,10 +1332,56 @@ private object BrowserDownloads {
         }
     }
 
-    fun clearCompleted() {
+    fun cancel(context: Context, id: Long) {
+        runCatching { (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(id) }
+        samples.remove(id)
+        _downloads.value = _downloads.value.filterNot { it.id == id }
+        persistIds(context)
+    }
+
+    fun retry(context: Context, id: Long) {
+        val download = _downloads.value.firstOrNull { it.id == id } ?: return
+        val url = download.sourceUrl
+        if (url.isNullOrBlank()) {
+            Toast.makeText(context, "The source link is no longer available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(id) }
+        _downloads.value = _downloads.value.filterNot { it.id == id }
+        samples.remove(id)
+        persistIds(context)
+        enqueue(context, url, "", download.fileName, download.mimeType, fileNameOverride = download.fileName)
+    }
+
+    fun removeFromList(context: Context, id: Long) {
+        _downloads.value = _downloads.value.filterNot { it.id == id }
+        samples.remove(id)
+        persistIds(context)
+    }
+
+    fun playInPlayer(context: Context, id: Long, onPlay: (String) -> Unit) {
+        val uri = runCatching {
+            (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).getUriForDownloadedFile(id)
+        }.getOrNull()
+        if (uri == null) Toast.makeText(context, "The downloaded file is not available", Toast.LENGTH_SHORT).show()
+        else onPlay(uri.toString())
+    }
+
+    fun clearCompleted(context: Context) {
         _downloads.value = _downloads.value.filter { it.isActive }
         samples.keys.retainAll(_downloads.value.map { it.id }.toSet())
+        persistIds(context)
     }
+
+    private fun persistIds(context: Context) {
+        val ids = JSONArray()
+        _downloads.value.forEach { ids.put(it.id) }
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(PREFS_IDS, ids.toString()).apply()
+    }
+
+    private const val PREFS_NAME = "hi_browser_downloads"
+    private const val PREFS_IDS = "download_ids"
 }
 
 private data class DownloadSample(val bytes: Long, val elapsedMs: Long)
@@ -1185,6 +1393,8 @@ private data class BrowserDownload(
     val totalBytes: Long = 0L,
     val speedBytesPerSecond: Long = 0L,
     val status: BrowserDownloadStatus = BrowserDownloadStatus.RUNNING,
+    val sourceUrl: String? = null,
+    val mimeType: String? = null,
 ) {
     val isActive: Boolean get() = status == BrowserDownloadStatus.RUNNING || status == BrowserDownloadStatus.PAUSED
 }
