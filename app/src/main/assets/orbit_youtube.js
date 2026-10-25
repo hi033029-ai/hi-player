@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hi Browser YouTube Ad Skipper
 // @namespace    hi.browser
-// @version      1.0
+// @version      1.1
 // @description  Strips ad data from YouTube player responses, skips leftover ads, hides ad slots
 // @match        *://*.youtube.com/*
 // @run-at       document-start
@@ -64,11 +64,13 @@
   addStyle('ytd-rich-item-renderer:has(ytd-ad-slot-renderer),ytm-rich-item-renderer:has(ad-slot-renderer),' +
     'ytm-item-section-renderer:has(ad-slot-renderer){display:none!important}');
 
-  // ---- 3. Fallback: skip any ad that still plays
+  // ---- 3. Skip any ad that still plays, as soon as the player shows it
   var adState = null;
-  function tick() {
+  var skipSelector = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,' +
+    '.ytp-ad-skip-button-container button,button[class*="skip-ad"],button[class*="ad-skip"]';
+  function check() {
     var p = document.querySelector('.html5-video-player');
-    var v = document.querySelector('video.html5-main-video') || document.querySelector('video');
+    var v = (p && p.querySelector('video')) || document.querySelector('video');
     var showing = !!p && (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting'));
 
     if (showing && v) {
@@ -82,12 +84,11 @@
       adState = null;
     }
 
-    var skip = document.querySelector('.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-ad-skip-button-container button');
+    var skip = document.querySelector(skipSelector);
     if (skip) skip.click();
     var close = document.querySelector('.ytp-ad-overlay-close-button');
     if (close) close.click();
 
-    // "Ad blockers are not allowed" pop-up: remove it and resume the video
     var warn = document.querySelector('ytd-enforcement-message-view-model');
     if (warn) {
       warn.remove();
@@ -95,5 +96,20 @@
       if (v && v.paused) { try { v.play(); } catch (e) {} }
     }
   }
-  setInterval(tick, 250);
+
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    setTimeout(function () { pending = false; check(); }, 0);
+  }
+  try {
+    new MutationObserver(schedule).observe(document.documentElement, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['class']
+    });
+  } catch (e) {}
+  ['loadedmetadata', 'durationchange', 'playing', 'timeupdate'].forEach(function (name) {
+    document.addEventListener(name, schedule, true);
+  });
+  setInterval(check, 500);
 })();

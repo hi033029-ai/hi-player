@@ -1,5 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.DesktopWindows
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
@@ -637,183 +645,153 @@ fun HiBrowserScreen(
     ) {
         if (isInPictureInPicture) {
             // Picture-in-picture shows only the page content.
-        } else if (showStartPage) {
-            BrowserStartPage(
-                query = address,
-                onQueryChange = { address = it },
-                provider = searchProvider,
-                onProviderChange = { searchProvider = it },
-                onSearch = { loadAddress(address) },
-                onManageTabs = { showTabsDialog = true },
-                onVisitWebsite = { loadAddress(it) },
-                onOpenBookmarks = { entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
-                onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
-                onOpenDownloads = { showDownloadsDialog = true },
-                onOpenSettings = { showBrowserSettings = true },
-                onVoiceSearch = { startVoiceSearch() },
-                onScanQr = { startQrScan() },
-                tabCount = tabs.size,
-                bookmarks = store.bookmarks(),
-                recentPages = store.history(),
-                privateTab = activeTab?.privateTab == true,
-                adBlockEnabled = adBlockEnabled,
-            )
         } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 3.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            val onPage = !showStartPage
+            HiBrowserToolbar(
+                address = address,
+                onAddressChange = { address = it },
+                onSubmit = { loadAddress(it) },
+                isPrivate = activeTab?.privateTab == true,
+                isSecure = onPage && currentUrl.startsWith("https://"),
+                isLoading = onPage && loadingProgress in 1..99,
+                showReload = onPage,
+                tabCount = tabs.size,
+                onHome = { showBrowserHome() },
+                onVoiceSearch = { startVoiceSearch() },
+                onReloadOrStop = {
+                    if (loadingProgress in 1..99) {
+                        webView?.stopLoading()
+                        loadingProgress = 100
+                    } else {
+                        webView?.reload()
+                    }
+                },
+                onShowTabs = { showTabsDialog = true },
+                menuExpanded = menuExpanded,
+                onMenuExpandedChange = { menuExpanded = it },
             ) {
-                IconButton(onClick = { if (webView?.canGoBack() == true) webView?.goBack() else showBrowserHome() }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
-                }
-                IconButton(onClick = { if (webView?.canGoForward() == true) webView?.goForward() }) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = "Forward", tint = palette.textPrimary)
-                }
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-                    placeholder = { Text("Search or enter a website", fontSize = 12.sp) },
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceSearch() }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice search", tint = palette.primary)
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary, unfocusedTextColor = palette.textPrimary,
-                        focusedBorderColor = palette.primary, unfocusedBorderColor = palette.surfaceBorder,
-                        focusedContainerColor = palette.surfaceElevated, unfocusedContainerColor = palette.surfaceElevated,
-                    ),
-                    shape = RoundedCornerShape(15.dp),
-                    modifier = Modifier.weight(1f),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { loadAddress(address) }),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
-                )
-                IconButton(onClick = { webView?.reload() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = palette.textPrimary)
-                }
-                Text(
-                    text = tabs.size.toString(), color = palette.textPrimary, fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 10.dp).clickable { showTabsDialog = true },
-                )
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    IconButton(enabled = webView?.canGoBack() == true, onClick = { menuExpanded = false; webView?.goBack() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("New tab") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            onClick = { menuExpanded = false; openNewTab(false) },
+                    IconButton(enabled = webView?.canGoForward() == true, onClick = { menuExpanded = false; webView?.goForward() }) {
+                        Icon(Icons.Default.ArrowForward, contentDescription = "Forward")
+                    }
+                    IconButton(enabled = onPage, onClick = { menuExpanded = false; addBookmark() }) {
+                        Icon(
+                            if (onPage && store.isBookmarked(currentUrl)) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = "Bookmark",
                         )
+                    }
+                    IconButton(onClick = { menuExpanded = false; showDownloadsDialog = true }) {
+                        Icon(Icons.Default.Download, contentDescription = "Downloads")
+                    }
+                    IconButton(enabled = onPage, onClick = { menuExpanded = false; webView?.reload() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Reload")
+                    }
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("New tab") },
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    onClick = { menuExpanded = false; openNewTab(false) },
+                )
+                DropdownMenuItem(
+                    text = { Text("New private tab") },
+                    leadingIcon = { Icon(Icons.Default.VisibilityOff, contentDescription = null) },
+                    onClick = { menuExpanded = false; openNewTab(true) },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Bookmarks") },
+                    leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+                    onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
+                )
+                DropdownMenuItem(
+                    text = { Text("History") },
+                    leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                    onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ },
+                )
+                if (onPage) {
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Share page") },
+                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            if (currentUrl.isNotBlank()) runCatching {
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
+                            }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Find in page") },
+                        leadingIcon = { Icon(Icons.Default.FindInPage, contentDescription = null) },
+                        onClick = { menuExpanded = false; findBarVisible = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Translate page") },
+                        leadingIcon = { Icon(Icons.Default.Translate, contentDescription = null) },
+                        onClick = { menuExpanded = false; translateCurrentPage() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Reader mode") },
+                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
+                        onClick = { menuExpanded = false; readCurrentPage() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Desktop site") },
+                        leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
+                        trailingIcon = { Checkbox(checked = activeTab?.desktop == true, onCheckedChange = null) },
+                        onClick = { menuExpanded = false; toggleDesktopSite() },
+                    )
+                    if (onEnterPictureInPicture != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         DropdownMenuItem(
-                            text = { Text("New private tab") },
-                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
-                            onClick = { menuExpanded = false; openNewTab(true) },
+                            text = { Text("Picture-in-picture") },
+                            leadingIcon = { Icon(Icons.Default.PictureInPictureAlt, contentDescription = null) },
+                            onClick = { menuExpanded = false; startPictureInPicture() },
                         )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Add to home screen") },
+                        leadingIcon = { Icon(Icons.Default.AddCircle, contentDescription = null) },
+                        onClick = { menuExpanded = false; addCurrentPageToHomeScreen() },
+                    )
+                    if (!isOrbitYoutube(currentUrl)) {
                         DropdownMenuItem(
-                            text = { Text("Tabs (${tabs.size})") },
-                            leadingIcon = { Icon(Icons.Default.MoreVert, contentDescription = null) },
-                            onClick = { menuExpanded = false; showTabsDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (store.isBookmarked(currentUrl)) "Remove bookmark" else "Add bookmark") },
-                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-                            onClick = { menuExpanded = false; addBookmark() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Bookmarks") },
-                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-                            onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("History") },
-                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                            onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Reader mode") },
-                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
-                            onClick = { menuExpanded = false; readCurrentPage() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Find in page") },
-                            leadingIcon = { Icon(Icons.Default.FindInPage, contentDescription = null) },
-                            onClick = { menuExpanded = false; findBarVisible = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Translate page") },
-                            leadingIcon = { Icon(Icons.Default.Translate, contentDescription = null) },
-                            onClick = { menuExpanded = false; translateCurrentPage() },
-                        )
-                        if (onEnterPictureInPicture != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            DropdownMenuItem(
-                                text = { Text("Picture-in-picture") },
-                                leadingIcon = { Icon(Icons.Default.PictureInPictureAlt, contentDescription = null) },
-                                onClick = { menuExpanded = false; startPictureInPicture() },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Add to home screen") },
-                            leadingIcon = { Icon(Icons.Default.AddCircle, contentDescription = null) },
-                            onClick = { menuExpanded = false; addCurrentPageToHomeScreen() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Scan QR code") },
-                            leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
-                            onClick = { menuExpanded = false; startQrScan() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Clear browsing data") },
-                            leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
-                            onClick = { menuExpanded = false; showClearDataDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Downloads") },
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            onClick = { menuExpanded = false; showDownloadsDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Download current URL") },
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Browser settings") },
-                            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                            onClick = { menuExpanded = false; showBrowserSettings = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Share page") },
-                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                if (currentUrl.isNotBlank()) runCatching {
-                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
-                                }
-                            },
-                        )
-                        if (!isOrbitYoutube(currentUrl)) {
-                            DropdownMenuItem(
-                                text = { Text("Play link in Hi Player") },
-                                leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
-                                onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Close tab") },
-                            leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
-                            onClick = { menuExpanded = false; closeTab(activeTabId) },
+                            text = { Text("Play link in Hi Player") },
+                            leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
+                            onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
                         )
                     }
                 }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Scan QR code") },
+                    leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                    onClick = { menuExpanded = false; startQrScan() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Clear browsing data") },
+                    leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                    onClick = { menuExpanded = false; showClearDataDialog = true },
+                )
+                DropdownMenuItem(
+                    text = { Text("Settings") },
+                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    onClick = { menuExpanded = false; showBrowserSettings = true },
+                )
+                DropdownMenuItem(
+                    text = { Text("Close tab") },
+                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
+                    onClick = { menuExpanded = false; closeTab(activeTabId) },
+                )
             }
 
-            if (findBarVisible) {
+            if (onPage && findBarVisible) {
                 BrowserFindBar(
                     query = findQuery,
                     matchLabel = findMatchLabel,
@@ -827,55 +805,50 @@ fun HiBrowserScreen(
                     },
                 )
             }
-            if (loadingProgress in 1..99) {
+            if (onPage && loadingProgress in 1..99) {
                 LinearProgressIndicator(
                     progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
                     modifier = Modifier.fillMaxWidth().height(2.dp),
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = { showBrowserHome() }) {
-                    Icon(Icons.Default.Home, contentDescription = "Browser home", tint = palette.textSecondary)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = (if (activeTab?.privateTab == true) "Private • " else "") + pageTitle,
-                        color = palette.textPrimary, fontSize = 11.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = Uri.parse(currentUrl).host.orEmpty(),
-                        color = palette.textTertiary, fontSize = 9.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = { if (currentUrl.isNotBlank()) runCatching {
-                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
-                } }) { Icon(Icons.Default.Share, contentDescription = "Share", tint = palette.textPrimary) }
-            }
-            detectedVideoUrl?.takeIf { !isOrbitYoutube(currentUrl) }?.let { videoUrl ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            if (onPage) {
+                detectedVideoUrl?.takeIf { !isOrbitYoutube(currentUrl) }?.let { videoUrl ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
                     ) {
-                        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = palette.primary)
-                        Spacer(Modifier.width(9.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Online video detected", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Use Hi Player's video controls", color = palette.textSecondary, fontSize = 10.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = null, tint = palette.primary)
+                            Spacer(Modifier.width(9.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Online video detected", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Use Hi Player's video controls", color = palette.textSecondary, fontSize = 10.sp)
+                            }
+                            TextButton(onClick = { onPlayDirectMedia(videoUrl) }) { Text("Play") }
                         }
-                        TextButton(onClick = { onPlayDirectMedia(videoUrl) }) { Text("Play") }
                     }
                 }
+            }
+            if (showStartPage) {
+                HiBrowserHome(
+                    isPrivate = activeTab?.privateTab == true,
+                    providers = BrowserSearchProvider.entries.map { it.displayName },
+                    selectedProvider = searchProvider.displayName,
+                    onProviderSelect = { index -> searchProvider = BrowserSearchProvider.entries[index] },
+                    recent = (store.bookmarks() + store.history()).distinctBy { it.url }.take(4).map { it.title to it.url },
+                    adBlockEnabled = adBlockEnabled,
+                    onVisit = { loadAddress(it) },
+                    onVoiceSearch = { startVoiceSearch() },
+                    onScanQr = { startQrScan() },
+                    onOpenBookmarks = { entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
+                    onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
+                    onOpenDownloads = { showDownloadsDialog = true },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
@@ -943,9 +916,31 @@ fun HiBrowserScreen(
                                     if (activeTabId == tabId) pageTitle = value
                                 }
                                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
-                                    if (store.popupBlock && !isUserGesture) {
-                                        Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
-                                        return false
+                                    if (store.popupBlock) {
+                                        // Only a real link tap may open a window; it opens in this tab like a normal link.
+                                        val hit = view.hitTestResult
+                                        val tappedLink = isUserGesture && (
+                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                                                hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                                            )
+                                        if (!tappedLink) {
+                                            Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
+                                            return false
+                                        }
+                                        val href = hit.extra?.takeIf {
+                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE &&
+                                                (it.startsWith("http://") || it.startsWith("https://"))
+                                        }
+                                        if (href != null) {
+                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(href), store.adBlock)) view.loadUrl(href)
+                                            return false
+                                        }
+                                        val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                                        linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
+                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(linkUrl), store.adBlock)) view.loadUrl(linkUrl)
+                                        }
+                                        resultMsg.sendToTarget()
+                                        return true
                                     }
                                     val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                     transport.webView = HiBrowserPopupCatcher.create(viewContext) { popupUrl ->
@@ -1082,28 +1077,17 @@ fun HiBrowserScreen(
     }
 
     if (showTabsDialog) {
-        AlertDialog(
-            onDismissRequest = { showTabsDialog = false },
-            title = { Text("Hi Browser tabs (${tabs.size})") },
-            text = {
-                Column {
-                    LazyColumn(modifier = Modifier.height(260.dp)) {
-                        itemsIndexed(tabs, key = { _, tab -> tab.id }) { _, tab ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable { activateTab(tab); showTabsDialog = false }.padding(vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text((if (tab.privateTab) "Private • " else "") + tab.title, modifier = Modifier.weight(1f), maxLines = 1)
-                                IconButton(onClick = {
-                                    closeTab(tab.id)
-                                }) { Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}") }
-                            }
-                        }
-                    }
-                }
+        HiBrowserTabSwitcher(
+            tabs = tabs.map { HiBrowserTabCard(it.id, it.title, it.url, it.privateTab) },
+            activeTabId = activeTabId,
+            onSelect = { id ->
+                tabs.firstOrNull { it.id == id }?.let { activateTab(it) }
+                showTabsDialog = false
             },
-            confirmButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(false) }) { Text("New tab") } },
-            dismissButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(true) }) { Text("Private tab") } },
+            onClose = { id -> closeTab(id) },
+            onNewTab = { showTabsDialog = false; openNewTab(false) },
+            onNewPrivateTab = { showTabsDialog = false; openNewTab(true) },
+            onDismiss = { showTabsDialog = false },
         )
     }
 
@@ -1234,250 +1218,6 @@ private fun applyOrbitDarkMode(webView: WebView, enabled: Boolean) {
 private const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 @Composable
-private fun BrowserStartPage(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    provider: BrowserSearchProvider,
-    onProviderChange: (BrowserSearchProvider) -> Unit,
-    onSearch: () -> Unit,
-    onManageTabs: () -> Unit,
-    onVisitWebsite: (String) -> Unit,
-    onOpenBookmarks: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenDownloads: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onVoiceSearch: () -> Unit,
-    onScanQr: () -> Unit,
-    tabCount: Int,
-    bookmarks: List<OrbitBrowserEntry>,
-    recentPages: List<OrbitBrowserEntry>,
-    privateTab: Boolean,
-    adBlockEnabled: Boolean,
-) {
-    val palette = LocalHiPalette.current
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(palette.primary.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(25.dp))
-                }
-                Spacer(Modifier.width(11.dp))
-                Column {
-                    Text("Hi Browser", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("Browse at your pace", color = palette.textSecondary, fontSize = 11.sp)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onManageTabs) { Text("$tabCount tabs", color = palette.textPrimary, fontSize = 11.sp) }
-                IconButton(onClick = onOpenDownloads) {
-                    Icon(Icons.Default.Download, contentDescription = "Downloads", tint = palette.textSecondary)
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Browser settings", tint = palette.textSecondary)
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                if (privateTab) "A private space to browse." else "The web, your way.",
-                color = palette.textPrimary,
-                fontSize = 23.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text("Search or enter a website address", color = palette.textSecondary, fontSize = 13.sp)
-        }
-
-        if (privateTab) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(9.dp))
-                    Text(
-                        "This tab is not saved to history. Site cookies may still be shared with regular tabs.",
-                        color = palette.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
-                    )
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = palette.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onVoiceSearch) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice search", tint = palette.primary)
-                            }
-                            IconButton(onClick = onScanQr) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR code", tint = palette.primary)
-                            }
-                            IconButton(onClick = onSearch) {
-                                Icon(Icons.Default.ArrowForward, contentDescription = "Go", tint = palette.primary)
-                            }
-                        }
-                    },
-                    placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 12.sp) },
-                    shape = RoundedCornerShape(15.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary,
-                        focusedBorderColor = palette.primary,
-                        unfocusedBorderColor = palette.surfaceBorder,
-                        focusedContainerColor = palette.surfaceElevated,
-                        unfocusedContainerColor = palette.surfaceElevated,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSearch() }),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
-                    ),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                ) {
-                    BrowserSearchProvider.entries.forEach { option ->
-                        FilterChip(
-                            selected = option == provider,
-                            onClick = { onProviderChange(option) },
-                            label = { Text(option.displayName, fontSize = 10.sp, maxLines = 1) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = palette.primary,
-                                selectedLabelColor = Color.White,
-                                containerColor = palette.surfaceElevated,
-                                labelColor = palette.textPrimary,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("Quick access", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            val links = listOf(
-                BrowserQuickLink("Google", "https://www.google.com", Icons.Default.Search, Color(0xFF4285F4)),
-                BrowserQuickLink("YouTube", "https://m.youtube.com", Icons.Default.PlayCircle, Color(0xFFFF3030)),
-                BrowserQuickLink("Wikipedia", "https://www.wikipedia.org", Icons.Default.Language, palette.primary),
-                BrowserQuickLink("Bookmarks", null, Icons.Default.Bookmark, Color(0xFFF2A900)),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                links.forEach { link ->
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { link.url?.let(onVisitWebsite) ?: onOpenBookmarks() },
-                        shape = RoundedCornerShape(17.dp),
-                        colors = CardDefaults.cardColors(containerColor = palette.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 11.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.size(34.dp).clip(CircleShape).background(link.tint.copy(alpha = 0.13f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(link.icon, contentDescription = null, tint = link.tint, modifier = Modifier.size(19.dp))
-                            }
-                            Text(link.label, color = palette.textSecondary, fontSize = 9.5.sp, maxLines = 1)
-                        }
-                    }
-                }
-            }
-        }
-
-        val recent = (bookmarks + recentPages).distinctBy { it.url }.take(3)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Pick up where you left off", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onOpenHistory) { Text("History", color = palette.primary, fontSize = 10.sp) }
-            }
-            if (recent.isEmpty()) {
-                Text("Your bookmarks and recent pages will appear here.", color = palette.textTertiary, fontSize = 11.sp)
-            } else {
-                recent.forEach { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(palette.surface)
-                            .clickable { onVisitWebsite(item.url) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Language, contentDescription = null, tint = palette.textTertiary, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.title, color = palette.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(Uri.parse(item.url).host.orEmpty(), color = palette.textTertiary, fontSize = 9.sp, maxLines = 1)
-                        }
-                        Icon(Icons.Default.ArrowForward, contentDescription = "Open ${item.title}", tint = palette.textTertiary, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        ) {
-            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off", color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Common third-party ad and tracker requests", color = palette.textSecondary, fontSize = 9.5.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun BrowserSettingsDialog(
     darkMode: Boolean,
     adBlock: Boolean,
@@ -1519,7 +1259,7 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common third-party requests", adBlock, onAdBlockChange)
                 BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
                 BrowserSettingsSwitchRow("YouTube ad skip", "Try to skip supported YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
-                BrowserSettingsSwitchRow("Block pop-ups", "Stop pages from opening windows you didn't tap", popupBlock, onPopupBlockChange)
+                BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
                 Text("SITE PREFERENCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 BrowserSettingsSwitchRow("Desktop site", "Request desktop layout for this tab", desktopSite, onDesktopSiteChange)
                 TextButton(onClick = onUpdateFilterLists) { Text("Update filter lists") }
