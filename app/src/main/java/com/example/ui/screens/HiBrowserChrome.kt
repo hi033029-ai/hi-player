@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -166,6 +167,17 @@ internal fun HiBrowserToolbar(
     var focused by remember { mutableStateOf(false) }
     var providerMenu by remember { mutableStateOf(false) }
     var field by remember { mutableStateOf(TextFieldValue(hiBrowserDisplayAddress(address))) }
+    val imeVisible = hiImeVisible()
+    var imeSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            imeSeen = true
+        } else if (imeSeen) {
+            // Back closed the keyboard: leave typing mode so Home, tabs and the menu come back.
+            imeSeen = false
+            focusManager.clearFocus()
+        }
+    }
 
     LaunchedEffect(address, focused) {
         if (!focused) field = TextFieldValue(hiBrowserDisplayAddress(address))
@@ -293,7 +305,7 @@ internal fun HiBrowserToolbar(
                     )
                 }
             }
-            if (!focused) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onShowTabs),
                     contentAlignment = Alignment.Center,
@@ -317,14 +329,14 @@ internal data class HiMenuAction(
     val onClick: () -> Unit,
 )
 
-/** Browser menu as a bottom sheet: library tiles, page tools, settings, and a quick-action row. */
+/** Browser menu as a bottom sheet: two left-to-right scrollable rows of tiles and a quick-action row. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HiBrowserMenuSheet(
     tiles: List<HiMenuAction>,
     onSetDefaultBrowser: (() -> Unit)?,
     tools: List<HiMenuAction>,
-    rows: List<HiMenuAction>,
+    rows: List<HiMenuAction> = emptyList(),
     bottomRow: List<HiMenuAction>,
     onDismiss: () -> Unit,
 ) {
@@ -340,116 +352,40 @@ internal fun HiBrowserMenuSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tiles.forEach { tile ->
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(palette.surfaceElevated)
-                                .clickable { run(tile) }
-                                .padding(vertical = 14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Icon(tile.icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(26.dp))
-                            Spacer(Modifier.height(6.dp))
-                            Text(tile.label, color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            HiMenuTileRow(items = tiles + rows, onClick = { run(it) })
+            if (onSetDefaultBrowser != null) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(palette.primary.copy(alpha = 0.12f))
+                        .clickable {
+                            onDismiss()
+                            onSetDefaultBrowser()
                         }
-                    }
-                }
-                if (onSetDefaultBrowser != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(palette.primary.copy(alpha = 0.12f))
-                            .clickable {
-                                onDismiss()
-                                onSetDefaultBrowser()
-                            }
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Set Hi Player as default browser", color = palette.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                rows.forEach { row ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = row.enabled) { run(row) }
-                            .padding(horizontal = 8.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(row.icon, contentDescription = null, tint = palette.textPrimary)
-                        Spacer(Modifier.width(16.dp))
-                        Text(row.label, color = palette.textPrimary, fontSize = 16.sp)
-                    }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Set Hi Player as default browser", color = palette.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
             if (tools.isNotEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(vertical = 8.dp),
-                ) {
-                    tools.chunked(4).forEach { rowItems ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            rowItems.forEach { tool ->
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .clickable(enabled = tool.enabled) { run(tool) }
-                                        .padding(vertical = 10.dp, horizontal = 2.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(if (tool.checked == true) palette.primary.copy(alpha = 0.2f) else palette.surfaceElevated),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            tool.icon,
-                                            contentDescription = null,
-                                            tint = when {
-                                                !tool.enabled -> palette.textTertiary
-                                                tool.checked == true -> palette.primary
-                                                else -> palette.textPrimary
-                                            },
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        tool.label,
-                                        color = palette.textSecondary,
-                                        fontSize = 11.sp,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 2,
-                                        lineHeight = 13.sp,
-                                    )
-                                }
-                            }
-                            repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                    }
-                }
+                HiMenuTileRow(items = tools, onClick = { run(it) })
             }
             Row(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(palette.surface).padding(vertical = 6.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(palette.surface)
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 bottomRow.forEach { action ->
@@ -464,6 +400,53 @@ internal fun HiBrowserMenuSheet(
                             },
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/** A row of same-size menu tiles that scrolls left to right when it doesn't fit. */
+@Composable
+private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> Unit) {
+    val palette = LocalHiPalette.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.forEach { item ->
+            Column(
+                modifier = Modifier
+                    .width(84.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(if (item.checked == true) palette.primary.copy(alpha = 0.16f) else palette.surface)
+                    .clickable(enabled = item.enabled) { onClick(item) }
+                    .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    item.icon,
+                    contentDescription = null,
+                    tint = when {
+                        !item.enabled -> palette.textTertiary
+                        else -> palette.primary
+                    },
+                    modifier = Modifier.size(26.dp),
+                )
+                Spacer(Modifier.height(6.dp))
+                Box(modifier = Modifier.height(30.dp), contentAlignment = Alignment.TopCenter) {
+                    Text(
+                        item.label,
+                        color = if (item.enabled) palette.textPrimary else palette.textTertiary,
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

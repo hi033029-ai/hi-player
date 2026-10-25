@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.SwitchDefaults
@@ -50,6 +55,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -301,6 +307,10 @@ fun HiBrowserScreen(
     val pipSession = remember { mutableStateOf(false) }
     val pipPinned = remember { mutableStateOf(false) }
     val pausedForPip = remember { mutableStateOf(false) }
+    // The bottom address bar slides away while the page scrolls down and returns on scroll up.
+    var browserBarHidden by remember { mutableStateOf(false) }
+    // "Browser mode" intro plays every time the browser is entered.
+    var showModeIntro by remember { mutableStateOf(true) }
 
     LaunchedEffect(activeTabId) {
         val restoredTab = tabs.firstOrNull { it.id == activeTabId }
@@ -311,6 +321,7 @@ fun HiBrowserScreen(
         findBarVisible = false
         findQuery = ""
         findMatchLabel = ""
+        browserBarHidden = false
     }
 
     fun updateTab(id: Int, transform: (OrbitBrowserTab) -> OrbitBrowserTab) {
@@ -459,7 +470,7 @@ fun HiBrowserScreen(
             showBrowserToast("Pop-up blocked")
             return
         }
-        if (tabs.size >= 12) source.loadUrl(url) else openNewTab(privateTab, url)
+        source.loadUrl(url)
     }
 
     fun setTextZoom(percent: Int) {
@@ -695,11 +706,8 @@ fun HiBrowserScreen(
                 findQuery = ""
                 findMatchLabel = ""
             }
-            webView?.canGoBack() == true -> webView?.goBack()
+            !showStartPage && webView?.canGoBack() == true -> webView?.goBack()
             !showStartPage -> showBrowserHome()
-            tabs.size > 1 -> {
-                closeTab(activeTabId)
-            }
             else -> onBack()
         }
     }
@@ -809,6 +817,24 @@ fun HiBrowserScreen(
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
                             val browserWebView = this
                             var lastUserTouchAt = 0L
+                            var lastBarToggleAt = 0L
+                            setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                                if (activeTabId != tabId) return@setOnScrollChangeListener
+                                val now = SystemClock.uptimeMillis()
+                                // Ignore the scroll jump caused by the page resizing when the bar moves.
+                                if (now - lastBarToggleAt < 400L) return@setOnScrollChangeListener
+                                val dy = scrollY - oldScrollY
+                                val hide = when {
+                                    scrollY <= 0 -> false
+                                    dy > 10 && scrollY > 120 -> true
+                                    dy < -10 -> false
+                                    else -> return@setOnScrollChangeListener
+                                }
+                                if (hide != browserBarHidden) {
+                                    browserBarHidden = hide
+                                    lastBarToggleAt = now
+                                }
+                            }
                             browserWebView.setOnTouchListener { _, event ->
                                 if (event.actionMasked == MotionEvent.ACTION_UP) lastUserTouchAt = SystemClock.uptimeMillis()
                                 false
@@ -896,6 +922,7 @@ fun HiBrowserScreen(
                                         currentUrl = url
                                         address = url
                                         loadingProgress = 1
+                                        browserBarHidden = false
                                     }
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
@@ -960,6 +987,13 @@ fun HiBrowserScreen(
                     },
                 )
             }
+            val showBrowserBar = !onPage || !browserBarHidden || findBarVisible || hiImeVisible()
+            AnimatedVisibility(
+                visible = showBrowserBar,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+            Column {
             if (onPage && loadingProgress in 1..99) {
                 LinearProgressIndicator(
                     progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
@@ -996,8 +1030,10 @@ fun HiBrowserScreen(
                     captureThumbnail()
                     menuExpanded = true
                 },
-                modifier = Modifier.windowInsetsPadding(WindowInsets.ime.exclude(WindowInsets.navigationBars)),
+                modifier = Modifier.windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
             )
+            }
+            }
         }
     }
 
@@ -1184,6 +1220,9 @@ fun HiBrowserScreen(
         )
     }
 
+    if (showModeIntro && !isInPictureInPicture) {
+        HiBrowserModeIntro(onFinished = { showModeIntro = false })
+    }
 }
 
 private fun disposeOrbitWebView(webView: WebView) {

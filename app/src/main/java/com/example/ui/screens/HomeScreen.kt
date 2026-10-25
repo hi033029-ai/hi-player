@@ -838,7 +838,7 @@ fun HomeScreen(
             ) {
                 // CLEAN FOLDER SYSTEM VIEW (Matching User's Reference Image)
                 if (folders.isEmpty()) {
-                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) }, onRefresh = { libraryViewModel.refreshVideos() })
                 } else if (viewMode == LibraryViewMode.GRADLE_GRID) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
@@ -915,7 +915,7 @@ fun HomeScreen(
                 // descending into them, instead of a flat "Recent" list.
                 val node = currentTreeNode
                 if (node == null || (node.childFolders.isEmpty() && node.directVideos.isEmpty())) {
-                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                    EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) }, onRefresh = { libraryViewModel.refreshVideos() })
                 } else {
                     LazyColumn(
                         state = treeListState,
@@ -1021,7 +1021,7 @@ fun HomeScreen(
                     }
                 }
             } else if (filteredVideos.isEmpty()) {
-                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) })
+                EmptyState(onBrowse = { filePickerLauncher.launch(arrayOf("video/*")) }, onRefresh = { libraryViewModel.refreshVideos() })
             } else {
                 // Unified media items (List or Grid). Continue Watching is kept
                 // above both layouts so it never disappears when switching modes.
@@ -1314,9 +1314,39 @@ private fun PlanSheetChip(
 }
 
 @Composable
-private fun EmptyState(onBrowse: () -> Unit) {
+private fun EmptyState(onBrowse: () -> Unit, onRefresh: () -> Unit = {}) {
     val palette = LocalHiPalette.current
     val uiMetrics = LocalHiUiMetrics.current
+    val emptyContext = androidx.compose.ui.platform.LocalContext.current
+    val videoPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        android.Manifest.permission.READ_MEDIA_VIDEO
+    } else {
+        android.Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    var hasVideoAccess by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(emptyContext, videoPermission) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val videoAccessLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasVideoAccess = granted
+        if (granted) {
+            onRefresh()
+        } else {
+            // Permission was denied before, so Android won't ask again: open the app's settings page.
+            runCatching {
+                emptyContext.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.fromParts("package", emptyContext.packageName, null),
+                    )
+                )
+            }
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1343,14 +1373,14 @@ private fun EmptyState(onBrowse: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "No Videos in This Plan View",
+                text = if (hasVideoAccess) "No videos found" else "Allow access to your videos",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = palette.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Tap below to browse and play video files from your device storage.",
+                text = if (hasVideoAccess) "Tap below to pick a video file from your device storage." else "Hi Player needs permission to show the videos on your phone.",
                 fontSize = 12.sp,
                 color = palette.textSecondary,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -1358,14 +1388,14 @@ private fun EmptyState(onBrowse: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(18.dp))
             Button(
-                onClick = onBrowse,
+                onClick = { if (hasVideoAccess) onBrowse() else videoAccessLauncher.launch(videoPermission) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = palette.primary,
                     contentColor = if (palette.isDark) Color.Black else Color.White
                 ),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Browse Storage", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(if (hasVideoAccess) "Browse Storage" else "Allow access", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
     }

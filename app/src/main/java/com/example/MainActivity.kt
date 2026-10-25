@@ -154,6 +154,11 @@ class MainActivity : ComponentActivity() {
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
                 var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }
                 var returnTabFromDiscover by remember { mutableStateOf(NavTab.VIDEOS) }
+                // Where Back from browser mode returns to.
+                var tabBeforeBrowser by remember { mutableStateOf(NavTab.VIDEOS) }
+                androidx.compose.runtime.LaunchedEffect(currentTab) {
+                    if (currentTab != NavTab.BROWSER && currentTab != NavTab.DISCOVER) tabBeforeBrowser = currentTab
+                }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
                 var showGlobalSearchDialog by remember { mutableStateOf(false) }
                 var showStreamUrlDialog by remember { mutableStateOf(false) }
@@ -370,7 +375,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     bottomBar = {
                                         if (!browserPip) Column {
-                                            if (currentTab != com.example.ui.components.NavTab.MUSIC && currentAudioTrack != null && !isAudioFullScreenOpen) {
+                                            if (currentTab != com.example.ui.components.NavTab.MUSIC && currentTab != NavTab.BROWSER && currentAudioTrack != null && !isAudioFullScreenOpen) {
                                                 com.example.ui.screens.WavyNowPlayingBottomSheet(
                                                     track = currentAudioTrack!!,
                                                     isPlaying = isAudioPlaying,
@@ -388,7 +393,7 @@ class MainActivity : ComponentActivity() {
                                                      onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                                                 )
                                             }
-                                            if (!(currentTab == NavTab.BROWSER && com.example.ui.screens.hiImeVisible())) HiBottomNavigationBar(
+                                            if (currentTab != NavTab.BROWSER) HiBottomNavigationBar(
                                                 currentTab = currentTab,
                                                 onTabSelected = { tab ->
                                                     if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
@@ -404,7 +409,11 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(paddingValues)
+                                            // Browser mode draws its own bottom bar above the keyboard / system bar.
+                                            .padding(
+                                                top = paddingValues.calculateTopPadding(),
+                                                bottom = if (currentTab == NavTab.BROWSER) 0.dp else paddingValues.calculateBottomPadding(),
+                                            )
                                     ) {
                                         when (currentTab) {
                                             NavTab.VIDEOS -> {
@@ -471,7 +480,7 @@ class MainActivity : ComponentActivity() {
                                                         onEnterPictureInPicture = { enterBrowserPipMode() },
                                                         externalUrl = externalBrowserUrl,
                                                         onExternalUrlConsumed = { pendingBrowserUrl.value = null },
-                                                        onBack = { currentTab = NavTab.VIDEOS },
+                                                        onBack = { currentTab = tabBeforeBrowser },
                                                         onPlayDirectMedia = { url ->
                                                             val uri = Uri.parse(url)
                                                             if (uri.scheme == "content") {
