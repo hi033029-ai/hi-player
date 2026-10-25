@@ -31,6 +31,16 @@ internal class OrbitBrowserStore(context: Context) {
         get() = prefs.getBoolean("youtube_ad_skip", false)
         set(value) { prefs.edit().putBoolean("youtube_ad_skip", value).apply() }
 
+    /** Page text size as a percentage of the site's own size (50–200). */
+    var textZoom: Int
+        get() = prefs.getInt("text_zoom", 100).coerceIn(50, 200)
+        set(value) { prefs.edit().putInt("text_zoom", value.coerceIn(50, 200)).apply() }
+
+    /** Blocks windows a page tries to open without the user tapping anything. */
+    var popupBlock: Boolean
+        get() = prefs.getBoolean("popup_block", true)
+        set(value) { prefs.edit().putBoolean("popup_block", value).apply() }
+
     fun bookmarks(): List<OrbitBrowserEntry> = read("bookmarks")
     fun history(): List<OrbitBrowserEntry> = read("history")
     fun isBookmarked(url: String): Boolean = bookmarks().any { it.url == url }

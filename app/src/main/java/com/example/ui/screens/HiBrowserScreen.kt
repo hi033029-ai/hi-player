@@ -114,6 +114,24 @@ import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.WeakHashMap
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material3.Slider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private data class OrbitBrowserTab(
     val id: Int,
@@ -201,6 +219,10 @@ fun HiBrowserScreen(
     onBack: () -> Unit,
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isInPictureInPicture: Boolean = false,
+    onEnterPictureInPicture: (() -> Boolean)? = null,
+    externalUrl: String? = null,
+    onExternalUrlConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -232,6 +254,17 @@ fun HiBrowserScreen(
     var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
     var entriesVersion by remember { mutableIntStateOf(0) }
     val downloadsActive = downloads.any { it.isActive }
+    var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
+    var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
+    var findBarVisible by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findMatchLabel by remember { mutableStateOf("") }
+    var showClearDataDialog by remember { mutableStateOf(false) }
+    // pipSession: a browser picture-in-picture window is (or was just) open.
+    // pipPinned: the page's video is pinned to fill the page for that window.
+    val pipSession = remember { mutableStateOf(false) }
+    val pipPinned = remember { mutableStateOf(false) }
+    val pausedForPip = remember { mutableStateOf(false) }
 
     LaunchedEffect(activeTabId) {
         val restoredTab = tabs.firstOrNull { it.id == activeTabId }
@@ -239,6 +272,9 @@ fun HiBrowserScreen(
         currentUrl = restoredTab?.url.orEmpty()
         pageTitle = restoredTab?.title ?: "Hi Browser"
         showStartPage = restoredTab?.url.isNullOrBlank()
+        findBarVisible = false
+        findQuery = ""
+        findMatchLabel = ""
     }
 
     fun updateTab(id: Int, transform: (OrbitBrowserTab) -> OrbitBrowserTab) {
@@ -375,8 +411,192 @@ fun HiBrowserScreen(
         }
     }
 
+    fun showBrowserToast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun isWebPage(url: String): Boolean = url.startsWith("http://") || url.startsWith("https://")
+
+    /** Opens a page-requested window (target=_blank link or window.open) as a new tab. */
+    fun openUrlFromPage(url: String, source: WebView, privateTab: Boolean) {
+        if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock)) {
+            showBrowserToast("Pop-up blocked")
+            return
+        }
+        if (tabs.size >= 12) source.loadUrl(url) else openNewTab(privateTab, url)
+    }
+
+    fun setTextZoom(percent: Int) {
+        val value = percent.coerceIn(50, 200)
+        store.textZoom = value
+        textZoomPercent = value
+        tabs.forEach { tab -> tab.webView?.settings?.textZoom = value }
+    }
+
+    fun setPopupBlockEnabled(enabled: Boolean) {
+        store.popupBlock = enabled
+        popupBlockEnabled = enabled
+        tabs.forEach { tab -> tab.webView?.settings?.javaScriptCanOpenWindowsAutomatically = !enabled }
+    }
+
+    fun clearBrowsingData(history: Boolean, cookies: Boolean, cache: Boolean) {
+        HiBrowserTools.clearBrowsingData(context, tabs.mapNotNull { it.webView }, history, cookies, cache)
+        if (history) {
+            store.clearHistory()
+            entriesVersion++
+        }
+        showBrowserToast("Browsing data cleared")
+    }
+
+    fun findInPage(query: String) {
+        findQuery = query
+        val view = webView ?: return
+        if (query.isBlank()) {
+            view.clearMatches()
+            findMatchLabel = ""
+        } else {
+            view.findAllAsync(query)
+        }
+    }
+
+    fun translateCurrentPage() {
+        val url = currentUrl
+        if (!isWebPage(url)) {
+            showBrowserToast("Open a web page to translate it")
+            return
+        }
+        if (HiBrowserTools.isTranslatedPage(url)) {
+            showBrowserToast("This page is already translated")
+            return
+        }
+        loadAddress(HiBrowserTools.translateUrl(url, HiBrowserTools.translateTargetLanguage(Locale.getDefault())))
+    }
+
+    fun addCurrentPageToHomeScreen() {
+        val url = currentUrl
+        if (!isWebPage(url)) {
+            showBrowserToast("Open a web page to add it to your home screen")
+            return
+        }
+        val requested = HiBrowserTools.pinPageShortcut(context, url, pageTitle, webView?.favicon)
+        showBrowserToast(if (requested) "Adding to home screen…" else "Your launcher doesn't support adding shortcuts")
+    }
+
+    fun startPictureInPicture() {
+        val view = webView
+        val enter = onEnterPictureInPicture
+        if (view == null || enter == null || showStartPage) {
+            showBrowserToast("Open a page with a video first")
+            return
+        }
+        view.evaluateJavascript(HI_BROWSER_PIP_PIN_SCRIPT) { result ->
+            if (result?.contains("ok") == true) {
+                pipPinned.value = true
+                pipSession.value = true
+                if (!enter()) {
+                    pipSession.value = false
+                    pipPinned.value = false
+                    view.evaluateJavascript(HI_BROWSER_PIP_UNPIN_SCRIPT, null)
+                    showBrowserToast("Picture-in-picture isn't available on this device")
+                }
+            } else {
+                showBrowserToast("No video found on this page")
+            }
+        }
+    }
+
+    val voiceSearchLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (result.resultCode == Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            address = spoken
+            loadAddress(spoken)
+        }
+    }
+
+    fun startVoiceSearch() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Say a search or website")
+        try {
+            voiceSearchLauncher.launch(intent)
+        } catch (error: ActivityNotFoundException) {
+            showBrowserToast("Voice search isn't available on this device")
+        }
+    }
+
+    fun startQrScan() {
+        HiBrowserTools.scanQrCode(
+            context = context,
+            onResult = { value ->
+                address = value
+                loadAddress(value)
+            },
+            onError = { message -> showBrowserToast(message) },
+        )
+    }
+
+    DisposableEffect(findBarVisible, webView) {
+        val view = webView
+        if (findBarVisible && view != null) {
+            view.setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
+                findMatchLabel = when {
+                    numberOfMatches > 0 -> "${activeMatchOrdinal + 1}/$numberOfMatches"
+                    isDoneCounting && findQuery.isNotBlank() -> "0/0"
+                    else -> ""
+                }
+            }
+            if (findQuery.isNotBlank()) view.findAllAsync(findQuery)
+        }
+        onDispose {
+            runCatching {
+                view?.clearMatches()
+                view?.setFindListener(null)
+            }
+        }
+    }
+
+    // Closing the picture-in-picture window stops the activity without
+    // resuming it; pause page media then so audio does not keep playing.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (pipSession.value) {
+                    latestTabs.forEach { it.webView?.onPause() }
+                    pausedForPip.value = true
+                }
+                Lifecycle.Event.ON_START -> if (pausedForPip.value) {
+                    latestTabs.forEach { it.webView?.onResume() }
+                    pausedForPip.value = false
+                }
+                Lifecycle.Event.ON_RESUME -> pipSession.value = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isInPictureInPicture) {
+        if (!isInPictureInPicture && pipPinned.value) {
+            pipPinned.value = false
+            webView?.evaluateJavascript(HI_BROWSER_PIP_UNPIN_SCRIPT, null)
+        }
+    }
+
+    LaunchedEffect(externalUrl) {
+        val url = externalUrl ?: return@LaunchedEffect
+        onExternalUrlConsumed()
+        if (tabs.size >= 12) loadAddress(url) else openNewTab(privateTab = false, initialUrl = url)
+    }
+
     BackHandler {
         when {
+            findBarVisible -> {
+                findBarVisible = false
+                findQuery = ""
+                findMatchLabel = ""
+            }
             webView?.canGoBack() == true -> webView?.goBack()
             !showStartPage -> showBrowserHome()
             tabs.size > 1 -> {
@@ -415,7 +635,9 @@ fun HiBrowserScreen(
     Column(
         modifier = modifier.fillMaxSize().background(palette.background),
     ) {
-        if (showStartPage) {
+        if (isInPictureInPicture) {
+            // Picture-in-picture shows only the page content.
+        } else if (showStartPage) {
             BrowserStartPage(
                 query = address,
                 onQueryChange = { address = it },
@@ -428,6 +650,8 @@ fun HiBrowserScreen(
                 onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
                 onOpenDownloads = { showDownloadsDialog = true },
                 onOpenSettings = { showBrowserSettings = true },
+                onVoiceSearch = { startVoiceSearch() },
+                onScanQr = { startQrScan() },
                 tabCount = tabs.size,
                 bookmarks = store.bookmarks(),
                 recentPages = store.history(),
@@ -451,6 +675,11 @@ fun HiBrowserScreen(
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
                     placeholder = { Text("Search or enter a website", fontSize = 12.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = { startVoiceSearch() }) {
+                            Icon(Icons.Default.Mic, contentDescription = "Voice search", tint = palette.primary)
+                        }
+                    },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = palette.textPrimary, unfocusedTextColor = palette.textPrimary,
                         focusedBorderColor = palette.primary, unfocusedBorderColor = palette.surfaceBorder,
@@ -509,6 +738,38 @@ fun HiBrowserScreen(
                             onClick = { menuExpanded = false; readCurrentPage() },
                         )
                         DropdownMenuItem(
+                            text = { Text("Find in page") },
+                            leadingIcon = { Icon(Icons.Default.FindInPage, contentDescription = null) },
+                            onClick = { menuExpanded = false; findBarVisible = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Translate page") },
+                            leadingIcon = { Icon(Icons.Default.Translate, contentDescription = null) },
+                            onClick = { menuExpanded = false; translateCurrentPage() },
+                        )
+                        if (onEnterPictureInPicture != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            DropdownMenuItem(
+                                text = { Text("Picture-in-picture") },
+                                leadingIcon = { Icon(Icons.Default.PictureInPictureAlt, contentDescription = null) },
+                                onClick = { menuExpanded = false; startPictureInPicture() },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Add to home screen") },
+                            leadingIcon = { Icon(Icons.Default.AddCircle, contentDescription = null) },
+                            onClick = { menuExpanded = false; addCurrentPageToHomeScreen() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Scan QR code") },
+                            leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                            onClick = { menuExpanded = false; startQrScan() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Clear browsing data") },
+                            leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                            onClick = { menuExpanded = false; showClearDataDialog = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Downloads") },
                             leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
                             onClick = { menuExpanded = false; showDownloadsDialog = true },
@@ -552,6 +813,20 @@ fun HiBrowserScreen(
                 }
             }
 
+            if (findBarVisible) {
+                BrowserFindBar(
+                    query = findQuery,
+                    matchLabel = findMatchLabel,
+                    onQueryChange = { findInPage(it) },
+                    onPrevious = { webView?.findNext(false) },
+                    onNext = { webView?.findNext(true) },
+                    onClose = {
+                        findBarVisible = false
+                        findQuery = ""
+                        findMatchLabel = ""
+                    },
+                )
+            }
             if (loadingProgress in 1..99) {
                 LinearProgressIndicator(
                     progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
@@ -624,7 +899,9 @@ fun HiBrowserScreen(
                                 cacheMode = if (activeTab.privateTab) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
                                 allowFileAccess = false
                                 allowContentAccess = false
-                                setSupportMultipleWindows(false)
+                                setSupportMultipleWindows(true)
+                                javaScriptCanOpenWindowsAutomatically = !store.popupBlock
+                                textZoom = store.textZoom
                                 mediaPlaybackRequiresUserGesture = true
                                 builtInZoomControls = true
                                 displayZoomControls = false
@@ -664,6 +941,18 @@ fun HiBrowserScreen(
                                     val value = title?.takeIf(String::isNotBlank) ?: view.url ?: "Hi Browser"
                                     updateTab(tabId) { it.copy(title = value, url = view.url ?: it.url) }
                                     if (activeTabId == tabId) pageTitle = value
+                                }
+                                override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                                    if (store.popupBlock && !isUserGesture) {
+                                        Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
+                                        return false
+                                    }
+                                    val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                                    transport.webView = HiBrowserPopupCatcher.create(viewContext) { popupUrl ->
+                                        openUrlFromPage(popupUrl, view, activeTab.privateTab)
+                                    }
+                                    resultMsg.sendToTarget()
+                                    return true
                                 }
                             }
                             webViewClient = object : WebViewClient() {
@@ -773,7 +1062,22 @@ fun HiBrowserScreen(
             },
             onDesktopSiteChange = { enabled -> if (enabled != (activeTab?.desktop == true)) toggleDesktopSite() },
             onUpdateFilterLists = { updateFilterLists() },
+            textZoom = textZoomPercent,
+            popupBlock = popupBlockEnabled,
+            onTextZoomChange = { setTextZoom(it) },
+            onPopupBlockChange = { setPopupBlockEnabled(it) },
+            onClearBrowsingData = { showBrowserSettings = false; showClearDataDialog = true },
             onDismiss = { showBrowserSettings = false },
+        )
+    }
+
+    if (showClearDataDialog) {
+        BrowserClearDataDialog(
+            onConfirm = { history, cookies, cache ->
+                showClearDataDialog = false
+                clearBrowsingData(history, cookies, cache)
+            },
+            onDismiss = { showClearDataDialog = false },
         )
     }
 
@@ -942,6 +1246,8 @@ private fun BrowserStartPage(
     onOpenHistory: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenSettings: () -> Unit,
+    onVoiceSearch: () -> Unit,
+    onScanQr: () -> Unit,
     tabCount: Int,
     bookmarks: List<OrbitBrowserEntry>,
     recentPages: List<OrbitBrowserEntry>,
@@ -1028,8 +1334,16 @@ private fun BrowserStartPage(
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
                     trailingIcon = {
-                        IconButton(onClick = onSearch) {
-                            Icon(Icons.Default.ArrowForward, contentDescription = "Go", tint = palette.primary)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onVoiceSearch) {
+                                Icon(Icons.Default.Mic, contentDescription = "Voice search", tint = palette.primary)
+                            }
+                            IconButton(onClick = onScanQr) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan QR code", tint = palette.primary)
+                            }
+                            IconButton(onClick = onSearch) {
+                                Icon(Icons.Default.ArrowForward, contentDescription = "Go", tint = palette.primary)
+                            }
                         }
                     },
                     placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 12.sp) },
@@ -1176,6 +1490,11 @@ private fun BrowserSettingsDialog(
     onYoutubeAdSkipChange: (Boolean) -> Unit,
     onDesktopSiteChange: (Boolean) -> Unit,
     onUpdateFilterLists: () -> Unit,
+    textZoom: Int,
+    popupBlock: Boolean,
+    onTextZoomChange: (Int) -> Unit,
+    onPopupBlockChange: (Boolean) -> Unit,
+    onClearBrowsingData: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
@@ -1189,13 +1508,22 @@ private fun BrowserSettingsDialog(
             ) {
                 Text("APPEARANCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 BrowserSettingsSwitchRow("Dark theme", "Use Hi Browser's dark page styling", darkMode, onDarkModeChange)
+                Text("Text size: $textZoom%", color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Slider(
+                    value = textZoom.toFloat(),
+                    onValueChange = { onTextZoomChange(((it / 10f).roundToInt() * 10).coerceIn(50, 200)) },
+                    valueRange = 50f..200f,
+                    steps = 14,
+                )
                 Text("PRIVACY AND CONTENT", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common third-party requests", adBlock, onAdBlockChange)
                 BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
                 BrowserSettingsSwitchRow("YouTube ad skip", "Try to skip supported YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
+                BrowserSettingsSwitchRow("Block pop-ups", "Stop pages from opening windows you didn't tap", popupBlock, onPopupBlockChange)
                 Text("SITE PREFERENCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 BrowserSettingsSwitchRow("Desktop site", "Request desktop layout for this tab", desktopSite, onDesktopSiteChange)
                 TextButton(onClick = onUpdateFilterLists) { Text("Update filter lists") }
+                TextButton(onClick = onClearBrowsingData) { Text("Clear browsing data") }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },

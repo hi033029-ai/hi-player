@@ -81,6 +81,8 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
 import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.HiBrowserScreen
+import com.example.ui.screens.HI_BROWSER_ACTION_OPEN_URL
+import com.example.ui.screens.HI_BROWSER_EXTRA_URL
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
 import com.example.ui.theme.HiPlayerTheme
@@ -126,6 +128,10 @@ class MainActivity : ComponentActivity() {
     // can switch to the Player only after its screen state exists.
     private val pendingExternalVideoUri = mutableStateOf<Uri?>(null)
     private var pipTransitionRequested = false
+    // True while Hi Browser (not the video player) owns the PiP window.
+    private val _browserPipActive = mutableStateOf(false)
+    // Web page opened from a home-screen shortcut created by Hi Browser.
+    private val pendingBrowserUrl = mutableStateOf<String?>(null)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -163,6 +169,8 @@ class MainActivity : ComponentActivity() {
                 val mainTabStateHolder = rememberSaveableStateHolder()
                 val isPip = _isInPipMode.value
                 val externalVideoUri = pendingExternalVideoUri.value
+                val browserPip = _browserPipActive.value
+                val externalBrowserUrl = pendingBrowserUrl.value
                 val openResolvedStream: (StreamUrlResult) -> Unit = { result ->
                     val candidate = checkNotNull(result.normalizedUrl)
                     val parsed = Uri.parse(candidate)
@@ -196,6 +204,18 @@ class MainActivity : ComponentActivity() {
                         currentTab = NavTab.VIDEOS
                         currentScreen = AppScreen.Player
                     }
+                }
+
+                LaunchedEffect(externalBrowserUrl, settingsLoaded, isShowingSplash) {
+                    if (externalBrowserUrl == null || !settingsLoaded || isShowingSplash) return@LaunchedEffect
+                    if (currentScreen == AppScreen.Player) {
+                        playerViewModel.saveCurrentProgress()
+                        playerViewModel.stopForNavigation()
+                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        currentScreen = AppScreen.Main
+                    }
+                    musicViewModel.closeFullScreenPlayer()
+                    currentTab = NavTab.BROWSER
                 }
 
                 val videos by libraryViewModel.allVideos.collectAsState()
@@ -279,7 +299,7 @@ class MainActivity : ComponentActivity() {
                             .background(palette.background)
                     ) {
                         when {
-                            isPip || currentScreen == AppScreen.Player -> {
+                            (isPip && !browserPip) || currentScreen == AppScreen.Player -> {
                                 PlayerScreen(
                                     playerViewModel = playerViewModel,
                                     videoQueue = videos,
@@ -349,7 +369,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     bottomBar = {
-                                        Column {
+                                        if (!browserPip) Column {
                                             if (currentTab != com.example.ui.components.NavTab.MUSIC && currentAudioTrack != null && !isAudioFullScreenOpen) {
                                                 com.example.ui.screens.WavyNowPlayingBottomSheet(
                                                     track = currentAudioTrack!!,
@@ -447,6 +467,10 @@ class MainActivity : ComponentActivity() {
                                                 mainTabStateHolder.SaveableStateProvider("hi_browser") {
                                                     HiBrowserScreen(
                                                         modifier = Modifier.fillMaxSize(),
+                                                        isInPictureInPicture = isPip && browserPip,
+                                                        onEnterPictureInPicture = { enterBrowserPipMode() },
+                                                        externalUrl = externalBrowserUrl,
+                                                        onExternalUrlConsumed = { pendingBrowserUrl.value = null },
                                                         onBack = { currentTab = NavTab.VIDEOS },
                                                         onPlayDirectMedia = { url ->
                                                             val uri = Uri.parse(url)
@@ -780,6 +804,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val incoming = intent ?: return
+        if (incoming.action == HI_BROWSER_ACTION_OPEN_URL) {
+            incoming.getStringExtra(HI_BROWSER_EXTRA_URL)
+                ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+                ?.let { pendingBrowserUrl.value = it }
+            return
+        }
         val uri = when (incoming.action) {
             Intent.ACTION_VIEW -> incoming.data
             Intent.ACTION_SEND -> incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
@@ -815,6 +845,26 @@ class MainActivity : ComponentActivity() {
                 .build()
             enterPictureInPictureMode(params)
         }
+    }
+
+    /** Shows the current Hi Browser page in a picture-in-picture window. */
+    fun enterBrowserPipMode(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        _browserPipActive.value = true
+        pipTransitionRequested = true
+        val entered = runCatching {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+            )
+        }.getOrDefault(false)
+        if (!entered) {
+            _browserPipActive.value = false
+            pipTransitionRequested = false
+        }
+        return entered
     }
 
     private fun buildPipActions(): List<RemoteAction> {
@@ -881,6 +931,9 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         _isInPipMode.value = isInPictureInPictureMode
         if (isInPictureInPictureMode) {
+            pipTransitionRequested = false
+        } else if (_browserPipActive.value) {
+            _browserPipActive.value = false
             pipTransitionRequested = false
         } else if (!(libraryViewModel.playerSettings.value.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
             pipTransitionRequested = false

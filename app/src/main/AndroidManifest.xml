@@ -32,6 +32,11 @@
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true">
 
+        <!-- Hi Browser's QR scanner uses Google Play services' code scanner UI. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
