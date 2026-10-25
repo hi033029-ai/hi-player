@@ -388,7 +388,7 @@ class MainActivity : ComponentActivity() {
                                                      onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                                                 )
                                             }
-                                            HiBottomNavigationBar(
+                                            if (!(currentTab == NavTab.BROWSER && com.example.ui.screens.hiImeVisible())) HiBottomNavigationBar(
                                                 currentTab = currentTab,
                                                 onTabSelected = { tab ->
                                                     if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()

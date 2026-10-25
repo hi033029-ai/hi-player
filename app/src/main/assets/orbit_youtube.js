@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Hi Browser YouTube Ad Skipper
 // @namespace    hi.browser
-// @version      1.1
-// @description  Strips ad data from YouTube player responses, skips leftover ads, hides ad slots
+// @version      1.2
+// @description  Mutes, fast-forwards and skips YouTube ads, hides ad slots
 // @match        *://*.youtube.com/*
 // @run-at       document-start
 // @grant        none
@@ -11,40 +11,6 @@
   'use strict';
   if (window.top !== window || window.__orbitYT) return;
   window.__orbitYT = true;
-
-  // ---- 1. Remove ad data before the player reads it
-  function strip(o) {
-    if (!o || typeof o !== 'object') return o;
-    if (o.adPlacements) delete o.adPlacements;
-    if (o.playerAds) delete o.playerAds;
-    if (o.adSlots) delete o.adSlots;
-    if (o.playerResponse && typeof o.playerResponse === 'object') strip(o.playerResponse);
-    if (o.response && typeof o.response === 'object' && o.response.adPlacements) strip(o.response);
-    return o;
-  }
-
-  var _parse = JSON.parse;
-  JSON.parse = function () {
-    var r = _parse.apply(this, arguments);
-    try { strip(r); } catch (e) {}
-    return r;
-  };
-
-  try {
-    var _json = Response.prototype.json;
-    Response.prototype.json = function () {
-      return _json.apply(this, arguments).then(function (r) { try { strip(r); } catch (e) {} return r; });
-    };
-  } catch (e) {}
-
-  try {
-    var _ipr;
-    Object.defineProperty(window, 'ytInitialPlayerResponse', {
-      configurable: true,
-      get: function () { return _ipr; },
-      set: function (v) { try { strip(v); } catch (e) {} _ipr = v; }
-    });
-  } catch (e) {}
 
   // ---- 2. Hide ad slots / banners
   function addStyle(css) {

@@ -1,26 +1,30 @@
 package com.example.ui.screens
 
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,26 +36,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,7 +74,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -79,9 +93,53 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.LocalHiPalette
 
+/** True while the on-screen keyboard is showing. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun hiImeVisible(): Boolean = WindowInsets.isImeVisible
+
+/** Shows just the site ("m.youtube.com") for a web address, like a real browser. */
+internal fun hiBrowserDisplayAddress(url: String): String {
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return url
+    val host = runCatching { Uri.parse(url).host }.getOrNull()
+    return host?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
+}
+
+private val hiLetterColors = listOf(
+    0xFF4285F4, 0xFFE53935, 0xFF43A047, 0xFFFB8C00, 0xFF8E24AA, 0xFF00897B, 0xFF3949AB, 0xFF6D4C41,
+)
+
+private fun hiLetterColor(seed: String): Color =
+    Color(hiLetterColors[(seed.lowercase().hashCode() and 0x7fffffff) % hiLetterColors.size])
+
+private fun hiHost(url: String): String =
+    runCatching { Uri.parse(url).host.orEmpty() }.getOrDefault("").removePrefix("www.")
+
+@Composable
+private fun HiLetterIcon(label: String, size: Int, fontSize: Int) {
+    val color = hiLetterColor(label)
+    Box(
+        modifier = Modifier.size(size.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label.take(1).uppercase(), color = color, fontSize = fontSize.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun HiTabCountBox(count: Int, color: Color) {
+    Box(
+        modifier = Modifier.size(24.dp).border(2.dp, color, RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(if (count > 99) ":)" else count.toString(), color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 /**
- * Hi Browser's single top bar: home, address pill, tab counter, and menu.
- * The keyboard's Go/Search/Enter key submits the typed text.
+ * Hi Browser's address bar, shown at the bottom of the screen:
+ * home, search engine, address field, tab counter and menu.
+ * The keyboard's Go/Search/Enter key opens what was typed.
  */
 @Composable
 internal fun HiBrowserToolbar(
@@ -93,20 +151,22 @@ internal fun HiBrowserToolbar(
     isLoading: Boolean,
     showReload: Boolean,
     tabCount: Int,
+    providers: List<String>,
+    selectedProvider: String,
+    onProviderSelect: (Int) -> Unit,
     onHome: () -> Unit,
     onVoiceSearch: () -> Unit,
     onReloadOrStop: () -> Unit,
     onShowTabs: () -> Unit,
-    menuExpanded: Boolean,
-    onMenuExpandedChange: (Boolean) -> Unit,
-    menuContent: @Composable ColumnScope.() -> Unit,
+    onMenu: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalHiPalette.current
     val focusManager = LocalFocusManager.current
     var focused by remember { mutableStateOf(false) }
-    var field by remember { mutableStateOf(TextFieldValue(address)) }
+    var providerMenu by remember { mutableStateOf(false) }
+    var field by remember { mutableStateOf(TextFieldValue(hiBrowserDisplayAddress(address))) }
 
-    // Like a real browser: show just the site while browsing, the full address while editing.
     LaunchedEffect(address, focused) {
         if (!focused) field = TextFieldValue(hiBrowserDisplayAddress(address))
     }
@@ -120,41 +180,76 @@ internal fun HiBrowserToolbar(
         if (text.isNotBlank()) onSubmit(text)
     }
 
-    Row(
-        modifier = Modifier
+    Box(
+        modifier = modifier
             .fillMaxWidth()
-            .background(palette.surface)
-            .padding(horizontal = 2.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(palette.background)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
-        IconButton(onClick = onHome) {
-            Icon(Icons.Default.Home, contentDescription = "Home", tint = palette.textPrimary)
-        }
-        val pillShape = RoundedCornerShape(22.dp)
+        val shape = RoundedCornerShape(28.dp)
         Row(
             modifier = Modifier
-                .weight(1f)
-                .height(44.dp)
-                .clip(pillShape)
-                .background(palette.surfaceElevated)
-                .border(1.dp, if (focused) palette.primary else Color.Transparent, pillShape)
-                .padding(start = 12.dp, end = 2.dp),
+                .fillMaxWidth()
+                .height(56.dp)
+                .clip(shape)
+                .background(palette.surface)
+                .border(1.dp, if (focused) palette.primary else palette.surfaceBorder, shape)
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            val leading = when {
-                focused || address.isBlank() -> Icons.Default.Search
-                isPrivate -> Icons.Default.VisibilityOff
-                isSecure -> Icons.Default.Lock
-                else -> Icons.Default.Info
+            if (!focused) {
+                IconButton(onClick = onHome) {
+                    Icon(Icons.Default.Home, contentDescription = "Home", tint = palette.textPrimary)
+                }
+            } else {
+                Spacer(Modifier.width(8.dp))
             }
-            Icon(leading, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Box {
+                val badgeColor = hiLetterColor(selectedProvider)
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(badgeColor.copy(alpha = 0.15f))
+                        .clickable { providerMenu = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isPrivate) {
+                        Icon(Icons.Default.VisibilityOff, contentDescription = "Private tab", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+                    } else {
+                        Text(selectedProvider.take(1), color = badgeColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
+                    Text(
+                        "Search with",
+                        color = palette.textTertiary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                    providers.forEachIndexed { index, name ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            trailingIcon = { if (name == selectedProvider) Icon(Icons.Default.Check, contentDescription = null) },
+                            onClick = {
+                                providerMenu = false
+                                onProviderSelect(index)
+                            },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            if (!focused && isSecure && address.isNotBlank()) {
+                Icon(Icons.Default.Lock, contentDescription = "Secure", tint = palette.textTertiary, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+            }
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (field.text.isEmpty()) {
                     Text(
-                        if (isPrivate) "Search privately or type URL" else "Search or type web address",
+                        if (isPrivate) "Search privately or type URL" else "Search or type URL",
                         color = palette.textTertiary,
-                        fontSize = 14.sp,
+                        fontSize = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -163,10 +258,10 @@ internal fun HiBrowserToolbar(
                     value = field,
                     onValueChange = { value ->
                         field = value
-                        onAddressChange(value.text)
+                        if (focused) onAddressChange(value.text)
                     },
                     singleLine = true,
-                    textStyle = TextStyle(color = palette.textPrimary, fontSize = 14.sp),
+                    textStyle = TextStyle(color = palette.textPrimary, fontSize = 15.sp),
                     cursorBrush = SolidColor(palette.primary),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(
@@ -198,41 +293,197 @@ internal fun HiBrowserToolbar(
                     )
                 }
             }
-        }
-        Box(
-            modifier = Modifier
-                .padding(start = 4.dp)
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable(onClick = onShowTabs),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .border(2.dp, palette.textPrimary, RoundedCornerShape(6.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(tabCount.toString(), color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            if (!focused) {
+                Box(
+                    modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onShowTabs),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HiTabCountBox(tabCount, palette.textPrimary)
+                }
+                IconButton(onClick = onMenu) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
+                }
             }
-        }
-        Box {
-            IconButton(onClick = { onMenuExpandedChange(true) }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
-            }
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { onMenuExpandedChange(false) },
-                content = menuContent,
-            )
         }
     }
 }
 
-internal fun hiBrowserDisplayAddress(url: String): String {
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return url
-    val host = runCatching { Uri.parse(url).host }.getOrNull()
-    return host?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
+/** One action in the browser menu sheet. */
+internal data class HiMenuAction(
+    val label: String,
+    val icon: ImageVector,
+    val enabled: Boolean = true,
+    val checked: Boolean? = null,
+    val onClick: () -> Unit,
+)
+
+/** Browser menu as a bottom sheet: library tiles, page tools, settings, and a quick-action row. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HiBrowserMenuSheet(
+    tiles: List<HiMenuAction>,
+    onSetDefaultBrowser: (() -> Unit)?,
+    tools: List<HiMenuAction>,
+    rows: List<HiMenuAction>,
+    bottomRow: List<HiMenuAction>,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    fun run(action: HiMenuAction) {
+        if (!action.enabled) return
+        onDismiss()
+        action.onClick()
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = palette.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    tiles.forEach { tile ->
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(palette.surfaceElevated)
+                                .clickable { run(tile) }
+                                .padding(vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(tile.icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(26.dp))
+                            Spacer(Modifier.height(6.dp))
+                            Text(tile.label, color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                if (onSetDefaultBrowser != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(palette.primary.copy(alpha = 0.12f))
+                            .clickable {
+                                onDismiss()
+                                onSetDefaultBrowser()
+                            }
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Set Hi Player as default browser", color = palette.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(enabled = row.enabled) { run(row) }
+                            .padding(horizontal = 8.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(row.icon, contentDescription = null, tint = palette.textPrimary)
+                        Spacer(Modifier.width(16.dp))
+                        Text(row.label, color = palette.textPrimary, fontSize = 16.sp)
+                    }
+                }
+            }
+            if (tools.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(vertical = 8.dp),
+                ) {
+                    tools.chunked(4).forEach { rowItems ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            rowItems.forEach { tool ->
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .clickable(enabled = tool.enabled) { run(tool) }
+                                        .padding(vertical = 10.dp, horizontal = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(if (tool.checked == true) palette.primary.copy(alpha = 0.2f) else palette.surfaceElevated),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            tool.icon,
+                                            contentDescription = null,
+                                            tint = when {
+                                                !tool.enabled -> palette.textTertiary
+                                                tool.checked == true -> palette.primary
+                                                else -> palette.textPrimary
+                                            },
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        tool.label,
+                                        color = palette.textSecondary,
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        lineHeight = 13.sp,
+                                    )
+                                }
+                            }
+                            repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(palette.surface).padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                bottomRow.forEach { action ->
+                    IconButton(onClick = { run(action) }, enabled = action.enabled) {
+                        Icon(
+                            action.icon,
+                            contentDescription = action.label,
+                            tint = when {
+                                !action.enabled -> palette.textTertiary
+                                action.checked == true -> palette.primary
+                                else -> palette.textPrimary
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HiSegment(selected: Boolean, onClick: () -> Unit, content: @Composable (Color) -> Unit) {
+    val palette = LocalHiPalette.current
+    Box(
+        modifier = Modifier
+            .height(40.dp)
+            .width(60.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (selected) palette.primary else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content(if (selected) Color.White else palette.textPrimary)
+    }
 }
 
 internal data class HiBrowserTabCard(
@@ -240,73 +491,95 @@ internal data class HiBrowserTabCard(
     val title: String,
     val url: String,
     val privateTab: Boolean,
+    val thumbnail: ImageBitmap? = null,
+    val favicon: ImageBitmap? = null,
 )
 
-/** Full-screen tab switcher with a grid of tab cards. */
+/** Full-screen tab switcher: normal/private switch, page previews, new tab and close all. */
 @Composable
 internal fun HiBrowserTabSwitcher(
     tabs: List<HiBrowserTabCard>,
     activeTabId: Int,
+    startPrivate: Boolean,
     onSelect: (Int) -> Unit,
     onClose: (Int) -> Unit,
-    onNewTab: () -> Unit,
-    onNewPrivateTab: () -> Unit,
+    onNewTab: (Boolean) -> Unit,
+    onCloseAll: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
+    var privateMode by remember { mutableStateOf(startPrivate) }
+    val shown = tabs.filter { it.privateTab == privateMode }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 4.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back to page", tint = palette.textPrimary)
                 }
-                Text(
-                    "${tabs.size} ${if (tabs.size == 1) "tab" else "tabs"}",
-                    color = palette.textPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClick = onNewPrivateTab) {
-                    Icon(Icons.Default.VisibilityOff, contentDescription = "New private tab", tint = palette.textPrimary)
+                Spacer(Modifier.weight(1f))
+                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
+                    HiSegment(selected = !privateMode, onClick = { privateMode = false }) { color ->
+                        HiTabCountBox(tabs.count { !it.privateTab }, color)
+                    }
+                    HiSegment(selected = privateMode, onClick = { privateMode = true }) { color ->
+                        Icon(Icons.Default.VisibilityOff, contentDescription = "Private tabs", tint = color)
+                    }
                 }
-                IconButton(onClick = onNewTab) {
-                    Icon(Icons.Default.Add, contentDescription = "New tab", tint = palette.textPrimary)
-                }
+                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(48.dp))
             }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(tabs, key = { it.id }) { tab ->
-                    HiBrowserTabCardView(
-                        tab = tab,
-                        active = tab.id == activeTabId,
-                        onSelect = { onSelect(tab.id) },
-                        onClose = { onClose(tab.id) },
+            if (shown.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        if (privateMode) "No private tabs. Pages in private tabs aren't saved to history." else "No open tabs",
+                        color = palette.textSecondary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(32.dp),
                     )
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(shown, key = { it.id }) { tab ->
+                        HiBrowserTabCardView(
+                            tab = tab,
+                            active = tab.id == activeTabId,
+                            onSelect = { onSelect(tab.id) },
+                            onClose = { onClose(tab.id) },
+                        )
+                    }
                 }
             }
             Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedButton(onClick = onNewPrivateTab, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.VisibilityOff, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Private tab")
+                IconButton(onClick = { onCloseAll(privateMode) }, enabled = shown.isNotEmpty()) {
+                    Icon(Icons.Default.ClearAll, contentDescription = "Close all tabs", tint = if (shown.isEmpty()) palette.textTertiary else palette.textPrimary)
                 }
-                Button(onClick = onNewTab, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("New tab")
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .width(72.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(palette.primary)
+                        .clickable { onNewTab(privateMode) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = if (privateMode) "New private tab" else "New tab", tint = Color.White)
                 }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("Done") }
             }
         }
     }
@@ -320,260 +593,371 @@ private fun HiBrowserTabCardView(
     onClose: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    val host = runCatching { Uri.parse(tab.url).host.orEmpty() }.getOrDefault("").removePrefix("www.")
-    val shape = RoundedCornerShape(16.dp)
+    val host = hiHost(tab.url)
+    val shape = RoundedCornerShape(18.dp)
+    val favicon = tab.favicon
+    val thumbnail = tab.thumbnail
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp)
+            .height(220.dp)
             .clip(shape)
             .background(palette.surface)
             .border(if (active) 2.dp else 1.dp, if (active) palette.primary else palette.surfaceBorder, shape)
             .clickable(onClick = onSelect),
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            when {
+                favicon != null -> Image(favicon, contentDescription = null, modifier = Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)))
+                tab.privateTab -> Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+                else -> Icon(Icons.Default.Language, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
             Text(
-                tab.title.ifBlank { "New tab" },
+                if (tab.url.isBlank()) "Start page" else tab.title.ifBlank { host },
                 color = palette.textPrimary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "Close tab", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
             }
         }
         Box(
             modifier = Modifier.fillMaxWidth().weight(1f).background(palette.surfaceElevated),
             contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape).background(palette.primary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when {
-                        tab.privateTab -> Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = palette.primary)
-                        host.isBlank() -> Icon(Icons.Default.Home, contentDescription = null, tint = palette.primary)
-                        else -> Text(host.take(1).uppercase(), color = palette.primary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    host.ifBlank { if (tab.privateTab) "Private tab" else "New tab" },
-                    color = palette.textSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 8.dp),
+            if (thumbnail != null && tab.url.isNotBlank()) {
+                Image(
+                    thumbnail,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            } else if (tab.url.isBlank()) {
+                Text("Hi Browser", color = palette.primary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    HiLetterIcon(host.ifBlank { tab.title }, 48, 20)
+                    Spacer(Modifier.height(6.dp))
+                    Text(host, color = palette.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
 }
 
-private data class HiBrowserShortcut(val label: String, val url: String, val tint: Color)
-
-private val hiBrowserShortcuts = listOf(
-    HiBrowserShortcut("Google", "https://www.google.com", Color(0xFF4285F4)),
-    HiBrowserShortcut("YouTube", "https://m.youtube.com", Color(0xFFE53935)),
-    HiBrowserShortcut("Wikipedia", "https://www.wikipedia.org", Color(0xFF757575)),
-    HiBrowserShortcut("DuckDuckGo", "https://duckduckgo.com", Color(0xFFDE5833)),
-)
-
-/** New-tab page shown under the toolbar. Searching happens in the toolbar's address bar. */
+/** Start page: logo and editable shortcut tiles. Searching happens in the bottom address bar. */
 @Composable
 internal fun HiBrowserHome(
     isPrivate: Boolean,
-    providers: List<String>,
-    selectedProvider: String,
-    onProviderSelect: (Int) -> Unit,
-    recent: List<Pair<String, String>>,
+    shortcuts: List<Pair<String, String>>,
     adBlockEnabled: Boolean,
     onVisit: (String) -> Unit,
-    onVoiceSearch: () -> Unit,
-    onScanQr: () -> Unit,
-    onOpenBookmarks: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenDownloads: () -> Unit,
+    onAddShortcut: (String, String) -> Unit,
+    onRemoveShortcut: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalHiPalette.current
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.background)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier.size(72.dp).clip(CircleShape).background(palette.primary.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
+    var editing by remember { mutableStateOf(false) }
+    var adding by remember { mutableStateOf(false) }
+    Box(modifier = modifier.fillMaxSize().background(palette.background)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                if (isPrivate) Icons.Default.VisibilityOff else Icons.Default.Language,
-                contentDescription = null,
-                tint = palette.primary,
-                modifier = Modifier.size(38.dp),
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            if (isPrivate) "Private tab" else "Hi Browser",
-            color = palette.textPrimary,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        if (isPrivate) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(120.dp))
             Text(
-                "Pages you open in this tab aren't saved to history.",
-                color = palette.textSecondary,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
+                if (isPrivate) "Private" else "Hi Browser",
+                color = palette.primary,
+                fontSize = 46.sp,
+                fontWeight = FontWeight.ExtraBold,
             )
-        }
-        Spacer(Modifier.height(24.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            HiBrowserHomeTile("Voice", onVoiceSearch, Modifier.weight(1f)) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = palette.primary)
-            }
-            HiBrowserHomeTile("Scan QR", onScanQr, Modifier.weight(1f)) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = palette.primary)
-            }
-            HiBrowserHomeTile("Bookmarks", onOpenBookmarks, Modifier.weight(1f)) {
-                Icon(Icons.Default.Bookmark, contentDescription = null, tint = palette.primary)
-            }
-            HiBrowserHomeTile("History", onOpenHistory, Modifier.weight(1f)) {
-                Icon(Icons.Default.History, contentDescription = null, tint = palette.primary)
-            }
-            HiBrowserHomeTile("Downloads", onOpenDownloads, Modifier.weight(1f)) {
-                Icon(Icons.Default.Download, contentDescription = null, tint = palette.primary)
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-        HiBrowserSectionTitle("Shortcuts")
-        Row(modifier = Modifier.fillMaxWidth()) {
-            hiBrowserShortcuts.forEach { shortcut ->
-                HiBrowserHomeTile(
-                    shortcut.label,
-                    { onVisit(shortcut.url) },
-                    Modifier.weight(1f),
-                    circleColor = shortcut.tint.copy(alpha = 0.14f),
-                ) {
-                    Text(shortcut.label.take(1), color = shortcut.tint, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        if (recent.isNotEmpty()) {
-            Spacer(Modifier.height(20.dp))
-            HiBrowserSectionTitle("Recent")
-            recent.forEach { (title, url) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 3.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(palette.surface)
-                        .clickable { onVisit(url) }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.textTertiary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(title, color = palette.textPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            runCatching { Uri.parse(url).host.orEmpty() }.getOrDefault(""),
-                            color = palette.textTertiary,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-        HiBrowserSectionTitle("Search engine")
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            providers.forEachIndexed { index, name ->
-                val selected = name == selectedProvider
+            if (isPrivate) {
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    name,
-                    color = if (selected) Color.White else palette.textPrimary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (selected) palette.primary else palette.surfaceElevated)
-                        .clickable { onProviderSelect(index) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    "Pages you open in private tabs aren't saved to history.",
+                    color = palette.textSecondary,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
                 )
             }
+            Spacer(Modifier.height(56.dp))
+            val cells: List<Pair<String, String>?> = buildList {
+                addAll(shortcuts)
+                if (shortcuts.size < 12) add(null)
+            }
+            cells.chunked(4).forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    row.forEach { cell ->
+                        if (cell == null) {
+                            HiShortcutTile("Add", null, false, Modifier.weight(1f)) { adding = true }
+                        } else {
+                            HiShortcutTile(cell.first, cell.second, editing, Modifier.weight(1f)) {
+                                if (editing) onRemoveShortcut(cell.second) else onVisit(cell.second)
+                            }
+                        }
+                    }
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+                Spacer(Modifier.height(14.dp))
+            }
+            if (editing) {
+                Text("Tap a shortcut to remove it", color = palette.textTertiary, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(32.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off",
+                    color = palette.textTertiary,
+                    fontSize = 12.sp,
+                )
+            }
+            Spacer(Modifier.height(24.dp))
         }
-
-        Spacer(Modifier.height(18.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = { editing = !editing },
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        ) {
             Icon(
-                Icons.Default.Shield,
-                contentDescription = null,
-                tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off",
-                color = palette.textTertiary,
-                fontSize = 12.sp,
+                if (editing) Icons.Default.Check else Icons.Default.Edit,
+                contentDescription = if (editing) "Done editing" else "Edit shortcuts",
+                tint = palette.textPrimary,
             )
         }
+    }
+    if (adding) {
+        HiAddShortcutDialog(
+            onAdd = { name, url ->
+                adding = false
+                onAddShortcut(name, url)
+            },
+            onDismiss = { adding = false },
+        )
     }
 }
 
 @Composable
-private fun HiBrowserSectionTitle(text: String) {
+private fun HiShortcutTile(
+    label: String,
+    url: String?,
+    editing: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val palette = LocalHiPalette.current
-    Text(
-        text,
-        color = palette.textPrimary,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-    )
+    val color = hiLetterColor(label)
+    Column(
+        modifier = modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(modifier = Modifier.size(64.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(if (url == null) palette.surface else color.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (url == null) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = palette.textPrimary, modifier = Modifier.size(28.dp))
+                } else {
+                    Text(label.take(1).uppercase(), color = color, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            if (editing && url != null) {
+                Box(
+                    modifier = Modifier.align(Alignment.TopEnd).size(22.dp).clip(CircleShape).background(Color(0xFFE53935)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(label, color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable
-private fun HiBrowserHomeTile(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    circleColor: Color? = null,
-    icon: @Composable () -> Unit,
+private fun HiAddShortcutDialog(onAdd: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add shortcut") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Web address") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = url.isNotBlank(),
+                onClick = {
+                    val trimmed = url.trim()
+                    val full = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
+                    onAdd(name.trim().ifBlank { hiHost(full).ifBlank { full } }, full)
+                },
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+internal enum class HiLibrarySection(val label: String, val icon: ImageVector) {
+    BOOKMARKS("Bookmarks", Icons.Default.Bookmark),
+    HISTORY("History", Icons.Default.History),
+    DOWNLOADS("Downloads", Icons.Default.Download),
+}
+
+/** Full-screen library with Bookmarks, History and Downloads, each searchable. */
+@Composable
+internal fun HiBrowserLibrary(
+    initialSection: HiLibrarySection,
+    bookmarks: List<Pair<String, String>>,
+    history: List<Pair<String, String>>,
+    onOpen: (String) -> Unit,
+    onRemove: (HiLibrarySection, String) -> Unit,
+    onClearHistory: () -> Unit,
+    downloadsContent: @Composable (String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier.size(48.dp).clip(CircleShape).background(circleColor ?: palette.surfaceElevated),
-            contentAlignment = Alignment.Center,
-        ) {
-            icon()
+    var section by remember { mutableStateOf(initialSection) }
+    var query by remember(section) { mutableStateOf("") }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = palette.textPrimary)
+                }
+                Spacer(Modifier.weight(1f))
+                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
+                    HiLibrarySection.entries.forEach { entry ->
+                        HiSegment(selected = section == entry, onClick = { section = entry }) { color ->
+                            Icon(entry.icon, contentDescription = entry.label, tint = color)
+                        }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (section == HiLibrarySection.HISTORY && history.isNotEmpty()) {
+                    TextButton(onClick = onClearHistory) { Text("Clear") }
+                } else {
+                    Spacer(Modifier.width(48.dp))
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(25.dp))
+                    .background(palette.surfaceElevated)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = palette.textTertiary)
+                Spacer(Modifier.width(10.dp))
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) Text("Search ${section.label}", color = palette.textTertiary, fontSize = 15.sp)
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 15.sp),
+                        cursorBrush = SolidColor(palette.primary),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear search", tint = palette.textTertiary)
+                    }
+                }
+            }
+            Text(
+                section.label.uppercase(),
+                color = palette.textTertiary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 28.dp, top = 14.dp, bottom = 8.dp),
+            )
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
+                if (section == HiLibrarySection.DOWNLOADS) {
+                    downloadsContent(query)
+                } else {
+                    val source = if (section == HiLibrarySection.BOOKMARKS) bookmarks else history
+                    val items = source.filter { (title, url) ->
+                        query.isBlank() || title.contains(query, ignoreCase = true) || url.contains(query, ignoreCase = true)
+                    }
+                    if (items.isEmpty()) {
+                        Text(
+                            when {
+                                query.isNotBlank() -> "Nothing matches \"$query\""
+                                section == HiLibrarySection.BOOKMARKS -> "No bookmarks yet. Tap the star in the menu to add one."
+                                else -> "No browsing history"
+                            },
+                            color = palette.textSecondary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(palette.surface),
+                        ) {
+                            itemsIndexed(items) { _, entry ->
+                                val title = entry.first
+                                val url = entry.second
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onDismiss()
+                                            onOpen(url)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    HiLetterIcon(hiHost(url).ifBlank { title }, 40, 16)
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(title, color = palette.textPrimary, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(hiHost(url), color = palette.textTertiary, fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    IconButton(onClick = { onRemove(section, url) }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Remove", tint = palette.textTertiary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = palette.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
