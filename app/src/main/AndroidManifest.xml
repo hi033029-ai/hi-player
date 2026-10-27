@@ -32,12 +32,18 @@
         android:hardwareAccelerated="true"
         android:usesCleartextTraffic="true">
 
+        <!-- Hi Browser's QR scanner uses Google Play services' code scanner UI. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:grantUriPermissions="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
             android:supportsPictureInPicture="true"
             android:colorMode="hdr"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard"
@@ -67,6 +73,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- Lets Android offer Hi Player as a web browser -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
             </intent-filter>
         </activity>
 

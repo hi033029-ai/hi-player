@@ -1,5 +1,33 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.DesktopWindows
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
@@ -27,6 +55,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -114,6 +143,24 @@ import java.io.ByteArrayInputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.WeakHashMap
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material3.Slider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private data class OrbitBrowserTab(
     val id: Int,
@@ -201,6 +248,10 @@ fun HiBrowserScreen(
     onBack: () -> Unit,
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
+    isInPictureInPicture: Boolean = false,
+    onEnterPictureInPicture: (() -> Boolean)? = null,
+    externalUrl: String? = null,
+    onExternalUrlConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -232,6 +283,34 @@ fun HiBrowserScreen(
     var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
     var entriesVersion by remember { mutableIntStateOf(0) }
     val downloadsActive = downloads.any { it.isActive }
+    var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
+    var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
+    var findBarVisible by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findMatchLabel by remember { mutableStateOf("") }
+    var showClearDataDialog by remember { mutableStateOf(false) }
+    var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
+    val thumbnails = remember { mutableStateMapOf<Int, ImageBitmap>() }
+    var shortcutsVersion by remember { mutableIntStateOf(0) }
+    val shortcuts = remember(shortcutsVersion) { store.shortcuts().map { it.title to it.url } }
+    var defaultBrowserCheck by remember { mutableIntStateOf(0) }
+    val isDefaultBrowser = remember(defaultBrowserCheck) {
+        runCatching {
+            context.packageManager.resolveActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")),
+                android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+            )?.activityInfo?.packageName == context.packageName
+        }.getOrDefault(false)
+    }
+    // pipSession: a browser picture-in-picture window is (or was just) open.
+    // pipPinned: the page's video is pinned to fill the page for that window.
+    val pipSession = remember { mutableStateOf(false) }
+    val pipPinned = remember { mutableStateOf(false) }
+    val pausedForPip = remember { mutableStateOf(false) }
+    // The bottom address bar slides away while the page scrolls down and returns on scroll up.
+    var browserBarHidden by remember { mutableStateOf(false) }
+    // "Browser mode" intro plays every time the browser is entered.
+    var showModeIntro by remember { mutableStateOf(true) }
 
     LaunchedEffect(activeTabId) {
         val restoredTab = tabs.firstOrNull { it.id == activeTabId }
@@ -239,6 +318,10 @@ fun HiBrowserScreen(
         currentUrl = restoredTab?.url.orEmpty()
         pageTitle = restoredTab?.title ?: "Hi Browser"
         showStartPage = restoredTab?.url.isNullOrBlank()
+        findBarVisible = false
+        findQuery = ""
+        findMatchLabel = ""
+        browserBarHidden = false
     }
 
     fun updateTab(id: Int, transform: (OrbitBrowserTab) -> OrbitBrowserTab) {
@@ -375,13 +458,256 @@ fun HiBrowserScreen(
         }
     }
 
+    fun showBrowserToast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun isWebPage(url: String): Boolean = url.startsWith("http://") || url.startsWith("https://")
+
+    /** Opens a page-requested window (target=_blank link or window.open) as a new tab. */
+    fun openUrlFromPage(url: String, source: WebView, privateTab: Boolean) {
+        if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock)) {
+            showBrowserToast("Pop-up blocked")
+            return
+        }
+        source.loadUrl(url)
+    }
+
+    fun setTextZoom(percent: Int) {
+        val value = percent.coerceIn(80, 200)
+        store.textZoom = value
+        textZoomPercent = value
+        tabs.forEach { tab -> tab.webView?.settings?.textZoom = value }
+    }
+
+    fun setPopupBlockEnabled(enabled: Boolean) {
+        store.popupBlock = enabled
+        popupBlockEnabled = enabled
+        tabs.forEach { tab -> tab.webView?.settings?.javaScriptCanOpenWindowsAutomatically = !enabled }
+    }
+
+    fun clearBrowsingData(history: Boolean, cookies: Boolean, cache: Boolean) {
+        HiBrowserTools.clearBrowsingData(context, tabs.mapNotNull { it.webView }, history, cookies, cache)
+        if (history) {
+            store.clearHistory()
+            entriesVersion++
+        }
+        showBrowserToast("Browsing data cleared")
+    }
+
+    fun findInPage(query: String) {
+        findQuery = query
+        val view = webView ?: return
+        if (query.isBlank()) {
+            view.clearMatches()
+            findMatchLabel = ""
+        } else {
+            view.findAllAsync(query)
+        }
+    }
+
+    fun translateCurrentPage() {
+        val url = currentUrl
+        if (!isWebPage(url)) {
+            showBrowserToast("Open a web page to translate it")
+            return
+        }
+        if (HiBrowserTools.isTranslatedPage(url)) {
+            showBrowserToast("This page is already translated")
+            return
+        }
+        loadAddress(HiBrowserTools.translateUrl(url, HiBrowserTools.translateTargetLanguage(Locale.getDefault())))
+    }
+
+    fun addCurrentPageToHomeScreen() {
+        val url = currentUrl
+        if (!isWebPage(url)) {
+            showBrowserToast("Open a web page to add it to your home screen")
+            return
+        }
+        val requested = HiBrowserTools.pinPageShortcut(context, url, pageTitle, webView?.favicon)
+        showBrowserToast(if (requested) "Adding to home screen…" else "Your launcher doesn't support adding shortcuts")
+    }
+
+    fun startPictureInPicture() {
+        val view = webView
+        val enter = onEnterPictureInPicture
+        if (view == null || enter == null || showStartPage) {
+            showBrowserToast("Open a page with a video first")
+            return
+        }
+        view.evaluateJavascript(HI_BROWSER_PIP_PIN_SCRIPT) { result ->
+            if (result?.contains("ok") == true) {
+                pipPinned.value = true
+                pipSession.value = true
+                if (!enter()) {
+                    pipSession.value = false
+                    pipPinned.value = false
+                    view.evaluateJavascript(HI_BROWSER_PIP_UNPIN_SCRIPT, null)
+                    showBrowserToast("Picture-in-picture isn't available on this device")
+                }
+            } else {
+                showBrowserToast("No video found on this page")
+            }
+        }
+    }
+
+    val voiceSearchLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (result.resultCode == Activity.RESULT_OK && !spoken.isNullOrBlank()) {
+            address = spoken
+            loadAddress(spoken)
+        }
+    }
+
+    fun startVoiceSearch() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Say a search or website")
+        try {
+            voiceSearchLauncher.launch(intent)
+        } catch (error: ActivityNotFoundException) {
+            showBrowserToast("Voice search isn't available on this device")
+        }
+    }
+
+    fun startQrScan() {
+        HiBrowserTools.scanQrCode(
+            context = context,
+            onResult = { value ->
+                address = value
+                loadAddress(value)
+            },
+            onError = { message -> showBrowserToast(message) },
+        )
+    }
+
+    /** Saves a small preview of the current page for the tab switcher. */
+    fun captureThumbnail() {
+        val view = webView ?: return
+        val tabId = activeTabId
+        if (showStartPage || view.width <= 0 || view.height <= 0) {
+            thumbnails.remove(tabId)
+            return
+        }
+        runCatching {
+            val scale = 0.35f
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                (view.width * scale).toInt().coerceAtLeast(1),
+                (view.height * scale).toInt().coerceAtLeast(1),
+                android.graphics.Bitmap.Config.RGB_565,
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            canvas.scale(scale, scale)
+            canvas.translate(-view.scrollX.toFloat(), -view.scrollY.toFloat())
+            view.draw(canvas)
+            thumbnails[tabId] = bitmap.asImageBitmap()
+        }
+    }
+
+    fun closeAllTabs(privateTabs: Boolean) {
+        val closing = tabs.filter { it.privateTab == privateTabs }
+        closing.forEach { tab ->
+            tab.webView?.let(::disposeOrbitWebView)
+            thumbnails.remove(tab.id)
+        }
+        val remaining = tabs.filterNot { it.privateTab == privateTabs }
+        tabs = remaining
+        if (remaining.isEmpty()) {
+            openNewTab(privateTab = false)
+        } else if (remaining.none { it.id == activeTabId }) {
+            activateTab(remaining.first())
+        }
+    }
+
+    val defaultBrowserLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        defaultBrowserCheck++
+    }
+
+    fun requestDefaultBrowser() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roles = context.getSystemService(android.app.role.RoleManager::class.java)
+                if (roles != null && roles.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)) {
+                    if (roles.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)) {
+                        showBrowserToast("Hi Player is already your default browser")
+                        defaultBrowserCheck++
+                        return
+                    }
+                    defaultBrowserLauncher.launch(roles.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER))
+                    return
+                }
+            }
+            defaultBrowserLauncher.launch(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+        } catch (error: Exception) {
+            showBrowserToast("Open Settings > Apps > Default apps > Browser app")
+        }
+    }
+
+    DisposableEffect(findBarVisible, webView) {
+        val view = webView
+        if (findBarVisible && view != null) {
+            view.setFindListener { activeMatchOrdinal, numberOfMatches, isDoneCounting ->
+                findMatchLabel = when {
+                    numberOfMatches > 0 -> "${activeMatchOrdinal + 1}/$numberOfMatches"
+                    isDoneCounting && findQuery.isNotBlank() -> "0/0"
+                    else -> ""
+                }
+            }
+            if (findQuery.isNotBlank()) view.findAllAsync(findQuery)
+        }
+        onDispose {
+            runCatching {
+                view?.clearMatches()
+                view?.setFindListener(null)
+            }
+        }
+    }
+
+    // Closing the picture-in-picture window stops the activity without
+    // resuming it; pause page media then so audio does not keep playing.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (pipSession.value) {
+                    latestTabs.forEach { it.webView?.onPause() }
+                    pausedForPip.value = true
+                }
+                Lifecycle.Event.ON_START -> if (pausedForPip.value) {
+                    latestTabs.forEach { it.webView?.onResume() }
+                    pausedForPip.value = false
+                }
+                Lifecycle.Event.ON_RESUME -> pipSession.value = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isInPictureInPicture) {
+        if (!isInPictureInPicture && pipPinned.value) {
+            pipPinned.value = false
+            webView?.evaluateJavascript(HI_BROWSER_PIP_UNPIN_SCRIPT, null)
+        }
+    }
+
+    LaunchedEffect(externalUrl) {
+        val url = externalUrl ?: return@LaunchedEffect
+        onExternalUrlConsumed()
+        if (tabs.size >= 12) loadAddress(url) else openNewTab(privateTab = false, initialUrl = url)
+    }
+
     BackHandler {
         when {
-            webView?.canGoBack() == true -> webView?.goBack()
-            !showStartPage -> showBrowserHome()
-            tabs.size > 1 -> {
-                closeTab(activeTabId)
+            findBarVisible -> {
+                findBarVisible = false
+                findQuery = ""
+                findMatchLabel = ""
             }
+            !showStartPage && webView?.canGoBack() == true -> webView?.goBack()
+            !showStartPage -> showBrowserHome()
             else -> onBack()
         }
     }
@@ -415,173 +741,7 @@ fun HiBrowserScreen(
     Column(
         modifier = modifier.fillMaxSize().background(palette.background),
     ) {
-        if (showStartPage) {
-            BrowserStartPage(
-                query = address,
-                onQueryChange = { address = it },
-                provider = searchProvider,
-                onProviderChange = { searchProvider = it },
-                onSearch = { loadAddress(address) },
-                onManageTabs = { showTabsDialog = true },
-                onVisitWebsite = { loadAddress(it) },
-                onOpenBookmarks = { entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
-                onOpenHistory = { entryList = OrbitEntryList.HISTORY; entriesVersion++ },
-                onOpenDownloads = { showDownloadsDialog = true },
-                onOpenSettings = { showBrowserSettings = true },
-                tabCount = tabs.size,
-                bookmarks = store.bookmarks(),
-                recentPages = store.history(),
-                privateTab = activeTab?.privateTab == true,
-                adBlockEnabled = adBlockEnabled,
-            )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 3.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { if (webView?.canGoBack() == true) webView?.goBack() else showBrowserHome() }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
-                }
-                IconButton(onClick = { if (webView?.canGoForward() == true) webView?.goForward() }) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = "Forward", tint = palette.textPrimary)
-                }
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-                    placeholder = { Text("Search or enter a website", fontSize = 12.sp) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary, unfocusedTextColor = palette.textPrimary,
-                        focusedBorderColor = palette.primary, unfocusedBorderColor = palette.surfaceBorder,
-                        focusedContainerColor = palette.surfaceElevated, unfocusedContainerColor = palette.surfaceElevated,
-                    ),
-                    shape = RoundedCornerShape(15.dp),
-                    modifier = Modifier.weight(1f),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { loadAddress(address) }),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Go),
-                )
-                IconButton(onClick = { webView?.reload() }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = palette.textPrimary)
-                }
-                Text(
-                    text = tabs.size.toString(), color = palette.textPrimary, fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 10.dp).clickable { showTabsDialog = true },
-                )
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("New tab") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            onClick = { menuExpanded = false; openNewTab(false) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("New private tab") },
-                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
-                            onClick = { menuExpanded = false; openNewTab(true) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Tabs (${tabs.size})") },
-                            leadingIcon = { Icon(Icons.Default.MoreVert, contentDescription = null) },
-                            onClick = { menuExpanded = false; showTabsDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(if (store.isBookmarked(currentUrl)) "Remove bookmark" else "Add bookmark") },
-                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-                            onClick = { menuExpanded = false; addBookmark() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Bookmarks") },
-                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-                            onClick = { menuExpanded = false; entryList = OrbitEntryList.BOOKMARKS; entriesVersion++ },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("History") },
-                            leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                            onClick = { menuExpanded = false; entryList = OrbitEntryList.HISTORY; entriesVersion++ },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Reader mode") },
-                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
-                            onClick = { menuExpanded = false; readCurrentPage() },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Downloads") },
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            onClick = { menuExpanded = false; showDownloadsDialog = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Download current URL") },
-                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                BrowserDownloads.enqueue(context, currentUrl, webView?.settings?.userAgentString.orEmpty(), "")
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Browser settings") },
-                            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                            onClick = { menuExpanded = false; showBrowserSettings = true },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Share page") },
-                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
-                            onClick = {
-                                menuExpanded = false
-                                if (currentUrl.isNotBlank()) runCatching {
-                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
-                                }
-                            },
-                        )
-                        if (!isOrbitYoutube(currentUrl)) {
-                            DropdownMenuItem(
-                                text = { Text("Play link in Hi Player") },
-                                leadingIcon = { Icon(Icons.Default.PlayCircle, contentDescription = null) },
-                                onClick = { menuExpanded = false; onPlayDirectMedia(currentUrl) },
-                            )
-                        }
-                        DropdownMenuItem(
-                            text = { Text("Close tab") },
-                            leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) },
-                            onClick = { menuExpanded = false; closeTab(activeTabId) },
-                        )
-                    }
-                }
-            }
-
-            if (loadingProgress in 1..99) {
-                LinearProgressIndicator(
-                    progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = { showBrowserHome() }) {
-                    Icon(Icons.Default.Home, contentDescription = "Browser home", tint = palette.textSecondary)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = (if (activeTab?.privateTab == true) "Private • " else "") + pageTitle,
-                        color = palette.textPrimary, fontSize = 11.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = Uri.parse(currentUrl).host.orEmpty(),
-                        color = palette.textTertiary, fontSize = 9.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                IconButton(onClick = { if (currentUrl.isNotBlank()) runCatching {
-                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl), "Share page"))
-                } }) { Icon(Icons.Default.Share, contentDescription = "Share", tint = palette.textPrimary) }
-            }
+        if (!isInPictureInPicture && !showStartPage) {
             detectedVideoUrl?.takeIf { !isOrbitYoutube(currentUrl) }?.let { videoUrl ->
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
@@ -602,6 +762,23 @@ fun HiBrowserScreen(
                     }
                 }
             }
+        }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        if (showStartPage && !isInPictureInPicture && !rendererGone) {
+            HiBrowserHome(
+                isPrivate = activeTab?.privateTab == true,
+                shortcuts = shortcuts,
+                adBlockEnabled = adBlockEnabled,
+                onVisit = { loadAddress(it) },
+                onAddShortcut = { name, url ->
+                    store.saveShortcuts(store.shortcuts() + OrbitBrowserEntry(name, url))
+                    shortcutsVersion++
+                },
+                onRemoveShortcut = { url ->
+                    store.saveShortcuts(store.shortcuts().filterNot { it.url == url })
+                    shortcutsVersion++
+                },
+            )
         }
 
         if (rendererGone) {
@@ -624,7 +801,9 @@ fun HiBrowserScreen(
                                 cacheMode = if (activeTab.privateTab) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
                                 allowFileAccess = false
                                 allowContentAccess = false
-                                setSupportMultipleWindows(false)
+                                setSupportMultipleWindows(true)
+                                javaScriptCanOpenWindowsAutomatically = !store.popupBlock
+                                textZoom = store.textZoom
                                 mediaPlaybackRequiresUserGesture = true
                                 builtInZoomControls = true
                                 displayZoomControls = false
@@ -638,6 +817,24 @@ fun HiBrowserScreen(
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
                             val browserWebView = this
                             var lastUserTouchAt = 0L
+                            var lastBarToggleAt = 0L
+                            setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                                if (activeTabId != tabId) return@setOnScrollChangeListener
+                                val now = SystemClock.uptimeMillis()
+                                // Ignore the scroll jump caused by the page resizing when the bar moves.
+                                if (now - lastBarToggleAt < 400L) return@setOnScrollChangeListener
+                                val dy = scrollY - oldScrollY
+                                val hide = when {
+                                    scrollY <= 0 -> false
+                                    dy > 10 && scrollY > 120 -> true
+                                    dy < -10 -> false
+                                    else -> return@setOnScrollChangeListener
+                                }
+                                if (hide != browserBarHidden) {
+                                    browserBarHidden = hide
+                                    lastBarToggleAt = now
+                                }
+                            }
                             browserWebView.setOnTouchListener { _, event ->
                                 if (event.actionMasked == MotionEvent.ACTION_UP) lastUserTouchAt = SystemClock.uptimeMillis()
                                 false
@@ -665,6 +862,40 @@ fun HiBrowserScreen(
                                     updateTab(tabId) { it.copy(title = value, url = view.url ?: it.url) }
                                     if (activeTabId == tabId) pageTitle = value
                                 }
+                                override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                                    if (store.popupBlock) {
+                                        // Only a real link tap may open a window; it opens in this tab like a normal link.
+                                        val hit = view.hitTestResult
+                                        val tappedLink = isUserGesture && (
+                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
+                                                hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                                            )
+                                        if (!tappedLink) {
+                                            Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
+                                            return false
+                                        }
+                                        val href = hit.extra?.takeIf {
+                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE &&
+                                                (it.startsWith("http://") || it.startsWith("https://"))
+                                        }
+                                        if (href != null) {
+                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(href), store.adBlock)) view.loadUrl(href)
+                                            return false
+                                        }
+                                        val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                                        linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
+                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(linkUrl), store.adBlock)) view.loadUrl(linkUrl)
+                                        }
+                                        resultMsg.sendToTarget()
+                                        return true
+                                    }
+                                    val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                                    transport.webView = HiBrowserPopupCatcher.create(viewContext) { popupUrl ->
+                                        openUrlFromPage(popupUrl, view, activeTab.privateTab)
+                                    }
+                                    resultMsg.sendToTarget()
+                                    return true
+                                }
                             }
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -691,6 +922,7 @@ fun HiBrowserScreen(
                                         currentUrl = url
                                         address = url
                                         loadingProgress = 1
+                                        browserBarHidden = false
                                     }
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
@@ -738,18 +970,71 @@ fun HiBrowserScreen(
                 )
             }
         }
-    }
-
-    if (showDownloadsDialog) {
-        BrowserDownloadsDialog(
-            downloads = downloads,
-            onCancel = { BrowserDownloads.cancel(context, it) },
-            onRetry = { BrowserDownloads.retry(context, it) },
-            onRemove = { BrowserDownloads.removeFromList(context, it) },
-            onPlayDownload = { BrowserDownloads.playInPlayer(context, it, onPlayDirectMedia) },
-            onClearCompleted = { BrowserDownloads.clearCompleted(context) },
-            onDismiss = { showDownloadsDialog = false },
-        )
+        }
+        if (!isInPictureInPicture) {
+            val onPage = !showStartPage
+            if (onPage && findBarVisible) {
+                BrowserFindBar(
+                    query = findQuery,
+                    matchLabel = findMatchLabel,
+                    onQueryChange = { findInPage(it) },
+                    onPrevious = { webView?.findNext(false) },
+                    onNext = { webView?.findNext(true) },
+                    onClose = {
+                        findBarVisible = false
+                        findQuery = ""
+                        findMatchLabel = ""
+                    },
+                )
+            }
+            val showBrowserBar = !onPage || !browserBarHidden || findBarVisible || hiImeVisible()
+            AnimatedVisibility(
+                visible = showBrowserBar,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+            Column {
+            if (onPage && loadingProgress in 1..99) {
+                LinearProgressIndicator(
+                    progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder,
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                )
+            }
+            HiBrowserToolbar(
+                address = address,
+                onAddressChange = { address = it },
+                onSubmit = { loadAddress(it) },
+                isPrivate = activeTab?.privateTab == true,
+                isSecure = onPage && currentUrl.startsWith("https://"),
+                isLoading = onPage && loadingProgress in 1..99,
+                showReload = onPage,
+                tabCount = tabs.size,
+                providers = BrowserSearchProvider.entries.map { it.displayName },
+                selectedProvider = searchProvider.displayName,
+                onProviderSelect = { index -> searchProvider = BrowserSearchProvider.entries[index] },
+                onHome = { showBrowserHome() },
+                onVoiceSearch = { startVoiceSearch() },
+                onReloadOrStop = {
+                    if (loadingProgress in 1..99) {
+                        webView?.stopLoading()
+                        loadingProgress = 100
+                    } else {
+                        webView?.reload()
+                    }
+                },
+                onShowTabs = {
+                    captureThumbnail()
+                    showTabsDialog = true
+                },
+                onMenu = {
+                    captureThumbnail()
+                    menuExpanded = true
+                },
+                modifier = Modifier.windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
+            )
+            }
+            }
+        }
     }
 
     if (showBrowserSettings) {
@@ -773,62 +1058,170 @@ fun HiBrowserScreen(
             },
             onDesktopSiteChange = { enabled -> if (enabled != (activeTab?.desktop == true)) toggleDesktopSite() },
             onUpdateFilterLists = { updateFilterLists() },
+            textZoom = textZoomPercent,
+            popupBlock = popupBlockEnabled,
+            onTextZoomChange = { setTextZoom(it) },
+            onPopupBlockChange = { setPopupBlockEnabled(it) },
+            onClearBrowsingData = { showBrowserSettings = false; showClearDataDialog = true },
             onDismiss = { showBrowserSettings = false },
         )
     }
 
-    if (showTabsDialog) {
-        AlertDialog(
-            onDismissRequest = { showTabsDialog = false },
-            title = { Text("Hi Browser tabs (${tabs.size})") },
-            text = {
-                Column {
-                    LazyColumn(modifier = Modifier.height(260.dp)) {
-                        itemsIndexed(tabs, key = { _, tab -> tab.id }) { _, tab ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clickable { activateTab(tab); showTabsDialog = false }.padding(vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text((if (tab.privateTab) "Private • " else "") + tab.title, modifier = Modifier.weight(1f), maxLines = 1)
-                                IconButton(onClick = {
-                                    closeTab(tab.id)
-                                }) { Icon(Icons.Default.Close, contentDescription = "Close ${tab.title}") }
-                            }
-                        }
-                    }
-                }
+    if (showClearDataDialog) {
+        BrowserClearDataDialog(
+            onConfirm = { history, cookies, cache ->
+                showClearDataDialog = false
+                clearBrowsingData(history, cookies, cache)
             },
-            confirmButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(false) }) { Text("New tab") } },
-            dismissButton = { TextButton(onClick = { showTabsDialog = false; openNewTab(true) }) { Text("Private tab") } },
+            onDismiss = { showClearDataDialog = false },
         )
     }
 
-    entryList?.let { listType ->
-        val items = remember(listType, entriesVersion) {
-            if (listType == OrbitEntryList.BOOKMARKS) store.bookmarks() else store.history()
-        }
-        AlertDialog(
-            onDismissRequest = { entryList = null },
-            title = { Text(if (listType == OrbitEntryList.BOOKMARKS) "Bookmarks" else "History") },
-            text = {
-                if (items.isEmpty()) Text(if (listType == OrbitEntryList.BOOKMARKS) "No bookmarks yet" else "No browsing history")
-                else LazyColumn(modifier = Modifier.height(320.dp)) {
-                    itemsIndexed(items, key = { _, item -> item.url }) { _, item ->
-                        Column(Modifier.fillMaxWidth().clickable {
-                            entryList = null
-                            loadAddress(item.url)
-                        }.padding(vertical = 9.dp)) {
-                            Text(item.title, maxLines = 1, color = palette.textPrimary)
-                            Text(item.url, maxLines = 1, fontSize = 11.sp, color = palette.textSecondary)
+    if (showTabsDialog) {
+        HiBrowserTabSwitcher(
+            tabs = tabs.map { tab ->
+                HiBrowserTabCard(
+                    id = tab.id,
+                    title = tab.title,
+                    url = tab.url,
+                    privateTab = tab.privateTab,
+                    thumbnail = thumbnails[tab.id],
+                    favicon = runCatching { tab.webView?.favicon?.asImageBitmap() }.getOrNull(),
+                )
+            },
+            activeTabId = activeTabId,
+            startPrivate = activeTab?.privateTab == true,
+            onSelect = { id ->
+                tabs.firstOrNull { it.id == id }?.let { activateTab(it) }
+                showTabsDialog = false
+            },
+            onClose = { id ->
+                thumbnails.remove(id)
+                closeTab(id)
+            },
+            onNewTab = { isPrivate ->
+                showTabsDialog = false
+                openNewTab(isPrivate)
+            },
+            onCloseAll = { isPrivate -> closeAllTabs(isPrivate) },
+            onDismiss = { showTabsDialog = false },
+        )
+    }
+
+    librarySection?.let { section ->
+        val libraryBookmarks = remember(entriesVersion) { store.bookmarks().map { it.title to it.url } }
+        val libraryHistory = remember(entriesVersion) { store.history().map { it.title to it.url } }
+        HiBrowserLibrary(
+            initialSection = section,
+            bookmarks = libraryBookmarks,
+            history = libraryHistory,
+            onOpen = { loadAddress(it) },
+            onRemove = { from, url ->
+                if (from == HiLibrarySection.BOOKMARKS) store.removeBookmark(url) else store.removeHistory(url)
+                entriesVersion++
+            },
+            onClearHistory = {
+                store.clearHistory()
+                entriesVersion++
+            },
+            downloadsContent = { query ->
+                val shownDownloads = downloads.filter { query.isBlank() || it.fileName.contains(query, ignoreCase = true) }
+                if (shownDownloads.isEmpty()) {
+                    Text(
+                        if (query.isBlank()) "Your browser downloads will appear here." else "Nothing matches \"$query\"",
+                        color = palette.textSecondary,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(palette.surface)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 14.dp),
+                    ) {
+                        shownDownloads.forEach { download ->
+                            BrowserDownloadRow(
+                                download = download,
+                                onCancel = { BrowserDownloads.cancel(context, download.id) },
+                                onRetry = { BrowserDownloads.retry(context, download.id) },
+                                onRemove = { BrowserDownloads.removeFromList(context, download.id) },
+                                onPlay = { BrowserDownloads.playInPlayer(context, download.id, onPlayDirectMedia) },
+                            )
+                        }
+                        if (shownDownloads.none { it.isActive }) {
+                            TextButton(onClick = { BrowserDownloads.clearCompleted(context) }) { Text("Clear completed") }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { entryList = null }) { Text("Close") } },
-            dismissButton = if (listType == OrbitEntryList.HISTORY) ({
-                TextButton(onClick = { store.clearHistory(); entriesVersion++ }) { Text("Clear history") }
-            }) else null,
+            onDismiss = { librarySection = null },
         )
+    }
+
+    if (menuExpanded) {
+        val onPage = !showStartPage
+        val bookmarked = onPage && store.isBookmarked(currentUrl)
+        HiBrowserMenuSheet(
+            tiles = listOf(
+                HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
+                HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
+                HiMenuAction("Downloads", Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
+                HiMenuAction("New tab", Icons.Default.Add) { openNewTab(false) },
+            ),
+            onSetDefaultBrowser = if (isDefaultBrowser) null else ({ requestDefaultBrowser() }),
+            tools = buildList {
+                if (onPage) {
+                    add(HiMenuAction("Share", Icons.Default.Share) {
+                        runCatching {
+                            context.startActivity(
+                                Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, currentUrl),
+                                    "Share page",
+                                ),
+                            )
+                        }
+                    })
+                    add(HiMenuAction("Find in page", Icons.Default.FindInPage) { findBarVisible = true })
+                    add(HiMenuAction("Translate", Icons.Default.Translate) { translateCurrentPage() })
+                    add(HiMenuAction("Reader mode", Icons.Default.Language) { readCurrentPage() })
+                    add(HiMenuAction("Desktop site", Icons.Default.DesktopWindows, checked = activeTab?.desktop == true) { toggleDesktopSite() })
+                    if (onEnterPictureInPicture != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        add(HiMenuAction("Picture-in-picture", Icons.Default.PictureInPictureAlt) { startPictureInPicture() })
+                    }
+                    add(HiMenuAction("Add to home screen", Icons.Default.AddCircle) { addCurrentPageToHomeScreen() })
+                    if (!isOrbitYoutube(currentUrl)) {
+                        add(HiMenuAction("Play in Hi Player", Icons.Default.PlayCircle) { onPlayDirectMedia(currentUrl) })
+                    }
+                }
+                add(HiMenuAction("Scan QR code", Icons.Default.QrCodeScanner) { startQrScan() })
+                add(HiMenuAction("Clear data", Icons.Default.DeleteSweep) { showClearDataDialog = true })
+            },
+            rows = listOf(
+                HiMenuAction("New private tab", Icons.Default.VisibilityOff) { openNewTab(true) },
+                HiMenuAction("Settings", Icons.Default.Settings) { showBrowserSettings = true },
+                HiMenuAction("Close this tab", Icons.Default.Close) { closeTab(activeTabId) },
+            ),
+            bottomRow = listOf(
+                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = webView?.canGoBack() == true) { webView?.goBack() },
+                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = webView?.canGoForward() == true) { webView?.goForward() },
+                HiMenuAction(
+                    if (bookmarked) "Remove bookmark" else "Add bookmark",
+                    if (bookmarked) Icons.Default.Star else Icons.Default.StarBorder,
+                    enabled = onPage,
+                    checked = bookmarked,
+                ) { addBookmark() },
+                HiMenuAction("Exit browser", Icons.Default.PowerSettingsNew) { onBack() },
+                HiMenuAction("Reload", Icons.Default.Refresh, enabled = onPage) { webView?.reload() },
+            ),
+            onDismiss = { menuExpanded = false },
+        )
+    }
+
+    if (showModeIntro && !isInPictureInPicture) {
+        HiBrowserModeIntro(onFinished = { showModeIntro = false })
     }
 }
 
@@ -930,240 +1323,6 @@ private fun applyOrbitDarkMode(webView: WebView, enabled: Boolean) {
 private const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 @Composable
-private fun BrowserStartPage(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    provider: BrowserSearchProvider,
-    onProviderChange: (BrowserSearchProvider) -> Unit,
-    onSearch: () -> Unit,
-    onManageTabs: () -> Unit,
-    onVisitWebsite: (String) -> Unit,
-    onOpenBookmarks: () -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenDownloads: () -> Unit,
-    onOpenSettings: () -> Unit,
-    tabCount: Int,
-    bookmarks: List<OrbitBrowserEntry>,
-    recentPages: List<OrbitBrowserEntry>,
-    privateTab: Boolean,
-    adBlockEnabled: Boolean,
-) {
-    val palette = LocalHiPalette.current
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(palette.primary.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(25.dp))
-                }
-                Spacer(Modifier.width(11.dp))
-                Column {
-                    Text("Hi Browser", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("Browse at your pace", color = palette.textSecondary, fontSize = 11.sp)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onManageTabs) { Text("$tabCount tabs", color = palette.textPrimary, fontSize = 11.sp) }
-                IconButton(onClick = onOpenDownloads) {
-                    Icon(Icons.Default.Download, contentDescription = "Downloads", tint = palette.textSecondary)
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Browser settings", tint = palette.textSecondary)
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                if (privateTab) "A private space to browse." else "The web, your way.",
-                color = palette.textPrimary,
-                fontSize = 23.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text("Search or enter a website address", color = palette.textSecondary, fontSize = 13.sp)
-        }
-
-        if (privateTab) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(9.dp))
-                    Text(
-                        "This tab is not saved to history. Site cookies may still be shared with regular tabs.",
-                        color = palette.textSecondary, fontSize = 11.sp, lineHeight = 15.sp,
-                    )
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = palette.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.primary) },
-                    trailingIcon = {
-                        IconButton(onClick = onSearch) {
-                            Icon(Icons.Default.ArrowForward, contentDescription = "Go", tint = palette.primary)
-                        }
-                    },
-                    placeholder = { Text("Search with ${provider.displayName} or enter URL", fontSize = 12.sp) },
-                    shape = RoundedCornerShape(15.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary,
-                        focusedBorderColor = palette.primary,
-                        unfocusedBorderColor = palette.surfaceBorder,
-                        focusedContainerColor = palette.surfaceElevated,
-                        unfocusedContainerColor = palette.surfaceElevated,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSearch() }),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Go,
-                    ),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                ) {
-                    BrowserSearchProvider.entries.forEach { option ->
-                        FilterChip(
-                            selected = option == provider,
-                            onClick = { onProviderChange(option) },
-                            label = { Text(option.displayName, fontSize = 10.sp, maxLines = 1) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = palette.primary,
-                                selectedLabelColor = Color.White,
-                                containerColor = palette.surfaceElevated,
-                                labelColor = palette.textPrimary,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text("Quick access", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            val links = listOf(
-                BrowserQuickLink("Google", "https://www.google.com", Icons.Default.Search, Color(0xFF4285F4)),
-                BrowserQuickLink("YouTube", "https://m.youtube.com", Icons.Default.PlayCircle, Color(0xFFFF3030)),
-                BrowserQuickLink("Wikipedia", "https://www.wikipedia.org", Icons.Default.Language, palette.primary),
-                BrowserQuickLink("Bookmarks", null, Icons.Default.Bookmark, Color(0xFFF2A900)),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                links.forEach { link ->
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { link.url?.let(onVisitWebsite) ?: onOpenBookmarks() },
-                        shape = RoundedCornerShape(17.dp),
-                        colors = CardDefaults.cardColors(containerColor = palette.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 11.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier.size(34.dp).clip(CircleShape).background(link.tint.copy(alpha = 0.13f)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(link.icon, contentDescription = null, tint = link.tint, modifier = Modifier.size(19.dp))
-                            }
-                            Text(link.label, color = palette.textSecondary, fontSize = 9.5.sp, maxLines = 1)
-                        }
-                    }
-                }
-            }
-        }
-
-        val recent = (bookmarks + recentPages).distinctBy { it.url }.take(3)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Pick up where you left off", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onOpenHistory) { Text("History", color = palette.primary, fontSize = 10.sp) }
-            }
-            if (recent.isEmpty()) {
-                Text("Your bookmarks and recent pages will appear here.", color = palette.textTertiary, fontSize = 11.sp)
-            } else {
-                recent.forEach { item ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(palette.surface)
-                            .clickable { onVisitWebsite(item.url) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Language, contentDescription = null, tint = palette.textTertiary, modifier = Modifier.size(19.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.title, color = palette.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(Uri.parse(item.url).host.orEmpty(), color = palette.textTertiary, fontSize = 9.sp, maxLines = 1)
-                        }
-                        Icon(Icons.Default.ArrowForward, contentDescription = "Open ${item.title}", tint = palette.textTertiary, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        ) {
-            Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off", color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Common third-party ad and tracker requests", color = palette.textSecondary, fontSize = 9.5.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun BrowserSettingsDialog(
     darkMode: Boolean,
     adBlock: Boolean,
@@ -1176,29 +1335,95 @@ private fun BrowserSettingsDialog(
     onYoutubeAdSkipChange: (Boolean) -> Unit,
     onDesktopSiteChange: (Boolean) -> Unit,
     onUpdateFilterLists: () -> Unit,
+    textZoom: Int,
+    popupBlock: Boolean,
+    onTextZoomChange: (Int) -> Unit,
+    onPopupBlockChange: (Boolean) -> Unit,
+    onClearBrowsingData: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Browser settings") },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("APPEARANCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                BrowserSettingsSwitchRow("Dark theme", "Use Hi Browser's dark page styling", darkMode, onDarkModeChange)
-                Text("PRIVACY AND CONTENT", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common third-party requests", adBlock, onAdBlockChange)
-                BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
-                BrowserSettingsSwitchRow("YouTube ad skip", "Try to skip supported YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
-                Text("SITE PREFERENCE", color = palette.textTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                BrowserSettingsSwitchRow("Desktop site", "Request desktop layout for this tab", desktopSite, onDesktopSiteChange)
-                TextButton(onClick = onUpdateFilterLists) { Text("Update filter lists") }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.textPrimary)
+                }
+                Text("Browser settings", color = palette.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                BrowserSettingsGroup("Appearance") {
+                    BrowserSettingsSwitchRow("Dark theme", "Show web pages with dark colors", darkMode, onDarkModeChange)
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Text size", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text("How big text looks on web pages", color = palette.textSecondary, fontSize = 12.sp)
+                        }
+                        IconButton(onClick = { onTextZoomChange(textZoom - 10) }, enabled = textZoom > 80) {
+                            Icon(Icons.Default.Remove, contentDescription = "Smaller text", tint = palette.textPrimary)
+                        }
+                        Text(
+                            "$textZoom%",
+                            color = palette.textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(56.dp),
+                        )
+                        IconButton(onClick = { onTextZoomChange(textZoom + 10) }, enabled = textZoom < 200) {
+                            Icon(Icons.Default.Add, contentDescription = "Bigger text", tint = palette.textPrimary)
+                        }
+                    }
+                    if (textZoom != 100) {
+                        TextButton(onClick = { onTextZoomChange(100) }) { Text("Reset text size to 100%") }
+                    }
+                }
+                BrowserSettingsGroup("Privacy and content") {
+                    BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
+                    BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
+                    BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
+                    BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
+                }
+                BrowserSettingsGroup("This tab") {
+                    BrowserSettingsSwitchRow("Desktop site", "Ask sites for their desktop layout", desktopSite, onDesktopSiteChange)
+                }
+                BrowserSettingsGroup("Data") {
+                    BrowserSettingsActionRow("Update ad-block filter lists", onUpdateFilterLists)
+                    BrowserSettingsActionRow("Clear browsing data", onClearBrowsingData)
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowserSettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val palette = LocalHiPalette.current
+    Text(
+        title.uppercase(),
+        color = palette.textTertiary,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 6.dp, top = 6.dp),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(palette.surface)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        content = content,
     )
 }
 
@@ -1210,13 +1435,38 @@ private fun BrowserSettingsSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
-            Text(title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text(description, color = palette.textSecondary, fontSize = 10.sp, lineHeight = 14.sp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(description, color = palette.textSecondary, fontSize = 12.sp, lineHeight = 16.sp)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = palette.primary,
+                uncheckedThumbColor = palette.textSecondary,
+                uncheckedTrackColor = palette.surfaceElevated,
+                uncheckedBorderColor = palette.textTertiary,
+            ),
+        )
     }
+}
+
+@Composable
+private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit) {
+    val palette = LocalHiPalette.current
+    Text(
+        title,
+        color = palette.primary,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+    )
 }
 
 @Composable

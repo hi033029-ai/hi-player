@@ -28,8 +28,18 @@ internal class OrbitBrowserStore(context: Context) {
         set(value) { prefs.edit().putBoolean("page_skipper", value).apply() }
 
     var youtubeAdSkip: Boolean
-        get() = prefs.getBoolean("youtube_ad_skip", false)
+        get() = prefs.getBoolean("youtube_ad_skip", true)
         set(value) { prefs.edit().putBoolean("youtube_ad_skip", value).apply() }
+
+    /** Page text size as a percentage of the site's own size (50–200). */
+    var textZoom: Int
+        get() = prefs.getInt("text_zoom", 100).coerceIn(80, 200)
+        set(value) { prefs.edit().putInt("text_zoom", value.coerceIn(80, 200)).apply() }
+
+    /** Blocks windows a page tries to open without the user tapping anything. */
+    var popupBlock: Boolean
+        get() = prefs.getBoolean("popup_block", true)
+        set(value) { prefs.edit().putBoolean("popup_block", value).apply() }
 
     fun bookmarks(): List<OrbitBrowserEntry> = read("bookmarks")
     fun history(): List<OrbitBrowserEntry> = read("history")
@@ -45,6 +55,11 @@ internal class OrbitBrowserStore(context: Context) {
     }
     fun removeHistory(url: String) = write("history", history().filterNot { it.url == url })
     fun clearHistory() = write("history", emptyList())
+
+    fun shortcuts(): List<OrbitBrowserEntry> =
+        if (prefs.contains("shortcuts")) read("shortcuts") else ORBIT_DEFAULT_SHORTCUTS
+
+    fun saveShortcuts(entries: List<OrbitBrowserEntry>) = write("shortcuts", entries.distinctBy { it.url }.take(12))
 
     private fun read(key: String): List<OrbitBrowserEntry> = runCatching {
         val array = JSONArray(prefs.getString(key, "[]"))
@@ -232,3 +247,10 @@ internal fun isOrbitYoutube(url: String): Boolean = runCatching {
         host == "youtube.com" || host.endsWith(".youtube.com") ||
         host == "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")
 }.getOrDefault(false)
+
+internal val ORBIT_DEFAULT_SHORTCUTS = listOf(
+    OrbitBrowserEntry("Google", "https://www.google.com"),
+    OrbitBrowserEntry("YouTube", "https://m.youtube.com"),
+    OrbitBrowserEntry("Wikipedia", "https://www.wikipedia.org"),
+    OrbitBrowserEntry("X", "https://x.com"),
+)

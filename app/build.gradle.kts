@@ -106,6 +106,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.webkit)
+  implementation(libs.play.services.code.scanner)
   implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.documentfile)
