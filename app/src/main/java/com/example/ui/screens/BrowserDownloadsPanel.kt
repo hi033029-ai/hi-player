@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,63 +26,11 @@ import com.example.ui.theme.LocalHiPalette
 internal fun BrowserDownloadsPanel(downloads: List<BrowserDownload>, query: String, onPlay: (Long) -> Unit) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    var filter by remember { mutableStateOf("All") }
-    var sort by remember { mutableStateOf("Newest first") }
-    var filterMenu by remember { mutableStateOf(false) }
-    var sortMenu by remember { mutableStateOf(false) }
-    var bulkMenu by remember { mutableStateOf(false) }
     var rename by remember { mutableStateOf<BrowserDownload?>(null) }
     var name by remember { mutableStateOf("") }
     var details by remember { mutableStateOf<BrowserDownload?>(null) }
-    val shown = downloads.filter { d ->
-        (query.isBlank() || d.fileName.contains(query, true)) && when (filter) {
-            "In progress" -> d.isActive
-            "Completed" -> d.status == BrowserDownloadStatus.COMPLETED
-            "Failed" -> d.status == BrowserDownloadStatus.FAILED
-            else -> true
-        }
-    }.let { list -> when (sort) {
-        "Oldest first" -> list.sortedBy { it.id }
-        "Name" -> list.sortedBy { it.fileName.lowercase() }
-        "Largest first" -> list.sortedByDescending { maxOf(it.totalBytes, it.downloadedBytes) }
-        else -> list.sortedByDescending { it.id }
-    } }
-    val running = downloads.filter { it.status == BrowserDownloadStatus.RUNNING }
-    val speed = running.sumOf { it.speedBytesPerSecond }
-    val knownSize = running.isNotEmpty() && running.all { it.totalBytes > 0 }
-    val eta = if (knownSize && speed > 0) running.sumOf { (it.totalBytes - it.downloadedBytes).coerceAtLeast(0) } / speed else null
+    val shown = downloads.filter { query.isBlank() || it.fileName.contains(query, true) }.sortedByDescending { it.id }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (downloads.any { it.isActive }) "In progress" else "Downloads", color = palette.primary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Box {
-                IconButton(onClick = { sortMenu = true }) { Icon(Icons.Default.Sort, "Sort downloads", tint = palette.textPrimary) }
-                DropdownMenu(sortMenu, { sortMenu = false }) {
-                    listOf("Newest first", "Oldest first", "Name", "Largest first").forEach { value -> DropdownMenuItem(text = { Text(value) }, onClick = { sort = value; sortMenu = false }) }
-                }
-            }
-            Box {
-                IconButton(onClick = { filterMenu = true }) { Icon(Icons.Default.FilterList, "Filter downloads: $filter", tint = palette.textPrimary) }
-                DropdownMenu(filterMenu, { filterMenu = false }) {
-                    listOf("All", "In progress", "Completed", "Failed").forEach { value -> DropdownMenuItem(text = { Text(value) }, onClick = { filter = value; filterMenu = false }) }
-                }
-            }
-            Box {
-                IconButton(onClick = { bulkMenu = true }) { Icon(Icons.Default.MoreVert, "Download actions", tint = palette.textPrimary) }
-                DropdownMenu(bulkMenu, { bulkMenu = false }) {
-                    DropdownMenuItem(text = { Text("Pause all") }, enabled = downloads.any { it.needsService }, onClick = { BrowserDownloads.pauseAll(context); bulkMenu = false })
-                    DropdownMenuItem(text = { Text("Resume all") }, enabled = downloads.any { it.status == BrowserDownloadStatus.PAUSED || it.status == BrowserDownloadStatus.FAILED }, onClick = { BrowserDownloads.resumeAll(context); bulkMenu = false })
-                    DropdownMenuItem(text = { Text("Clear finished history") }, onClick = { BrowserDownloads.clearCompleted(context); bulkMenu = false })
-                }
-            }
-        }
-        if (running.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Speed, null, tint = palette.textSecondary, modifier = Modifier.size(19.dp)); Spacer(Modifier.width(6.dp))
-            Text("${downloadBytes(speed)}/s", color = palette.textSecondary, fontSize = 12.sp)
-            Spacer(Modifier.width(18.dp))
-            Icon(Icons.Default.Schedule, null, tint = palette.textSecondary, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-            Text(downloadEta(eta), color = palette.textSecondary, fontSize = 12.sp)
-        }
-        if (filter != "All") Text(filter, color = palette.textSecondary, fontSize = 12.sp)
         if (shown.isEmpty()) Text(if (downloads.isEmpty()) "Your downloads will appear here." else "No matching downloads", color = palette.textSecondary, modifier = Modifier.padding(18.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(shown, key = { it.id }) { download ->
@@ -114,7 +65,7 @@ private fun DownloadProgressRow(download: BrowserDownload, onPlay: () -> Unit, o
     val context = LocalContext.current
     var menu by remember(download.id) { mutableStateOf(false) }
     val fraction = if (download.totalBytes > 0) (download.downloadedBytes.toDouble() / download.totalBytes).toFloat().coerceIn(0f, 1f) else 0f
-    Column(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag("download-card-${download.id}").border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).background(palette.primary.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(if (download.isVideo) Icons.Default.Movie else Icons.Default.InsertDriveFile, null, tint = palette.primary)
@@ -125,18 +76,25 @@ private fun DownloadProgressRow(download: BrowserDownload, onPlay: () -> Unit, o
                 Text("${downloadBytes(download.downloadedBytes)}${if (download.totalBytes > 0) " / ${downloadBytes(download.totalBytes)}" else ""}", color = palette.textSecondary, fontSize = 12.sp)
                 Text(when {
                     download.finalizing -> "Saving to ${download.saveLocation}…"
-                    download.status == BrowserDownloadStatus.RUNNING -> download.error ?: "${downloadBytes(download.speedBytesPerSecond)}/s • ${downloadEta(download.etaSeconds)}"
+                    download.status == BrowserDownloadStatus.RUNNING -> download.error ?: "Downloading"
                     download.status == BrowserDownloadStatus.COMPLETED -> download.saveLocation
                     else -> download.error ?: download.status.name.lowercase().replaceFirstChar { it.uppercase() }
                 }, color = palette.textSecondary, fontSize = 11.sp, maxLines = 2)
             }
-            when (download.status) {
-                BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.QUEUED -> IconButton(onClick = { BrowserDownloads.pause(context, download.id) }) { Icon(Icons.Default.Pause, "Pause download", tint = palette.textPrimary) }
-                BrowserDownloadStatus.PAUSED, BrowserDownloadStatus.FAILED, BrowserDownloadStatus.CANCELLED -> IconButton(onClick = { BrowserDownloads.retry(context, download.id) }) { Icon(Icons.Default.PlayArrow, "Resume or retry download", tint = palette.textPrimary) }
-                BrowserDownloadStatus.COMPLETED -> IconButton(onClick = { if (download.isVideo) onPlay() else BrowserDownloads.open(context, download.id) }) { Icon(Icons.Default.PlayCircle, "Open downloaded file", tint = palette.textPrimary) }
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (download.totalBytes > 0) "${(fraction * 100).toInt()}%" else "", color = palette.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            if (download.status == BrowserDownloadStatus.RUNNING && !download.finalizing) Column(Modifier.testTag("download-stats-${download.id}").padding(end = 8.dp), horizontalAlignment = Alignment.End) {
+                Text("${downloadBytes(download.speedBytesPerSecond)}/s", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(downloadEta(download.etaSeconds), color = palette.textSecondary, fontSize = 11.sp)
             }
-            Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Options for ${download.fileName}", tint = palette.textPrimary) }
+            when (download.status) {
+                BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.QUEUED -> IconButton(modifier = Modifier.border(1.dp, palette.surfaceBorder, RoundedCornerShape(12.dp)), onClick = { BrowserDownloads.pause(context, download.id) }) { Icon(Icons.Default.Pause, "Pause download", tint = palette.textPrimary) }
+                BrowserDownloadStatus.PAUSED, BrowserDownloadStatus.FAILED, BrowserDownloadStatus.CANCELLED -> IconButton(modifier = Modifier.border(1.dp, palette.surfaceBorder, RoundedCornerShape(12.dp)), onClick = { BrowserDownloads.retry(context, download.id) }) { Icon(Icons.Default.PlayArrow, "Resume or retry download", tint = palette.textPrimary) }
+                BrowserDownloadStatus.COMPLETED -> IconButton(modifier = Modifier.border(1.dp, palette.surfaceBorder, RoundedCornerShape(12.dp)), onClick = { if (download.isVideo) onPlay() else BrowserDownloads.open(context, download.id) }) { Icon(Icons.Default.PlayCircle, "Open downloaded file", tint = palette.textPrimary) }
+            }
+            Box(Modifier.padding(start = 6.dp)) {
+                IconButton(modifier = Modifier.border(1.dp, palette.surfaceBorder, RoundedCornerShape(12.dp)), onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Options for ${download.fileName}", tint = palette.textPrimary) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (download.isVideo && download.downloadedBytes > 0) DropdownMenuItem(text = { Text(if (download.status == BrowserDownloadStatus.COMPLETED) "Play" else "Play while downloading") }, onClick = { menu = false; onPlay() })
                     if (download.status == BrowserDownloadStatus.COMPLETED) {

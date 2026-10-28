@@ -316,6 +316,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
 
+    private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) { performRefresh() }
 
     private val _navMode = MutableStateFlow(
@@ -523,7 +524,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
-        refreshVideos()
+        viewModelScope.launch {
+            try {
+                val cached = withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.readVideos(application) }
+                if (cached != null) {
+                    _allVideos.value = applySavedVideoOrder(cached)
+                    _isLoading.value = false
+                }
+            } finally { cacheReady.complete(Unit) }
+            refreshVideos(silent = true)
+        }
         viewModelScope.launch {
             BrowserDownloads.downloads.map { list ->
                 list.filter { it.isVideo && it.status != com.example.downloads.BrowserDownloadStatus.CANCELLED }
@@ -575,11 +585,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos(silent: Boolean = false) {
-        if (!silent) _isLoading.value = true
+        if (!silent && _allVideos.value.isEmpty()) _isLoading.value = true
         refreshCoordinator.request()
     }
 
     private suspend fun performRefresh() {
+        cacheReady.await()
         try {
             val snapshot = MediaScanner.scanLocalVideos(getApplication())
             // A denied/temporarily unavailable provider is not proof that files were deleted.
@@ -590,6 +601,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) video.copy(isNewVideo = false) else video
             })
             _allVideos.value = resolvedVideos
+            if (snapshot.complete) withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveVideos(getApplication(), resolvedVideos) }
             resolvedVideos.forEach(::requestCatalogMetadata)
         } catch (cancelled: CancellationException) {
             throw cancelled
