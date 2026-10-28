@@ -11,16 +11,22 @@
 - Normal WebView cookies are accepted, third-party blocking stays enabled, and cookies flush when the app stops; server expiration, sign-out, clearing data, and revocation still apply.
 - Theme borders no longer use transparent built-in colors. A shared contrast-aware outline covers Material cards and custom rounded containers across library, folders, music, file manager, settings, browser, and player-control containers. Video-rendering surfaces are not framed.
 
-## Required project configuration (not yet supplied)
-The checked-in google-services.json contains no OAuth client entries. This source change cannot manufacture a working Google project configuration.
+## Real project OAuth configuration
+- Firebase project: `hi-player-979d7` (Hi Player), on the free Spark plan. No billing account, Analytics, Gemini, or optional developer-program enrollment was enabled during setup.
+- Google is enabled in Firebase Authentication. Public-facing name: Hi Player; support email: hi033029@gmail.com.
+- Android registration: `com.aistudio.hiplayer.vdmk`. The existing debug/APK signing key's SHA-1 and SHA-256 are registered:
+  - SHA-1: `B2:33:2F:25:44:BC:1E:68:99:12:7B:79:C2:3C:D6:44:1B:AF:33:C8`
+  - SHA-256: `D5:47:6A:B2:9C:C7:41:FC:C4:9D:65:A7:C3:9A:2F:B7:06:2D:FE:80:C1:A6:8A:33:6E:6F:81:E7:91:5D:5F:68`
+- `app/google-services.json` is now the real Firebase-generated Android configuration, replacing the placeholder project. It includes the package/certificate-bound Android OAuth client and same-project Web OAuth client. No OAuth client secret is included.
+- The Google Services plugin uses the type-3 Web client to generate `default_web_client_id`; an environment/property override is unnecessary for this project. If an override is supplied, it must be the Web client from this same project.
+- Release/Play app-signing keys require their own real fingerprints before those variants can sign in. The currently registered certificate matches this repository's existing debug APK signing key only.
 
-1. Open the existing Firebase project and enable Authentication → Sign-in method → Google. Configure the project's real support email and consent screen as required.
-2. Register the Android app `com.aistudio.hiplayer.vdmk` and its actual signing SHA-1/SHA-256. Debug APKs use the repo's committed debug.keystore; release/Play app-signing keys need their own fingerprints.
-3. Create/confirm the Android OAuth client for that package/certificate and a Web application client in the same Google Cloud/Firebase project.
-4. Download the updated google-services.json into app/google-services.json. The Google Services plugin should generate default_web_client_id from its Web OAuth client.
-5. Alternatively supply the real Web client identifier through the `HI_PLAYER_GOOGLE_WEB_CLIENT_ID` Gradle property or environment variable. This is a public identifier, **not** a client secret; do not ship a Web client secret in Android. The ID must belong to the same configured Firebase project.
-6. Add test users if the consent screen is in testing. Confirm production branding/privacy-policy requirements before release.
-7. Missing configuration leaves native sign-in unavailable with an explicit setup message; it never invents a signed-in user.
+## Remaining console and runtime validation
+- Google Cloud Auth Platform's audience page is gated by a separate first-use Google Cloud terms/country dialog. Those terms have NOT been accepted; the earlier approval covered Firebase terms only. Consent-screen publishing status and test-user restrictions therefore remain unverified. Do not claim public production OAuth readiness until this is checked.
+- No privacy-policy URL, verified domain, billing enrollment, or broad Gmail/Drive scopes were invented or added.
+- Configuration was checked as JSON for project/package, Android certificate, Web client presence, and absence of a client secret. These are static checks, not an Android sign-in test.
+- Native account sessions and browser website cookies remain separate. App sign-in cannot automatically sign every embedded website into Google.
+- Missing or wrong configuration remains an explicit setup error; it never invents a signed-in user.
 
 ## Build hold
 No Gradle, compile, lint, package, or test task was run for these changes. No APK was generated, version bumped, main merge made, or APK workflow dispatched. Authentication and theme tests have been added but are unrun. Preserve this hold until Khan approves validation/build.

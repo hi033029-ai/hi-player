@@ -14,8 +14,8 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-// Public OAuth identifier, not a client secret. Keep unset until the real
-// Cloud/Firebase project is configured; never insert a placeholder account.
+// Optional public OAuth identifier override, not a client secret. Normally leave
+// unset: google-services.json supplies this project's real Web OAuth client.
 val googleWebClientId = providers.gradleProperty("HI_PLAYER_GOOGLE_WEB_CLIENT_ID")
   .orElse(providers.environmentVariable("HI_PLAYER_GOOGLE_WEB_CLIENT_ID"))
   .orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
