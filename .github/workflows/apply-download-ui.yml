@@ -1,0 +1,24 @@
+name: Apply download controls and scanning
+on:
+  push:
+    branches: [feature/download-controls-scanning]
+    paths: [download-ui.patch.xz.b64]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/download-controls-scanning
+      - name: Apply native controls and scanning update
+        run: |
+          base64 -d download-ui.patch.xz.b64 | xz -d > /tmp/download-ui.patch
+          git apply --check /tmp/download-ui.patch
+          git apply --index /tmp/download-ui.patch
+          git rm download-ui.patch.xz.b64
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Restore continuous scanning and add native download controls'
+          git push origin HEAD:feature/download-controls-scanning
