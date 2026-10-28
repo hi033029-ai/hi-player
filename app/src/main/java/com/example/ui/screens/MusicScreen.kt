@@ -314,6 +314,7 @@ fun MusicScreen(
 
         // Keep the toolbar outside the list so it remains available when a
         // library mode has no matching tracks (for example an empty playlist).
+        MusicLibraryAccess(onRefresh = { musicViewModel.loadAudioTracks() })
         audioToolbar()
 
         // Track List
@@ -342,6 +343,12 @@ fun MusicScreen(
                             color = palette.textSecondary,
                             fontSize = 14.sp
                         )
+                        androidx.compose.material3.TextButton(onClick = {
+                            musicViewModel.setSearchQuery("")
+                            libraryMode = "All Music"
+                            selectedCollection = null
+                            musicViewModel.loadAudioTracks()
+                        }) { Text(if (audioList.isEmpty()) "Scan music" else "Show all music") }
                     }
                 }
             } else if (groupedAudio.isNotEmpty() && selectedCollection == null) {

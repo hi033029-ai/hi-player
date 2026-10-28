@@ -45,7 +45,7 @@ internal class OrbitBrowserStore(context: Context) {
         get() = prefs.getBoolean("youtube_ad_skip", true)
         set(value) { prefs.edit().putBoolean("youtube_ad_skip", value).apply() }
 
-    /** Videos that start playing on a web page (not YouTube) open in Hi Player's own player. */
+    /** Detect website video candidates for explicit user-selected playback only. */
     var videoHandoff: Boolean
         get() = prefs.getBoolean("video_handoff", true)
         set(value) { prefs.edit().putBoolean("video_handoff", value).apply() }

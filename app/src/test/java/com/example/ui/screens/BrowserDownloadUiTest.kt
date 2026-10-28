@@ -43,6 +43,10 @@ class BrowserDownloadUiTest {
         assertTrue(stats.left >= card.left && stats.right <= card.right)
         assertTrue(stats.top >= card.top && stats.bottom <= card.bottom)
         assertTrue(stats.center.x > card.center.x)
+        val fileName = compose.onNodeWithText("active.mkv").fetchSemanticsNode().boundsInRoot
+        assertTrue(stats.top < fileName.bottom && stats.bottom > fileName.top)
+        val row = compose.onNodeWithTag("download-main-row-1").fetchSemanticsNode().boundsInRoot
+        assertTrue(stats.top >= row.top && stats.bottom <= row.bottom)
         compose.onNodeWithText("done.mp4").assertExists()
     }
     @Test fun confirmationShowsEditableNameDefaultFolderAndWorkingCancel() {
