@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.downloads.BrowserDownloads
 import android.content.ContentUris
 import android.content.Context
 import android.media.MediaMetadataRetriever
@@ -188,6 +189,15 @@ object MediaScanner {
             .filter(String::isNotBlank)
             .toSet()
         videoList += scanKnownMessengerVideos(indexedPathsAfterMediaStore)
+
+        // Own downloads remain visible even if the platform index is delayed or permission-limited.
+        BrowserDownloads.completedVideoItems(context).forEach { downloaded ->
+            val duplicate = videoList.any { indexed ->
+                indexed.path == downloaded.path || indexed.uri == downloaded.uri ||
+                    (indexed.uri.authority == MediaStore.AUTHORITY && downloaded.uri.authority == MediaStore.AUTHORITY && indexed.id == downloaded.id)
+            }
+            if (!duplicate) videoList += downloaded
+        }
 
         // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
         if (videoList.isEmpty()) {

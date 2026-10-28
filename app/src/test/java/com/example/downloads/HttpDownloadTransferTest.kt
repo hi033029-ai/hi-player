@@ -170,6 +170,19 @@ class HttpDownloadTransferTest {
         assertTrue(target.length() > 0)
         assertTrue(target.length() < payload.size)
     }
+    @Test fun finalResponseSuppliesMimeAndContentDisposition() {
+        server.createContext("/redirect") { x -> x.responseHeaders.add("Location", "/real/video"); x.sendResponseHeaders(302, -1); x.close() }
+        server.createContext("/real/video") { x ->
+            x.responseHeaders.add("Content-Type", "video/mp4")
+            x.responseHeaders.add("Content-Disposition", "attachment; filename=\"My movie.mp4\"")
+            x.sendResponseHeaders(200, payload.size.toLong()); x.responseBody.use { it.write(payload) }
+        }
+        var meta: HttpDownloadTransfer.Metadata? = null
+        HttpDownloadTransfer().download("$base/redirect", File(dir, "file.part"), emptyMap(), null, null, { meta = it }, { _, _ -> })
+        assertEquals("video/mp4", meta!!.mime)
+        assertEquals("My movie.mp4", meta!!.fileName)
+        assertEquals("$base/real/video", meta!!.finalUrl)
+    }
     @Test fun malformedRangeIsRejected() {
         assertNull(HttpDownloadTransfer.parseContentRange("bytes 10-9/100"))
         assertNull(HttpDownloadTransfer.parseContentRange("bytes 0-100/100"))
