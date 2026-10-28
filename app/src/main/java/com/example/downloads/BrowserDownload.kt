@@ -20,7 +20,12 @@ internal data class BrowserDownload(
     val saveLocation: String = "Downloads/Hi Browser",
     val error: String? = null,
     val retryCount: Int = 0,
+    val formatChecked: Boolean = false,
+    val durationMs: Long = 0,
+    val width: Int = 0,
+    val height: Int = 0,
 ) {
+    val isVideo get() = mimeType?.startsWith("video/") == true
     val isActive get() = status in setOf(BrowserDownloadStatus.QUEUED, BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.PAUSED)
     val needsService get() = status == BrowserDownloadStatus.QUEUED || status == BrowserDownloadStatus.RUNNING
     val etaSeconds: Long? get() = if (totalBytes > downloadedBytes && speedBytesPerSecond > 0) (totalBytes - downloadedBytes) / speedBytesPerSecond else null

@@ -1,6 +1,8 @@
 package com.example.viewmodel
 
 import android.app.Application
+import com.example.downloads.BrowserDownloads
+import kotlinx.coroutines.flow.distinctUntilChanged
 import android.content.ContentValues
 import android.database.ContentObserver
 import android.net.Uri
@@ -522,6 +524,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         refreshVideos()
+        viewModelScope.launch {
+            BrowserDownloads.downloads.map { list ->
+                list.filter { it.status == com.example.downloads.BrowserDownloadStatus.COMPLETED && it.isVideo }
+                    .map { Triple(it.id, it.fileName, it.savedUri) }
+            }.distinctUntilChanged().collect { refreshVideos(silent = true) }
+        }
         startDownloadsObserver()
         periodicRefreshJob = viewModelScope.launch {
             var idleTicks = 0

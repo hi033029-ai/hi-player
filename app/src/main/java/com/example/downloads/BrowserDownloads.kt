@@ -1,6 +1,10 @@
 package com.example.downloads
 
 import android.content.ContentValues
+import android.content.ContentUris
+import android.provider.OpenableColumns
+import com.example.model.VideoItem
+import kotlinx.coroutines.withContext
 import android.content.Context
 import android.content.Intent
 import android.media.MediaScannerConnection
@@ -72,6 +76,8 @@ internal object BrowserDownloads {
                     o.optLong("total"), status = if (interrupted) BrowserDownloadStatus.PAUSED else oldStatus,
                     etag = o.optString("etag").ifBlank { null }, modified = o.optString("modified").ifBlank { null },
                     savedUri = o.optString("savedUri").ifBlank { null }, saveLocation = o.optString("location", "Downloads/Hi Browser"),
+                    formatChecked = o.optBoolean("formatChecked", false),
+                    durationMs = o.optLong("duration"), width = o.optInt("width"), height = o.optInt("height"),
                     error = if (interrupted) "Interrupted — tap Resume" else o.optString("error").ifBlank { null },
                 )
             }
@@ -86,6 +92,7 @@ internal object BrowserDownloads {
             }
         }
         restored = true
+        scope.launch { repairCompletedVideos(context) }
     }
 
     private fun persistLocked(context: Context) {
@@ -97,6 +104,7 @@ internal object BrowserDownloads {
                 put("bytes", d.downloadedBytes); put("total", d.totalBytes); put("status", d.status.name)
                 put("etag", d.etag.orEmpty()); put("modified", d.modified.orEmpty()); put("savedUri", d.savedUri.orEmpty())
                 put("location", d.saveLocation); put("error", d.error.orEmpty())
+                put("formatChecked", d.formatChecked); put("duration", d.durationMs); put("width", d.width); put("height", d.height)
             })
         }
         val file = journal(context)
@@ -124,10 +132,10 @@ internal object BrowserDownloads {
         val cookie = runCatching { CookieManager.getInstance().getCookie(rawUrl).orEmpty() }.getOrDefault("")
         val intent = Intent(context, BrowserDownloadService::class.java).setAction(ACTION_ADD)
             .putExtra("url", rawUrl).putExtra("ua", userAgent).putExtra("cookie", cookie).putExtra("referer", referer)
-            .putExtra("name", safeFileName(URLUtil.guessFileName(rawUrl, contentDisposition, mimeType))).putExtra("mime", mimeType)
+            .putExtra("name", DownloadFileResolver.resolve(URLUtil.guessFileName(rawUrl, contentDisposition, mimeType), rawUrl, mimeType, contentDisposition).fileName).putExtra("mime", mimeType)
         start(context, intent)
     }
-    internal fun safeFileName(raw: String): String = raw.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().trim('.').take(120).ifBlank { "download" }
+    internal fun safeFileName(raw: String): String = DownloadFileResolver.safeName(raw)
 
     private fun start(context: Context, intent: Intent) {
         runCatching { ContextCompat.startForegroundService(context.applicationContext, intent) }
@@ -228,7 +236,9 @@ internal object BrowserDownloads {
                     transfer.download(entry.sourceUrl, part(context, id), headers, entry.etag, entry.modified,
                         onMetadata = { meta -> synchronized(lock) {
                             find(id)?.takeIf { it.status == BrowserDownloadStatus.RUNNING }?.let {
-                                replaceLocked(it.copy(totalBytes = meta.total, etag = meta.etag, modified = meta.modified, mimeType = it.mimeType ?: meta.mime, error = null))
+                                val mime = meta.mime?.takeUnless(DownloadFileResolver::isGenericMime) ?: it.mimeType
+                                val resolved = DownloadFileResolver.resolve(meta.fileName ?: it.fileName, meta.finalUrl ?: it.sourceUrl, mime)
+                                replaceLocked(it.copy(fileName = resolved.fileName, totalBytes = meta.total, etag = meta.etag, modified = meta.modified, mimeType = resolved.mimeType, error = null))
                                 persistLocked(context)
                             }
                         } },
@@ -253,7 +263,11 @@ internal object BrowserDownloads {
                 }
             }
             if (completed) {
-                val entry = synchronized(lock) { find(id) } ?: return
+                val unfinished = synchronized(lock) { find(id) } ?: return
+                val info = DownloadMediaInspector.inspect(part(context, id), unfinished)
+                val entry = unfinished.copy(fileName = info.resolved.fileName, mimeType = info.resolved.mimeType, formatChecked = true, durationMs = info.durationMs, width = info.width, height = info.height)
+                transfer.checkActive()
+                synchronized(lock) { if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(entry) }
                 val saved = publish(context, entry, transfer)
                 synchronized(lock) {
                     if (find(id)?.status == BrowserDownloadStatus.RUNNING) {
@@ -293,13 +307,15 @@ internal object BrowserDownloads {
         transfer.checkActive()
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver
+            val location = if (entry.isVideo) "${Environment.DIRECTORY_MOVIES}/Hi Browser" else "${Environment.DIRECTORY_DOWNLOADS}/Hi Browser"
+            val collection = if (entry.isVideo) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) else MediaStore.Downloads.EXTERNAL_CONTENT_URI
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, entry.fileName)
                 put(MediaStore.Downloads.MIME_TYPE, entry.mimeType ?: "application/octet-stream")
-                put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Hi Browser")
+                put(MediaStore.Downloads.RELATIVE_PATH, location)
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IOException("Could not create downloaded file")
+            val uri = resolver.insert(collection, values) ?: throw IOException("Could not create downloaded file")
             try {
                 synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = uri.toString())); persistLocked(context) } }
                 resolver.openOutputStream(uri, "w")?.use { output ->
@@ -310,7 +326,8 @@ internal object BrowserDownloads {
                 } ?: throw IOException("Could not write downloaded file")
                 transfer.checkActive()
                 if (resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) != 1) throw IOException("Could not finish downloaded file")
-                return uri to "Downloads/Hi Browser"
+                scanPublishedFile(context, uri, entry.mimeType)
+                return uri to location
             } catch (e: Exception) {
                 runCatching { resolver.delete(uri, null, null) }
                 synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = null)) } }
@@ -333,6 +350,83 @@ internal object BrowserDownloads {
             if (hasPermission) MediaScannerConnection.scanFile(context, arrayOf(destination.absolutePath), arrayOf(entry.mimeType), null)
             return FileProvider.getUriForFile(context, "${context.packageName}.provider", destination) to if (hasPermission) "Downloads/Hi Browser" else "Hi Player app downloads"
         } catch (e: Exception) { destination.delete(); throw e }
+    }
+
+    private fun scanPublishedFile(context: Context, uri: Uri, mime: String?) {
+        val path = runCatching {
+            context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        }.getOrNull()
+        if (!path.isNullOrBlank()) MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf(mime), null)
+    }
+
+    private fun repairCompletedVideos(context: Context) {
+        val entries = synchronized(lock) { _downloads.value.filter { it.status == BrowserDownloadStatus.COMPLETED && !it.formatChecked && it.savedUri != null } }
+        entries.forEach { entry ->
+            runCatching {
+                val uri = Uri.parse(entry.savedUri)
+                val info = DownloadMediaInspector.inspect(context, uri, entry)
+                var corrected = entry
+                if (info.resolved.isVideo && uri.authority == MediaStore.AUTHORITY) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, info.resolved.fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, info.resolved.mimeType)
+                    }
+                    if (context.contentResolver.update(uri, values, null, null) > 0) {
+                        corrected = entry.copy(fileName = info.resolved.fileName, mimeType = info.resolved.mimeType,
+                            durationMs = info.durationMs, width = info.width, height = info.height)
+                        scanPublishedFile(context, uri, info.resolved.mimeType)
+                    }
+                } else if (info.resolved.isVideo && uri.authority == "${context.packageName}.provider") {
+                    // Pre-Android-10 app-specific/public files are also repairable without redownloading.
+                    val roots = listOfNotNull(
+                        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, "Hi Browser") },
+                        File(context.filesDir, "Hi Browser"),
+                        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Hi Browser"),
+                    )
+                    val source = roots.map { File(it, entry.fileName) }.firstOrNull { it.isFile && it.canWrite() }
+                    if (source != null) {
+                        var target = File(source.parentFile, info.resolved.fileName)
+                        if (target != source && target.exists()) target = File(source.parentFile, "${target.nameWithoutExtension}-${entry.id}.${target.extension}")
+                        if (target == source || source.renameTo(target)) {
+                            val savedUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", target)
+                            corrected = entry.copy(fileName = target.name, mimeType = info.resolved.mimeType, savedUri = savedUri.toString(),
+                                durationMs = info.durationMs, width = info.width, height = info.height)
+                            MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(info.resolved.mimeType), null)
+                        }
+                    }
+                }
+                synchronized(lock) {
+                    find(entry.id)?.takeIf { it.status == BrowserDownloadStatus.COMPLETED && it.savedUri == entry.savedUri }?.let {
+                        replaceLocked(corrected.copy(formatChecked = true)); persistLocked(context)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Includes owned videos even when an OEM delays MediaStore indexing or uses app-specific storage. */
+    suspend fun completedVideoItems(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
+        val entries = synchronized(lock) {
+            restoreLocked(context)
+            _downloads.value.filter { it.status == BrowserDownloadStatus.COMPLETED && it.isVideo && it.savedUri != null }
+        }
+        entries.mapNotNull { entry -> runCatching {
+            val uri = Uri.parse(entry.savedUri)
+            val exists = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { it.moveToFirst() } == true
+            if (!exists) return@runCatching null
+            val path = runCatching {
+                context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+            }.getOrNull().orEmpty()
+            VideoItem(
+                id = if (uri.authority == MediaStore.AUTHORITY) runCatching { ContentUris.parseId(uri) }.getOrDefault(entry.id) else entry.id,
+                uri = uri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*", sizeBytes = entry.downloadedBytes,
+                durationMs = entry.durationMs, width = entry.width, height = entry.height,
+                dateAdded = entry.id / 1000, folderName = "Hi Browser", path = path.ifBlank { File(Environment.getExternalStorageDirectory(), "${entry.saveLocation}/${entry.fileName}").absolutePath },
+                isNewVideo = System.currentTimeMillis() - entry.id < 86_400_000L,
+            )
+        }.getOrNull() }
     }
 
     private fun deletePublished(context: Context, uri: Uri) { runCatching { context.contentResolver.delete(uri, null, null) } }

@@ -17,7 +17,7 @@ internal class HttpDownloadTransfer {
     fun cancel() { stopped.set(true); call?.cancel() }
     fun checkActive() { if (stopped.get()) throw InterruptedIOException("Transfer stopped") }
 
-    data class Metadata(val total: Long, val etag: String?, val modified: String?, val mime: String?)
+    data class Metadata(val total: Long, val etag: String?, val modified: String?, val mime: String?, val fileName: String? = null, val finalUrl: String? = null)
 
     fun download(
         url: String, file: File, headers: Map<String, String>, etag: String?, modified: String?,
@@ -75,7 +75,7 @@ internal class HttpDownloadTransfer {
                             }
                             total = range.second
                         } else offset = 0
-                        val metadata = Metadata(total, response.header("ETag"), response.header("Last-Modified"), response.header("Content-Type")?.substringBefore(';'))
+                        val metadata = Metadata(total, response.header("ETag"), response.header("Last-Modified"), response.header("Content-Type")?.substringBefore(';'), DownloadFileResolver.dispositionName(response.header("Content-Disposition")), current.toString())
                         RandomAccessFile(file, "rw").use { output ->
                             output.setLength(offset)
                             output.seek(offset)
