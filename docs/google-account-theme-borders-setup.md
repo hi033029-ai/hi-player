@@ -22,7 +22,9 @@
 - Release/Play app-signing keys require their own real fingerprints before those variants can sign in. The currently registered certificate matches this repository's existing debug APK signing key only.
 
 ## Remaining console and runtime validation
-- Google Cloud Auth Platform's audience page is gated by a separate first-use Google Cloud terms/country dialog. Those terms have NOT been accepted; the earlier approval covered Firebase terms only. Consent-screen publishing status and test-user restrictions therefore remain unverified. Do not claim public production OAuth readiness until this is checked.
+- With the owner's explicit approval, Google Cloud first-use terms were accepted with United States selected. No billing/free-trial enrollment was started. Google Auth Platform Audience was checked: **External / In production** (not a testing-only audience). Android and Web clients were also confirmed in the Clients list.
+- Data access has no configured sensitive or restricted scopes. The app requests only Google identity through Credential Manager; no Gmail/Drive permissions were added.
+- Branding shows Hi Player and the Firebase-owned authorised domain. Custom branding is not verified; application home/privacy-policy URLs have not been supplied, and no fabricated URLs or domains were entered. An In production audience does not mean branding verification or device sign-in testing is complete.
 - No privacy-policy URL, verified domain, billing enrollment, or broad Gmail/Drive scopes were invented or added.
 - Configuration was checked as JSON for project/package, Android certificate, Web client presence, and absence of a client secret. These are static checks, not an Android sign-in test.
 - Native account sessions and browser website cookies remain separate. App sign-in cannot automatically sign every embedded website into Google.
