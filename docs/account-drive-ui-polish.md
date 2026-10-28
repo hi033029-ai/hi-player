@@ -1,7 +1,7 @@
-# Account-linked Drive and UI polish — source only
+# Account-linked Drive and UI polish — approved demo
 
 ## Status
-Based on released v1.0.66 (67). No version bump, Gradle invocation, compilation, lint, tests, APK generation, main merge, or APK workflow dispatch for this change. Added tests are unrun. The existing 67-test passing result belongs to the previous release, not this change.
+Based on released v1.0.66 (67). User approved a demo APK: **1.0.67-demo (68)**, built with `-PHI_PLAYER_DRIVE_ENABLED=true`. Gradle assembleDebug and selected testDebugUnitTest succeeded: 73 tests, zero failures/errors/skips. APK signing SHA-256 matches the existing update key. APK SHA-256: `71d90753d9103a125c15b3115a912f81fd721b49138cc9c62e1d1a8c2005aa6c`. Local APK attached in chat; no main merge or release publication. No device OAuth/Drive runtime validation performed.
 
 ## UI
 - Theme borders are quiet neutral separators rather than high-contrast frames. Bottom navigation keeps only its outer pill, with no individual outlined tab cells or outlined active indicator.
@@ -21,14 +21,15 @@ Based on released v1.0.66 (67). No version bump, Gradle invocation, compilation,
 ## Project setup / release gate
 Google Drive API is enabled in the existing `hi-player-979d7` project. No billing or unrelated APIs enabled.
 
-Browsing/downloading the user's existing Drive media requires `https://www.googleapis.com/auth/drive.readonly`, which Google classifies as restricted. Google's console explicitly requires verification. The candidate scope declaration was discarded without saving; production consent scopes remain unchanged. No verification submission or fake policy URL/demo was made.
+Browsing/downloading the user's existing Drive media requires `https://www.googleapis.com/auth/drive.readonly`, which Google classifies as restricted. Google's console explicitly requires verification. For the approved demo, the read-only scope was saved with a truthful demo-use explanation. Google marks it unverified; authorization may be blocked. No verification submission or fake verification video was made. Real demo homepage/privacy pages are in `docs/demo/` on this branch and linked in the demo APK. Google Branding did not accept these GitHub URLs without domain ownership; the branding edits were discarded, not falsely verified.
 
 `GOOGLE_DRIVE_ENABLED` defaults to false. Only explicitly set `HI_PLAYER_DRIVE_ENABLED=true` for an approved staging/test consent flow or after required production approval. The account screen explains pending setup; disabled setup must never be shown as a connected Drive library.
 
 Before public activation: supply a real app homepage and privacy policy, confirm domain ownership/branding, configure/review the restricted scope, and provide Google's required demo of actual consent and data use. Security assessment requirements depend on the final deployment and Google's policy; do not claim exemption without review. Keep write/delete scopes out.
 
-## Validation still required after build approval
-- Compile new SDK/data-source/UI integration; run Drive origin/identifier/query tests, border regression tests, portrait/landscape subtitle tests, and prior media/browser tests.
+## Validation
+- Compilation and all 73 selected regression tests passed, including Drive policy, borders, portrait/landscape subtitle layout, auth, browser, downloads, library cache/audio scan, and refresh coalescing.
+- Remaining device/integration validation:
 - Physical Play-enabled device: Google account selection, Drive consent grant/cancel, account mismatch/change, revoked/expired permission, offline/API disabled errors, sign-out, folder navigation, large paginated libraries, owner-restricted media, MP4/MKV/audio playback and seeking.
 - Test redirects without forwarding bearer tokens, invalid Content-Range, ignored Range, restart with no memory token, and post-sign-out requests.
 - Portrait/landscape, large fonts, light/dark/custom themes: subtitle labels readable and no repeated outlined tabs.
