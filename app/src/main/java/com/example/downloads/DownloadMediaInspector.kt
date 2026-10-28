@@ -37,6 +37,6 @@ internal object DownloadMediaInspector {
         } catch (_: Exception) {
             // The platform may lack a parser for MKV/AV1; container signatures still work.
         } finally { runCatching { retriever.release() } }
-        return Info(DownloadFileResolver.resolve(entry.fileName, entry.sourceUrl, entry.mimeType, prefix = prefix, detectedMime = mime), duration, width, height)
+        return Info(DownloadFileResolver.resolve(entry.fileName, if (entry.customName) "" else entry.sourceUrl, entry.mimeType, prefix = prefix, detectedMime = mime), duration, width, height)
     }
 }

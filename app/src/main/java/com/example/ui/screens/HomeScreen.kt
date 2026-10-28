@@ -1329,22 +1329,28 @@ private fun EmptyState(onBrowse: () -> Unit, onRefresh: () -> Unit = {}) {
                 android.content.pm.PackageManager.PERMISSION_GRANTED
         )
     }
-    val videoAccessLauncher = rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasVideoAccess = granted
-        if (granted) {
-            onRefresh()
-        } else {
-            // Permission was denied before, so Android won't ask again: open the app's settings page.
-            runCatching {
-                emptyContext.startActivity(
-                    android.content.Intent(
-                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        android.net.Uri.fromParts("package", emptyContext.packageName, null),
-                    )
-                )
+    var hasSelectedVideoAccess by remember {
+        mutableStateOf(Build.VERSION.SDK_INT >= 34 && androidx.core.content.ContextCompat.checkSelfPermission(emptyContext, android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+    }
+    val accessOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(accessOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasVideoAccess = androidx.core.content.ContextCompat.checkSelfPermission(emptyContext, videoPermission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                hasSelectedVideoAccess = Build.VERSION.SDK_INT >= 34 && androidx.core.content.ContextCompat.checkSelfPermission(emptyContext, android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == android.content.pm.PackageManager.PERMISSION_GRANTED
             }
+        }
+        accessOwner.lifecycle.addObserver(observer)
+        onDispose { accessOwner.lifecycle.removeObserver(observer) }
+    }
+    val videoAccessLauncher = rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        hasVideoAccess = grants[videoPermission] == true
+        hasSelectedVideoAccess = Build.VERSION.SDK_INT >= 34 && grants[android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true
+        if (hasVideoAccess || hasSelectedVideoAccess) onRefresh()
+        else runCatching {
+            emptyContext.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", emptyContext.packageName, null)))
         }
     }
     Box(
@@ -1373,14 +1379,14 @@ private fun EmptyState(onBrowse: () -> Unit, onRefresh: () -> Unit = {}) {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = if (hasVideoAccess) "No videos found" else "Allow access to your videos",
+                text = if (hasVideoAccess) "No videos found" else if (hasSelectedVideoAccess) "Only selected videos are available" else "Allow access to your videos",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = palette.textPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = if (hasVideoAccess) "Tap below to pick a video file from your device storage." else "Hi Player needs permission to show the videos on your phone.",
+                text = if (hasVideoAccess) "Tap below to pick a video file from your device storage." else if (hasSelectedVideoAccess) "Allow all videos or select more videos to show them in the library." else "Hi Player needs permission to show the videos on your phone.",
                 fontSize = 12.sp,
                 color = palette.textSecondary,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -1388,7 +1394,7 @@ private fun EmptyState(onBrowse: () -> Unit, onRefresh: () -> Unit = {}) {
             )
             Spacer(modifier = Modifier.height(18.dp))
             Button(
-                onClick = { if (hasVideoAccess) onBrowse() else videoAccessLauncher.launch(videoPermission) },
+                onClick = { if (hasVideoAccess) onBrowse() else videoAccessLauncher.launch(if (Build.VERSION.SDK_INT >= 34) arrayOf(videoPermission, android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else arrayOf(videoPermission)) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = palette.primary,
                     contentColor = if (palette.isDark) Color.Black else Color.White

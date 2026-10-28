@@ -5,6 +5,11 @@ import org.junit.Test
 
 class BrowserDownloadModelTest {
     private fun record(status: BrowserDownloadStatus) = BrowserDownload(1, "video.mp4", "https://example.test/video", status = status)
+    @Test fun defaultDestinationIsDownloadRootWithoutAppSubfolder() {
+        assertEquals("Download", record(BrowserDownloadStatus.QUEUED).saveLocation)
+        assertNull(record(BrowserDownloadStatus.QUEUED).destinationTreeUri)
+    }
+
     @Test fun pausedRowsRemainInQueueButDoNotRequireForegroundService() {
         assertTrue(record(BrowserDownloadStatus.PAUSED).isActive)
         assertFalse(record(BrowserDownloadStatus.PAUSED).needsService)

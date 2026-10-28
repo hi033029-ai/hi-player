@@ -24,6 +24,15 @@ object DownloadingFilesRegistry {
         val speedBytesPerSecond: Long
     )
 
+    private val ownedPaths = ConcurrentHashMap.newKeySet<String>()
+    private val completedAliases = ConcurrentHashMap<String, String>()
+    fun markOwnedDownloading(path: String, bytes: Long) { ownedPaths.add(path); markDownloading(path, bytes) }
+    fun completeOwned(path: String, uri: String? = null) {
+        if (uri != null) completedAliases[path] = uri
+        ownedPaths.remove(path); markComplete(path)
+    }
+    fun completedUri(path: String): String? = completedAliases[path]
+
     private val activePaths = ConcurrentHashMap<String, DownloadState>()
     private val settledFinalNames = ConcurrentHashMap<String, SettledFinalName>()
 
@@ -93,7 +102,7 @@ object DownloadingFilesRegistry {
     /** Removes content-URI entries that disappeared from the current pending scan. */
     fun markMissingContentDownloadsComplete(activeContentUris: Set<String>) {
         activePaths.keys
-            .filter { key -> key.startsWith("content://") && key !in activeContentUris }
+            .filter { key -> key.startsWith("content://") && key !in ownedPaths && key !in activeContentUris }
             .forEach(activePaths::remove)
     }
 
@@ -105,7 +114,7 @@ object DownloadingFilesRegistry {
     fun markMissingPendingFileDownloadsComplete(activeFilePaths: Set<String>) {
         activePaths.keys
             .filter { key ->
-                key.startsWith("/") &&
+                key.startsWith("/") && key !in ownedPaths &&
                     PendingDownloadFormat.isPending(key.substringAfterLast('/')) &&
                     key !in activeFilePaths
             }

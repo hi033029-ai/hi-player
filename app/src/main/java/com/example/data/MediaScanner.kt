@@ -19,9 +19,13 @@ import java.util.Locale
 
 object MediaScanner {
 
+    private val fileMetadataCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Pair<Long, Long>, VideoItem>>()
     private const val NEW_VIDEO_WINDOW_SECONDS = 24L * 60L * 60L
 
-    suspend fun scanLocalVideos(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
+    data class ScanSnapshot(val videos: List<VideoItem>, val complete: Boolean)
+
+    suspend fun scanLocalVideos(context: Context): ScanSnapshot = withContext(Dispatchers.IO) {
+        var complete = false
         val videoList = mutableListOf<VideoItem>()
         val activeGrowingContentUris = mutableSetOf<String>()
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -53,6 +57,7 @@ object MediaScanner {
                 null,
                 sortOrder
             )?.use { cursor ->
+                complete = true
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
@@ -152,7 +157,9 @@ object MediaScanner {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            complete = false
+            android.util.Log.w("MediaScanner", "Video provider unavailable", e)
         }
 
         // A pending file can already be indexed by MediaStore with zero
@@ -191,7 +198,7 @@ object MediaScanner {
         videoList += scanKnownMessengerVideos(indexedPathsAfterMediaStore)
 
         // Own downloads remain visible even if the platform index is delayed or permission-limited.
-        BrowserDownloads.completedVideoItems(context).forEach { downloaded ->
+        BrowserDownloads.libraryVideoItems(context).forEach { downloaded ->
             val duplicate = videoList.any { indexed ->
                 indexed.path == downloaded.path || indexed.uri == downloaded.uri ||
                     (indexed.uri.authority == MediaStore.AUTHORITY && downloaded.uri.authority == MediaStore.AUTHORITY && indexed.id == downloaded.id)
@@ -204,7 +211,7 @@ object MediaScanner {
             videoList.addAll(getDemoRemuxVideos())
         }
 
-        videoList.distinctBy { video -> video.path.ifBlank { video.uri.toString() } }
+        ScanSnapshot(videoList.distinctBy { video -> video.path.ifBlank { video.uri.toString() } }, complete)
     }
 
     private fun scanKnownMessengerVideos(indexedPaths: Set<String>): List<VideoItem> {
@@ -229,6 +236,8 @@ object MediaScanner {
     }
 
     private fun toMessengerVideoItem(file: File): VideoItem {
+        val version = file.length() to file.lastModified()
+        fileMetadataCache[file.absolutePath]?.takeIf { it.first == version }?.let { return it.second }
         val metadata = runCatching {
             val retriever = MediaMetadataRetriever()
             try {
@@ -266,7 +275,10 @@ object MediaScanner {
             hdrFormat = if (is4k) "HDR10 / Dolby Vision" else null,
             codec = if (is4k) "HEVC Remux" else "AVC (H.264)",
             bitrate = if (duration > 0) file.length() * 8000L / duration else 0L,
-        )
+        ).also {
+            if (fileMetadataCache.size > 1000) fileMetadataCache.clear()
+            fileMetadataCache[file.absolutePath] = version to it
+        }
     }
 
     private fun scanPartialDownloadVideos(
@@ -365,7 +377,7 @@ object MediaScanner {
                             sizeBytes = file.length(),
                             lastModifiedMs = file.lastModified()
                         )
-                    ) return@mapNotNull null
+                    ) return@mapNotNull toMessengerVideoItem(file)
                     val progress = DownloadingFilesRegistry.progress(file.absolutePath)
 
                     VideoItem(

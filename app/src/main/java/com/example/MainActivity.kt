@@ -50,6 +50,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -177,6 +178,13 @@ class MainActivity : ComponentActivity() {
                 val isPip = _isInPipMode.value
                 val externalVideoUri = pendingExternalVideoUri.value
                 val browserPip = _browserPipActive.value
+                DisposableEffect(Unit) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) libraryViewModel.refreshVideos(silent = true)
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
                 val externalBrowserUrl = pendingBrowserUrl.value
                 val openBrowserDownloads = pendingBrowserDownloads.value
                 val openResolvedStream: (StreamUrlResult) -> Unit = { result ->
@@ -506,10 +514,11 @@ class MainActivity : ComponentActivity() {
                                                         },
                                                         onPlayDirectMedia = { url ->
                                                             val uri = Uri.parse(url)
-                                                            if (uri.scheme == "content") {
-                                                                val mimeType = contentResolver.getType(uri) ?: "video/*"
+                                                            if (uri.scheme == "content" || uri.scheme == "file") {
+                                                                val localDownload = com.example.downloads.BrowserDownloads.playbackItem(this@MainActivity, uri)
+                                                                val mimeType = localDownload?.mimeType ?: runCatching { contentResolver.getType(uri) }.getOrNull() ?: "video/*"
                                                                 playerViewModel.playVideo(
-                                                                    VideoItem(
+                                                                    localDownload ?: VideoItem(
                                                                         uri = uri,
                                                                         title = uri.lastPathSegment ?: "Downloaded video",
                                                                         path = url,
@@ -993,6 +1002,7 @@ fun RequestPermissionsOnLaunch(
         val list = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list.add(Manifest.permission.READ_MEDIA_VIDEO)
+            if (Build.VERSION.SDK_INT >= 34) list.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
             list.add(Manifest.permission.READ_MEDIA_AUDIO)
             list.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
