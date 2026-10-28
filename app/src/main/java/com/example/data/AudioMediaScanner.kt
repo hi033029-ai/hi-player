@@ -14,79 +14,40 @@ internal object AudioMediaScanner {
         val tracks = mutableListOf<AudioItem>()
         var complete = false
 
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.SIZE,
-            MediaStore.Audio.Media.DATA,
-            MediaStore.Audio.Media.MIME_TYPE,
-            MediaStore.Audio.Media.DATE_ADDED
-        )
-
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.DURATION} > 10000"
-        val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
-
         try {
             val queryUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-            context.contentResolver.query(
-                queryUri,
-                projection,
-                selection,
-                null,
-                sortOrder
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-                val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-                val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-                val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-                val albumIdCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID)
-                val durCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
-                val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
-                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
-                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
-
+            // Include all indexed audio: downloads/recordings may have IS_MUSIC=0
+            // or zero/short duration until Android finishes extracting metadata.
+            context.contentResolver.query(queryUri, null, null, null, "${MediaStore.Audio.Media.DATE_ADDED} DESC")?.use { cursor ->
+                fun text(column: String, fallback: String = ""): String {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) fallback else cursor.getString(index).orEmpty().ifBlank { fallback }
+                }
+                fun number(column: String, fallback: Long = 0): Long {
+                    val index = cursor.getColumnIndex(column)
+                    return if (index < 0 || cursor.isNull(index)) fallback else cursor.getLong(index)
+                }
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idCol)
-                    val contentUri = ContentUris.withAppendedId(queryUri, id)
-                    val title = cursor.getString(titleCol) ?: "Audio Track $id"
-                    val artist = cursor.getString(artistCol) ?: "Unknown Artist"
-                    val album = cursor.getString(albumCol) ?: "Unknown Album"
-                    val albumId = if (albumIdCol != -1) cursor.getLong(albumIdCol) else -1L
-                    val albumArtUri = if (albumId != -1L) {
-                        ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
-                    } else null
-                    val duration = cursor.getLong(durCol)
-                    val size = cursor.getLong(sizeCol)
-                    val path = cursor.getString(dataCol) ?: ""
-                    val mime = cursor.getString(mimeCol) ?: "audio/*"
-                    val dateAdded = cursor.getLong(dateCol)
-
-                    tracks.add(
-                        AudioItem(
-                            id = id,
-                            uri = contentUri,
-                            title = title,
-                            artist = if (artist.contains("<unknown>", true)) "Hi Audio" else artist,
-                            album = if (album.contains("<unknown>", true)) "Local Audio" else album,
-                            durationMs = duration,
-                            sizeBytes = size,
-                            path = path,
-                            mimeType = mime,
-                            dateAdded = dateAdded,
-                            albumId = albumId,
-                            albumArtUri = albumArtUri
-                        )
+                    val id = cursor.getLong(idColumn)
+                    val albumId = number(MediaStore.Audio.Media.ALBUM_ID, -1)
+                    val path = text(MediaStore.Audio.Media.DATA)
+                    val displayName = text(MediaStore.Audio.Media.DISPLAY_NAME, File(path).nameWithoutExtension.ifBlank { "Audio Track $id" })
+                    tracks += AudioItem(
+                        id = id, uri = ContentUris.withAppendedId(queryUri, id),
+                        title = text(MediaStore.Audio.Media.TITLE, displayName),
+                        artist = text(MediaStore.Audio.Media.ARTIST, "Unknown Artist").replace("<unknown>", "Unknown Artist", true),
+                        album = text(MediaStore.Audio.Media.ALBUM, "Local Audio").replace("<unknown>", "Local Audio", true),
+                        durationMs = number(MediaStore.Audio.Media.DURATION), sizeBytes = number(MediaStore.Audio.Media.SIZE),
+                        path = path, mimeType = text(MediaStore.Audio.Media.MIME_TYPE, "audio/*"),
+                        dateAdded = number(MediaStore.Audio.Media.DATE_ADDED), albumId = albumId,
+                        albumArtUri = if (albumId >= 0) ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId) else null,
                     )
                 }
                 complete = true
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.w("HiLibrary", "Audio provider unavailable; preserving cached music", e)
         }
 
         // WhatsApp voice notes and audio files are sometimes not indexed as
@@ -101,6 +62,10 @@ internal object AudioMediaScanner {
     private fun scanKnownMessengerAudio(indexedPaths: Set<String>): List<AudioItem> {
         val storageRoot = Environment.getExternalStorageDirectory()
         val candidates = listOf(
+            File(storageRoot, "Music"),
+            File(storageRoot, "Download"),
+            File(storageRoot, "Downloads"),
+            File(storageRoot, "Recordings"),
             File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio"),
             File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes"),
             File(storageRoot, "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Audio"),
@@ -111,10 +76,10 @@ internal object AudioMediaScanner {
             .map { directory -> runCatching { directory.canonicalFile }.getOrDefault(directory) }
             .distinctBy(File::getAbsolutePath)
 
-        val audioExtensions = setOf("mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma", "alac")
+        val audioExtensions = setOf("mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma", "alac", "aiff", "aif", "amr", "3ga")
         return candidates.asSequence()
             .flatMap { directory -> directory.walkTopDown().maxDepth(4) }
-            .filter(File::isFile)
+            .filter { it.isFile && it.canRead() && it.length() > 0 }
             .filter { file -> file.extension.lowercase(Locale.ROOT) in audioExtensions }
             .filterNot { file -> file.absolutePath in indexedPaths }
             .mapNotNull(::toMessengerAudioItem)
@@ -122,7 +87,10 @@ internal object AudioMediaScanner {
             .toList()
     }
 
+    private val metadataCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Pair<Long, Long>, AudioItem>>()
     private fun toMessengerAudioItem(file: File): AudioItem {
+        val fingerprint = file.length() to file.lastModified()
+        metadataCache[file.absolutePath]?.takeIf { it.first == fingerprint }?.let { return it.second }
         // An unreadable embedded duration must not hide a legitimate WhatsApp
         // file. Media3 can still attempt playback from its readable file URI.
         val duration = runCatching {
@@ -136,11 +104,11 @@ internal object AudioMediaScanner {
                 retriever.release()
             }
         }.getOrDefault(0L)
-        return AudioItem(
+        val item = AudioItem(
             id = file.absolutePath.hashCode().toLong(),
             uri = Uri.fromFile(file),
             title = file.nameWithoutExtension,
-            artist = "WhatsApp",
+            artist = if (file.absolutePath.contains("WhatsApp", true)) "WhatsApp" else "Unknown Artist",
             album = file.parentFile?.name ?: "WhatsApp Audio",
             durationMs = duration,
             sizeBytes = file.length(),
@@ -153,6 +121,9 @@ internal object AudioMediaScanner {
             },
             dateAdded = file.lastModified() / 1000L,
         )
+        if (metadataCache.size > 8000) metadataCache.clear()
+        metadataCache[file.absolutePath] = fingerprint to item
+        return item
     }
 
 }

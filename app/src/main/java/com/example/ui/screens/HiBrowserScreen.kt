@@ -299,6 +299,7 @@ fun HiBrowserScreen(
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
     var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
     var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
+    var pendingVideoNavigation by remember { mutableStateOf<String?>(null) }
     var videoHandoffEnabled by remember { mutableStateOf(store.videoHandoff) }
     // Bumped to rebuild every tab's WebView (pages pick light/dark at creation).
     var webViewGeneration by remember { mutableIntStateOf(0) }
@@ -514,6 +515,10 @@ fun HiBrowserScreen(
 
     /** Opens a web video in Hi Player with the page's referrer, user agent and cookies. */
     fun playBrowserVideo(tabId: Int, url: String) {
+        if (BrowserVideoPolicy.isAdUrl(url) || OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), true, mediaSniffer.pageHost(tabId))) {
+            Toast.makeText(context, "Ad video blocked", Toast.LENGTH_SHORT).show()
+            return
+        }
         val tab = tabs.firstOrNull { it.id == tabId }
         val pageUrl = mediaSniffer.pageUrl(tabId).ifBlank { tab?.url.orEmpty() }
         val userAgent = if (tab?.desktop == true) DESKTOP_USER_AGENT else runCatching { WebSettings.getDefaultUserAgent(context) }.getOrNull()
@@ -963,27 +968,7 @@ fun HiBrowserScreen(
                             }
                             addJavascriptInterface(
                                 HiBrowserVideoBridge(
-                                    onReport = { src -> mediaSniffer.reportVideo(tabId, src) },
-                                    onStarted = { src, userGesture, muted ->
-                                        // Runs on WebView's JavaBridge thread: decide from thread-safe
-                                        // snapshots, then hand off on the main thread.
-                                        val pageUrl = mediaSniffer.pageUrl(tabId)
-                                        val candidate = when {
-                                            !store.videoHandoff || mediaSniffer.activeTabId != tabId -> null
-                                            isOrbitYoutube(pageUrl) || (muted && !userGesture) -> null
-                                            else -> (src.takeIf { (it.startsWith("http://") || it.startsWith("https://")) && !isOrbitYoutube(it) }
-                                                ?: mediaSniffer.bestManifest(tabId))
-                                        }
-                                        val playable = candidate != null && StreamUrlClassifier
-                                            .classifyResolvedMediaUrl(candidate, hiBrowserStreamMimeType(candidate), null, trustAsDirectSource = true)
-                                            .isPlayableInHiPlayer
-                                        if (candidate != null && playable && mediaSniffer.claimHandoff(tabId)) {
-                                            browserWebView.post { if (activeTabId == tabId) playBrowserVideo(tabId, candidate) }
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    },
+                                    onReport = { src -> if (store.videoHandoff) mediaSniffer.reportVideo(tabId, src) },
                                 ),
                                 "HiBrowserNative",
                             )
@@ -1066,11 +1051,17 @@ fun HiBrowserScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val uri = request.url
+                                    if (request.isForMainFrame && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
                                     if (uri.scheme == "http" || uri.scheme == "https") {
                                         if (request.isForMainFrame && !isOrbitYoutube(uri.toString())) {
                                             val stream = StreamUrlClassifier.classify(uri.toString())
+                                            if (BrowserVideoPolicy.isAdUrl(uri.toString())) return true
                                             if (stream.isPlayableInHiPlayer && !stream.requiresWebResolution) {
-                                                latestOnPlayDirectMedia(uri.toString())
+                                                // Preserve the current page. Script redirects and autoplay
+                                                // must never replace it with an ad in the native player.
+                                                if (BrowserVideoPolicy.offerNavigation(request.hasGesture(), request.isRedirect, false)) {
+                                                    pendingVideoNavigation = uri.toString()
+                                                }
                                                 return true
                                             }
                                         }
@@ -1363,6 +1354,16 @@ fun HiBrowserScreen(
         )
     }
 
+    pendingVideoNavigation?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { pendingVideoNavigation = null },
+            title = { Text("Open video in Hi Player?") },
+            text = { Text("Your original page will stay open.\n\n" + candidate.take(300)) },
+            confirmButton = { TextButton(onClick = { pendingVideoNavigation = null; playBrowserVideo(activeTabId, candidate) }) { Text("Play video") } },
+            dismissButton = { TextButton(onClick = { pendingVideoNavigation = null }) { Text("Stay on page") } },
+        )
+    }
+
     if (menuExpanded) {
         val onPage = !showStartPage
         val bookmarked = onPage && store.isBookmarked(currentUrl)
@@ -1533,10 +1534,11 @@ private class HiBrowserMediaSniffer {
     fun reportedVideo(id: Int): String? = tabs[id]?.reportedVideo
 
     fun reportVideo(id: Int, src: String) {
-        if (!isOrbitYoutube(src)) tab(id).reportedVideo = src
+        if (!isOrbitYoutube(src) && !BrowserVideoPolicy.isAdUrl(src)) tab(id).reportedVideo = src
     }
 
     fun observeRequest(id: Int, uri: Uri) {
+        if (BrowserVideoPolicy.isAdUrl(uri.toString())) return
         val scheme = uri.scheme
         if (scheme != "http" && scheme != "https") return
         val path = uri.path?.lowercase() ?: return
@@ -1616,73 +1618,50 @@ private class HiBrowserFullscreen {
     }
 }
 
-private class HiBrowserVideoBridge(
+internal class HiBrowserVideoBridge(
     private val onReport: (String) -> Unit,
-    private val onStarted: (src: String, userGesture: Boolean, muted: Boolean) -> Boolean,
 ) {
     /** The page has a video with this direct source (used by "Play in Hi Player"). */
     @JavascriptInterface
     fun reportVideo(rawUrl: String?) {
         val value = rawUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: return
-        runCatching { onReport(value) }
+        if (!BrowserVideoPolicy.isAdUrl(value)) runCatching { onReport(value) }
     }
 
-    /** A video started playing; returns true when Hi Player takes it over. */
+    /** Compatibility with older injected scripts: web content NEVER launches the player. */
+    @Suppress("UNUSED_PARAMETER")
     @JavascriptInterface
     fun videoStarted(rawUrl: String?, userGesture: Boolean, muted: Boolean): Boolean =
-        runCatching { onStarted(rawUrl?.trim().orEmpty(), userGesture, muted) }.getOrDefault(false)
+        false
 }
 
 private const val HI_BROWSER_PAUSE_MEDIA_SCRIPT =
     "(function(){try{document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});}catch(e){}})()"
 
 /**
- * Opens videos in Hi Player once they really start (not muted previews, tiny
- * players or short clips). Runs in every frame; YouTube is left alone.
+ * Detect only videos the user selects on the top-level page. Never launches
+ * Hi Player, pauses media, or interprets unrelated page taps as playback consent.
  */
-private const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
+internal const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
 (function(){
+  try { if(window.top!==window) return; } catch(e) { return; }
   var host=(window.location.hostname||'').toLowerCase();
   if(host==='youtu.be'||/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
-  if(window.__hiVideoHookV2) return;
-  window.__hiVideoHookV2=true;
-  var lastGesture=0;
-  function markGesture(e){ if(e.isTrusted) lastGesture=Date.now(); }
-  ['pointerdown','touchend','click','keydown'].forEach(function(n){ document.addEventListener(n,markGesture,true); });
-  function sourceFor(v){
-    var s=v.currentSrc||v.src||'';
-    if(!s){ var el=v.querySelector('source[src]'); if(el) s=el.src||''; }
-    return s;
-  }
-  function bridge(){ return window.HiBrowserNative; }
+  if(window.__hiVideoHookV3) return;
+  window.__hiVideoHookV3=true;
   function report(v){
-    var s=sourceFor(v), n=bridge();
-    if(n&&/^https?:\/\//i.test(s)){ try{ n.reportVideo(s); }catch(e){} }
-  }
-  function onPlaying(ev){
-    var v=ev.target;
     if(!v||v.tagName!=='VIDEO') return;
-    var n=bridge();
-    if(!n) return;
-    report(v);
-    var s=sourceFor(v);
-    if(v.__hiHandoffSrc===s) return;
+    if(v.closest('[data-ad],[data-ad-slot],.ad,.ads,.advertisement,.video-ad,.vast-ad')) return;
     var r=v.getBoundingClientRect();
     if(r.width<160||r.height<90) return;
-    var gesture=(Date.now()-lastGesture)<15000;
-    if(v.muted&&!gesture) return;
-    var d=v.duration;
-    if(isFinite(d)&&d>0&&d<20) return;
-    var ok=false;
-    try{ ok=n.videoStarted(/^https?:\/\//i.test(s)?s:'',gesture,!!v.muted); }catch(e){}
-    if(ok===true||ok==='true'){
-      v.__hiHandoffSrc=s;
-      try{ v.pause(); }catch(e){}
-      try{ if(document.fullscreenElement&&document.exitFullscreen) document.exitFullscreen(); }catch(e){}
-    }
+    var s=v.currentSrc||v.src||'';
+    if(!s){ var source=v.querySelector('source[src]'); if(source) s=source.src||''; }
+    if(!/^https?:\/\//i.test(s)) return;
+    try { if(window.HiBrowserNative) window.HiBrowserNative.reportVideo(s); } catch(e) {}
   }
-  document.addEventListener('playing',onPlaying,true);
-  document.addEventListener('loadedmetadata',function(ev){ var v=ev.target; if(v&&v.tagName==='VIDEO') report(v); },true);
+  // A click elsewhere on the page is not permission to hand off an ad video.
+  document.addEventListener('click',function(e){ if(e.isTrusted) report(e.target); },true);
+  document.addEventListener('keydown',function(e){ if(e.isTrusted&&(e.key===' '||e.key==='Enter')) report(e.target); },true);
 })()
 """
 
@@ -1785,8 +1764,8 @@ private fun BrowserSettingsDialog(
                 }
                 BrowserSettingsGroup("Videos") {
                     BrowserSettingsSwitchRow(
-                        "Play videos in Hi Player",
-                        "Videos you start on websites (not YouTube) open in Hi Player",
+                        "Detect website videos",
+                        "Use Play in Hi Player from the menu. Videos never open automatically",
                         videoHandoff,
                         onVideoHandoffChange,
                     )
