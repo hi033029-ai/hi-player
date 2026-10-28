@@ -1,0 +1,24 @@
+name: Apply Google theme source only (no build)
+on:
+  push:
+    branches: [feature/google-account-theme-borders]
+    paths: [google-theme-source.patch.xz.b64]
+permissions:
+  contents: write
+jobs:
+  apply-source-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/google-account-theme-borders
+      - name: Apply source only - do not compile or build APK
+        run: |
+          base64 -d google-theme-source.patch.xz.b64 | xz -d > /tmp/google-theme-source.patch
+          git apply --check /tmp/google-theme-source.patch
+          git apply --index /tmp/google-theme-source.patch
+          git rm google-theme-source.patch.xz.b64
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Apply validated v1.0.66 build fixes and version'
+          git push
