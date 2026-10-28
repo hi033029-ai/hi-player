@@ -1,0 +1,52 @@
+name: Build Demo APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/account-drive-ui-polish]
+    paths:
+      - .github/workflows/demo-apk.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout demo source
+        uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Configure Android SDK
+        run: |
+          test -n "$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - name: Build approved 1.0.67 demo with Drive enabled
+        run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true --console=plain
+      - name: Prepare download
+        run: |
+          mkdir -p demo-apk
+          cp app/build/outputs/apk/debug/app-debug.apk demo-apk/Hi-Player-v1.0.67-demo.apk
+          sha256sum demo-apk/Hi-Player-v1.0.67-demo.apk > demo-apk/SHA256SUMS.txt
+          echo 'Demo build only. Google Drive scope is unverified and Google may block authorization. No device consent/playback validation has been performed.' > demo-apk/DEMO-NOTES.txt
+      - name: Upload downloadable demo APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hi-Player-v1.0.67-demo-APK
+          path: demo-apk/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Write download instructions
+        run: |
+          echo '## Hi Player 1.0.67-demo (68)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Download **Hi-Player-v1.0.67-demo-APK** from the Artifacts section of this run, extract the ZIP, and install the APK. GitHub sign-in is required for artifact downloads.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Drive is enabled for demo testing only; the Google scope remains unverified. This workflow does not merge main or publish a release.' >> "$GITHUB_STEP_SUMMARY"
