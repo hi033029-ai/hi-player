@@ -1,4 +1,4 @@
-# Google account and theme outlines — source-only, awaiting build approval
+# Google account and theme outlines — v1.0.66 build validation
 
 ## Status
 - Official Google Credential Manager chooser/button flow exchanges the Google ID token with Firebase Authentication. Only a backend-validated Firebase Google user is displayed as signed in.
@@ -30,10 +30,16 @@
 - Native account sessions and browser website cookies remain separate. App sign-in cannot automatically sign every embedded website into Google.
 - Missing or wrong configuration remains an explicit setup error; it never invents a signed-in user.
 
-## Build hold
-No Gradle, compile, lint, package, or test task was run for these changes. No APK was generated, version bumped, main merge made, or APK workflow dispatched. Authentication and theme tests have been added but are unrun. Preserve this hold until Khan approves validation/build.
+## Approved build validation
+The owner explicitly requested an APK build. Version is now **1.0.66 / 67**. Two missing browser-menu icon imports were corrected after the initial compilation failure. The subsequent `assembleDebug testDebugUnitTest` invocation succeeded, including the debug vital-lint tasks.
 
-## Validation after approval
+- 67 selected regression tests across 15 suites passed, with zero failures, errors, or skips: auth configuration and secure-browser policy; theme borders; download UI, resolution, transfer, and library integration; browser Back and ad-video policies; media snapshots/audio discovery; refresh coalescing.
+- Generated Firebase resources were checked against the real project, app ID, and Web OAuth client.
+- APK package/version verified; APK signature verified and SHA-1/SHA-256 match the registered Android OAuth certificate and existing repository debug key. The installable debug variant remains non-debuggable.
+- No Android device was attached. Real Credential Manager/Firebase sign-in, session persistence, and physical-device UI checks are still pending. Automated policy tests are not evidence of a real Google account login.
+- Built locally from the feature branch; no main merge or APK CI dispatch was required.
+
+## Remaining device validation
 - Resolve new SDK dependencies; compile and run authentication-policy, secure-session, theme contrast, and UI regression tests.
 - Physical Google Play-enabled device: successful chooser + Firebase exchange; cancellation; offline; wrong OAuth configuration; process restart; sign-out/account switching; token revocation handling.
 - Check account avatar/title layout on narrow screens and large fonts.
