@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +60,8 @@ fun MoreOptionsBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = HiSurfaceDark,
@@ -171,7 +175,7 @@ private fun MoreOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(HiSurfaceElevated)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),

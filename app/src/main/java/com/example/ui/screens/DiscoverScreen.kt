@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -353,7 +355,7 @@ private fun TmdbHomePosterCard(title: DiscoverTitle, onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(width = 116.dp, height = 172.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
                 .background(palette.surfaceElevated),
             contentAlignment = Alignment.Center,
         ) {
@@ -499,6 +501,7 @@ private fun DiscoverSourceChooser(
 ) {
     val palette = LocalHiPalette.current
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = onDismiss,
         containerColor = palette.surfaceElevated,
         title = { Text("Choose a media source", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
@@ -553,7 +556,7 @@ private fun SourceChooserOption(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -582,7 +585,7 @@ private fun DiscoverTitleRow(title: DiscoverTitle, onClick: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(width = 62.dp, height = 88.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                 .background(palette.surfaceElevated),
             contentAlignment = Alignment.Center
         ) {
@@ -709,7 +712,7 @@ private fun DiscoverDetailsHeader(details: DiscoverDetails) {
     val context = LocalContext.current
     Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.Top) {
         Box(
-            modifier = Modifier.size(width = 105.dp, height = 155.dp).clip(RoundedCornerShape(10.dp)).background(palette.surfaceElevated),
+            modifier = Modifier.size(width = 105.dp, height = 155.dp).clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp)).background(palette.surfaceElevated),
             contentAlignment = Alignment.Center
         ) {
             if (title.posterUrl != null) {
@@ -750,7 +753,7 @@ private fun DiscoverDetailsHeader(details: DiscoverDetails) {
                     text = "${season.name} (${season.episodeCount})",
                     color = palette.primary,
                     fontSize = 11.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(7.dp)).background(palette.surfaceElevated).padding(horizontal = 10.dp, vertical = 7.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(7.dp)).hiContainerBorder(RoundedCornerShape(7.dp)).background(palette.surfaceElevated).padding(horizontal = 10.dp, vertical = 7.dp)
                 )
             }
         }
@@ -765,7 +768,7 @@ private fun DiscoverCastCard(member: DiscoverCastMember) {
         Box(
             modifier = Modifier
                 .size(88.dp)
-                .clip(RoundedCornerShape(44.dp))
+                .clip(RoundedCornerShape(44.dp)).hiContainerBorder(RoundedCornerShape(44.dp))
                 .background(palette.surfaceElevated),
             contentAlignment = Alignment.Center,
         ) {
@@ -809,7 +812,7 @@ private fun RemoteMediaRow(match: RemoteMediaMatch, onPlay: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(palette.surfaceElevated),
+            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp)).background(palette.surfaceElevated),
             contentAlignment = Alignment.Center
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = "Play ${match.title}", tint = palette.primary, modifier = Modifier.size(26.dp))

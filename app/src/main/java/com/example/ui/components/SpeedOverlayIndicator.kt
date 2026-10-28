@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,7 +24,7 @@ fun SpeedOverlayIndicator(visible: Boolean, speedLabel: String, modifier: Modifi
             color = Color.White,
             fontSize = 15.sp,
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                 .background(Color.Black.copy(alpha = 0.65f))
                 .padding(horizontal = 14.dp, vertical = 6.dp),
         )

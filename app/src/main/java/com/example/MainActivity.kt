@@ -362,6 +362,7 @@ class MainActivity : ComponentActivity() {
                                     topBar = {
                                         if (currentTab != NavTab.BROWSER) {
                                             HiPlayerHeader(
+                                                onAccountClick = { currentTab = NavTab.SETTINGS },
                                                 showSearch = false,
                                                 onSearchClick = null,
                                                 onRefreshClick = {
@@ -953,6 +954,8 @@ class MainActivity : ComponentActivity() {
     // playing with nothing on screen. Pause playback on backgrounding unless
     // the user has explicitly enabled PiP or background audio playback.
     override fun onStop() {
+        // Persist normal WebView cookies without changing website expiry rules.
+        runCatching { android.webkit.CookieManager.getInstance().flush() }
         super.onStop()
         if (isInPictureInPictureMode || pipTransitionRequested) return
         // Persist the current resume position and aspect mode before the app is

@@ -1,33 +1,44 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "firebase_url": "https://hi-player-placeholder-default-rtdb.firebaseio.com",
-    "project_id": "hi-player-placeholder",
-    "storage_bucket": "hi-player-placeholder.appspot.com"
+    "project_number": "274282940401",
+    "project_id": "hi-player-979d7",
+    "storage_bucket": "hi-player-979d7.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdef",
+        "mobilesdk_app_id": "1:274282940401:android:e8306c0d28af68eeeee650",
         "android_client_info": {
           "package_name": "com.aistudio.hiplayer.vdmk"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "274282940401-he6fbv6gbtnggsg31b0g6p1su2r3r49t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.hiplayer.vdmk",
+            "certificate_hash": "b2332f2544bc1e6899127b79c23cd6441baf33c8"
+          }
+        },
+        {
+          "client_id": "274282940401-lqo6b22h1j0jsa004927q8lmp2cd51us.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyPlaceholderKeyForBuildPassOnly123456"
+          "current_key": "AIzaSyDLuKWC5Sjl49fUYjtFA_ujYWFsssTA83I"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
-        },
-        "app_invite_service": {
-          "status": 1
-        },
-        "ads_service": {
-          "status": 2
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "274282940401-lqo6b22h1j0jsa004927q8lmp2cd51us.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

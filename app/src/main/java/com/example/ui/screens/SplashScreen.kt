@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -492,7 +494,7 @@ private fun FeatureRow(
     Card(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -503,7 +505,7 @@ private fun FeatureRow(
             Box(
                 modifier = Modifier
                     .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(Color(0xFF0056B3).copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -561,7 +563,7 @@ private fun ChooseThemeView(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
                     .background(selectedPalette.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -609,7 +611,7 @@ private fun ChooseThemeView(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
-                border = null,
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Row(
@@ -688,7 +690,7 @@ private fun ThemeOptionCard(
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) Color(0xFFD6ECF7) else Color(0xFFC7E3F2)
         ),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
@@ -887,7 +889,7 @@ private fun PermissionCard(
     Card(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -898,7 +900,7 @@ private fun PermissionCard(
             Box(
                 modifier = Modifier
                     .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(accentColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {

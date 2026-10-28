@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +49,7 @@ fun VideoInfoDialog(
     onDismiss: () -> Unit
 ) {
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(RoundedCornerShape(16.dp)),
         onDismissRequest = onDismiss,
         containerColor = HiSurfaceDark,
         shape = RoundedCornerShape(16.dp),
@@ -100,7 +103,7 @@ fun VideoInfoDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                         .background(HiSurfaceElevated)
                         .padding(10.dp)
                 ) {

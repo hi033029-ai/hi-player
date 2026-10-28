@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -243,7 +245,7 @@ fun GestureOverlay(
                 val percent = (level * 100).toInt()
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
                         .background(Color(0xCC111624))
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                     contentAlignment = Alignment.Center
@@ -262,7 +264,7 @@ fun GestureOverlay(
                             modifier = Modifier
                                 .width(8.dp)
                                 .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
@@ -297,7 +299,7 @@ fun GestureOverlay(
                 val percent = (level * 100).toInt()
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
                         .background(Color(0xCC111624))
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                     contentAlignment = Alignment.Center
@@ -320,7 +322,7 @@ fun GestureOverlay(
                             modifier = Modifier
                                 .width(8.dp)
                                 .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
@@ -366,7 +368,7 @@ fun GestureOverlay(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                         .background(Color(0xE60A0E18))
                         .padding(horizontal = 20.dp, vertical = 10.dp)
                 ) {

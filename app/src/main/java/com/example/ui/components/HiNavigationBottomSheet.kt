@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,8 +90,7 @@ fun HiNavigationBottomSheet(
                     .background(palette.textTertiary.copy(alpha = 0.4f))
             )
         },
-        modifier = modifier.testTag("hi_navigation_bottom_sheet")
-    ) {
+        modifier = (modifier.testTag("hi_navigation_bottom_sheet")).hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -246,7 +247,7 @@ fun HiNavigationBottomSheet(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(palette.surfaceElevated)
                     .clickable {
                         onRefreshStorage()
@@ -307,7 +308,7 @@ fun NavHubTile(
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) palette.surfaceElevated else palette.surface
         ),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
@@ -319,7 +320,7 @@ fun NavHubTile(
             Box(
                 modifier = Modifier
                     .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(iconColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {

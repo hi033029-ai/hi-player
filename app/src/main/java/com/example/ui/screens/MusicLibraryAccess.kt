@@ -47,7 +47,7 @@ internal fun MusicLibraryAccess(onRefresh: () -> Unit) {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     if (!access) {
-        Surface(color = palette.primary.copy(alpha = .08f), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
+        Surface(border = androidx.compose.foundation.BorderStroke(1.dp, palette.surfaceBorder), color = palette.primary.copy(alpha = .08f), modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)) {
             Column(Modifier.padding(14.dp)) {
                 Text("Allow access to your music", color = palette.textPrimary)
                 Text("Music access is separate from photos and videos. Grant it to list audio files on this device.", color = palette.textSecondary)

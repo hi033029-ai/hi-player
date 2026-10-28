@@ -109,6 +109,7 @@ fun GoogleDriveAccountCard(
     }
 
     Card(
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
@@ -132,7 +133,7 @@ fun GoogleDriveAccountCard(
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (connection?.isConfigured == true) "Google account connected" else "Sign in with Google",
+                        text = if (connection?.isConfigured == true) "Google Drive folder connected" else "Connect a Google Drive folder",
                         color = palette.textPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
@@ -141,7 +142,7 @@ fun GoogleDriveAccountCard(
                         text = if (connection?.isConfigured == true) {
                             connection.accountName
                         } else {
-                            "Choose an account and one Drive video folder"
+                            "Folder permission only—not account authentication"
                         },
                         color = palette.textSecondary,
                         fontSize = 11.5.sp,

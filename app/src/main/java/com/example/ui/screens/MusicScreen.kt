@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.rememberScrollState
@@ -240,7 +242,7 @@ fun MusicScreen(
                             val isSelected = libraryMode == option
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .clip(RoundedCornerShape(9.dp)).hiContainerBorder(RoundedCornerShape(9.dp))
                                     .background(if (isSelected) palette.primary else palette.surfaceElevated)
                                     .clickable {
                                         libraryMode = option
@@ -364,6 +366,7 @@ fun MusicScreen(
                 ) {
                     gridItems(groupedAudio.entries.toList(), key = { entry -> "audio_collection_${entry.key}" }) { entry ->
                         Card(
+                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { selectedCollection = entry.key },
@@ -595,6 +598,8 @@ fun AudioTrackCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .hiContainerBorder(RoundedCornerShape(12.dp), selected = isSelected)
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 6.dp)
             .testTag("audio_track_${track.id}"),
@@ -604,7 +609,7 @@ fun AudioTrackCard(
         Box(
             modifier = Modifier
                 .size(42.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                 .background(
                     if (isSelected) palette.primary.copy(alpha = 0.25f)
                     else palette.surfaceElevated
@@ -672,7 +677,7 @@ fun AudioTrackCard(
         Column(horizontalAlignment = Alignment.End) {
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
                     .background(palette.primary.copy(alpha = 0.15f))
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
@@ -733,7 +738,7 @@ fun WavyNowPlayingBottomSheet(
             .testTag("now_playing_bottom_sheet"),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        border = BorderStroke(1.dp, palette.surfaceBorder.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, palette.surfaceBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Column(
@@ -749,7 +754,7 @@ fun WavyNowPlayingBottomSheet(
                     // Subtitle Search Button
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                             .background(palette.primary.copy(alpha = 0.15f))
                             .clickable(onClick = onLyricsToggle)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -967,6 +972,8 @@ fun EqualizerPresetDialog(
     val presets = listOf("Cinema 3D", "Bass Boost 200%", "Vocal Clarity", "Rock & Metal", "Electronic / EDM", "Audiophile Flat")
 
     AlertDialog(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -987,7 +994,7 @@ fun EqualizerPresetDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                             .clickable { onPresetSelected(preset) }
                             .padding(vertical = 6.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically

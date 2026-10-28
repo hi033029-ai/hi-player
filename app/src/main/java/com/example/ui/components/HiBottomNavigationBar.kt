@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -133,7 +135,7 @@ fun HiBottomNavigationBar(
                                     }
                                 }
                             }
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(24.dp)).hiContainerBorder(RoundedCornerShape(24.dp))
                             .testTag(spec.tag)
                             .clickable { onTabSelected(spec.tab) },
                         contentAlignment = Alignment.Center
@@ -169,7 +171,7 @@ fun HiBottomNavigationBar(
                     .offset(x = progressX)
                     .width(progressWidth)
                     .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .clip(RoundedCornerShape(2.dp)).hiContainerBorder(RoundedCornerShape(2.dp))
                     .background(palette.primary)
                     .testTag("nav_progress_segment")
             )

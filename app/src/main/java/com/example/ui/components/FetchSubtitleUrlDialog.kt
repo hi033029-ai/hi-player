@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +37,8 @@ fun FetchSubtitleUrlDialog(
     var urlText by remember { mutableStateOf("") }
 
     AlertDialog(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = onDismiss,
         containerColor = HiSurfaceDark,
         title = {

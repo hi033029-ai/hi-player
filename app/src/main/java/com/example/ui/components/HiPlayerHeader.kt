@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.LocalHiPalette
@@ -38,11 +39,13 @@ fun HiPlayerHeader(
     onRefreshClick: (() -> Unit)? = {},
     onStreamClick: (() -> Unit)? = {},
     testTag: String = "hi_player_header",
+    onAccountClick: (() -> Unit)? = null,
     extraActions: @Composable (() -> Unit)? = null
 ) {
     val palette = LocalHiPalette.current
     val metrics = LocalHiUiMetrics.current
     Surface(
+        border = androidx.compose.foundation.BorderStroke(1.dp, palette.surfaceBorder),
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
@@ -57,7 +60,7 @@ fun HiPlayerHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 HiPlayerLogoBadge(size = metrics.logoSize)
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
@@ -65,7 +68,9 @@ fun HiPlayerHeader(
                     fontSize = metrics.titleTextSize,
                     fontWeight = FontWeight.Bold,
                     color = palette.primary,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,6 +102,7 @@ fun HiPlayerHeader(
                     }
                 }
                 extraActions?.invoke()
+                onAccountClick?.let { GoogleAccountAvatar(onClick = it) }
             }
         }
     }

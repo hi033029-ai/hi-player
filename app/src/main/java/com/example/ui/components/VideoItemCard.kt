@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -84,7 +86,7 @@ fun VideoItemCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .testTag("video_card_${video.id}")
@@ -100,7 +102,7 @@ fun VideoItemCard(
                 modifier = Modifier
                     .width(118.dp)
                     .height(76.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(palette.surface)
             ) {
                 VideoThumbnail(
@@ -442,7 +444,7 @@ fun VideoGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .testTag("video_grid_card_${video.id}")

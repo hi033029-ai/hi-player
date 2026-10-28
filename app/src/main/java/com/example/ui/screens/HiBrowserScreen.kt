@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import com.example.downloads.BrowserDownload
 import com.example.downloads.BrowserDownloadRequest
 import com.example.downloads.DownloadFileResolver
@@ -44,6 +46,8 @@ import android.os.Environment
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewGroup
+import com.example.auth.SecureWebSessions
+import androidx.compose.ui.graphics.toArgb
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -78,6 +82,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ArrowForward
@@ -299,6 +305,7 @@ fun HiBrowserScreen(
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
     var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
     var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
+    var pendingSecureSite by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var pendingVideoNavigation by remember { mutableStateOf<String?>(null) }
     var videoHandoffEnabled by remember { mutableStateOf(store.videoHandoff) }
     // Bumped to rebuild every tab's WebView (pages pick light/dark at creation).
@@ -442,8 +449,20 @@ fun HiBrowserScreen(
         }
     }
 
+    fun requestSecureSite(url: String, fromPrivateTab: Boolean = activeTab?.privateTab == true) {
+        if (!SecureWebSessions.validPage(url)) {
+            Toast.makeText(context, "Secure browser sign-in needs an HTTPS page", Toast.LENGTH_SHORT).show()
+            return
+        }
+        pendingSecureSite = url to fromPrivateTab
+    }
+
     fun loadAddress(raw: String) {
         val destination = normalizeBrowserInput(raw, searchProvider) ?: return
+        if (SecureWebSessions.isGoogleAuthentication(destination)) {
+            requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT)
+            return
+        }
         val stream = StreamUrlClassifier.classify(destination)
         if (!isOrbitYoutube(destination) && stream.isPlayableInHiPlayer && !stream.requiresWebResolution) {
             onPlayDirectMedia(destination)
@@ -591,6 +610,10 @@ fun HiBrowserScreen(
 
     /** Opens a page-requested window (target=_blank link or window.open) as a new tab. */
     fun openUrlFromPage(url: String, source: WebView, privateTab: Boolean) {
+        if (SecureWebSessions.isGoogleAuthentication(url)) {
+            requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab)
+            return
+        }
         if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock)) {
             showBrowserToast("Pop-up blocked")
             return
@@ -972,6 +995,7 @@ fun HiBrowserScreen(
                                 ),
                                 "HiBrowserNative",
                             )
+                            CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                             webChromeClient = object : WebChromeClient() {
                                 override fun onProgressChanged(view: WebView, progress: Int) {
@@ -1021,6 +1045,15 @@ fun HiBrowserScreen(
                                             hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
                                                 hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
                                             )
+                                        if (!tappedLink && isUserGesture) {
+                                            val authTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                                            authTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
+                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                                else Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
+                                            }
+                                            resultMsg.sendToTarget()
+                                            return true
+                                        }
                                         if (!tappedLink) {
                                             Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
                                             return false
@@ -1030,12 +1063,14 @@ fun HiBrowserScreen(
                                                 (it.startsWith("http://") || it.startsWith("https://"))
                                         }
                                         if (href != null) {
-                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(href), store.adBlock)) view.loadUrl(href)
+                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                            else if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(href), store.adBlock)) view.loadUrl(href)
                                             return false
                                         }
                                         val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                         linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                            if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(linkUrl), store.adBlock)) view.loadUrl(linkUrl)
+                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                            else if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(linkUrl), store.adBlock)) view.loadUrl(linkUrl)
                                         }
                                         resultMsg.sendToTarget()
                                         return true
@@ -1051,6 +1086,10 @@ fun HiBrowserScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val uri = request.url
+                                    if (request.isForMainFrame && SecureWebSessions.isGoogleAuthentication(uri.toString())) {
+                                        requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                        return true
+                                    }
                                     if (request.isForMainFrame && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
                                     if (uri.scheme == "http" || uri.scheme == "https") {
                                         if (request.isForMainFrame && !isOrbitYoutube(uri.toString())) {
@@ -1199,7 +1238,7 @@ fun HiBrowserScreen(
                     if (onPage && loadingProgress in 1..99) {
                         LinearProgressIndicator(
                             progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder.copy(alpha = 0.6f),
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(1.dp)),
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(1.dp)).hiContainerBorder(RoundedCornerShape(1.dp)),
                         )
                     }
                 }
@@ -1354,8 +1393,28 @@ fun HiBrowserScreen(
         )
     }
 
+    pendingSecureSite?.let { (url, fromPrivateTab) ->
+        AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+            onDismissRequest = { pendingSecureSite = null },
+            title = { Text("Continue in secure browser?") },
+            text = { Text(
+                (if (fromPrivateTab) "This leaves private browsing and may use your browser's signed-in accounts.\n\n" else "") +
+                "Google requires a supported browser for website sign-in. The website opens in a secure tab with its own saved sessions; it will not sign the embedded page in.\n\n" +
+                "If you were signing in to another website, start its Google sign-in again inside the secure tab. Hi Browser's filters and media controls do not apply there.\n\n" +
+                "Website: " + Uri.parse(url).host.orEmpty()
+            ) },
+            confirmButton = { TextButton(onClick = {
+                pendingSecureSite = null
+                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+            }) { Text("Open secure tab") } },
+            dismissButton = { TextButton(onClick = { pendingSecureSite = null }) { Text("Stay in Hi Browser") } },
+        )
+    }
+
     pendingVideoNavigation?.let { candidate ->
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingVideoNavigation = null },
             title = { Text("Open video in Hi Player?") },
             text = { Text("Your original page will stay open.\n\n" + candidate.take(300)) },
@@ -1369,6 +1428,7 @@ fun HiBrowserScreen(
         val bookmarked = onPage && store.isBookmarked(currentUrl)
         HiBrowserMenuSheet(
             tiles = listOf(
+                HiMenuAction("Google sign-in", Icons.Default.AccountCircle) { requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT) },
                 HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
                 HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
                 HiMenuAction("Downloads", Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
@@ -1388,6 +1448,7 @@ fun HiBrowserScreen(
                         }
                     })
                     add(HiMenuAction("Find in page", Icons.Default.FindInPage) { findBarVisible = true })
+                    add(HiMenuAction("Open in secure browser", Icons.Default.OpenInNew) { requestSecureSite(currentUrl) })
                     add(HiMenuAction("Translate", Icons.Default.Translate) { translateCurrentPage() })
                     add(HiMenuAction("Reader mode", Icons.Default.Language) { readCurrentPage() })
                     add(HiMenuAction("Desktop site", Icons.Default.DesktopWindows, checked = activeTab?.desktop == true) { toggleDesktopSite() })
@@ -1796,7 +1857,7 @@ private fun BrowserSettingsGroup(title: String, content: @Composable ColumnScope
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp)).hiContainerBorder(RoundedCornerShape(20.dp))
             .background(palette.surface)
             .padding(horizontal = 16.dp, vertical = 6.dp),
         content = content,
