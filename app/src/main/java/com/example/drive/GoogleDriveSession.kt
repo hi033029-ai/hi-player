@@ -37,6 +37,7 @@ internal object GoogleDriveSession {
     }
     /** IO/player loading thread only. Consent UI is never launched during playback. */
     fun token(context: Context, expected: Owner, force: Boolean = false): String {
+        if (!com.example.BuildConfig.GOOGLE_DRIVE_ENABLED) throw IOException("Drive permission setup is pending.")
         requireOwner(expected)
         val current = grant
         if (!force && current?.owner == expected && current.expiresAt > SystemClock.elapsedRealtime()) return current.token

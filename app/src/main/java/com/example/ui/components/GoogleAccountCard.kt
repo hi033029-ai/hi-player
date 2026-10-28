@@ -37,6 +37,7 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
     val context = LocalContext.current
     var showDrive by remember { mutableStateOf(false) }
     val profile by model.profile.collectAsState()
+    LaunchedEffect(profile?.uid) { showDrive = false }
     val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
     Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(16.dp),

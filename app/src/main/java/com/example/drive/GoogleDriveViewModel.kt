@@ -36,6 +36,10 @@ internal class GoogleDriveViewModel(application: Application) : AndroidViewModel
     }
     init { auth.addAuthStateListener(listener) }
     fun connect(activity: Activity, consent: (PendingIntent) -> Unit) {
+        if (!com.example.BuildConfig.GOOGLE_DRIVE_ENABLED) {
+            _state.value = _state.value.copy(message = "Drive access is awaiting project consent verification. Google sign-in is still available.")
+            return
+        }
         val account = GoogleDriveSession.owner() ?: run { _state.value = DriveBrowserState(message = "Sign in to Hi Player with Google first."); return }
         if (_state.value.busy) return
         pendingOwner = account; _state.value = _state.value.copy(busy = true, message = null)

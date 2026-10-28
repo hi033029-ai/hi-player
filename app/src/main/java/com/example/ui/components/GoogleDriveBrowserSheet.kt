@@ -52,13 +52,14 @@ internal fun GoogleDriveBrowserSheet(onDismiss: () -> Unit, onPlay: (VideoItem) 
             if (!state.connected) {
                 Text("Browse and play videos and music from your signed-in Google account. Google will ask for read-only access to your Drive files. Hi Player cannot change or delete them.", color = palette.textSecondary)
                 Spacer(Modifier.height(12.dp))
-                Button(enabled = !state.busy, onClick = connect) { Text(if (state.busy) "Connecting…" else "Allow read-only Drive access") }
+                if (!com.example.BuildConfig.GOOGLE_DRIVE_ENABLED) Text("Drive setup is awaiting Google's restricted-scope review. Your Google login is unaffected.", color = palette.textSecondary, modifier = Modifier.padding(vertical = 8.dp))
+                Button(enabled = com.example.BuildConfig.GOOGLE_DRIVE_ENABLED && !state.busy, onClick = connect) { Text(if (state.busy) "Connecting…" else "Allow read-only Drive access") }
             } else {
                 OutlinedTextField(value = search, onValueChange = { search = it }, singleLine = true, label = { Text("Search Drive media") }, modifier = Modifier.fillMaxWidth(),
                     trailingIcon = { IconButton(enabled = !state.busy, onClick = { model.search(search) }) { Icon(Icons.Default.Search, "Search Drive") } })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(enabled = !state.busy, onClick = connect) { Text("Reconnect") }
-                    TextButton(onClick = model::disconnect) { Text("Disconnect Drive") }
+                    TextButton(enabled = !state.busy, onClick = model::disconnect) { Text("Disconnect Drive") }
                 }
             }
             state.message?.let { Text(it, color = palette.textSecondary, modifier = Modifier.padding(vertical = 8.dp)) }

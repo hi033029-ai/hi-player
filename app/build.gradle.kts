@@ -20,6 +20,11 @@ val googleWebClientId = providers.gradleProperty("HI_PLAYER_GOOGLE_WEB_CLIENT_ID
   .orElse(providers.environmentVariable("HI_PLAYER_GOOGLE_WEB_CLIENT_ID"))
   .orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
 
+// Keep restricted Drive consent off in production until OAuth review is ready.
+val googleDriveEnabled = providers.gradleProperty("HI_PLAYER_DRIVE_ENABLED")
+  .orElse(providers.environmentVariable("HI_PLAYER_DRIVE_ENABLED"))
+  .map { it.equals("true", ignoreCase = true) }.getOrElse(false)
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -31,6 +36,7 @@ android {
     versionName = "1.0.66"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
+    buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
