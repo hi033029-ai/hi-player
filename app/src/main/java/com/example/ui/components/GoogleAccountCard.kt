@@ -3,7 +3,6 @@ package com.example.ui.components
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.auth.GoogleAccountViewModel
-import com.example.auth.SecureWebSessions
 import com.example.ui.screens.HiProviderIcon
 import com.example.ui.theme.LocalHiPalette
 
@@ -35,9 +32,10 @@ private tailrec fun Context.accountActivity(): Activity? = when (this) {
 }
 
 @Composable
-internal fun GoogleAccountCard(model: GoogleAccountViewModel = viewModel()) {
+internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {}, model: GoogleAccountViewModel = viewModel()) {
     val palette = LocalHiPalette.current
     val context = LocalContext.current
+    var showDrive by remember { mutableStateOf(false) }
     val profile by model.profile.collectAsState()
     val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
@@ -70,14 +68,12 @@ internal fun GoogleAccountCard(model: GoogleAccountViewModel = viewModel()) {
                 OutlinedButton(enabled = !busy, onClick = model::signOut) { Text("Sign out of Hi Player") }
             }
             message?.let { Text(it, color = palette.textSecondary) }
-            Text("Website logins use a separate secure-browser session. Signing out here does not sign you out of websites. No Gmail inbox or Drive access is requested by this sign-in.", color = palette.textSecondary)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Google" to SecureWebSessions.GOOGLE_ACCOUNT, "YouTube" to SecureWebSessions.YOUTUBE, "Gmail" to SecureWebSessions.GMAIL).forEach { (label, url) ->
-                    TextButton(onClick = { SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() } }) { Text(label) }
-                }
-            }
+            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions remain browser-managed.", color = palette.textSecondary)
+            if (profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
+
         }
     }
+    if (showDrive && profile != null) GoogleDriveBrowserSheet(onDismiss = { showDrive = false }, onPlay = onPlayDriveMedia)
 }
 
 @Composable

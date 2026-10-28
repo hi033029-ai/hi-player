@@ -72,7 +72,6 @@ fun SubtitleCustomizationBottomSheet(
 
     ModalBottomSheet(
 
-        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = HiSurfaceDark,

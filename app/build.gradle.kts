@@ -104,6 +104,7 @@ dependencies {
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
+  implementation("com.google.android.gms:play-services-auth:21.4.0")
   implementation("androidx.browser:browser:1.8.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio

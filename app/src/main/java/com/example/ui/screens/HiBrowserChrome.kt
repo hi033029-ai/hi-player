@@ -257,8 +257,6 @@ internal fun HiBrowserToolbar(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(if (selected) palette.primary.copy(alpha = 0.16f) else Color.Transparent)
-                                    .border(if (selected) 2.dp else 1.dp, if (selected) palette.primary else palette.surfaceBorder, CircleShape)
                                     .clickable {
                                         providerMenu = false
                                         onProviderSelect(index)

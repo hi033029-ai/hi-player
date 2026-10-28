@@ -616,6 +616,10 @@ class MainActivity : ComponentActivity() {
                                                     libraryViewModel = libraryViewModel,
                                                     discoverViewModel = discoverViewModel,
                                                     onBack = { currentTab = NavTab.VIDEOS },
+                                                    onPlayDriveMedia = { video ->
+                                                        playerViewModel.playVideo(video)
+                                                        currentScreen = AppScreen.Player
+                                                    },
                                                     includeHeader = false
                                                 )
                                             }

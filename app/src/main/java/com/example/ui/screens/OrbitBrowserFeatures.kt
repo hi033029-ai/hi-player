@@ -29,6 +29,10 @@ internal class OrbitBrowserStore(context: Context) {
         }
     }
 
+    var searchProviderName: String
+        get() = prefs.getString("search_provider", "GOOGLE") ?: "GOOGLE"
+        set(value) { prefs.edit().putString("search_provider", value).apply() }
+
     var darkMode: Boolean
         get() = prefs.getBoolean("dark", false)
         set(value) { prefs.edit().putBoolean("dark", value).apply() }

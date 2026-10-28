@@ -108,7 +108,7 @@ fun HiBottomNavigationBar(
                 .height(64.dp)
                 .clip(pillShape)
                 .background(palette.surface.copy(alpha = 0.62f))
-                .border(1.dp, palette.surfaceBorder.copy(alpha = 0.95f), pillShape)
+                .border(0.5.dp, palette.surfaceBorder, pillShape)
         ) {
             Row(
                 modifier = Modifier
@@ -135,7 +135,7 @@ fun HiBottomNavigationBar(
                                     }
                                 }
                             }
-                            .clip(RoundedCornerShape(24.dp)).hiContainerBorder(RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(24.dp))
                             .testTag(spec.tag)
                             .clickable { onTabSelected(spec.tab) },
                         contentAlignment = Alignment.Center
@@ -171,7 +171,7 @@ fun HiBottomNavigationBar(
                     .offset(x = progressX)
                     .width(progressWidth)
                     .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp)).hiContainerBorder(RoundedCornerShape(2.dp))
+                    .clip(RoundedCornerShape(2.dp))
                     .background(palette.primary)
                     .testTag("nav_progress_segment")
             )

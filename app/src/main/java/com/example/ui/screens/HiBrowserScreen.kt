@@ -331,7 +331,7 @@ fun HiBrowserScreen(
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
     var showStartPage by remember { mutableStateOf(true) }
-    var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.DUCKDUCKGO) }
+    var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.entries.firstOrNull { it.name == store.searchProviderName } ?: BrowserSearchProvider.GOOGLE) }
     var pageTitle by remember { mutableStateOf("Hi Browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
@@ -1253,7 +1253,10 @@ fun HiBrowserScreen(
                     tabCount = tabs.size,
                     providers = BrowserSearchProvider.entries.map { it.displayName },
                     selectedProvider = searchProvider.displayName,
-                    onProviderSelect = { index -> searchProvider = BrowserSearchProvider.entries[index] },
+                    onProviderSelect = { index ->
+                        searchProvider = BrowserSearchProvider.entries[index]
+                        store.searchProviderName = searchProvider.name
+                    },
                     onHome = { showBrowserHome() },
                     onVoiceSearch = { startVoiceSearch() },
                     onReloadOrStop = {

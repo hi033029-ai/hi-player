@@ -83,7 +83,6 @@ fun DiscoverScreen(
     val palette = LocalHiPalette.current
     var showSourceChooser by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val connectedSourceCount = listOf(
-        sources.googleDrive?.isConfigured == true,
         sources.jellyfin?.isConfigured == true,
         sources.webDav?.isConfigured == true
     ).count { it }
@@ -141,19 +140,19 @@ fun DiscoverScreen(
             } else if (state.homeSections.isNotEmpty()) {
                 TmdbHomeContent(
                     sections = state.homeSections,
-                    googleDriveConnected = sources.googleDrive?.isConfigured == true,
+                    googleDriveConnected = false,
                     sourcesConnected = sources.hasAnySource,
                     modifier = Modifier.weight(1f),
                     onTitleSelected = discoverViewModel::selectTitle,
-                    onBrowseDrive = discoverViewModel::browseGoogleDrive,
+                    onBrowseDrive = onOpenSettings,
                     onConnectPersonalMedia = { showSourceChooser = true },
                 )
             } else {
                 DiscoverEmptyState(
-                    googleDriveConnected = sources.googleDrive?.isConfigured == true,
+                    googleDriveConnected = false,
                     sourcesConnected = sources.hasAnySource,
                     modifier = Modifier.weight(1f),
-                    onBrowseDrive = discoverViewModel::browseGoogleDrive,
+                    onBrowseDrive = onOpenSettings,
                     onConnectPersonalMedia = { showSourceChooser = true }
                 )
             }
@@ -517,12 +516,7 @@ private fun DiscoverSourceChooser(
                     fontSize = 12.sp
                 )
                 Spacer(Modifier.height(12.dp))
-                SourceChooserOption(
-                    icon = Icons.Default.CloudDone,
-                    title = "Google Drive",
-                    detail = "Choose your Google account and a video folder",
-                    onClick = onOpenSettings
-                )
+                Text("Google Drive is available under your signed-in Google account in Settings.", color = palette.textSecondary, fontSize = 12.sp)
                 SourceChooserOption(
                     icon = Icons.Default.Explore,
                     title = "Jellyfin",

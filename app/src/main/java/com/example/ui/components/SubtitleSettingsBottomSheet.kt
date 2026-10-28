@@ -75,7 +75,7 @@ fun SubtitleSettingsBottomSheet(
 
     ModalBottomSheet(
 
-        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
+        sheetMaxWidth = 560.dp,
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = PickerSurface.copy(alpha = 0.96f),
@@ -88,15 +88,14 @@ fun SubtitleSettingsBottomSheet(
         ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth(0.78f)
-                .widthIn(max = 320.dp)
+                .fillMaxWidth()
                 .heightIn(max = 560.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp)
                 .padding(bottom = 12.dp)
         ) {
             Text(
-                text = "Subtitle & Closed Caption Settings",
+                text = "Subtitles",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = PickerTextPrimary
@@ -108,8 +107,9 @@ fun SubtitleSettingsBottomSheet(
                 onClick = { subtitlePickerLauncher.launch(arrayOf("*/*")) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
+                    .heightIn(min = 56.dp)
                     .testTag("load_external_subtitle_button"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.Transparent,
                     contentColor = PickerTextPrimary,
@@ -123,7 +123,7 @@ fun SubtitleSettingsBottomSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Load External Subtitle (.srt / .ass / .vtt)",
+                    text = "Load subtitle file",
                     color = PickerTextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
@@ -139,8 +139,9 @@ fun SubtitleSettingsBottomSheet(
                 onClick = onOpenCustomizeAppearance,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
+                    .heightIn(min = 56.dp)
                     .testTag("customize_subtitle_appearance_button"),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.Transparent,
                     contentColor = PickerTextPrimary,
@@ -154,7 +155,7 @@ fun SubtitleSettingsBottomSheet(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Customize Appearance (Size, Color, Opacity)",
+                    text = "Subtitle appearance",
                     color = PickerTextPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
@@ -183,7 +184,7 @@ fun SubtitleSettingsBottomSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.ClosedCaptionDisabled,
                         contentDescription = null,

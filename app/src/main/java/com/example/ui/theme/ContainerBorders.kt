@@ -12,25 +12,15 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Contrast-aware outline, including custom themes with transparent accents. */
+/** Decorative separators stay quiet; text and icons carry accessibility contrast. */
 fun visibleThemeBorder(surface: Color, accent: Color, isDark: Boolean): Color {
     val canvas = surface.compositeOver(if (isDark) Color.Black else Color.White).copy(alpha = 1f)
-    fun contrast(a: Color, b: Color): Float {
-        val x = a.luminance(); val y = b.luminance()
-        return (maxOf(x, y) + .05f) / (minOf(x, y) + .05f)
-    }
-    val endpoint = if (contrast(Color.Black, canvas) > contrast(Color.White, canvas)) Color.Black else Color.White
-    var outline = lerp(canvas, accent.compositeOver(canvas).copy(alpha = 1f), .55f)
-    repeat(20) {
-        if (contrast(outline, canvas) >= 3f) return outline
-        outline = lerp(outline, endpoint, .14f)
-    }
-    return endpoint
+    return lerp(canvas, if (isDark) Color.White else Color.Black, if (isDark) .18f else .12f)
 }
 
 @Composable
-fun Modifier.hiContainerBorder(shape: Shape = RoundedCornerShape(14.dp), selected: Boolean = false, width: Dp = 1.dp): Modifier {
+fun Modifier.hiContainerBorder(shape: Shape = RoundedCornerShape(14.dp), selected: Boolean = false, width: Dp = 0.5.dp): Modifier {
     val palette = LocalHiPalette.current
-    val color = if (selected) visibleThemeBorder(palette.surfaceElevated, palette.primary, palette.isDark) else palette.surfaceBorder
-    return border(if (selected) maxOf(width, 2.dp) else width, color, shape)
+    val color = if (selected) palette.primary.copy(alpha = .65f) else palette.surfaceBorder
+    return border(if (selected) maxOf(width, 1.dp) else width, color, shape)
 }
