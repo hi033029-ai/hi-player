@@ -70,6 +70,17 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
             }
             message?.let { Text(it, color = palette.textSecondary) }
             Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions remain browser-managed.", color = palette.textSecondary)
+            if (com.example.BuildConfig.VERSION_NAME.endsWith("-demo")) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Demo info" to "https://github.com/hi033029-ai/hi-player/blob/feature/account-drive-ui-polish/docs/demo/README.md",
+                        "Privacy notice" to "https://github.com/hi033029-ai/hi-player/blob/feature/account-drive-ui-polish/docs/demo/privacy.md").forEach { (label, url) ->
+                        TextButton(onClick = {
+                            com.example.auth.SecureWebSessions.open(context, url, android.graphics.Color.BLACK)
+                                .onFailure { android.widget.Toast.makeText(context, "A secure browser is needed to view this page", android.widget.Toast.LENGTH_LONG).show() }
+                        }) { Text(label) }
+                    }
+                }
+            }
             if (profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
 
         }

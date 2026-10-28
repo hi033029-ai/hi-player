@@ -48,6 +48,9 @@ internal fun GoogleDriveBrowserSheet(onDismiss: () -> Unit, onPlay: (VideoItem) 
                 }
                 if (state.connected) IconButton(enabled = !state.busy, onClick = { model.load() }) { Icon(Icons.Default.Refresh, "Refresh Drive", tint = palette.textPrimary) }
             }
+            if (com.example.BuildConfig.GOOGLE_DRIVE_ENABLED && com.example.BuildConfig.VERSION_NAME.endsWith("-demo")) {
+                Text("Demo test flow · Google Drive permission is unverified and may be blocked by Google.", color = palette.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            }
             Spacer(Modifier.height(16.dp))
             if (!state.connected) {
                 Text("Browse and play videos and music from your signed-in Google account. Google will ask for read-only access to your Drive files. Hi Player cannot change or delete them.", color = palette.textSecondary)
