@@ -15,6 +15,20 @@ internal data class OrbitBrowserEntry(val title: String, val url: String)
 internal class OrbitBrowserStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE)
 
+    init {
+        // One-time switch: every protection and helper starts on (v1.0.60).
+        if (!prefs.getBoolean("defaults_v2_applied", false)) {
+            prefs.edit()
+                .putBoolean("adblock", true)
+                .putBoolean("page_skipper", true)
+                .putBoolean("youtube_ad_skip", true)
+                .putBoolean("popup_block", true)
+                .putBoolean("video_handoff", true)
+                .putBoolean("defaults_v2_applied", true)
+                .apply()
+        }
+    }
+
     var darkMode: Boolean
         get() = prefs.getBoolean("dark", false)
         set(value) { prefs.edit().putBoolean("dark", value).apply() }
@@ -24,12 +38,17 @@ internal class OrbitBrowserStore(context: Context) {
         set(value) { prefs.edit().putBoolean("adblock", value).apply() }
 
     var pageSkipper: Boolean
-        get() = prefs.getBoolean("page_skipper", false)
+        get() = prefs.getBoolean("page_skipper", true)
         set(value) { prefs.edit().putBoolean("page_skipper", value).apply() }
 
     var youtubeAdSkip: Boolean
         get() = prefs.getBoolean("youtube_ad_skip", true)
         set(value) { prefs.edit().putBoolean("youtube_ad_skip", value).apply() }
+
+    /** Videos that start playing on a web page (not YouTube) open in Hi Player's own player. */
+    var videoHandoff: Boolean
+        get() = prefs.getBoolean("video_handoff", true)
+        set(value) { prefs.edit().putBoolean("video_handoff", value).apply() }
 
     /** Page text size as a percentage of the site's own size (50–200). */
     var textZoom: Int
@@ -81,11 +100,17 @@ internal class OrbitBrowserStore(context: Context) {
 
 /** Bounded EasyList-subset rules; remote filter data is never interpreted as script. */
 internal object OrbitBrowserFilterEngine {
-    private data class Rule(val host: String, val pathPrefix: String)
-    @Volatile private var blockRules: List<Rule> = emptyList()
-    @Volatile private var allowRules: List<Rule> = emptyList()
+    private class Rule(val pathPrefix: String, val thirdPartyOnly: Boolean)
+    // Rules are indexed by host so each request checks a handful of entries
+    // (one per domain level) instead of scanning every rule.
+    @Volatile private var blockIndex: Map<String, List<Rule>> = emptyMap()
+    @Volatile private var allowIndex: Map<String, List<Rule>> = emptyMap()
     @Volatile private var genericSelectors: List<String> = emptyList()
     @Volatile private var hostSelectors: Map<String, List<String>> = emptyMap()
+    @Volatile private var ruleTotal = 0
+    @Volatile private var loaded = false
+    @Volatile private var autoUpdateTried = false
+    private val loadLock = Any()
     private val builtInHosts = setOf(
         "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com",
         "google-analytics.com", "googletagmanager.com", "googletagservices.com", "adnxs.com",
@@ -95,38 +120,118 @@ internal object OrbitBrowserFilterEngine {
         "segment.io", "popads.net", "propellerads.com", "adsterra.com", "mgid.com", "yieldmo.com",
         "smartadserver.com", "casalemedia.com", "zedo.com", "2mdn.net", "serving-sys.com",
         "adform.net", "adcolony.com", "adsafeprotected.com", "demdex.net", "teads.tv",
+        "exoclick.com", "exosrv.com", "juicyads.com", "trafficjunky.net", "adcash.com", "hilltopads.net",
+        "a-ads.com", "popcash.net", "onclickads.net", "clickadu.com", "adskeeper.com", "revcontent.com",
+        "inmobi.com", "applovin.com", "unityads.unity3d.com", "media.net", "33across.com", "sharethrough.com",
+        "bidswitch.net", "contextweb.com", "lijit.com", "sovrn.com", "spotxchange.com", "springserve.com",
+        "imasdk.googleapis.com", "pagead2.googlesyndication.com", "popmyads.com", "propellerclick.com",
+        "admaven.com", "ad-maven.com", "adsco.re", "monetag.com", "galaksion.com", "richads.com",
+    )
+    private val ignoredTypeOptions = setOf(
+        "script", "image", "stylesheet", "css", "subdocument", "frame", "xmlhttprequest", "xhr", "media",
+        "object", "ping", "other", "font", "websocket", "important", "all",
     )
     private val safeSelector = Regex("^[A-Za-z0-9_#.:* >+,~^$|=\\[\\]()-]{1,180}$")
     private val filterUrls = listOf(
         "https://easylist.to/easylist/easylist.txt",
         "https://easylist.to/easylist/easyprivacy.txt",
     )
+    private const val MAX_FILTER_LINES = 220_000
+    private const val AUTO_UPDATE_AGE_MS = 4L * 24 * 60 * 60 * 1000
 
+    /** Loads the stored (or bundled) lists. Safe to call repeatedly; parses once. */
     fun load(context: Context) {
-        val stored = File(context.filesDir, "orbit-filters.txt")
-        val text = runCatching {
-            if (stored.isFile) stored.readText().take(2_000_000)
-            else context.assets.open("orbit_filters.txt").bufferedReader().use { it.readText().take(2_000_000) }
-        }.getOrDefault("")
-        parse(text.lineSequence().take(50_000).toList())
+        if (loaded) return
+        synchronized(loadLock) {
+            if (loaded) return
+            reload(context)
+        }
     }
 
-    fun ruleCount(): Int = blockRules.size + allowRules.size + genericSelectors.size + hostSelectors.values.sumOf { it.size }
+    private fun reload(context: Context) {
+        val stored = File(context.filesDir, "orbit-filters.txt")
+        runCatching {
+            val reader = if (stored.isFile) stored.bufferedReader()
+            else context.assets.open("orbit_filters.txt").bufferedReader()
+            reader.useLines { lines -> parse(lines.take(MAX_FILTER_LINES)) }
+        }
+        loaded = true
+    }
 
-    fun shouldBlock(uri: Uri, enabled: Boolean): Boolean {
+    /**
+     * Downloads fresh EasyList/EasyPrivacy rules in the background when they are
+     * missing or a few days old, so blocking works well without a manual update.
+     */
+    fun autoUpdateIfStale(context: Context) {
+        if (autoUpdateTried) return
+        autoUpdateTried = true
+        val stored = File(context.filesDir, "orbit-filters.txt")
+        val stale = !stored.isFile || System.currentTimeMillis() - stored.lastModified() > AUTO_UPDATE_AGE_MS
+        if (stale) update(context)
+    }
+
+    fun ruleCount(): Int = ruleTotal
+
+    fun shouldBlock(uri: Uri, enabled: Boolean, pageHost: String? = null): Boolean {
         if (!enabled) return false
         val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
-        if (builtInHosts.any { host == it || host.endsWith(".$it") }) return true
-        val path = (uri.encodedPath ?: "/") + (uri.encodedQuery?.let { "?$it" } ?: "")
-        val sameHostAllow = allowRules.any { (host == it.host || host.endsWith(".${it.host}")) && path.startsWith(it.pathPrefix) }
-        if (sameHostAllow) return false
-        return blockRules.any { (host == it.host || host.endsWith(".${it.host}")) && path.startsWith(it.pathPrefix) }
+        val blocks = blockIndex
+        var path: String? = null
+        var thirdParty: Boolean? = null
+        var blocked = false
+        var suffix: String? = host
+        while (suffix != null) {
+            if (suffix in builtInHosts) return true
+            if (!blocked) {
+                val rules = blocks[suffix]
+                if (rules != null) {
+                    val requestPath = path ?: requestPath(uri).also { path = it }
+                    blocked = rules.any { rule ->
+                        requestPath.startsWith(rule.pathPrefix) && (!rule.thirdPartyOnly ||
+                            (thirdParty ?: isThirdParty(host, pageHost).also { thirdParty = it }))
+                    }
+                }
+            }
+            val dot = suffix.indexOf('.')
+            suffix = if (dot < 0) null else suffix.substring(dot + 1)
+        }
+        if (!blocked) return false
+        val allows = allowIndex
+        val requestPath = path ?: requestPath(uri)
+        suffix = host
+        while (suffix != null) {
+            val rules = allows[suffix]
+            if (rules != null && rules.any { rule ->
+                    requestPath.startsWith(rule.pathPrefix) && (!rule.thirdPartyOnly ||
+                        (thirdParty ?: isThirdParty(host, pageHost).also { thirdParty = it }))
+                }
+            ) return false
+            val dot = suffix.indexOf('.')
+            suffix = if (dot < 0) null else suffix.substring(dot + 1)
+        }
+        return true
+    }
+
+    private fun requestPath(uri: Uri): String = (uri.encodedPath ?: "/") + (uri.encodedQuery?.let { "?$it" } ?: "")
+
+    private fun siteOf(host: String): String {
+        val labels = host.split('.')
+        if (labels.size <= 2) return host
+        val last = labels[labels.size - 1]
+        val second = labels[labels.size - 2]
+        val keep = if (last.length == 2 && second.length <= 3) 3 else 2
+        return labels.takeLast(keep).joinToString(".")
+    }
+
+    private fun isThirdParty(host: String, pageHost: String?): Boolean {
+        val page = pageHost?.lowercase()?.trimEnd('.')?.takeIf { it.isNotBlank() } ?: return false
+        return siteOf(host) != siteOf(page)
     }
 
     fun cosmeticCss(host: String?, enabled: Boolean): String {
         if (!enabled) return ""
         val data = hostSelectors
-        val selectors = (genericSelectors + generateSequence(host?.lowercase()) { value ->
+        val selectors = (genericSelectors + generateSequence(host?.lowercase()?.removePrefix("www.")) { value ->
             val dot = value.indexOf('.')
             if (dot < 0) null else value.substring(dot + 1)
         }.flatMap { data[it].orEmpty().asSequence() }).distinct().take(800)
@@ -135,43 +240,48 @@ internal object OrbitBrowserFilterEngine {
 
     /** Downloads trusted HTTPS lists with strict byte/time caps, and atomically replaces stored rules. */
     fun update(context: Context): Boolean = runCatching {
-        val combined = StringBuilder()
-        for (source in filterUrls) {
-            val connection = (URL(source).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 10_000
-                readTimeout = 15_000
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "HiPlayer-OrbitBrowser/1.0")
-            }
-            try {
-                require(connection.responseCode in 200..299) { "Filter download failed" }
-                connection.inputStream.bufferedReader().use { reader ->
-                    val buffer = CharArray(8192)
-                    var total = 0
-                    while (true) {
-                        val count = reader.read(buffer)
-                        if (count < 0) break
-                        total += count
-                        require(total <= 2_000_000) { "Filter list too large" }
-                        combined.append(buffer, 0, count).append('\n')
-                        require(combined.length <= 3_500_000) { "Combined lists too large" }
-                    }
-                }
-            } finally {
-                connection.disconnect()
-            }
-        }
         val file = File(context.filesDir, "orbit-filters.txt")
         val temporary = File(context.filesDir, "orbit-filters.tmp")
-        temporary.writeText(combined.toString())
+        temporary.bufferedWriter().use { writer ->
+            var combined = 0L
+            for (source in filterUrls) {
+                val connection = (URL(source).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 10_000
+                    readTimeout = 20_000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "HiPlayer-OrbitBrowser/1.1")
+                }
+                try {
+                    require(connection.responseCode in 200..299) { "Filter download failed" }
+                    connection.inputStream.bufferedReader().use { reader ->
+                        val buffer = CharArray(16_384)
+                        var total = 0
+                        while (true) {
+                            val count = reader.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            combined += count
+                            require(total <= 6_000_000) { "Filter list too large" }
+                            require(combined <= 10_000_000) { "Combined lists too large" }
+                            writer.write(buffer, 0, count)
+                        }
+                        writer.write("\n")
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }
+        }
         check(temporary.renameTo(file)) { "Unable to install updated filters" }
-        load(context)
+        synchronized(loadLock) { reload(context) }
         true
     }.getOrDefault(false)
 
-    private fun parse(lines: List<String>) {
-        val blocks = ArrayList<Rule>()
-        val allows = ArrayList<Rule>()
+    private fun parse(lines: Sequence<String>) {
+        val blocks = HashMap<String, MutableList<Rule>>()
+        val allows = HashMap<String, MutableList<Rule>>()
+        var blockCount = 0
+        var allowCount = 0
         val generic = ArrayList<String>()
         val perHost = LinkedHashMap<String, MutableList<String>>()
         for (raw in lines) {
@@ -195,24 +305,48 @@ internal object OrbitBrowserFilterEngine {
                 }
                 continue
             }
+            if (line.contains("#@#") || line.contains("#?#") || line.contains("#$#")) continue
             val exception = line.startsWith("@@")
-            val ruleBody = if (exception) line.drop(2) else line
-            if (ruleBody.contains('*') || ruleBody.contains(' ') || ruleBody.contains('$')) continue
+            var ruleBody = if (exception) line.drop(2) else line
+            var thirdPartyOnly = false
+            val dollar = ruleBody.indexOf('$')
+            if (dollar >= 0) {
+                var supported = true
+                for (option in ruleBody.substring(dollar + 1).split(',')) {
+                    when (val value = option.trim().lowercase()) {
+                        "third-party", "3p" -> thirdPartyOnly = true
+                        in ignoredTypeOptions -> Unit
+                        else -> supported = false
+                    }
+                    if (!supported) break
+                }
+                if (!supported) continue
+                ruleBody = ruleBody.substring(0, dollar)
+            }
+            if (ruleBody.contains('*') || ruleBody.contains(' ')) continue
             if (!ruleBody.startsWith("||")) continue
             val remainder = ruleBody.drop(2)
             val hostEnd = remainder.indexOfFirst { !(it.isLetterOrDigit() || it == '.' || it == '-') }.let { if (it < 0) remainder.length else it }
-            val host = remainder.take(hostEnd).lowercase().removePrefix("www.")
+            val host = remainder.take(hostEnd).lowercase().removePrefix("www.").trimEnd('.')
             if (host.length > 253 || !host.contains('.') || host.any { !(it.isLetterOrDigit() || it == '.' || it == '-') }) continue
-            var path = remainder.drop(hostEnd).trimEnd('^')
+            var path = remainder.drop(hostEnd).trimEnd('^', '|')
             if (path.isNotEmpty() && !path.startsWith('/')) continue
-            if (path.contains('^') || path.length > 512) continue
-            val target = if (exception) allows else blocks
-            if (target.size < 40_000) target.add(Rule(host, path))
+            if (path.contains('^') || path.contains('|') || path.length > 512) continue
+            if (exception) {
+                if (allowCount >= 60_000) continue
+                allows.getOrPut(host) { ArrayList(1) }.add(Rule(path, thirdPartyOnly))
+                allowCount++
+            } else {
+                if (blockCount >= 150_000) continue
+                blocks.getOrPut(host) { ArrayList(1) }.add(Rule(path, thirdPartyOnly))
+                blockCount++
+            }
         }
-        blockRules = blocks.toList()
-        allowRules = allows.toList()
+        blockIndex = blocks
+        allowIndex = allows
         genericSelectors = generic.toList()
         hostSelectors = perHost.mapValues { it.value.toList() }
+        ruleTotal = blockCount + allowCount + generic.size + perHost.values.sumOf { it.size }
     }
 }
 

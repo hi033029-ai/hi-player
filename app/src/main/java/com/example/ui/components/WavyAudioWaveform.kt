@@ -13,7 +13,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,27 +34,26 @@ fun WavyAudioWaveform(
     height: Dp = 28.dp,
     waveColor: Color = Color(0xFF00E5FF)
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "wave_anim")
-    
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "phase"
-    )
-
-    val amplitudeMultiplier by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "amplitude"
-    )
+    // Animate only while audio plays. A paused track keeps a still wave, so the
+    // bar no longer redraws every frame underneath scrolling lists.
+    val phaseAnim = remember { Animatable(0f) }
+    val amplitudeAnim = remember { Animatable(0.4f) }
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) return@LaunchedEffect
+        launch {
+            val twoPi = (2 * Math.PI).toFloat()
+            phaseAnim.snapTo(phaseAnim.value % twoPi)
+            while (isActive) {
+                phaseAnim.animateTo(phaseAnim.value + twoPi, tween(1200, easing = LinearEasing))
+                phaseAnim.snapTo(phaseAnim.value % twoPi)
+            }
+        }
+        amplitudeAnim.snapTo(0.4f)
+        amplitudeAnim.animateTo(
+            1.0f,
+            infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse)
+        )
+    }
 
     Canvas(
         modifier = modifier
@@ -59,7 +62,8 @@ fun WavyAudioWaveform(
     ) {
         val width = size.width
         val centerY = size.height / 2f
-        val maxAmplitude = (size.height / 2.5f) * (if (isPlaying) amplitudeMultiplier else 0.15f)
+        val phase = phaseAnim.value
+        val maxAmplitude = (size.height / 2.5f) * (if (isPlaying) amplitudeAnim.value else 0.15f)
 
         val path = Path()
         val path2 = Path()

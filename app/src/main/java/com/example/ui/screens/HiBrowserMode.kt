@@ -35,7 +35,7 @@ import com.example.ui.theme.LocalHiPalette
 
 /**
  * Full-screen "Browser mode" intro shown each time the user enters the browser:
- * the globe spins and grows in, a ring pulses out, the title rises, then everything fades away.
+ * the Hi Player logo turns and grows in, a ring pulses out, the title rises, then everything fades away.
  */
 @Composable
 internal fun HiBrowserModeIntro(onFinished: () -> Unit) {
@@ -82,12 +82,10 @@ internal fun HiBrowserModeIntro(onFinished: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .size(96.dp)
-                        .graphicsLayer { rotationZ = (1f - appear.value) * -240f }
-                        .clip(CircleShape)
-                        .background(palette.primary.copy(alpha = 0.15f)),
+                        .graphicsLayer { rotationZ = (1f - appear.value) * -90f },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary, modifier = Modifier.size(54.dp))
+                    com.example.ui.components.HiPlayerLogoBadge(size = 92.dp)
                 }
             }
             Spacer(Modifier.height(22.dp))

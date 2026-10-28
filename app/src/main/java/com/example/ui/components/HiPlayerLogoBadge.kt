@@ -17,10 +17,57 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.R
+
+/**
+ * The logo artwork is a 1920 px image in the default (mdpi) drawable folder, so
+ * every painterResource() call decoded it again, scaled up to the screen density
+ * (over 5000 px square on most phones), on the main thread. This cache decodes
+ * one downsampled copy once and shares it everywhere the logo appears.
+ */
+object HiPlayerLogo {
+    @Volatile private var cached: ImageBitmap? = null
+
+    fun bitmap(context: Context): ImageBitmap {
+        cached?.let { return it }
+        synchronized(this) {
+            cached?.let { return it }
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = 4
+                inScaled = false
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val decoded = BitmapFactory.decodeResource(context.resources, R.drawable.hi_player_logo, options)
+                ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            decoded.prepareToDraw()
+            return decoded.asImageBitmap().also { cached = it }
+        }
+    }
+
+    /** Warms the cache off the main thread while the app starts. */
+    fun preload(context: Context) {
+        val appContext = context.applicationContext
+        Thread({ runCatching { bitmap(appContext) } }, "hi-logo-preload").start()
+    }
+}
+
+@Composable
+fun rememberHiPlayerLogoPainter(): Painter {
+    val context = LocalContext.current
+    return remember { BitmapPainter(HiPlayerLogo.bitmap(context), filterQuality = FilterQuality.Medium) }
+}
 
 /**
  * Modern Custom Shaped Logo Badge for Hi Player
@@ -59,7 +106,7 @@ fun HiPlayerLogoBadge(
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(id = R.drawable.hi_player_logo),
+            painter = rememberHiPlayerLogoPainter(),
             contentDescription = "Hi Player Logo",
             contentScale = ContentScale.Fit,
             modifier = Modifier

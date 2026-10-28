@@ -21,8 +21,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 60
-    versionName = "1.0.59"
+    versionCode = 61
+    versionName = "1.0.60"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -56,6 +56,10 @@ android {
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
+      // The shipped APK is the debug variant. A debuggable app runs Compose and
+      // WebView glue without ART's optimizations or baseline profiles, which is
+      // what made scrolling stutter, so the installable build is non-debuggable.
+      isDebuggable = false
       // Supplied by the secure task connector at build time; never committed.
       buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"$tmdbReadAccessToken\"")
     }
