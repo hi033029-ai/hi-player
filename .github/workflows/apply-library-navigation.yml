@@ -1,0 +1,24 @@
+name: Apply library navigation patch
+on:
+  push:
+    branches: [fix/browser-navigation-cached-libraries]
+    paths: [library-navigation.patch.xz.b64]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/browser-navigation-cached-libraries
+      - name: Apply verified source patch
+        run: |
+          base64 -d library-navigation.patch.xz.b64 | xz -d > /tmp/library-navigation.patch
+          git apply --check /tmp/library-navigation.patch
+          git apply --index /tmp/library-navigation.patch
+          git rm library-navigation.patch.xz.b64
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix persistent libraries, browser Back, and download UI v1.0.64'
+          git push
