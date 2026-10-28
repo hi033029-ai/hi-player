@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
     private val _browserPipActive = mutableStateOf(false)
     // Web page opened from a home-screen shortcut created by Hi Browser.
     private val pendingBrowserUrl = mutableStateOf<String?>(null)
+    private val pendingBrowserDownloads = mutableStateOf(false)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -177,6 +178,7 @@ class MainActivity : ComponentActivity() {
                 val externalVideoUri = pendingExternalVideoUri.value
                 val browserPip = _browserPipActive.value
                 val externalBrowserUrl = pendingBrowserUrl.value
+                val openBrowserDownloads = pendingBrowserDownloads.value
                 val openResolvedStream: (StreamUrlResult) -> Unit = { result ->
                     val candidate = checkNotNull(result.normalizedUrl)
                     val parsed = Uri.parse(candidate)
@@ -212,8 +214,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(externalBrowserUrl, settingsLoaded, isShowingSplash) {
-                    if (externalBrowserUrl == null || !settingsLoaded || isShowingSplash) return@LaunchedEffect
+                LaunchedEffect(externalBrowserUrl, openBrowserDownloads, settingsLoaded, isShowingSplash) {
+                    if ((externalBrowserUrl == null && !openBrowserDownloads) || !settingsLoaded || isShowingSplash) return@LaunchedEffect
                     if (currentScreen == AppScreen.Player) {
                         playerViewModel.saveCurrentProgress()
                         playerViewModel.stopForNavigation()
@@ -480,6 +482,8 @@ class MainActivity : ComponentActivity() {
                                                         isInPictureInPicture = isPip && browserPip,
                                                         onEnterPictureInPicture = { enterBrowserPipMode() },
                                                         externalUrl = externalBrowserUrl,
+                                                        openDownloads = openBrowserDownloads,
+                                                        onDownloadsConsumed = { pendingBrowserDownloads.value = false },
                                                         onExternalUrlConsumed = { pendingBrowserUrl.value = null },
                                                         onBack = { currentTab = tabBeforeBrowser },
                                                         onPlayBrowserVideo = { url, mimeType, title ->
@@ -832,6 +836,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val incoming = intent ?: return
+        if (incoming.action == "com.example.OPEN_BROWSER_DOWNLOADS") {
+            pendingBrowserDownloads.value = true
+            return
+        }
         if (incoming.action == HI_BROWSER_ACTION_OPEN_URL) {
             incoming.getStringExtra(HI_BROWSER_EXTRA_URL)
                 ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
