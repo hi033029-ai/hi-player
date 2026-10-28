@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class BrowserDownloadUiTest {
     @get:Rule val compose = createComposeRule()
-    @Test fun progressMenuContainsFunctionalVideoActionsAndFiltersRows() {
+    @Test fun progressMenuKeepsActionsWithPerFileStatsAndNoDuplicateToolbar() {
         val rows = listOf(
             BrowserDownload(1, "active.mkv", "https://example.test/movie", "video/x-matroska", downloadedBytes = 1000000, totalBytes = 10000000, status = BrowserDownloadStatus.RUNNING),
             BrowserDownload(2, "done.mp4", "https://example.test/done", "video/mp4", status = BrowserDownloadStatus.COMPLETED),
@@ -34,9 +34,15 @@ class BrowserDownloadUiTest {
         compose.onNodeWithText("Details").performClick()
         compose.onNodeWithText("Saved to: Download").assertExists()
         compose.onNodeWithText("Done").performClick()
-        compose.onNodeWithContentDescription("Filter downloads: All").performClick()
-        compose.onNodeWithText("Completed").performClick()
-        compose.onNodeWithText("active.mkv").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Filter downloads: All").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Download actions").assertDoesNotExist()
+        compose.onNodeWithTag("download-stats-1").assertExists()
+        compose.onNodeWithTag("download-card-1").assertExists()
+        val card = compose.onNodeWithTag("download-card-1").fetchSemanticsNode().boundsInRoot
+        val stats = compose.onNodeWithTag("download-stats-1").fetchSemanticsNode().boundsInRoot
+        assertTrue(stats.left >= card.left && stats.right <= card.right)
+        assertTrue(stats.top >= card.top && stats.bottom <= card.bottom)
+        assertTrue(stats.center.x > card.center.x)
         compose.onNodeWithText("done.mp4").assertExists()
     }
     @Test fun confirmationShowsEditableNameDefaultFolderAndWorkingCancel() {

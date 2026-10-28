@@ -180,7 +180,11 @@ class MainActivity : ComponentActivity() {
                 val browserPip = _browserPipActive.value
                 DisposableEffect(Unit) {
                     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) libraryViewModel.refreshVideos(silent = true)
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                            libraryViewModel.refreshVideos(silent = true)
+                            musicViewModel.loadAudioTracks()
+                            com.example.data.MediaLibraryScanService.schedule(this@MainActivity)
+                        }
                     }
                     lifecycle.addObserver(observer)
                     onDispose { lifecycle.removeObserver(observer) }

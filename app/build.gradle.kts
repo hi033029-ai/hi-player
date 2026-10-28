@@ -21,8 +21,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 64
-    versionName = "1.0.63"
+    versionCode = 65
+    versionName = "1.0.64"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

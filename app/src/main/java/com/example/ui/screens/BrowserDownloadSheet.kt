@@ -9,6 +9,9 @@ import android.webkit.CookieManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -117,7 +120,7 @@ internal fun BrowserDownloadSheet(
 @Composable
 private fun DownloadSheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, detail: String?, enabled: Boolean, onClick: () -> Unit) {
     val palette = LocalHiPalette.current
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(horizontal = 26.dp, vertical = 19.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp).clip(RoundedCornerShape(16.dp)).border(1.dp, if (title == "Download") palette.primary else palette.surfaceBorder, RoundedCornerShape(16.dp)).background(if (title == "Download") palette.primary.copy(alpha = .08f) else androidx.compose.ui.graphics.Color.Transparent).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = if (enabled) palette.textPrimary else palette.textTertiary, modifier = Modifier.size(25.dp))
         Spacer(Modifier.width(25.dp))
         Column {

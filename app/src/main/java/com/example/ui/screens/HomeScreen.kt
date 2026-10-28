@@ -824,7 +824,7 @@ fun HomeScreen(
                     }
                 }
             }
-            if (isLoading) {
+            if (isLoading && allVideos.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center

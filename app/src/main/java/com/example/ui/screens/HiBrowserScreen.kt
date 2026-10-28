@@ -194,6 +194,8 @@ private data class OrbitBrowserTab(
     val url: String = "",
     val title: String = "New tab",
     val desktop: Boolean = false,
+    val openerTabId: Int? = null,
+    val historyState: android.os.Bundle? = null,
 )
 
 private enum class OrbitEntryList { BOOKMARKS, HISTORY }
@@ -247,29 +249,31 @@ private object HiBrowserDocumentScripts {
 
 private val orbitBrowserTabsSaver = listSaver<List<OrbitBrowserTab>, Any>(
     save = { tabs ->
-        tabs.flatMap { tab ->
-            listOf(
-                tab.id,
-                tab.privateTab,
-                if (tab.privateTab) "" else tab.url,
-                if (tab.privateTab) "Private tab" else tab.title,
-                tab.desktop,
-            )
+        listOf("tabs_v3") + tabs.flatMap { tab ->
+            listOf(tab.id, tab.privateTab, if (tab.privateTab) "" else tab.url,
+                if (tab.privateTab) "Private tab" else tab.title, tab.desktop,
+                tab.openerTabId ?: -1, if (tab.privateTab) android.os.Bundle() else tab.historyState ?: android.os.Bundle())
         }
     },
     restore = { saved ->
-        saved.chunked(5).mapNotNull { values ->
+        val current = saved.firstOrNull() == "tabs_v3"
+        (if (current) saved.drop(1) else saved).chunked(if (current) 7 else 5).mapNotNull { values ->
             val id = values.getOrNull(0) as? Int ?: return@mapNotNull null
-            OrbitBrowserTab(
-                id = id,
-                privateTab = values.getOrNull(1) as? Boolean ?: false,
-                url = values.getOrNull(2) as? String ?: "",
-                title = values.getOrNull(3) as? String ?: "New tab",
+            OrbitBrowserTab(id, values.getOrNull(1) as? Boolean ?: false,
+                url = values.getOrNull(2) as? String ?: "", title = values.getOrNull(3) as? String ?: "New tab",
                 desktop = values.getOrNull(4) as? Boolean ?: false,
-            )
+                openerTabId = (values.getOrNull(5) as? Int)?.takeIf { it >= 0 },
+                historyState = (values.getOrNull(6) as? android.os.Bundle)?.takeUnless { it.isEmpty })
         }
     },
 )
+
+private fun captureOrbitHistory(view: WebView): android.os.Bundle? = runCatching {
+    val state = android.os.Bundle()
+    view.saveState(state)
+    val parcel = android.os.Parcel.obtain()
+    try { parcel.writeBundle(state); state.takeIf { parcel.dataSize() <= 48_000 } } finally { parcel.recycle() }
+}.getOrNull()
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -313,6 +317,7 @@ fun HiBrowserScreen(
     val latestOnPlayDirectMedia by rememberUpdatedState(onPlayDirectMedia)
     var activeTabId by rememberSaveable { mutableIntStateOf(1) }
     var nextTabId by rememberSaveable { mutableIntStateOf(2) }
+    var recentTabIds by rememberSaveable { mutableStateOf(listOf(1)) }
     val activeTab = tabs.firstOrNull { it.id == activeTabId }
     val webView = activeTab?.webView
     var address by remember { mutableStateOf("") }
@@ -392,13 +397,14 @@ fun HiBrowserScreen(
         tabs = tabs.map { if (it.id == id) transform(it) else it }
     }
 
-    fun openNewTab(privateTab: Boolean, initialUrl: String = "") {
+    fun openNewTab(privateTab: Boolean, initialUrl: String = "", openerId: Int? = activeTabId) {
         if (tabs.size >= 12) {
             Toast.makeText(context, "Close a tab before opening another (12-tab limit)", Toast.LENGTH_SHORT).show()
             return
         }
         val id = nextTabId++
-        tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl)
+        tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl, openerTabId = openerId)
+        recentTabIds = (recentTabIds - activeTabId - id) + activeTabId + id
         activeTabId = id
         address = initialUrl
         currentUrl = initialUrl
@@ -410,6 +416,7 @@ fun HiBrowserScreen(
     }
 
     fun activateTab(tab: OrbitBrowserTab) {
+        recentTabIds = (recentTabIds - activeTabId - tab.id) + activeTabId + tab.id
         activeTabId = tab.id
         address = tab.url
         currentUrl = tab.url
@@ -422,13 +429,15 @@ fun HiBrowserScreen(
 
     fun closeTab(tabId: Int) {
         val closing = tabs.firstOrNull { it.id == tabId } ?: return
-        val remaining = tabs.filterNot { it.id == tabId }
+        val returnId = BrowserTabBackPolicy.target(tabId, closing.openerTabId, tabs.map { it.id }, recentTabIds)
+        val remaining = tabs.filterNot { it.id == tabId }.map { if (it.openerTabId == tabId) it.copy(openerTabId = closing.openerTabId) else it }
+        recentTabIds = recentTabIds - tabId
         closing.webView?.let(::disposeOrbitWebView)
         tabs = remaining
         if (remaining.isEmpty()) {
             openNewTab(privateTab = false)
         } else if (activeTabId == tabId) {
-            activateTab(remaining.first())
+            activateTab(remaining.firstOrNull { it.id == returnId } ?: remaining.last())
         }
     }
 
@@ -461,6 +470,18 @@ fun HiBrowserScreen(
         activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
         showStartPage = true
         pendingFirstPaint = false
+    }
+
+    fun navigateBrowserBack() {
+        if (!showStartPage && webView?.canGoBack() == true) {
+            webView?.goBack()
+            return
+        }
+        val target = BrowserTabBackPolicy.target(activeTabId, activeTab?.openerTabId, tabs.map { it.id }, recentTabIds)
+        if (target != null) {
+            // Unwind this tab instead of cycling endlessly between two root tabs.
+            closeTab(activeTabId)
+        } else if (!showStartPage) showBrowserHome() else onBack()
     }
 
     fun toggleDesktopSite() {
@@ -569,7 +590,8 @@ fun HiBrowserScreen(
             showBrowserToast("Pop-up blocked")
             return
         }
-        source.loadUrl(url)
+        val sourceId = tabs.firstOrNull { it.webView === source }?.id ?: return
+        openNewTab(privateTab, url, openerId = sourceId)
     }
 
     fun setTextZoom(percent: Int) {
@@ -807,9 +829,7 @@ fun HiBrowserScreen(
                 findQuery = ""
                 findMatchLabel = ""
             }
-            !showStartPage && webView?.canGoBack() == true -> webView?.goBack()
-            !showStartPage -> showBrowserHome()
-            else -> onBack()
+            else -> navigateBrowserBack()
         }
     }
 
@@ -986,6 +1006,9 @@ fun HiBrowserScreen(
                                     if (activity == null) callback.onCustomViewHidden()
                                     else fullscreen.enter(activity, customView, callback)
                                 }
+                                override fun onCloseWindow(window: WebView) {
+                                    tabs.firstOrNull { it.webView === window }?.let { closeTab(it.id) }
+                                }
                                 override fun onHideCustomView() {
                                     fullscreen.exit(viewContext.findHiActivity())
                                 }
@@ -1061,7 +1084,7 @@ fun HiBrowserScreen(
                                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
                                     mediaSniffer.setPage(tabId, url)
-                                    updateTab(tabId) { it.copy(url = url) }
+                                    updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
                                         address = url
@@ -1078,7 +1101,7 @@ fun HiBrowserScreen(
                                     if (!url.startsWith("http://") && !url.startsWith("https://")) return
                                     // Single-page sites change address without loading a new page.
                                     mediaSniffer.setPage(tabId, url)
-                                    updateTab(tabId) { it.copy(url = url) }
+                                    updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
                                         address = url
@@ -1088,6 +1111,7 @@ fun HiBrowserScreen(
                                     if (request.isForMainFrame && activeTabId == tabId) pendingFirstPaint = false
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
+                                    updateTab(tabId) { it.copy(historyState = captureOrbitHistory(view)) }
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
                                     updateTab(tabId) { it.copy(url = url, title = view.title ?: it.title) }
                                     view.title?.takeIf(String::isNotBlank)?.let { mediaSniffer.setTitle(tabId, it) }
@@ -1124,7 +1148,8 @@ fun HiBrowserScreen(
                                 val name = DownloadFileResolver.resolve(URLUtil.guessFileName(url, contentDisposition, mimeType), url, mimeType, contentDisposition).fileName
                                 pendingDownload = BrowserDownloadRequest(url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, name, size.coerceAtLeast(0), this.url.orEmpty())
                             })
-                            if (activeTab.url.isNotBlank()) loadUrl(activeTab.url)
+                            val restored = activeTab.historyState?.let { state -> runCatching { restoreState(state) }.getOrNull() }
+                            if (activeTab.url.isNotBlank() && (restored == null || restored.currentItem?.url != activeTab.url)) loadUrl(activeTab.url)
                         }
                         updateTab(tabId) { it.copy(webView = view) }
                         view
@@ -1386,7 +1411,7 @@ fun HiBrowserScreen(
                 HiMenuAction("Close this tab", Icons.Default.Close) { closeTab(activeTabId) },
             ),
             bottomRow = listOf(
-                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = webView?.canGoBack() == true) { webView?.goBack() },
+                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = !showStartPage || tabs.size > 1) { navigateBrowserBack() },
                 HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = webView?.canGoForward() == true) { webView?.goForward() },
                 HiMenuAction(
                     if (bookmarked) "Remove bookmark" else "Add bookmark",
