@@ -316,7 +316,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
 
-    private var refreshJob: Job? = null
+    private val refreshCoordinator = CoalescingRefresh(viewModelScope) { performRefresh() }
 
     private val _navMode = MutableStateFlow(
         runCatching { LibraryNavMode.valueOf(libraryPrefs.getString("nav_mode", LibraryNavMode.FOLDERS.name)!!) }
@@ -526,16 +526,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         refreshVideos()
         viewModelScope.launch {
             BrowserDownloads.downloads.map { list ->
-                list.filter { it.status == com.example.downloads.BrowserDownloadStatus.COMPLETED && it.isVideo }
-                    .map { Triple(it.id, it.fileName, it.savedUri) }
-            }.distinctUntilChanged().collect { refreshVideos(silent = true) }
+                list.filter { it.isVideo && it.status != com.example.downloads.BrowserDownloadStatus.CANCELLED }
+                    .map { listOf(it.id, it.fileName, it.savedUri, it.status, it.downloadedBytes / 1_048_576L) }
+            }.distinctUntilChanged().collect { refreshVideos(silent = true); delay(1_500L) }
         }
         startDownloadsObserver()
         periodicRefreshJob = viewModelScope.launch {
             var idleTicks = 0
             while (isActive) {
                 delay(5_000L)
-                val writing = System.currentTimeMillis() < fastPollUntilMs ||
+                val writing = BrowserDownloads.downloads.value.any { it.needsService } || System.currentTimeMillis() < fastPollUntilMs ||
                     _allVideos.value.any { it.isPartialDownload }
                 idleTicks = if (writing) 0 else idleTicks + 1
                 if (writing || idleTicks >= 12) {
@@ -575,27 +575,27 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos(silent: Boolean = false) {
-        refreshJob?.cancel()
-        refreshJob = viewModelScope.launch {
-            // Coalesce bursts of observer callbacks into one scan.
-            if (silent) delay(350L)
-            if (!silent) _isLoading.value = true
-            try {
-                val scanned = MediaScanner.scanLocalVideos(getApplication())
-                val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
-                val resolvedVideos = applySavedVideoOrder(scanned.map { video ->
-                    if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) {
-                        video.copy(isNewVideo = false)
-                    } else video
-                })
-                _allVideos.value = resolvedVideos
-                // Ratings now resolve for every recognizable local title instead
-                // of stopping after the first screenful of cards.
-                resolvedVideos.forEach(::requestCatalogMetadata)
-            } finally {
-                if (!silent) _isLoading.value = false
-            }
-        }
+        if (!silent) _isLoading.value = true
+        refreshCoordinator.request()
+    }
+
+    private suspend fun performRefresh() {
+        try {
+            val snapshot = MediaScanner.scanLocalVideos(getApplication())
+            // A denied/temporarily unavailable provider is not proof that files were deleted.
+            val scanned = if (snapshot.complete) snapshot.videos else
+                (snapshot.videos + _allVideos.value.filterNot { it.isPartialDownload }).distinctBy { it.path.ifBlank { it.uri.toString() } }
+            val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
+            val resolvedVideos = applySavedVideoOrder(scanned.map { video ->
+                if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) video.copy(isNewVideo = false) else video
+            })
+            _allVideos.value = resolvedVideos
+            resolvedVideos.forEach(::requestCatalogMetadata)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("HiLibrary", "Video refresh unavailable; keeping last successful library", error)
+        } finally { _isLoading.value = false }
     }
 
     fun setNavMode(mode: LibraryNavMode) {
@@ -932,6 +932,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onCleared() {
+        refreshCoordinator.close()
         periodicRefreshJob?.cancel()
         periodicRefreshJob = null
         downloadsObserver?.stopWatching()

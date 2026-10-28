@@ -17,13 +17,16 @@ internal data class BrowserDownload(
     val etag: String? = null,
     val modified: String? = null,
     val savedUri: String? = null,
-    val saveLocation: String = "Downloads/Hi Browser",
+    val saveLocation: String = "Download",
     val error: String? = null,
     val retryCount: Int = 0,
     val formatChecked: Boolean = false,
     val durationMs: Long = 0,
     val width: Int = 0,
     val height: Int = 0,
+    val destinationTreeUri: String? = null,
+    val customName: Boolean = false,
+    val finalizing: Boolean = false,
 ) {
     val isVideo get() = mimeType?.startsWith("video/") == true
     val isActive get() = status in setOf(BrowserDownloadStatus.QUEUED, BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.PAUSED)

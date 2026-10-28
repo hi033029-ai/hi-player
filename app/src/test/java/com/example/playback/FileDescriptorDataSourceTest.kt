@@ -21,6 +21,21 @@ import java.io.FileOutputStream
 class FileDescriptorDataSourceTest {
 
     @Test
+    fun `completed partial alias can reopen the published file after private copy is removed`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val partial = File(context.cacheDir, "deleted-${System.nanoTime()}.mp4.part")
+        val completed = File.createTempFile("published-", ".mp4", context.cacheDir).apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+        DownloadingFilesRegistry.completeOwned(partial.absolutePath, Uri.fromFile(completed).toString())
+        val source = FileDescriptorDataSource(context, waitForGrowth = true)
+        try {
+            source.open(DataSpec.Builder().setUri(Uri.fromFile(partial)).build())
+            val bytes = ByteArray(4)
+            assertEquals(4, source.read(bytes, 0, 4))
+            assertArrayEquals(byteArrayOf(1, 2, 3, 4), bytes)
+        } finally { source.close(); completed.delete() }
+    }
+
+    @Test
     fun `waits at temporary eof then reads appended download bytes`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val file = File.createTempFile("growing-source", ".mp4", context.cacheDir)

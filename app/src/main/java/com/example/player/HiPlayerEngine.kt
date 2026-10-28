@@ -837,7 +837,7 @@ class HiPlayerEngine(
 
     private fun createGrowingFileSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
         val key = downloadRegistryKey(uri)
-        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile) return null
+        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile && DownloadingFilesRegistry.completedUri(key) == null) return null
         if (uri.scheme != "file" && !DownloadingFilesRegistry.isDownloading(key)) return null
         return ProgressiveMediaSource.Factory(
             com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),

@@ -1,5 +1,8 @@
 package com.example.downloads
 
+import com.example.player.DownloadingFilesRegistry
+import androidx.documentfile.provider.DocumentFile
+import android.provider.DocumentsContract
 import android.content.ContentValues
 import android.content.ContentUris
 import android.provider.OpenableColumns
@@ -52,6 +55,7 @@ internal object BrowserDownloads {
     const val ACTION_PAUSE_ALL = "com.example.download.PAUSE_ALL"
     const val ACTION_RESUME_ALL = "com.example.download.RESUME_ALL"
     const val ACTION_REMOVE = "com.example.download.REMOVE"
+    const val ACTION_RENAME = "com.example.download.RENAME"
     const val ACTION_CLEAR = "com.example.download.CLEAR"
 
     fun restore(context: Context) { commands.launch { synchronized(lock) { restoreLocked(context.applicationContext) } } }
@@ -75,7 +79,8 @@ internal object BrowserDownloads {
                     if (oldStatus == BrowserDownloadStatus.COMPLETED) o.optLong("bytes") else part(context, id).length(),
                     o.optLong("total"), status = if (interrupted) BrowserDownloadStatus.PAUSED else oldStatus,
                     etag = o.optString("etag").ifBlank { null }, modified = o.optString("modified").ifBlank { null },
-                    savedUri = o.optString("savedUri").ifBlank { null }, saveLocation = o.optString("location", "Downloads/Hi Browser"),
+                    savedUri = o.optString("savedUri").ifBlank { null }, saveLocation = if (oldStatus != BrowserDownloadStatus.COMPLETED && o.optString("treeUri").isBlank()) "Download" else o.optString("location", "Download"),
+                    destinationTreeUri = o.optString("treeUri").ifBlank { null }, customName = o.optBoolean("customName"),
                     formatChecked = o.optBoolean("formatChecked", false),
                     durationMs = o.optLong("duration"), width = o.optInt("width"), height = o.optInt("height"),
                     error = if (interrupted) "Interrupted — tap Resume" else o.optString("error").ifBlank { null },
@@ -85,11 +90,14 @@ internal object BrowserDownloads {
         _downloads.value = records
         lastId = maxOf(lastId, records.maxOfOrNull { it.id } ?: 0)
         // An interrupted MediaStore publish must not leave hidden partial destination entries.
-        if (Build.VERSION.SDK_INT >= 29) {
+        run {
             records.filter { it.status != BrowserDownloadStatus.COMPLETED && it.savedUri != null }.forEach {
                 runCatching { context.contentResolver.delete(Uri.parse(it.savedUri), null, null) }
                 replaceLocked(it.copy(savedUri = null))
             }
+        }
+        records.filter { it.status == BrowserDownloadStatus.COMPLETED && it.savedUri != null }.forEach {
+            DownloadingFilesRegistry.completeOwned(part(context, it.id).absolutePath, it.savedUri)
         }
         restored = true
         scope.launch { repairCompletedVideos(context) }
@@ -104,6 +112,7 @@ internal object BrowserDownloads {
                 put("bytes", d.downloadedBytes); put("total", d.totalBytes); put("status", d.status.name)
                 put("etag", d.etag.orEmpty()); put("modified", d.modified.orEmpty()); put("savedUri", d.savedUri.orEmpty())
                 put("location", d.saveLocation); put("error", d.error.orEmpty())
+                put("treeUri", d.destinationTreeUri.orEmpty()); put("customName", d.customName)
                 put("formatChecked", d.formatChecked); put("duration", d.durationMs); put("width", d.width); put("height", d.height)
             })
         }
@@ -123,7 +132,7 @@ internal object BrowserDownloads {
         android.os.Handler(android.os.Looper.getMainLooper()).post { Toast.makeText(context, text, Toast.LENGTH_SHORT).show() }
     }
 
-    fun enqueue(context: Context, rawUrl: String, userAgent: String, contentDisposition: String, mimeType: String? = null, referer: String = "") {
+    fun enqueue(context: Context, rawUrl: String, userAgent: String, contentDisposition: String, mimeType: String? = null, referer: String = "", fileName: String? = null, totalBytes: Long = 0, destinationTreeUri: String? = null, destinationLabel: String = "Download", customName: Boolean = fileName != null) {
         val parsed = Uri.parse(rawUrl)
         if (parsed.scheme?.lowercase() !in setOf("http", "https") || parsed.host.isNullOrBlank()) {
             toast(context, "This link cannot be downloaded directly. Use the website's file download link.")
@@ -132,7 +141,8 @@ internal object BrowserDownloads {
         val cookie = runCatching { CookieManager.getInstance().getCookie(rawUrl).orEmpty() }.getOrDefault("")
         val intent = Intent(context, BrowserDownloadService::class.java).setAction(ACTION_ADD)
             .putExtra("url", rawUrl).putExtra("ua", userAgent).putExtra("cookie", cookie).putExtra("referer", referer)
-            .putExtra("name", DownloadFileResolver.resolve(URLUtil.guessFileName(rawUrl, contentDisposition, mimeType), rawUrl, mimeType, contentDisposition).fileName).putExtra("mime", mimeType)
+            .putExtra("name", fileName?.let(::safeFileName) ?: DownloadFileResolver.resolve(URLUtil.guessFileName(rawUrl, contentDisposition, mimeType), rawUrl, mimeType, contentDisposition).fileName).putExtra("mime", mimeType)
+            .putExtra("customName", customName).putExtra("total", totalBytes).putExtra("treeUri", destinationTreeUri).putExtra("location", destinationLabel)
         start(context, intent)
     }
     internal fun safeFileName(raw: String): String = DownloadFileResolver.safeName(raw)
@@ -150,6 +160,13 @@ internal object BrowserDownloads {
     fun pauseAll(context: Context) = command(context, ACTION_PAUSE_ALL)
     fun resumeAll(context: Context) = command(context, ACTION_RESUME_ALL)
     fun removeFromList(context: Context, id: Long) = command(context, ACTION_REMOVE, id)
+    fun rename(context: Context, id: Long, name: String) {
+        start(context, Intent(context, BrowserDownloadService::class.java).setAction(ACTION_RENAME).putExtra("id", id).putExtra("name", safeFileName(name)))
+    }
+    fun copyLink(context: Context, id: Long) { find(id)?.let {
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Download link", it.sourceUrl))
+        toast(context, "Download link copied")
+    } }
     fun clearCompleted(context: Context) = command(context, ACTION_CLEAR)
     fun hasPendingCommands() = pending.get() > 0
 
@@ -166,10 +183,26 @@ internal object BrowserDownloads {
                             if (_downloads.value.any { it.sourceUrl == url && it.isActive }) toast(context, "This download is already in your queue")
                             else if (url.isNotBlank()) {
                                 val entry = BrowserDownload(++lastId, intent.getStringExtra("name") ?: "download", url,
-                                    intent.getStringExtra("mime"), intent.getStringExtra("ua").orEmpty(), intent.getStringExtra("cookie").orEmpty(), intent.getStringExtra("referer").orEmpty())
+                                    intent.getStringExtra("mime"), intent.getStringExtra("ua").orEmpty(), intent.getStringExtra("cookie").orEmpty(), intent.getStringExtra("referer").orEmpty(), totalBytes = intent.getLongExtra("total", 0),
+                                    destinationTreeUri = intent.getStringExtra("treeUri"), saveLocation = intent.getStringExtra("location") ?: "Download", customName = intent.getBooleanExtra("customName", false))
                                 _downloads.value = listOf(entry) + _downloads.value
                                 toast(context, "Added to Hi Browser downloads")
                             }
+                        }
+                        ACTION_RENAME -> find(id)?.takeUnless { it.finalizing }?.let { entry ->
+                            val newName = intent.getStringExtra("name")?.takeIf { it.isNotBlank() } ?: entry.fileName
+                            if (entry.status == BrowserDownloadStatus.COMPLETED && entry.savedUri != null) {
+                                runCatching {
+                                    var uri = Uri.parse(entry.savedUri)
+                                    if (entry.destinationTreeUri != null) uri = DocumentsContract.renameDocument(context.contentResolver, uri, newName) ?: error("Rename failed")
+                                    else {
+                                        val updated = context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, newName) }, null, null)
+                                        check(updated > 0)
+                                    }
+                                    replaceLocked(entry.copy(fileName = newName, savedUri = uri.toString(), customName = true))
+                                    scanPublishedFile(context, uri, entry.mimeType)
+                                }.onFailure { toast(context, "This file could not be renamed") }
+                            } else replaceLocked(entry.copy(fileName = newName, customName = true))
                         }
                         ACTION_PAUSE -> pauseLocked(id)
                         ACTION_PAUSE_ALL -> _downloads.value.filter { it.needsService }.forEach { pauseLocked(it.id) }
@@ -181,6 +214,7 @@ internal object BrowserDownloads {
                         }
                         ACTION_CANCEL -> find(id)?.takeIf { it.status != BrowserDownloadStatus.COMPLETED }?.let {
                             transfers[id]?.cancel()
+                            DownloadingFilesRegistry.completeOwned(part(context, id).absolutePath)
                             replaceLocked(it.copy(status = BrowserDownloadStatus.CANCELLED, speedBytesPerSecond = 0, error = null))
                             if (!jobs.containsKey(id)) part(context, id).delete()
                         }
@@ -223,8 +257,10 @@ internal object BrowserDownloads {
         var lastBytes = part(context, id).length()
         var lastSample = System.nanoTime()
         try {
-            var completed = false
+            val cached = synchronized(lock) { find(id) }
+            var completed = cached?.formatChecked == true && cached.totalBytes > 0 && part(context, id).length() == cached.totalBytes
             for (attempt in 0..3) {
+                if (completed) break
                 transfer.checkActive()
                 val entry = synchronized(lock) { find(id) } ?: return
                 try {
@@ -237,7 +273,7 @@ internal object BrowserDownloads {
                         onMetadata = { meta -> synchronized(lock) {
                             find(id)?.takeIf { it.status == BrowserDownloadStatus.RUNNING }?.let {
                                 val mime = meta.mime?.takeUnless(DownloadFileResolver::isGenericMime) ?: it.mimeType
-                                val resolved = DownloadFileResolver.resolve(meta.fileName ?: it.fileName, meta.finalUrl ?: it.sourceUrl, mime)
+                                val resolved = DownloadFileResolver.resolve(if (it.customName) it.fileName else meta.fileName ?: it.fileName, if (it.customName) "" else meta.finalUrl ?: it.sourceUrl, mime)
                                 replaceLocked(it.copy(fileName = resolved.fileName, totalBytes = meta.total, etag = meta.etag, modified = meta.modified, mimeType = resolved.mimeType, error = null))
                                 persistLocked(context)
                             }
@@ -247,7 +283,15 @@ internal object BrowserDownloads {
                                 val now = System.nanoTime()
                                 val speed = ((bytes - lastBytes).coerceAtLeast(0) * 1_000_000_000.0 / (now - lastSample).coerceAtLeast(1)).toLong()
                                 lastBytes = bytes; lastSample = now
-                                replaceLocked(it.copy(downloadedBytes = bytes, totalBytes = total, speedBytesPerSecond = speed, error = null))
+                                val resolved = if (bytes > 1024 && DownloadFileResolver.isGenericMime(it.mimeType)) runCatching {
+                                    val prefix = ByteArray(minOf(bytes, 65536).toInt())
+                                    part(context, id).inputStream().use { input -> input.read(prefix) }
+                                    DownloadFileResolver.resolve(it.fileName, if (it.customName) "" else it.sourceUrl, it.mimeType, prefix = prefix)
+                                }.getOrNull() else null
+                                val updated = it.copy(downloadedBytes = bytes, totalBytes = if (total > 0) total else it.totalBytes, speedBytesPerSecond = speed, error = null,
+                                    fileName = resolved?.fileName ?: it.fileName, mimeType = resolved?.mimeType ?: it.mimeType)
+                                if (updated.isVideo) DownloadingFilesRegistry.markOwnedDownloading(part(context, id).absolutePath, bytes)
+                                replaceLocked(updated)
                                 if (System.currentTimeMillis() - lastPersist > 1500) persistLocked(context)
                             }
                         } })
@@ -265,14 +309,17 @@ internal object BrowserDownloads {
             if (completed) {
                 val unfinished = synchronized(lock) { find(id) } ?: return
                 val info = DownloadMediaInspector.inspect(part(context, id), unfinished)
-                val entry = unfinished.copy(fileName = info.resolved.fileName, mimeType = info.resolved.mimeType, formatChecked = true, durationMs = info.durationMs, width = info.width, height = info.height)
+                val current = synchronized(lock) { find(id) } ?: return
+                val finalName = if (current.customName && current.fileName != unfinished.fileName) current.fileName else info.resolved.fileName
+                val entry = current.copy(fileName = finalName, mimeType = info.resolved.mimeType, finalizing = true, formatChecked = true, durationMs = info.durationMs, width = info.width, height = info.height)
                 transfer.checkActive()
                 synchronized(lock) { if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(entry) }
                 val saved = publish(context, entry, transfer)
                 synchronized(lock) {
                     if (find(id)?.status == BrowserDownloadStatus.RUNNING) {
-                        replaceLocked(entry.copy(status = BrowserDownloadStatus.COMPLETED, downloadedBytes = part(context, id).length(), totalBytes = part(context, id).length(), speedBytesPerSecond = 0,
+                        replaceLocked(entry.copy(status = BrowserDownloadStatus.COMPLETED, finalizing = false, downloadedBytes = part(context, id).length(), totalBytes = part(context, id).length(), speedBytesPerSecond = 0,
                             savedUri = saved.first.toString(), saveLocation = saved.second, cookie = "", userAgent = "", referer = "", error = null))
+                        DownloadingFilesRegistry.completeOwned(part(context, id).absolutePath, saved.first.toString())
                         persistLocked(context)
                         part(context, id).delete()
                     } else deletePublished(context, saved.first)
@@ -296,7 +343,7 @@ internal object BrowserDownloads {
                 jobs.remove(id); transfers.remove(id)
                 val state = find(id)
                 if (state == null || state.status == BrowserDownloadStatus.CANCELLED) part(context, id).delete()
-                else if (state.status != BrowserDownloadStatus.COMPLETED) replaceLocked(state.copy(downloadedBytes = part(context, id).length(), speedBytesPerSecond = 0))
+                else if (state.status != BrowserDownloadStatus.COMPLETED) replaceLocked(state.copy(downloadedBytes = part(context, id).length(), speedBytesPerSecond = 0, finalizing = false))
                 persistLocked(context)
                 scheduleLocked(context)
             }
@@ -305,10 +352,27 @@ internal object BrowserDownloads {
 
     private fun publish(context: Context, entry: BrowserDownload, transfer: HttpDownloadTransfer): Pair<Uri, String> {
         transfer.checkActive()
+        if (entry.destinationTreeUri != null) {
+            val folder = DocumentFile.fromTreeUri(context, Uri.parse(entry.destinationTreeUri)) ?: throw IOException("Destination folder is unavailable")
+            val document = folder.createFile(entry.mimeType ?: "application/octet-stream", entry.fileName) ?: throw IOException("Cannot write to destination folder")
+            try {
+                synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = document.uri.toString())); persistLocked(context) } }
+                context.contentResolver.openOutputStream(document.uri, "w")?.use { output -> part(context, entry.id).inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    while (true) { transfer.checkActive(); val n = input.read(buffer); if (n < 0) break; output.write(buffer, 0, n) }
+                } } ?: throw IOException("Cannot write downloaded file")
+                transfer.checkActive()
+                return document.uri to entry.saveLocation
+            } catch (e: Exception) {
+                document.delete()
+                synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = null)) } }
+                throw e
+            }
+        }
         if (Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver
-            val location = if (entry.isVideo) "${Environment.DIRECTORY_MOVIES}/Hi Browser" else "${Environment.DIRECTORY_DOWNLOADS}/Hi Browser"
-            val collection = if (entry.isVideo) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) else MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val location = Environment.DIRECTORY_DOWNLOADS
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, entry.fileName)
                 put(MediaStore.Downloads.MIME_TYPE, entry.mimeType ?: "application/octet-stream")
@@ -334,9 +398,9 @@ internal object BrowserDownloads {
                 throw e
             }
         }
-        val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Hi Browser")
+        val publicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val hasPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val dir = if (hasPermission) publicDir else File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, "Hi Browser")
+        val dir = if (hasPermission) publicDir else throw IOException("Choose a folder or grant storage access before downloading")
         dir.mkdirs()
         var destination = File(dir, entry.fileName)
         var count = 1
@@ -348,7 +412,7 @@ internal object BrowserDownloads {
             } }
             transfer.checkActive()
             if (hasPermission) MediaScannerConnection.scanFile(context, arrayOf(destination.absolutePath), arrayOf(entry.mimeType), null)
-            return FileProvider.getUriForFile(context, "${context.packageName}.provider", destination) to if (hasPermission) "Downloads/Hi Browser" else "Hi Player app downloads"
+            return FileProvider.getUriForFile(context, "${context.packageName}.provider", destination) to "Download"
         } catch (e: Exception) { destination.delete(); throw e }
     }
 
@@ -406,14 +470,20 @@ internal object BrowserDownloads {
         }
     }
 
-    /** Includes owned videos even when an OEM delays MediaStore indexing or uses app-specific storage. */
-    suspend fun completedVideoItems(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
+    /** Both partial and completed app-owned videos remain discoverable in every app mode. */
+    suspend fun libraryVideoItems(context: Context): List<VideoItem> = withContext(Dispatchers.IO) {
         val entries = synchronized(lock) {
             restoreLocked(context)
-            _downloads.value.filter { it.status == BrowserDownloadStatus.COMPLETED && it.isVideo && it.savedUri != null }
+            _downloads.value.filter { it.isVideo && it.status != BrowserDownloadStatus.CANCELLED }
         }
         entries.mapNotNull { entry -> runCatching {
-            val uri = Uri.parse(entry.savedUri)
+            if (entry.status != BrowserDownloadStatus.COMPLETED) {
+                val file = part(context, entry.id)
+                if (!file.isFile || file.length() <= 0) return@runCatching null
+                DownloadingFilesRegistry.markOwnedDownloading(file.absolutePath, file.length())
+                return@runCatching partialItem(context, entry)
+            }
+            val uri = entry.savedUri?.let(Uri::parse) ?: return@runCatching null
             val exists = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { it.moveToFirst() } == true
             if (!exists) return@runCatching null
             val path = runCatching {
@@ -423,17 +493,33 @@ internal object BrowserDownloads {
                 id = if (uri.authority == MediaStore.AUTHORITY) runCatching { ContentUris.parseId(uri) }.getOrDefault(entry.id) else entry.id,
                 uri = uri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*", sizeBytes = entry.downloadedBytes,
                 durationMs = entry.durationMs, width = entry.width, height = entry.height,
-                dateAdded = entry.id / 1000, folderName = "Hi Browser", path = path.ifBlank { File(Environment.getExternalStorageDirectory(), "${entry.saveLocation}/${entry.fileName}").absolutePath },
+                dateAdded = entry.id / 1000, folderName = entry.saveLocation.substringAfterLast('/'),
+                path = path.ifBlank { if (entry.destinationTreeUri != null) uri.toString() else File(Environment.getExternalStorageDirectory(), "${entry.saveLocation}/${entry.fileName}").absolutePath },
                 isNewVideo = System.currentTimeMillis() - entry.id < 86_400_000L,
             )
         }.getOrNull() }
     }
 
+    private fun partialItem(context: Context, entry: BrowserDownload): VideoItem {
+        val file = part(context, entry.id)
+        return VideoItem(id = entry.id, uri = Uri.fromFile(file), title = entry.fileName, mimeType = entry.mimeType ?: "video/*",
+            sizeBytes = file.length(), path = file.absolutePath, folderName = "Download", dateAdded = entry.id / 1000,
+            isPartialDownload = true, downloadedBytes = file.length(), downloadTotalBytes = entry.totalBytes,
+            downloadSpeedBytesPerSecond = entry.speedBytesPerSecond, width = 0, height = 0, isNewVideo = true, codec = entry.status.name.lowercase())
+    }
+    fun playbackItem(context: Context, uri: Uri): VideoItem? = downloads.value.firstOrNull {
+        uri.toString() == it.savedUri || (uri.scheme == "file" && uri.path == part(context, it.id).absolutePath)
+    }?.let { entry -> if (entry.status == BrowserDownloadStatus.COMPLETED) VideoItem(uri = uri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*", path = uri.toString(), folderName = entry.saveLocation)
+        else partialItem(context, entry) }
+
     private fun deletePublished(context: Context, uri: Uri) { runCatching { context.contentResolver.delete(uri, null, null) } }
 
     fun playInPlayer(context: Context, id: Long, onPlay: (String) -> Unit) {
         val entry = find(id)
-        val uri = entry?.savedUri?.let(Uri::parse)
+        val uri = entry?.savedUri?.takeIf { entry.status == BrowserDownloadStatus.COMPLETED }?.let(Uri::parse)
+            ?: entry?.let { part(context, id).takeIf { f -> f.isFile && f.length() > 0 }?.let { f ->
+                DownloadingFilesRegistry.markOwnedDownloading(f.absolutePath, f.length()); Uri.fromFile(f)
+            } }
         if (uri == null) toast(context, "The downloaded file is not available") else onPlay(uri.toString())
     }
     fun open(context: Context, id: Long) {

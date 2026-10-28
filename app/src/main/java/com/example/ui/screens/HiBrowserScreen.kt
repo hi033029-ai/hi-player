@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import com.example.downloads.BrowserDownload
+import com.example.downloads.BrowserDownloadRequest
+import com.example.downloads.DownloadFileResolver
 import com.example.downloads.BrowserDownloadStatus
 import com.example.downloads.BrowserDownloads
 import androidx.compose.foundation.layout.FlowRow
@@ -288,6 +290,7 @@ fun HiBrowserScreen(
     val palette = LocalHiPalette.current
     val store = remember(context) { OrbitBrowserStore(context) }
     val downloads by BrowserDownloads.downloads.collectAsState()
+    var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
     var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
@@ -1117,8 +1120,9 @@ fun HiBrowserScreen(
                                     return true
                                 }
                             }
-                            setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                                BrowserDownloads.enqueue(viewContext, url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, referer = this.url.orEmpty())
+                            setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, size ->
+                                val name = DownloadFileResolver.resolve(URLUtil.guessFileName(url, contentDisposition, mimeType), url, mimeType, contentDisposition).fileName
+                                pendingDownload = BrowserDownloadRequest(url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, name, size.coerceAtLeast(0), this.url.orEmpty())
                             })
                             if (activeTab.url.isNotBlank()) loadUrl(activeTab.url)
                         }
@@ -1309,53 +1313,29 @@ fun HiBrowserScreen(
                 entriesVersion++
             },
             downloadsContent = { query ->
-                val shownDownloads = downloads.filter { query.isBlank() || it.fileName.contains(query, ignoreCase = true) }
-                if (shownDownloads.isEmpty()) {
-                    Text(
-                        if (query.isBlank()) "Your browser downloads will appear here." else "Nothing matches \"$query\"",
-                        color = palette.textSecondary,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(palette.surface)
-                            .padding(horizontal = 14.dp),
-                    ) {
-                        item(key = "queue-controls") {
-                        Text("Hi Browser download engine", color = palette.textPrimary, fontSize = 14.sp, modifier = Modifier.padding(top = 14.dp))
-                        Text("2 simultaneous downloads • Remove clears history, not saved files", color = palette.textSecondary, fontSize = 11.sp)
-                        FlowRow(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                            if (downloads.any { it.needsService }) TextButton(onClick = { BrowserDownloads.pauseAll(context) }) { Text("Pause all") }
-                            if (downloads.any { it.status == BrowserDownloadStatus.PAUSED || it.status == BrowserDownloadStatus.FAILED }) TextButton(onClick = { BrowserDownloads.resumeAll(context) }) { Text("Resume all") }
-                        }
-                        }
-                        itemsIndexed(shownDownloads, key = { _, entry -> entry.id }) { _, download ->
-                            BrowserDownloadRow(
-                                download = download,
-                                onPause = { BrowserDownloads.pause(context, download.id) },
-                                onCancel = { BrowserDownloads.cancel(context, download.id) },
-                                onOpen = { BrowserDownloads.open(context, download.id) },
-                                onShare = { BrowserDownloads.share(context, download.id) },
-                                onRetry = { BrowserDownloads.retry(context, download.id) },
-                                onRemove = { BrowserDownloads.removeFromList(context, download.id) },
-                                onPlay = { BrowserDownloads.playInPlayer(context, download.id, onPlayDirectMedia) },
-                            )
-                        }
-                        if (shownDownloads.none { it.isActive }) {
-                            item(key = "clear-history") {
-                                TextButton(onClick = { BrowserDownloads.clearCompleted(context) }) { Text("Clear finished history") }
-                            }
-                        }
-                    }
-                }
+                BrowserDownloadsPanel(downloads, query, onPlay = { id -> BrowserDownloads.playInPlayer(context, id, onPlayDirectMedia) })
             },
             onDismiss = { librarySection = null },
         )
         }
+    }
+
+    pendingDownload?.let { request ->
+        BrowserDownloadSheet(
+            request = request,
+            onDismiss = { pendingDownload = null },
+            onDownload = { info, name, customName, treeUri, label ->
+                BrowserDownloads.enqueue(context, info.url, info.userAgent, info.contentDisposition, info.mimeType, info.referer,
+                    fileName = name, totalBytes = info.totalBytes, destinationTreeUri = treeUri, destinationLabel = label, customName = customName)
+                pendingDownload = null
+                librarySection = HiLibrarySection.DOWNLOADS
+            },
+            onPlay = { info ->
+                pendingDownload = null
+                registerBrowserStreamHeaders(info.url, info.referer, info.userAgent, emptyList())
+                if (onPlayBrowserVideo != null) onPlayBrowserVideo(info.url, info.mimeType, info.fileName) else onPlayDirectMedia(info.url)
+            },
+        )
     }
 
     if (menuExpanded) {
@@ -1859,97 +1839,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit) {
         fontWeight = FontWeight.Medium,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
     )
-}
-
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun BrowserDownloadRow(
-    download: BrowserDownload,
-    onPause: () -> Unit,
-    onCancel: () -> Unit,
-    onRetry: () -> Unit,
-    onRemove: () -> Unit,
-    onPlay: () -> Unit,
-    onOpen: () -> Unit,
-    onShare: () -> Unit,
-) {
-    val palette = LocalHiPalette.current
-    val fraction = if (download.totalBytes > 0L) {
-        (download.downloadedBytes.toFloat() / download.totalBytes.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-    val isVideo = download.mimeType?.startsWith("video/") == true ||
-        download.fileName.substringAfterLast('.', "").lowercase() in setOf("mp4", "m4v", "mkv", "webm", "mov", "avi", "3gp")
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = when (download.status) {
-                    BrowserDownloadStatus.COMPLETED -> Icons.Default.CheckCircle
-                    BrowserDownloadStatus.FAILED -> Icons.Default.ErrorOutline
-                    else -> Icons.Default.Download
-                },
-                contentDescription = null,
-                tint = when (download.status) {
-                    BrowserDownloadStatus.FAILED -> Color(0xFFEF4444)
-                    BrowserDownloadStatus.COMPLETED -> Color(0xFF22A06B)
-                    else -> palette.primary
-                },
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(download.fileName, color = palette.textPrimary, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val detail = when (download.status) {
-                    BrowserDownloadStatus.QUEUED -> "Queued • waiting for a download slot"
-                    BrowserDownloadStatus.RUNNING -> download.error ?: buildString {
-                        append(formatBytes(download.downloadedBytes))
-                        if (download.totalBytes > 0) append(" / ").append(formatBytes(download.totalBytes))
-                        append(" • ").append(formatBytes(download.speedBytesPerSecond)).append("/s")
-                        download.etaSeconds?.let { append(" • ").append(if (it >= 60) "${it / 60}m ${it % 60}s left" else "${it}s left") }
-                    }
-                    BrowserDownloadStatus.PAUSED -> download.error ?: "Paused • ${formatBytes(download.downloadedBytes)} saved"
-                    BrowserDownloadStatus.COMPLETED -> "${download.saveLocation} • ${formatBytes(download.downloadedBytes)}"
-                    BrowserDownloadStatus.FAILED -> download.error ?: "Download failed • tap Retry to resume"
-                    BrowserDownloadStatus.CANCELLED -> "Cancelled"
-                }
-                Text(detail, color = palette.textSecondary, fontSize = 11.sp, maxLines = 3)
-            }
-            if (download.status == BrowserDownloadStatus.RUNNING && download.totalBytes > 0L) {
-                Text("${(fraction * 100).toInt()}%", color = palette.primary, fontSize = 11.sp)
-            }
-        }
-        if (download.isActive) {
-            if (download.status == BrowserDownloadStatus.RUNNING && download.totalBytes <= 0) {
-                LinearProgressIndicator(color = palette.primary, trackColor = palette.surfaceBorder, modifier = Modifier.fillMaxWidth().height(4.dp))
-            } else {
-                LinearProgressIndicator(progress = { fraction }, color = palette.primary, trackColor = palette.surfaceBorder, modifier = Modifier.fillMaxWidth().height(4.dp))
-            }
-        }
-        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            when (download.status) {
-                BrowserDownloadStatus.QUEUED, BrowserDownloadStatus.RUNNING -> {
-                    TextButton(onClick = onPause) { Text("Pause") }
-                    TextButton(onClick = onCancel) { Text("Cancel") }
-                }
-                BrowserDownloadStatus.PAUSED -> {
-                    TextButton(onClick = onRetry) { Text("Resume") }
-                    TextButton(onClick = onCancel) { Text("Cancel") }
-                }
-                BrowserDownloadStatus.FAILED -> {
-                    TextButton(onClick = onRetry) { Text("Retry") }
-                    TextButton(onClick = onRemove) { Text("Remove") }
-                }
-                BrowserDownloadStatus.CANCELLED -> {
-                    TextButton(onClick = onRetry) { Text("Restart") }
-                    TextButton(onClick = onRemove) { Text("Remove") }
-                }
-                BrowserDownloadStatus.COMPLETED -> {
-                    if (isVideo) TextButton(onClick = onPlay) { Text("Play") }
-                    TextButton(onClick = onOpen) { Text("Open") }
-                    TextButton(onClick = onShare) { Text("Share") }
-                    TextButton(onClick = onRemove) { Text("Remove") }
-                }
-            }
-        }
-    }
 }
 
 private enum class BrowserSearchProvider(

@@ -228,7 +228,10 @@ class FileDescriptorDataSource(
         }
     }
 
-    private fun openDescriptor(targetUri: Uri): ParcelFileDescriptor {
+    private fun resolvedUri(targetUri: Uri): Uri = DownloadingFilesRegistry.completedUri(downloadKey(targetUri))?.let(Uri::parse) ?: targetUri
+
+    private fun openDescriptor(originalUri: Uri): ParcelFileDescriptor {
+        val targetUri = resolvedUri(originalUri)
         return if (targetUri.scheme == "file") {
             val path = targetUri.path ?: throw IOException("File URI has no path: $targetUri")
             ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY)
@@ -241,7 +244,9 @@ class FileDescriptorDataSource(
     private fun downloadKey(uri: Uri): String =
         if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
 
-    private fun snapshotFor(targetUri: Uri, descriptorLength: Long? = null): SourceSnapshot = when (targetUri.scheme) {
+    private fun snapshotFor(originalUri: Uri, descriptorLength: Long? = null): SourceSnapshot {
+        val targetUri = resolvedUri(originalUri)
+        return when (targetUri.scheme) {
         "file" -> targetUri.path?.let(::File)?.let { file ->
             SourceSnapshot(
                 length = file.length().coerceAtLeast(0L),
@@ -256,6 +261,8 @@ class FileDescriptorDataSource(
             }.getOrDefault(0L)
             SourceSnapshot(length.coerceAtLeast(0L), 0L)
         }
+    }
+
     }
 
     override fun getUri(): Uri? = uri
