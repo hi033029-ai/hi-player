@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.testTag
@@ -39,14 +41,18 @@ internal fun BrowserDownloadsPanel(downloads: List<BrowserDownload>, query: Stri
         }
     }
     rename?.let { download ->
-        AlertDialog(onDismissRequest = { rename = null }, title = { Text("Rename file") },
+        AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+        onDismissRequest = { rename = null }, title = { Text("Rename file") },
             text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("File name") }, singleLine = true) },
             confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { BrowserDownloads.rename(context, download.id, name); rename = null }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancel") } })
     }
     details?.let { original ->
         val d = downloads.firstOrNull { it.id == original.id } ?: original
-        AlertDialog(onDismissRequest = { details = null }, title = { Text("Download details") },
+        AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+        onDismissRequest = { details = null }, title = { Text("Download details") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(d.fileName); Text("Status: ${d.status.name.lowercase()}")
                 Text("Saved to: ${d.saveLocation}")

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -145,10 +147,11 @@ fun SettingsScreen(
         ) {
             SettingsCollapsibleSection(
                 title = "Google account & media sources",
-                subtitle = "Sign in, then manage Google Drive, Jellyfin, and WebDAV",
+                subtitle = "Google sign-in, secure website sessions, and media folders",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
             ) {
+                com.example.ui.components.GoogleAccountCard()
                 GoogleDriveAccountCard(
                     discoverViewModel = discoverViewModel,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -169,7 +172,7 @@ fun SettingsScreen(
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                border = null,
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Column(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -238,7 +241,7 @@ fun SettingsScreen(
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                border = null,
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -288,6 +291,7 @@ fun SettingsScreen(
                 onToggle = { showDecoder = !showDecoder }
             ) {
             Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
             ) {
@@ -303,7 +307,7 @@ fun SettingsScreen(
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) palette.primary.copy(alpha = 0.15f) else Color.Transparent
                             ),
-                            border = null,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                             elevation = CardDefaults.cardElevation(0.dp)
                         ) {
                             Row(
@@ -352,6 +356,7 @@ fun SettingsScreen(
                 onToggle = { showPlayback = !showPlayback }
             ) {
             Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
             ) {
@@ -388,6 +393,7 @@ fun SettingsScreen(
     pendingPlaybackPermission?.let { mode ->
         val isBackground = mode == "background"
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingPlaybackPermission = null },
             title = { Text(if (isBackground) "Allow Background Play?" else "Allow Picture-in-Picture?") },
             text = {
@@ -420,6 +426,7 @@ private fun SettingsCollapsibleSection(
 ) {
     val palette = LocalHiPalette.current
     Card(
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp),

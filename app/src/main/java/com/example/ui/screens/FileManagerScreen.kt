@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -430,6 +432,7 @@ fun FileManagerScreen(
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullStorageAccess) {
             Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -463,6 +466,7 @@ fun FileManagerScreen(
         // Quick sections are hidden after the file list is scrolled to preserve space.
         if (!isInsideFolder && showQuickPanels) {
             Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -480,7 +484,7 @@ fun FileManagerScreen(
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                                     .background(palette.primary.copy(alpha = 0.2f)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -530,7 +534,7 @@ fun FileManagerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
+                            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp)),
                         color = palette.primary,
                         trackColor = Color(0x33FFFFFF)
                     )
@@ -545,7 +549,7 @@ fun FileManagerScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                                 .background(palette.secondary.copy(alpha = 0.15f))
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
@@ -570,7 +574,7 @@ fun FileManagerScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                                 .background(Color(0x223B82F6))
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
@@ -595,7 +599,7 @@ fun FileManagerScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                                 .background(Color(0x2210B981))
                                 .padding(vertical = 6.dp, horizontal = 8.dp),
                             contentAlignment = Alignment.Center
@@ -766,6 +770,7 @@ fun FileManagerScreen(
             visibleSelectableItems.find { it.path == path }
         }
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { showSelectionProperties = false },
             title = { Text("${selectedItems.size} selected properties") },
             text = {
@@ -814,6 +819,7 @@ fun FileManagerScreen(
     if (menuTargetItem != null) {
         val item = menuTargetItem!!
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { menuTargetItem = null },
             title = {
                 Text(item.name, color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -865,6 +871,7 @@ fun FileManagerScreen(
     if (renameTargetItem != null) {
         val item = renameTargetItem!!
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { renameTargetItem = null },
             title = {
                 Text(
@@ -916,6 +923,7 @@ fun FileManagerScreen(
     if (apkInstallCandidate != null) {
         val apk = apkInstallCandidate!!
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { apkInstallCandidate = null },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -957,6 +965,7 @@ fun FileManagerScreen(
         val item = detailsItem!!
         val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.US) }
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { fileManagerViewModel.dismissDetails() },
             title = {
                 Text(item.name, color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -999,6 +1008,7 @@ fun FileManagerScreen(
             (progress.completed + progress.failed).toFloat() / progress.total
         } else 0f
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { fileManagerViewModel.cancelDelete() },
             title = { Text("Deleting files", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
@@ -1051,6 +1061,7 @@ fun FileManagerScreen(
     if (deleteConfirmItems != null) {
         val items = deleteConfirmItems!!
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { fileManagerViewModel.dismissDeleteConfirm() },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1090,6 +1101,7 @@ fun FileManagerScreen(
 
     if (showPermanentDeleteConfirm) {
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { showPermanentDeleteConfirm = false },
             title = { Text("Delete permanently?", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
@@ -1117,6 +1129,7 @@ fun FileManagerScreen(
     if (selectedDocPreview != null) {
         val (docTitle, docContent) = selectedDocPreview!!
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { fileManagerViewModel.dismissDocumentPreview() },
             title = {
                 Text(
@@ -1608,6 +1621,7 @@ fun FoldersBrowserView(
     Column(modifier = Modifier.fillMaxSize()) {
         // Folder Bar
         Card(
+            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1760,7 +1774,7 @@ fun SectionHeader(
             ),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
@@ -1772,7 +1786,7 @@ fun SectionHeader(
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(accentColor.copy(alpha = 0.2f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1796,7 +1810,7 @@ fun SectionHeader(
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(6.dp)).hiContainerBorder(RoundedCornerShape(6.dp))
                                 .background(accentColor.copy(alpha = 0.2f))
                                 .padding(horizontal = 6.dp, vertical = 1.dp)
                         ) {
@@ -1819,7 +1833,7 @@ fun SectionHeader(
             if (isCollapsible && onToggle != null) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(6.dp)).hiContainerBorder(RoundedCornerShape(6.dp))
                         .background(if (isExpanded) accentColor.copy(alpha = 0.2f) else palette.surfaceBorder)
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
@@ -2159,7 +2173,7 @@ fun FolderItemCard(
                 modifier = Modifier
                     .width(48.dp)
                     .height(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                     .background(palette.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -2340,6 +2354,8 @@ fun ArchiveInspectorBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = palette.surfaceElevated,
@@ -2360,7 +2376,7 @@ fun ArchiveInspectorBottomSheet(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                             .background(palette.secondary.copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -2433,7 +2449,7 @@ fun ArchiveInspectorBottomSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
+                            .clip(RoundedCornerShape(3.dp)).hiContainerBorder(RoundedCornerShape(3.dp)),
                         color = palette.primary
                     )
                 }
@@ -2548,6 +2564,7 @@ fun ArchiveDestinationPickerBottomSheet(
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     ModalBottomSheet(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = palette.surfaceElevated
@@ -2642,6 +2659,7 @@ private fun RecycleBinView(
     val selectedCount = selectedIds.size
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Card(
+            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
             shape = RoundedCornerShape(12.dp)

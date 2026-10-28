@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -72,6 +74,8 @@ fun SubtitleSettingsBottomSheet(
     }
 
     ModalBottomSheet(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = PickerSurface.copy(alpha = 0.96f),

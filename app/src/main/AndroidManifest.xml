@@ -21,6 +21,10 @@
     <!-- Lets the Drive-first folder chooser check whether the Google Drive app
          is available on Android 11+ without broad package visibility. -->
     <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+        <package android:name="com.android.chrome" />
         <package android:name="com.google.android.apps.docs" />
     </queries>
 

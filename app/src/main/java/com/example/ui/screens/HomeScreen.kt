@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -413,7 +415,7 @@ fun HomeScreen(
                             Row(
                                 modifier = Modifier
                                     .height(34.dp)
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .clip(RoundedCornerShape(9.dp)).hiContainerBorder(RoundedCornerShape(9.dp))
                                     .background(if (selected) palette.primary else palette.surfaceElevated)
                                     .clickable {
                                         libraryViewModel.selectFolder(null)
@@ -1182,6 +1184,7 @@ fun HomeScreen(
 
     renameTarget?.let { video ->
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { renameTarget = null },
             title = { Text("Rename video") },
             text = {
@@ -1206,6 +1209,7 @@ fun HomeScreen(
     if (showSelectionProperties) {
         val totalBytes = selectedVideos.sumOf { it.sizeBytes }
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { showSelectionProperties = false },
             title = { Text("Video properties") },
             text = {
@@ -1222,6 +1226,7 @@ fun HomeScreen(
     deleteProgress?.let { progress ->
         val remaining = (progress.total - progress.completed - progress.failed).coerceAtLeast(0)
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { libraryViewModel.cancelDeleteVideos() },
             title = { Text("Deleting videos", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
@@ -1246,6 +1251,7 @@ fun HomeScreen(
 
     pendingDeleteVideos?.let { videosToDelete ->
         AlertDialog(
+            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingDeleteVideos = null },
             title = { Text("Delete video${if (videosToDelete.size == 1) "" else "s"}?") },
             text = { Text("This moves ${videosToDelete.size} file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. You can restore them or permanently delete them later.") },
@@ -1425,7 +1431,7 @@ fun ContinueWatchingCard(
             .testTag("continue_watching_item_${item.video.id}"),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        border = null,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
@@ -1434,7 +1440,7 @@ fun ContinueWatchingCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(84.dp)
-                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp)).hiContainerBorder(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                     .background(palette.surface)
             ) {
                 VideoThumbnail(

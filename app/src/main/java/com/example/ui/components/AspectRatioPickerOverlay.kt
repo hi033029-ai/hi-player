@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,7 +31,7 @@ fun AspectRatioPickerOverlay(
         Column(
             modifier = Modifier
                 .padding(start = 16.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                 .background(Color.Black.copy(alpha = 0.78f))
                 .padding(vertical = 8.dp),
         ) {

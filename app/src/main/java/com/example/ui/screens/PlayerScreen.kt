@@ -861,6 +861,7 @@ fun PlayerScreen(
         // soon as Media3 resumes rendering.
         if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
             Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 modifier = Modifier.align(Alignment.Center),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xB8141E2E))
@@ -913,6 +914,7 @@ fun PlayerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Card(
+                    border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.padding(24.dp)

@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +58,7 @@ fun DiscoverSourceSettings(
 
     Column(modifier = modifier) {
         Card(
+            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
             elevation = CardDefaults.cardElevation(0.dp)
@@ -157,6 +160,7 @@ private fun JellyfinSetupDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = { if (!busy) onDismiss() },
         containerColor = palette.surface,
         title = { Text("Connect Jellyfin", color = palette.textPrimary) },
@@ -203,6 +207,7 @@ private fun WebDavSetupDialog(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = { if (!busy) onDismiss() },
         containerColor = palette.surface,
         title = { Text("Connect WebDAV", color = palette.textPrimary) },

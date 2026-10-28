@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -223,7 +225,7 @@ fun FullScreenAudioPlayerScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
                             .background(palette.primary.copy(alpha = 0.15f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
@@ -248,7 +250,7 @@ fun FullScreenAudioPlayerScreen(
                 // Subtitles Search Button
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                         .background(palette.primary.copy(alpha = 0.15f))
                         .clickable(onClick = onOpenSubtitleSearch)
                         .padding(horizontal = 12.dp, vertical = 8.dp),

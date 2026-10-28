@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -73,6 +75,7 @@ internal fun BrowserDownloadSheet(
     }
     val isVideo = inspected.mimeType?.startsWith("video/") == true || fileName.substringAfterLast('.').lowercase() in setOf("mp4", "mkv", "webm", "mov", "avi", "ts", "m4v", "3gp")
     ModalBottomSheet(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = palette.background,

@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -42,7 +44,7 @@ fun FolderItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp)
@@ -129,7 +131,7 @@ fun FolderGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp, horizontal = 8.dp)

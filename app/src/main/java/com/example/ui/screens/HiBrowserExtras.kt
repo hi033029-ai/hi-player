@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -270,6 +272,7 @@ internal fun BrowserClearDataDialog(
     var cookies by remember { mutableStateOf(true) }
     var cache by remember { mutableStateOf(true) }
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = onDismiss,
         title = { Text("Clear browsing data") },
         text = {

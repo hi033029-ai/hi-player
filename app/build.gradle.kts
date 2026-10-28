@@ -14,6 +14,12 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+// Public OAuth identifier, not a client secret. Keep unset until the real
+// Cloud/Firebase project is configured; never insert a placeholder account.
+val googleWebClientId = providers.gradleProperty("HI_PLAYER_GOOGLE_WEB_CLIENT_ID")
+  .orElse(providers.environmentVariable("HI_PLAYER_GOOGLE_WEB_CLIENT_ID"))
+  .orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -24,6 +30,7 @@ android {
     versionCode = 66
     versionName = "1.0.65"
 
+    buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -92,6 +99,13 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
+  implementation("androidx.browser:browser:1.8.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
   // formats that may be unsupported by a device hardware decoder.
   implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))

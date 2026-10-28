@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +67,8 @@ fun VideoSettingsBottomSheet(
     var tunnelingEnabled by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
+
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = HiSurfaceDark,
@@ -123,7 +127,7 @@ fun VideoSettingsBottomSheet(
                     val isSelected = mode == currentAspectRatio
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                             .background(if (isSelected) HiPrimaryCyan else HiSurfaceElevated)
                             .clickable { onAspectRatioSelected(mode) }
                             .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -144,7 +148,7 @@ fun VideoSettingsBottomSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                     .background(HiSurfaceElevated)
                     .padding(14.dp)
             ) {
@@ -192,7 +196,7 @@ fun VideoSettingsBottomSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                     .background(HiSurfaceElevated)
                     .padding(14.dp)
             ) {
@@ -240,7 +244,7 @@ fun VideoSettingsBottomSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
                     .background(HiSurfaceElevated)
                     .padding(14.dp)
             ) {
@@ -302,7 +306,7 @@ fun VideoSettingsBottomSheet(
                     val isSelected = sleepTimerMinutes == min
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
                             .background(if (isSelected) HiAccentAmber else HiSurfaceElevated)
                             .clickable { onSetSleepTimer(min) }
                             .padding(horizontal = 14.dp, vertical = 8.dp)

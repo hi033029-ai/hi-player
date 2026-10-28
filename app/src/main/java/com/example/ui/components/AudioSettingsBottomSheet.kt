@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +57,7 @@ fun AudioSettingsBottomSheet(
         modifier = modifier
             .widthIn(max = 220.dp)
             .heightIn(max = 205.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
             .background(Color.Black.copy(alpha = 0.94f))
             .padding(horizontal = 9.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,

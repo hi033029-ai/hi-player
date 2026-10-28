@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.hiContainerBorder
+
 import androidx.compose.foundation.horizontalScroll
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -365,7 +367,9 @@ internal fun HiBrowserMenuSheet(
         onDismiss()
         action.onClick()
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = palette.background) {
+    ModalBottomSheet(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)),
+        onDismissRequest = onDismiss, sheetState = sheetState, containerColor = palette.background) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -379,7 +383,7 @@ internal fun HiBrowserMenuSheet(
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
                         .background(palette.primary.copy(alpha = 0.12f))
                         .clickable {
                             onDismiss()
@@ -401,7 +405,7 @@ internal fun HiBrowserMenuSheet(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(28.dp))
+                    .clip(RoundedCornerShape(28.dp)).hiContainerBorder(RoundedCornerShape(28.dp))
                     .background(palette.surface)
                     .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -439,7 +443,7 @@ private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> 
             Column(
                 modifier = Modifier
                     .width(84.dp)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(18.dp)).hiContainerBorder(RoundedCornerShape(18.dp))
                     .background(if (item.checked == true) palette.primary.copy(alpha = 0.16f) else palette.surface)
                     .clickable(enabled = item.enabled) { onClick(item) }
                     .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
@@ -478,7 +482,7 @@ private fun HiSegment(selected: Boolean, onClick: () -> Unit, content: @Composab
         modifier = Modifier
             .height(40.dp)
             .width(60.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp)).hiContainerBorder(RoundedCornerShape(20.dp))
             .background(if (selected) palette.primary else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -521,7 +525,7 @@ internal fun HiBrowserTabSwitcher(
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back to page", tint = palette.textPrimary)
                 }
                 Spacer(Modifier.weight(1f))
-                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
+                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).hiContainerBorder(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
                     HiSegment(selected = !privateMode, onClick = { privateMode = false }) { color ->
                         HiTabCountBox(tabs.count { !it.privateTab }, color)
                     }
@@ -572,7 +576,7 @@ internal fun HiBrowserTabSwitcher(
                     modifier = Modifier
                         .height(48.dp)
                         .width(72.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
                         .background(palette.primary)
                         .clickable { onNewTab(privateMode) },
                     contentAlignment = Alignment.Center,
@@ -609,12 +613,12 @@ private fun HiBrowserTabCardView(
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             when {
-                favicon != null -> Image(favicon, contentDescription = null, modifier = Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)))
+                favicon != null -> Image(favicon, contentDescription = null, modifier = Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp)))
                 tab.privateTab -> Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
                 tab.url.isBlank() -> Image(
                     painter = rememberHiPlayerLogoPainter(),
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)),
+                    modifier = Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).hiContainerBorder(RoundedCornerShape(5.dp)),
                 )
                 else -> Icon(Icons.Default.Language, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
             }
@@ -824,6 +828,7 @@ private fun HiAddShortcutDialog(onAdd: (String, String) -> Unit, onDismiss: () -
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     AlertDialog(
+        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
         onDismissRequest = onDismiss,
         title = { Text("Add shortcut") },
         text = {
@@ -883,7 +888,7 @@ internal fun HiBrowserLibrary(
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = palette.textPrimary)
                 }
                 Spacer(Modifier.weight(1f))
-                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
+                Row(modifier = Modifier.clip(RoundedCornerShape(24.dp)).hiContainerBorder(RoundedCornerShape(24.dp)).background(palette.surface).padding(4.dp)) {
                     HiLibrarySection.entries.forEach { entry ->
                         HiSegment(selected = section == entry, onClick = { section = entry }) { color ->
                             Icon(entry.icon, contentDescription = entry.label, tint = color)
@@ -902,7 +907,7 @@ internal fun HiBrowserLibrary(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .height(50.dp)
-                    .clip(RoundedCornerShape(25.dp))
+                    .clip(RoundedCornerShape(25.dp)).hiContainerBorder(RoundedCornerShape(25.dp))
                     .background(palette.surfaceElevated)
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -954,7 +959,7 @@ internal fun HiBrowserLibrary(
                         )
                     } else {
                         LazyColumn(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(palette.surface),
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).hiContainerBorder(RoundedCornerShape(20.dp)).background(palette.surface),
                         ) {
                             itemsIndexed(items) { _, entry ->
                                 val title = entry.first
