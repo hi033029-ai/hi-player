@@ -89,23 +89,30 @@ fun HiBottomNavigationBar(
         label = "tab-progress-x"
     )
 
+    // The bar floats in a see-through, outlined pill instead of sitting on a
+    // solid slab, so the screen colour shows around and through it.
+    val pillShape = RoundedCornerShape(30.dp)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(82.dp)
-            .background(palette.background)
-            .testTag("hi_bottom_navigation_bar")
+            .testTag("hi_bottom_navigation_bar"),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
                 .fillMaxWidth()
+                .height(64.dp)
+                .clip(pillShape)
+                .background(palette.surface.copy(alpha = 0.62f))
+                .border(1.dp, palette.surfaceBorder.copy(alpha = 0.95f), pillShape)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(60.dp)
-                    .background(palette.surface),
+                    .height(64.dp)
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -115,9 +122,10 @@ fun HiBottomNavigationBar(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .height(56.dp)
                             .onGloballyPositioned { coordinates ->
                                 val centerPx = coordinates.positionInParent().x + coordinates.size.width / 2f
-                                val centerDp = with(density) { centerPx.toDp() }
+                                val centerDp = with(density) { centerPx.toDp() } + 4.dp
                                 val widthDp = with(density) { coordinates.size.width.toDp() }
                                 if (metrics[index].center != centerDp || metrics[index].width != widthDp) {
                                     metrics = metrics.toMutableList().also {
@@ -133,7 +141,7 @@ fun HiBottomNavigationBar(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.offset(y = if (selected) (-4).dp else 0.dp)
+                            modifier = Modifier.offset(y = if (selected) (-3).dp else 0.dp)
                         ) {
                             Icon(
                                 imageVector = spec.icon,
@@ -153,25 +161,18 @@ fun HiBottomNavigationBar(
                 }
             }
 
-            // A short active segment glides under the selected tab.
+            // A short active segment glides along the bottom edge of the pill.
             Box(
                 modifier = Modifier
-                    .padding(top = 5.dp)
-                    .fillMaxWidth()
-                    .height(2.dp)
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 5.dp)
+                    .offset(x = progressX)
+                    .width(progressWidth)
+                    .height(3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(palette.surfaceBorder.copy(alpha = 0.75f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .offset(x = progressX)
-                        .width(progressWidth)
-                        .height(2.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(palette.primary)
-                        .testTag("nav_progress_segment")
-                )
-            }
+                    .background(palette.primary)
+                    .testTag("nav_progress_segment")
+            )
         }
     }
 }

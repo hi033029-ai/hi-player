@@ -366,7 +366,7 @@ private fun WelcomeNoteView(
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.hi_player_logo),
+                    painter = com.example.ui.components.rememberHiPlayerLogoPainter(),
                     contentDescription = "Hi Player Logo",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(42.dp)
@@ -566,7 +566,7 @@ private fun ChooseThemeView(
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.hi_player_logo),
+                    painter = com.example.ui.components.rememberHiPlayerLogoPainter(),
                     contentDescription = "Hi Player Logo",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(40.dp)

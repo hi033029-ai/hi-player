@@ -108,8 +108,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private var downloadsObserver: FileObserver? = null
     private var periodicRefreshJob: Job? = null
     private var deleteVideosJob: Job? = null
+    // Fast polling only runs while files are still being written; otherwise the
+    // MediaStore and Downloads observers report changes and a slow safety scan
+    // runs. Re-scanning the whole library every 5 s made lists stutter.
+    @Volatile private var fastPollUntilMs = 0L
+    private fun requestFastPolling() {
+        fastPollUntilMs = System.currentTimeMillis() + 120_000L
+    }
     private val mediaStoreObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
+            requestFastPolling()
             refreshVideos(silent = true)
         }
     }
@@ -516,9 +524,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         refreshVideos()
         startDownloadsObserver()
         periodicRefreshJob = viewModelScope.launch {
+            var idleTicks = 0
             while (isActive) {
                 delay(5_000L)
-                refreshVideos(silent = true)
+                val writing = System.currentTimeMillis() < fastPollUntilMs ||
+                    _allVideos.value.any { it.isPartialDownload }
+                idleTicks = if (writing) 0 else idleTicks + 1
+                if (writing || idleTicks >= 12) {
+                    idleTicks = 0
+                    refreshVideos(silent = true)
+                }
             }
         }
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -544,6 +559,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     name.endsWith(".m4v") || name.endsWith(".3gp") ||
                     PendingDownloadFormat.isPending(name)
                 ) {
+                    requestFastPolling()
                     refreshVideos(silent = true)
                 }
             }
@@ -553,6 +569,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun refreshVideos(silent: Boolean = false) {
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
+            // Coalesce bursts of observer callbacks into one scan.
+            if (silent) delay(350L)
             if (!silent) _isLoading.value = true
             try {
                 val scanned = MediaScanner.scanLocalVideos(getApplication())

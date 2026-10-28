@@ -93,6 +93,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.components.HiPlayerLogoBadge
+import com.example.ui.components.rememberHiPlayerLogoPainter
+import androidx.compose.ui.graphics.FilterQuality
 
 /** True while the on-screen keyboard is showing. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -192,10 +195,11 @@ internal fun HiBrowserToolbar(
         if (text.isNotBlank()) onSubmit(text)
     }
 
+    // Transparent container: only the outlined, see-through pill is drawn, so the
+    // page (or start page) stays visible around and through the bar.
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(palette.background)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         val shape = RoundedCornerShape(28.dp)
@@ -204,50 +208,64 @@ internal fun HiBrowserToolbar(
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(shape)
-                .background(palette.surface)
+                .background(palette.surface.copy(alpha = if (focused) 0.97f else 0.84f))
                 .border(1.dp, if (focused) palette.primary else palette.surfaceBorder, shape)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (!focused) {
-                IconButton(onClick = onHome) {
-                    Icon(Icons.Default.Home, contentDescription = "Home", tint = palette.textPrimary)
+                Box(
+                    modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onHome),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HiPlayerLogoBadge(size = 32.dp)
                 }
             } else {
                 Spacer(Modifier.width(8.dp))
             }
             Box {
-                val badgeColor = hiLetterColor(selectedProvider)
                 Box(
                     modifier = Modifier
                         .size(34.dp)
                         .clip(CircleShape)
-                        .background(badgeColor.copy(alpha = 0.15f))
                         .clickable { providerMenu = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     if (isPrivate) {
-                        Icon(Icons.Default.VisibilityOff, contentDescription = "Private tab", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+                        Box(
+                            modifier = Modifier.size(34.dp).clip(CircleShape).background(palette.surfaceElevated),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Default.VisibilityOff, contentDescription = "Private tab", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+                        }
                     } else {
-                        Text(selectedProvider.take(1), color = badgeColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        HiProviderIcon(selectedProvider, 30.dp)
                     }
                 }
                 DropdownMenu(expanded = providerMenu, onDismissRequest = { providerMenu = false }) {
-                    Text(
-                        "Search with",
-                        color = palette.textTertiary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
-                    providers.forEachIndexed { index, name ->
-                        DropdownMenuItem(
-                            text = { Text(name) },
-                            trailingIcon = { if (name == selectedProvider) Icon(Icons.Default.Check, contentDescription = null) },
-                            onClick = {
-                                providerMenu = false
-                                onProviderSelect(index)
-                            },
-                        )
+                    // Search engines are shown by their logos.
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        providers.forEachIndexed { index, name ->
+                            val selected = name == selectedProvider
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(CircleShape)
+                                    .background(if (selected) palette.primary.copy(alpha = 0.16f) else Color.Transparent)
+                                    .border(if (selected) 2.dp else 1.dp, if (selected) palette.primary else palette.surfaceBorder, CircleShape)
+                                    .clickable {
+                                        providerMenu = false
+                                        onProviderSelect(index)
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                HiProviderIcon(name, 34.dp)
+                            }
+                        }
                     }
                 }
             }
@@ -593,6 +611,11 @@ private fun HiBrowserTabCardView(
             when {
                 favicon != null -> Image(favicon, contentDescription = null, modifier = Modifier.size(18.dp).clip(RoundedCornerShape(4.dp)))
                 tab.privateTab -> Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
+                tab.url.isBlank() -> Image(
+                    painter = rememberHiPlayerLogoPainter(),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)),
+                )
                 else -> Icon(Icons.Default.Language, contentDescription = null, tint = palette.textSecondary, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(8.dp))
@@ -622,10 +645,10 @@ private fun HiBrowserTabCardView(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else if (tab.url.isBlank()) {
-                Text("Hi Browser", color = palette.primary, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                HiPlayerLogoBadge(size = 64.dp)
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    HiLetterIcon(host.ifBlank { tab.title }, 48, 20)
+                    HiSiteIcon(tab.url, host.ifBlank { tab.title }, 48.dp)
                     Spacer(Modifier.height(6.dp))
                     Text(host, color = palette.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -644,11 +667,20 @@ internal fun HiBrowserHome(
     onAddShortcut: (String, String) -> Unit,
     onRemoveShortcut: (String) -> Unit,
     modifier: Modifier = Modifier,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val palette = LocalHiPalette.current
     var editing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
-    Box(modifier = modifier.fillMaxSize().background(palette.background)) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) {},
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -656,12 +688,14 @@ internal fun HiBrowserHome(
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(120.dp))
+            Spacer(Modifier.height(96.dp))
+            HiPlayerLogoBadge(size = 104.dp)
+            Spacer(Modifier.height(14.dp))
             Text(
-                if (isPrivate) "Private" else "Hi Browser",
-                color = palette.primary,
-                fontSize = 46.sp,
-                fontWeight = FontWeight.ExtraBold,
+                if (isPrivate) "Private browsing" else "Hi Browser",
+                color = palette.textPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
             )
             if (isPrivate) {
                 Spacer(Modifier.height(8.dp))
@@ -672,7 +706,7 @@ internal fun HiBrowserHome(
                     textAlign = TextAlign.Center,
                 )
             }
-            Spacer(Modifier.height(56.dp))
+            Spacer(Modifier.height(40.dp))
             val cells: List<Pair<String, String>?> = buildList {
                 addAll(shortcuts)
                 if (shortcuts.size < 12) add(null)
@@ -710,7 +744,7 @@ internal fun HiBrowserHome(
                     fontSize = 12.sp,
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(bottomInset + 24.dp))
         }
         IconButton(
             onClick = { editing = !editing },
@@ -743,23 +777,32 @@ private fun HiShortcutTile(
     onClick: () -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    val color = hiLetterColor(label)
     Column(
         modifier = modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(modifier = Modifier.size(64.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(if (url == null) palette.surface else color.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (url == null) {
+            if (url == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = palette.textPrimary, modifier = Modifier.size(28.dp))
-                } else {
-                    Text(label.take(1).uppercase(), color = color, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(palette.surface)
+                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HiSiteIcon(url, label, 44.dp, rounded = true)
                 }
             }
             if (editing && url != null) {
@@ -926,7 +969,7 @@ internal fun HiBrowserLibrary(
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    HiLetterIcon(hiHost(url).ifBlank { title }, 40, 16)
+                                    HiSiteIcon(url, hiHost(url).ifBlank { title }, 40.dp)
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(title, color = palette.textPrimary, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

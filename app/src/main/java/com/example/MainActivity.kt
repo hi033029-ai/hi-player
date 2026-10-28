@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.ui.components.HiPlayerLogo.preload(this)
 
         handleIntent(intent)
 
@@ -481,6 +482,24 @@ class MainActivity : ComponentActivity() {
                                                         externalUrl = externalBrowserUrl,
                                                         onExternalUrlConsumed = { pendingBrowserUrl.value = null },
                                                         onBack = { currentTab = tabBeforeBrowser },
+                                                        onPlayBrowserVideo = { url, mimeType, title ->
+                                                            // The page already proved this is media: play it directly.
+                                                            val result = StreamUrlClassifier.classifyResolvedMediaUrl(
+                                                                url,
+                                                                suppliedMimeType = mimeType,
+                                                                displayTitle = title,
+                                                                trustAsDirectSource = true,
+                                                            )
+                                                            if (result.isPlayableInHiPlayer && result.normalizedUrl != null) {
+                                                                openResolvedStream(result)
+                                                            } else {
+                                                                android.widget.Toast.makeText(
+                                                                    this@MainActivity,
+                                                                    result.errorMessage ?: "This video can't be played in Hi Player.",
+                                                                    android.widget.Toast.LENGTH_SHORT,
+                                                                ).show()
+                                                            }
+                                                        },
                                                         onPlayDirectMedia = { url ->
                                                             val uri = Uri.parse(url)
                                                             if (uri.scheme == "content") {
