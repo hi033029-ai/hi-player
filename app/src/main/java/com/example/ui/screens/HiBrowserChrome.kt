@@ -515,8 +515,7 @@ internal fun HiBrowserTabSwitcher(
     var privateMode by remember { mutableStateOf(startPrivate) }
     val shown = tabs.filter { it.privateTab == privateMode }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BrowserNavigationHost(navigation = appNavigation) {
-            Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
+        Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -880,6 +879,7 @@ internal fun HiBrowserLibrary(
     var section by remember { mutableStateOf(initialSection) }
     var query by remember(section) { mutableStateOf("") }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BrowserNavigationHost(navigation = appNavigation) {
         Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
