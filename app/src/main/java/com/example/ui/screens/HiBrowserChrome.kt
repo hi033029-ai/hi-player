@@ -151,6 +151,7 @@ private fun HiTabCountBox(count: Int, color: Color) {
 internal fun HiBrowserToolbar(
     address: String,
     onAddressChange: (String) -> Unit,
+    onFocusChange: (Boolean) -> Unit = {},
     onSubmit: (String) -> Unit,
     isPrivate: Boolean,
     isSecure: Boolean,
@@ -302,7 +303,7 @@ internal fun HiBrowserToolbar(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onFocusChanged { focused = it.isFocused },
+                        .onFocusChanged { focused = it.isFocused; onFocusChange(it.isFocused) },
                 )
             }
             when {
@@ -514,7 +515,8 @@ internal fun HiBrowserTabSwitcher(
     var privateMode by remember { mutableStateOf(startPrivate) }
     val shown = tabs.filter { it.privateTab == privateMode }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
+        BrowserNavigationHost(navigation = appNavigation) {
+            Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -865,6 +867,7 @@ internal enum class HiLibrarySection(val label: String, val icon: ImageVector) {
 @Composable
 internal fun HiBrowserLibrary(
     initialSection: HiLibrarySection,
+    appNavigation: @Composable () -> Unit = {},
     bookmarks: List<Pair<String, String>>,
     history: List<Pair<String, String>>,
     onOpen: (String) -> Unit,
@@ -988,5 +991,6 @@ internal fun HiBrowserLibrary(
                 }
             }
         }
+    }
     }
 }

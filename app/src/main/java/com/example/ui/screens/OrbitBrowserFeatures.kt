@@ -76,6 +76,13 @@ internal class OrbitBrowserStore(context: Context) {
             write("history", listOf(entry) + history().filterNot { it.url == entry.url }.take(499))
         }
     }
+    // Update suggestions only from a redirect actually observed by this WebView.
+    // Never guess a replacement domain or rewrite bookmarks to a different owner.
+    fun replaceRedirectedHistory(oldUrl: String, newUrl: String) {
+        if (oldUrl != newUrl && BrowserHistoryPolicy.isWebUrl(newUrl) && newUrl.startsWith("https://")) {
+            write("history", history().filterNot { it.url == oldUrl })
+        }
+    }
     fun removeHistory(url: String) = write("history", history().filterNot { it.url == url })
     fun clearHistory() = write("history", emptyList())
 

@@ -48,8 +48,8 @@ internal fun GoogleDriveBrowserSheet(onDismiss: () -> Unit, onPlay: (VideoItem) 
                 }
                 if (state.connected) IconButton(enabled = !state.busy, onClick = { model.load() }) { Icon(Icons.Default.Refresh, "Refresh Drive", tint = palette.textPrimary) }
             }
-            if (com.example.BuildConfig.GOOGLE_DRIVE_ENABLED && com.example.BuildConfig.VERSION_NAME.endsWith("-demo")) {
-                Text("Demo test flow · Google Drive permission is unverified and may be blocked by Google.", color = palette.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+            if (com.example.BuildConfig.GOOGLE_DRIVE_ENABLED) {
+                Text("Google Drive access requires Google authorization. If access is blocked, reconnect only after the project consent configuration is approved.", color = palette.textSecondary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(16.dp))
             if (!state.connected) {

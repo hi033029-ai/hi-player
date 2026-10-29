@@ -499,6 +499,16 @@ class MainActivity : ComponentActivity() {
                                                         onDownloadsConsumed = { pendingBrowserDownloads.value = false },
                                                         onExternalUrlConsumed = { pendingBrowserUrl.value = null },
                                                         onBack = { currentTab = tabBeforeBrowser },
+                                                        appNavigation = {
+                                                            HiBottomNavigationBar(
+                                                                currentTab = NavTab.BROWSER,
+                                                                onTabSelected = { tab ->
+                                                                    if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
+                                                                    currentTab = tab
+                                                                },
+                                                                onOpenHubSheet = { showHubBottomSheet = true },
+                                                            )
+                                                        },
                                                         onPlayBrowserVideo = { url, mimeType, title ->
                                                             // The page already proved this is media: play it directly.
                                                             val result = StreamUrlClassifier.classifyResolvedMediaUrl(
