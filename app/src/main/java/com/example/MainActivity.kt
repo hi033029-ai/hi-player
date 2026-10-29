@@ -159,8 +159,18 @@ class MainActivity : ComponentActivity() {
                 var returnTabFromDiscover by remember { mutableStateOf(NavTab.VIDEOS) }
                 // Where Back from browser mode returns to.
                 var tabBeforeBrowser by remember { mutableStateOf(NavTab.VIDEOS) }
+                // Hi Browser keeps the primary app navigation out of the way
+                // until a deliberate bottom-edge swipe requests it.
+                var browserNavigationVisible by remember { mutableStateOf(false) }
+                var browserNavigationRevealId by remember { mutableStateOf(0) }
                 androidx.compose.runtime.LaunchedEffect(currentTab) {
+                    if (currentTab != NavTab.BROWSER) browserNavigationVisible = false
                     if (currentTab != NavTab.BROWSER && currentTab != NavTab.DISCOVER) tabBeforeBrowser = currentTab
+                }
+                LaunchedEffect(browserNavigationRevealId, browserNavigationVisible, currentTab) {
+                    if (!browserNavigationVisible || currentTab != NavTab.BROWSER) return@LaunchedEffect
+                    kotlinx.coroutines.delay(5_000L)
+                    browserNavigationVisible = false
                 }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
                 var showGlobalSearchDialog by remember { mutableStateOf(false) }
@@ -409,13 +419,15 @@ class MainActivity : ComponentActivity() {
                                                      onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
                                                 )
                                             }
-                                            if (currentTab != NavTab.BROWSER) HiBottomNavigationBar(
+                                            if (currentTab != NavTab.BROWSER || browserNavigationVisible) HiBottomNavigationBar(
                                                 currentTab = currentTab,
                                                 onTabSelected = { tab ->
                                                     if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
+                                                    browserNavigationVisible = false
                                                     currentTab = tab
                                                 },
                                                 onOpenHubSheet = {
+                                                    browserNavigationVisible = false
                                                     showHubBottomSheet = true
                                                 }
                                             )
@@ -493,6 +505,11 @@ class MainActivity : ComponentActivity() {
                                                     HiBrowserScreen(
                                                         modifier = Modifier.fillMaxSize(),
                                                         isInPictureInPicture = isPip && browserPip,
+                                                        appNavigationVisible = browserNavigationVisible,
+                                                        onRequestAppNavigation = {
+                                                            browserNavigationVisible = true
+                                                            browserNavigationRevealId++
+                                                        },
                                                         onEnterPictureInPicture = { enterBrowserPipMode() },
                                                         externalUrl = externalBrowserUrl,
                                                         openDownloads = openBrowserDownloads,

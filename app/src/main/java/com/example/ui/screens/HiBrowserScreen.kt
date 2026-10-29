@@ -288,6 +288,8 @@ fun HiBrowserScreen(
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
     isInPictureInPicture: Boolean = false,
+    appNavigationVisible: Boolean = false,
+    onRequestAppNavigation: () -> Unit = {},
     onEnterPictureInPicture: (() -> Boolean)? = null,
     externalUrl: String? = null,
     openDownloads: Boolean = false,
@@ -320,6 +322,7 @@ fun HiBrowserScreen(
     val adBlockFlag = remember { HiBrowserFlag(store.adBlock) }
     val fullscreen = remember { HiBrowserFullscreen() }
     val latestOnPlayBrowserVideo by rememberUpdatedState(onPlayBrowserVideo)
+    val latestOnRequestAppNavigation by rememberUpdatedState(onRequestAppNavigation)
     var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
     val latestTabs by rememberUpdatedState(tabs)
     val latestOnPlayDirectMedia by rememberUpdatedState(onPlayDirectMedia)
@@ -907,7 +910,9 @@ fun HiBrowserScreen(
     val density = LocalDensity.current
     val imeVisibleNow = hiImeVisible()
     val onPageNow = !showStartPage
-    val showBrowserBar = !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint
+    val showBrowserBar = !appNavigationVisible && (
+        !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint
+    )
     // The address bar floats over the page and slides away by moving its layer,
     // so the WebView is never resized while the page scrolls.
     val barHiddenFraction by animateFloatAsState(
@@ -974,6 +979,40 @@ fun HiBrowserScreen(
                             applyOrbitDarkMode(this, store.darkMode)
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
                             val browserWebView = this
+                            val gestureDensity = resources.displayMetrics.density
+                            val revealEdgePx = 64f * gestureDensity
+                            val revealDistancePx = 72f * gestureDensity
+                            var revealStartX = 0f
+                            var revealStartY = 0f
+                            setOnTouchListener { touchedView, event ->
+                                if (activeTabId != tabId) return@setOnTouchListener false
+                                when (event.actionMasked) {
+                                    MotionEvent.ACTION_DOWN -> {
+                                        revealStartX = event.x
+                                        revealStartY = event.y
+                                    }
+                                    MotionEvent.ACTION_UP -> {
+                                        if (BrowserAppNavigationGesture.isRevealSwipe(
+                                                viewHeightPx = touchedView.height,
+                                                downX = revealStartX,
+                                                downY = revealStartY,
+                                                upX = event.x,
+                                                upY = event.y,
+                                                bottomEdgePx = revealEdgePx,
+                                                minimumUpwardDistancePx = revealDistancePx,
+                                            )
+                                        ) {
+                                            latestOnRequestAppNavigation()
+                                        }
+                                    }
+                                    MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                                        revealStartY = -1f
+                                    }
+                                }
+                                // Keep the complete gesture stream in WebView: this is only an
+                                // observer, never an overlay that can steal page scrolling.
+                                false
+                            }
                             var scrollTravel = 0
                             setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                                 if (activeTabId != tabId) return@setOnScrollChangeListener

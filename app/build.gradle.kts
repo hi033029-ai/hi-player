@@ -27,8 +27,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 67
-    versionName = "1.0.66"
+    versionCode = 68
+    versionName = "1.0.67"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
