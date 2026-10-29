@@ -1,0 +1,27 @@
+name: Integrate approved main source
+on:
+  push:
+    branches: [feature/account-drive-ui-polish]
+    paths: [.github/workflows/integrate-main-source.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve latest cards and unified browser navigation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          feature=$(git rev-parse HEAD)
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = c5705ee770c324a7fde95528afce478d31a51b4c
+          git merge --no-commit --no-ff origin/main || test "$(git diff --name-only --diff-filter=U)" = app/build.gradle.kts
+          git checkout "$feature" -- app/build.gradle.kts app/src/main/java/com/example/MainActivity.kt app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
+          git add app/build.gradle.kts app/src/main/java/com/example/MainActivity.kt app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
+          git diff --cached --check
+          git commit -m 'Integrate main download cards while retaining unified browser quick navigation'
+          git push
