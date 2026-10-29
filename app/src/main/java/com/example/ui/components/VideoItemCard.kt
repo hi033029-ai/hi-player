@@ -177,7 +177,7 @@ fun VideoItemCard(
                     }
                 }
 
-                if (video.isNewVideo) {
+                if (video.isNewVideo && !video.isPartialDownload) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -189,38 +189,22 @@ fun VideoItemCard(
                     }
                 }
 
-                // Duration badge
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(3.dp)
-                        .background(Color(0xCC000000), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 3.dp, vertical = 1.5.dp)
-                ) {
-                    Text(
-                        text = if (video.isPartialDownload) "DOWNLOADING" else video.formattedDuration,
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Download progress stays on the thumbnail. Resume progress is
-                // displayed below the title where it is easier to read.
-                when {
-                    video.isPartialDownload && video.downloadProgressFraction != null -> {
-                        LinearProgressIndicator(
-                            progress = { video.downloadProgressFraction!! },
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
-                        )
-                    }
-                    video.isPartialDownload -> {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
+                // A partially downloaded file stays identifiable by its own
+                // filename. Do not add a transfer label, progress bar, speed,
+                // or state badge to the video library card.
+                if (!video.isPartialDownload) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(3.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(3.dp))
+                            .padding(horizontal = 3.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(
+                            text = video.formattedDuration,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -245,80 +229,81 @@ fun VideoItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                if (!video.isPartialDownload && progressFraction > 0f) {
+                if (!video.isPartialDownload) {
+                    if (progressFraction > 0f) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier.fillMaxWidth().height(3.dp),
+                            color = palette.primary,
+                            trackColor = palette.surfaceBorder,
+                        )
+                    }
+
+                    // Reserve one compact line before the asynchronous metadata
+                    // result arrives, so a card does not grow under the user's
+                    // finger and shift the Lazy list while they are scrolling.
                     Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                    Text(
+                        text = catalogMetadata?.primaryLabel().orEmpty(),
+                        fontSize = 10.5.sp,
                         color = palette.primary,
-                        trackColor = palette.surfaceBorder,
+                        fontWeight = FontWeight.SemiBold,
+                        minLines = 1,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                }
 
-                // Reserve one compact line before the asynchronous metadata
-                // result arrives, so a card does not grow under the user's
-                // finger and shift the Lazy list while they are scrolling.
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = catalogMetadata?.primaryLabel().orEmpty(),
-                    fontSize = 10.5.sp,
-                    color = palette.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    minLines = 1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                Spacer(modifier = Modifier.height(3.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = if (video.isPartialDownload) video.formattedDownloadStatus else video.formattedSize,
-                        fontSize = 11.sp,
-                        color = palette.textSecondary
-                    )
-                    Text(
-                        text = "•",
-                        fontSize = 11.sp,
-                        color = palette.textSecondary
-                    )
-                    Box(
-                        modifier = Modifier
-                            .background(palette.primary.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = video.codec,
-                            fontSize = 10.sp,
-                            color = palette.primary,
-                            fontWeight = FontWeight.Bold
+                            text = video.formattedSize,
+                            fontSize = 11.sp,
+                            color = palette.textSecondary
+                        )
+                        Text(
+                            text = "•",
+                            fontSize = 11.sp,
+                            color = palette.textSecondary
+                        )
+                        Box(
+                            modifier = Modifier
+                                .background(palette.primary.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = video.codec,
+                                fontSize = 10.sp,
+                                color = palette.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Folder,
+                            contentDescription = "Folder",
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = video.folderName,
+                            fontSize = 10.5.sp,
+                            color = palette.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Folder,
-                        contentDescription = "Folder",
-                        tint = palette.textSecondary,
-                        modifier = Modifier.size(11.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = video.folderName,
-                        fontSize = 10.5.sp,
-                        color = palette.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
 
             // Favorite Quick Icon
@@ -531,7 +516,7 @@ fun VideoGridCard(
                     }
                 }
 
-                if (video.isNewVideo) {
+                if (video.isNewVideo && !video.isPartialDownload) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -543,38 +528,21 @@ fun VideoGridCard(
                     }
                 }
 
-                // Duration badge
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                        .background(Color(0xCC000000), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = if (video.isPartialDownload) "DOWNLOADING" else video.formattedDuration,
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Download progress stays on the thumbnail. Resume progress is
-                // displayed below the file title with the other metadata.
-                when {
-                    video.isPartialDownload && video.downloadProgressFraction != null -> {
-                        LinearProgressIndicator(
-                            progress = { video.downloadProgressFraction!! },
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
-                        )
-                    }
-                    video.isPartialDownload -> {
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(2.5.dp).align(Alignment.BottomCenter),
-                            color = palette.primary,
-                            trackColor = Color(0x66FFFFFF)
+                // Download state is intentionally not rendered in the library.
+                // The title remains the only partial-download identifier here.
+                if (!video.isPartialDownload) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp)
+                            .background(Color(0xCC000000), RoundedCornerShape(3.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = video.formattedDuration,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -667,47 +635,48 @@ fun VideoGridCard(
                     }
                 }
 
-                if (!video.isPartialDownload && progressFraction > 0f) {
+                if (!video.isPartialDownload) {
+                    if (progressFraction > 0f) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { progressFraction },
+                            modifier = Modifier.fillMaxWidth().height(3.dp),
+                            color = palette.primary,
+                            trackColor = palette.surfaceBorder,
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { progressFraction },
-                        modifier = Modifier.fillMaxWidth().height(3.dp),
-                        color = palette.primary,
-                        trackColor = palette.surfaceBorder,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = catalogMetadata?.primaryLabel().orEmpty(),
-                    fontSize = 10.sp,
-                    color = palette.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    minLines = 1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                Spacer(modifier = Modifier.height(3.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
                     Text(
-                        text = if (video.isPartialDownload) video.formattedDownloadStatus else video.formattedSize,
-                        fontSize = 10.sp,
-                        color = palette.textSecondary
-                    )
-                    Text(
-                        text = video.codec,
+                        text = catalogMetadata?.primaryLabel().orEmpty(),
                         fontSize = 10.sp,
                         color = palette.primary,
                         fontWeight = FontWeight.SemiBold,
+                        minLines = 1,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
                     )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = video.formattedSize,
+                            fontSize = 10.sp,
+                            color = palette.textSecondary
+                        )
+                        Text(
+                            text = video.codec,
+                            fontSize = 10.sp,
+                            color = palette.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
