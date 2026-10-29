@@ -55,7 +55,6 @@ import com.example.ui.theme.LocalHiPalette
 
 enum class NavTab {
     VIDEOS,
-    DISCOVER,
     MUSIC,
     BROWSER,
     FILE_MANAGER,
@@ -135,7 +134,7 @@ fun HiNavigationBottomSheet(
                             }
                         }
                         Text(
-                        text = "Videos • Discover • Music • Browser • File Manager • Settings",
+                        text = "Videos • Music • Browser • File Manager • Settings",
                             fontSize = 10.5.sp,
                             color = palette.textSecondary
                         )

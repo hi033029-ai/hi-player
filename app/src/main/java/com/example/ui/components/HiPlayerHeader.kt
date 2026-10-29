@@ -96,7 +96,7 @@ fun HiPlayerHeader(
                     IconButton(onClick = onStreamClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Cast,
-                            contentDescription = "Stream URL",
+                            contentDescription = "Stream and Google Cast",
                             tint = palette.textPrimary
                         )
                     }

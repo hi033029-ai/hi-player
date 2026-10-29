@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BrowserQuickNavigationTest {
+    @Test fun navigationExpiresAfterFiveSecondsWithoutActivity() {
+        assertEquals(5_000L, BrowserNavigationPolicy.remainingIdleMillis(10_000L, 10_000L))
+        assertEquals(1L, BrowserNavigationPolicy.remainingIdleMillis(14_999L, 10_000L))
+        assertEquals(0L, BrowserNavigationPolicy.remainingIdleMillis(15_000L, 10_000L))
+        assertEquals(0L, BrowserNavigationPolicy.remainingIdleMillis(99_000L, 10_000L))
+    }
+    @Test fun syntheticAndHoverEventsCannotKeepNavigationOpen() {
+        assertFalse(BrowserNavigationPolicy.isUserActivity(false, false, true))
+        assertFalse(BrowserNavigationPolicy.isUserActivity(true, true, false))
+        assertTrue(BrowserNavigationPolicy.isUserActivity(true, false, false))
+        assertTrue(BrowserNavigationPolicy.isUserActivity(true, true, true))
+        assertTrue(BrowserNavigationPolicy.isUserActivity(false, true, false))
+    }
     @Test fun onlyIntentionalUpwardSwipeRevealsNavigation() {
         assertTrue(BrowserNavigationPolicy.isUpSwipe(60f, 10f, 44f))
         assertFalse(BrowserNavigationPolicy.isUpSwipe(20f, 0f, 44f))

@@ -13,7 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 import android.graphics.drawable.Icon
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -76,7 +76,6 @@ import com.example.ui.components.HiBottomNavigationBar
 import com.example.ui.components.HiNavigationBottomSheet
 import com.example.ui.components.NavTab
 import com.example.ui.components.HiPlayerHeader
-import com.example.ui.screens.DiscoverScreen
 import com.example.ui.screens.FileManagerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MusicScreen
@@ -104,7 +103,9 @@ sealed class AppScreen {
     object Player : AppScreen()
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+    // Retained only to manage/remove existing personal media-source credentials.
+    private val mediaSourceViewModel: DiscoverViewModel by viewModels()
 
     private companion object {
         const val PIP_ACTION_PLAY_PAUSE = "com.example.hiplayer.PIP_PLAY_PAUSE"
@@ -121,7 +122,6 @@ class MainActivity : ComponentActivity() {
     private val playerViewModel: PlayerViewModel by viewModels()
     private val musicViewModel: MusicViewModel by viewModels()
     private val fileManagerViewModel: FileManagerViewModel by viewModels()
-    private val discoverViewModel: DiscoverViewModel by viewModels()
 
     private val _isInPipMode = mutableStateOf(false)
     // Android VIEW/SEND intents can arrive before Compose is created or while
@@ -156,11 +156,10 @@ class MainActivity : ComponentActivity() {
                 val palette = LocalHiPalette.current
                 var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
                 var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }
-                var returnTabFromDiscover by remember { mutableStateOf(NavTab.VIDEOS) }
                 // Where Back from browser mode returns to.
                 var tabBeforeBrowser by remember { mutableStateOf(NavTab.VIDEOS) }
                 androidx.compose.runtime.LaunchedEffect(currentTab) {
-                    if (currentTab != NavTab.BROWSER && currentTab != NavTab.DISCOVER) tabBeforeBrowser = currentTab
+                    if (currentTab != NavTab.BROWSER) tabBeforeBrowser = currentTab
                 }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
                 var showGlobalSearchDialog by remember { mutableStateOf(false) }
@@ -372,14 +371,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onStreamClick = if (currentTab == NavTab.FILE_MANAGER) null else ({ showStreamUrlDialog = true }),
                                                 extraActions = {
-                                                    if (currentTab != NavTab.FILE_MANAGER && currentTab != NavTab.DISCOVER) {
-                                                        IconButton(onClick = {
-                                                            returnTabFromDiscover = currentTab
-                                                            currentTab = NavTab.DISCOVER
-                                                        }) {
-                                                            Icon(Icons.Default.Explore, contentDescription = "Discover", tint = palette.textPrimary)
-                                                        }
-                                                    }
                                                     if (currentTab == NavTab.FILE_MANAGER) {
                                                         IconButton(onClick = { recycleBinOpenRequest++ }) {
                                                             Icon(Icons.Default.DeleteSweep, contentDescription = "Recycle Bin", tint = palette.textPrimary)
@@ -458,17 +449,6 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     },
                                                     includeHeader = false
-                                                )
-                                            }
-                                            NavTab.DISCOVER -> {
-                                                DiscoverScreen(
-                                                    discoverViewModel = discoverViewModel,
-                                                    onPlayRemote = { match ->
-                                                        playerViewModel.playVideo(match.toVideoItem())
-                                                        currentScreen = AppScreen.Player
-                                                    },
-                                                    onOpenSettings = { currentTab = NavTab.SETTINGS },
-                                                    onBack = { currentTab = returnTabFromDiscover }
                                                 )
                                             }
                                             NavTab.MUSIC -> {
@@ -624,7 +604,7 @@ class MainActivity : ComponentActivity() {
                                             NavTab.SETTINGS -> {
                                                 SettingsScreen(
                                                     libraryViewModel = libraryViewModel,
-                                                    discoverViewModel = discoverViewModel,
+                                                    discoverViewModel = mediaSourceViewModel,
                                                     onBack = { currentTab = NavTab.VIDEOS },
                                                     onPlayDriveMedia = { video ->
                                                         playerViewModel.playVideo(video)
@@ -664,159 +644,31 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 if (showStreamUrlDialog) {
-                                    AlertDialog(
-                                        onDismissRequest = {
-                                            if (isResolvingStreamUrl) return@AlertDialog
-                                            streamUrlError = null
-                                            showStreamUrlDialog = false
-                                        },
-                                        shape = RoundedCornerShape(24.dp),
-                                        containerColor = palette.surfaceElevated,
-                                        titleContentColor = palette.textPrimary,
-                                        textContentColor = palette.textSecondary,
-                                        title = {
-                                            Card(
-                                                shape = RoundedCornerShape(14.dp),
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = palette.primary.copy(alpha = if (palette.isDark) 0.14f else 0.12f)
-                                                )
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.PlayCircle,
-                                                        contentDescription = null,
-                                                        tint = palette.primary
-                                                    )
-                                                    Spacer(Modifier.width(10.dp))
-                                                    Column {
-                                                        Text("Play stream", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                                                        Text(
-                                                            "Open a direct video or public video page",
-                                                            color = palette.textSecondary,
-                                                            fontSize = 12.sp
-                                                        )
-                                                    }
+                                    com.example.ui.components.StreamWindow(
+                                        url = streamUrl,
+                                        onUrlChange = { streamUrl = it; streamUrlError = null },
+                                        error = streamUrlError,
+                                        resolving = isResolvingStreamUrl,
+                                        onDismiss = { streamUrlError = null; showStreamUrlDialog = false },
+                                        onCastStarted = { if (isAudioPlaying) musicViewModel.togglePlayPause() },
+                                        onPlay = {
+                                            val result = StreamUrlClassifier.classify(streamUrl)
+                                            if (!result.isPlayableInHiPlayer) {
+                                                streamUrlError = result.errorMessage
+                                            } else if (!result.requiresWebResolution) {
+                                                openResolvedStream(result)
+                                            } else {
+                                                val requestedUrl = streamUrl
+                                                isResolvingStreamUrl = true
+                                                streamUrlError = null
+                                                scope.launch {
+                                                    try {
+                                                        val resolution = withContext(Dispatchers.IO) { PublicWebVideoResolver.resolve(requestedUrl) }
+                                                        resolution.stream?.let(openResolvedStream) ?: run { streamUrlError = resolution.errorMessage }
+                                                    } finally { isResolvingStreamUrl = false }
                                                 }
                                             }
                                         },
-                                        text = {
-                                            Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                                                Card(
-                                                    shape = RoundedCornerShape(14.dp),
-                                                    colors = CardDefaults.cardColors(containerColor = palette.surface),
-                                                ) {
-                                                    OutlinedTextField(
-                                                        value = streamUrl,
-                                                        onValueChange = {
-                                                            streamUrl = it
-                                                            streamUrlError = null
-                                                        },
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .padding(6.dp),
-                                                        singleLine = true,
-                                                        leadingIcon = {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Link,
-                                                                contentDescription = null,
-                                                                tint = palette.primary
-                                                            )
-                                                        },
-                                                        label = { Text("Video or stream link") },
-                                                        placeholder = { Text("https://example.com/video.m3u8") },
-                                                        isError = streamUrlError != null,
-                                                        supportingText = {
-                                                            Text(
-                                                                streamUrlError ?: if (isResolvingStreamUrl) {
-                                                                    "Looking for a public direct video source…"
-                                                                } else {
-                                                                    "Direct MP4, MKV, HLS, DASH, or a public webpage"
-                                                                }
-                                                            )
-                                                        },
-                                                        colors = OutlinedTextFieldDefaults.colors(
-                                                            focusedBorderColor = palette.primary,
-                                                            unfocusedBorderColor = palette.surfaceBorder,
-                                                            focusedTextColor = palette.textPrimary,
-                                                            unfocusedTextColor = palette.textPrimary,
-                                                            focusedLabelColor = palette.primary,
-                                                            unfocusedLabelColor = palette.textSecondary,
-                                                            cursorColor = palette.primary,
-                                                        )
-                                                    )
-                                                }
-                                                Spacer(Modifier.height(12.dp))
-                                                Card(
-                                                    shape = RoundedCornerShape(12.dp),
-                                                    colors = CardDefaults.cardColors(
-                                                        containerColor = palette.primary.copy(alpha = if (palette.isDark) 0.09f else 0.08f)
-                                                    )
-                                                ) {
-                                                    Text(
-                                                        "Hi Player plays direct media with its own controls. For an ordinary public webpage, it checks standard public video metadata without using logins, cookies, or protected streams.",
-                                                        color = palette.textSecondary,
-                                                        fontSize = 12.sp,
-                                                        modifier = Modifier.padding(12.dp)
-                                                    )
-                                                }
-                                            }
-                                        },
-                                        confirmButton = {
-                                            Button(
-                                                onClick = {
-                                                val result = StreamUrlClassifier.classify(streamUrl)
-                                                if (!result.isPlayableInHiPlayer) {
-                                                    streamUrlError = result.errorMessage
-                                                } else if (!result.requiresWebResolution) {
-                                                    openResolvedStream(result)
-                                                } else {
-                                                    isResolvingStreamUrl = true
-                                                    streamUrlError = null
-                                                    scope.launch {
-                                                        val resolution = withContext(Dispatchers.IO) {
-                                                            PublicWebVideoResolver.resolve(streamUrl)
-                                                        }
-                                                        resolution.stream?.let(openResolvedStream)
-                                                            ?: run {
-                                                                isResolvingStreamUrl = false
-                                                                streamUrlError = resolution.errorMessage
-                                                            }
-                                                    }
-                                                }
-                                                },
-                                                enabled = !isResolvingStreamUrl,
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = palette.primary,
-                                                    contentColor = if (palette.isDark) Color.Black else Color.White
-                                                )
-                                            ) {
-                                                if (isResolvingStreamUrl) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.height(18.dp).width(18.dp),
-                                                        color = if (palette.isDark) Color.Black else Color.White,
-                                                        strokeWidth = 2.dp
-                                                    )
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text("Checking")
-                                                } else {
-                                                    Icon(Icons.Default.PlayCircle, contentDescription = null)
-                                                    Spacer(Modifier.width(6.dp))
-                                                    Text("Play in Hi Player")
-                                                }
-                                            }
-                                        },
-                                        dismissButton = {
-                                            TextButton(
-                                                enabled = !isResolvingStreamUrl,
-                                                onClick = {
-                                                    streamUrlError = null
-                                                    showStreamUrlDialog = false
-                                                }
-                                            ) { Text("Cancel", color = palette.textPrimary) }
-                                        }
                                     )
                                 }
 

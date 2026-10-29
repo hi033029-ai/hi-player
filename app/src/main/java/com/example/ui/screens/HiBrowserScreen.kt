@@ -928,6 +928,7 @@ fun HiBrowserScreen(
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,
+        revealButtonBottomInset = 88.dp,
         navigation = appNavigation,
     ) {
         Box(

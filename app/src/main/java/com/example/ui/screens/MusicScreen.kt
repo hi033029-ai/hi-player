@@ -144,8 +144,6 @@ fun MusicScreen(
             currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
         }
     }
-    var viewMenuExpanded by remember { mutableStateOf(false) }
-    var sortMenuExpanded by remember { mutableStateOf(false) }
     var libraryMode by remember { mutableStateOf("All Music") }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
@@ -226,90 +224,20 @@ fun MusicScreen(
             .background(palette.background)
     ) {
         val audioToolbar: @Composable () -> Unit = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(palette.surface)
-                    .padding(vertical = 8.dp)
-            ) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("music_library_categories")
-                ) {
-                    listOf("All Music", "Folders", "Playlists", "Albums", "Artists").forEach { option ->
-                        item {
-                            val isSelected = libraryMode == option
-                            Row(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(9.dp)).hiContainerBorder(RoundedCornerShape(9.dp))
-                                    .background(if (isSelected) palette.primary else palette.surfaceElevated)
-                                    .clickable {
-                                        libraryMode = option
-                                        selectedCollection = null
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                                    .testTag("music_library_category_$option"),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = option,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else palette.textPrimary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, top = 2.dp, end = 14.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (selectedCollection != null) {
-                        TextButton(onClick = { selectedCollection = null }) {
-                            Text("All $libraryMode", color = palette.primary, fontSize = 11.sp)
-                        }
-                    }
-                    Box {
-                        IconButton(onClick = { viewMenuExpanded = true }, modifier = Modifier.testTag("audio_view_button")) {
-                            Icon(
-                                imageVector = if (compactAudioView) Icons.Default.ViewList else Icons.Default.GridView,
-                                contentDescription = "View",
-                                tint = palette.textPrimary
-                            )
-                        }
-                        DropdownMenu(expanded = viewMenuExpanded, onDismissRequest = { viewMenuExpanded = false }) {
-                            DropdownMenuItem(text = { Text("List") }, onClick = {
-                                compactAudioView = false
-                                musicPreferences.edit().putBoolean("horizontal_view", false).apply()
-                                viewMenuExpanded = false
-                            })
-                            DropdownMenuItem(text = { Text("Grid") }, onClick = {
-                                compactAudioView = true
-                                musicPreferences.edit().putBoolean("horizontal_view", true).apply()
-                                viewMenuExpanded = false
-                            })
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box {
-                        IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.testTag("audio_sort_button")) {
-                            Icon(Icons.Default.Sort, contentDescription = "Sort By", tint = palette.textPrimary)
-                        }
-                        DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
-                            listOf("Custom", "Name", "Artist", "Duration", "Newest").forEach { option ->
-                                DropdownMenuItem(text = { Text(option) }, onClick = {
-                                    audioSort = option
-                                    sortMenuExpanded = false
-                                })
-                            }
-                        }
-                    }
+            MusicLibraryToolbar(
+                selected = libraryMode,
+                onCategory = { libraryMode = it; selectedCollection = null },
+                grid = compactAudioView,
+                onGridChange = {
+                    compactAudioView = it
+                    musicPreferences.edit().putBoolean("horizontal_view", it).apply()
+                },
+                sort = audioSort,
+                onSort = { audioSort = it },
+            )
+            if (selectedCollection != null) {
+                TextButton(onClick = { selectedCollection = null }) {
+                    Text("‹ All $libraryMode", color = palette.textPrimary)
                 }
             }
         }
