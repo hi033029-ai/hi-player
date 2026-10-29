@@ -538,7 +538,10 @@ class HiPlayerEngine(
                 if (headers.isEmpty()) dataSpec else dataSpec.withAdditionalHeaders(headers)
             }
         )
-        val dataSourceFactory = DefaultDataSource.Factory(context, authenticatedHttpFactory)
+        val accountAwareHttpFactory = androidx.media3.datasource.DataSource.Factory {
+            com.example.drive.AccountAwareHttpDataSource(context.applicationContext, authenticatedHttpFactory)
+        }
+        val dataSourceFactory = DefaultDataSource.Factory(context, accountAwareHttpFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(
             dataSourceFactory,
             createOptimizedExtractorsFactory()

@@ -91,7 +91,6 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.theme.getCustomPalette
 import com.example.ui.components.DiscoverSourceSettings
-import com.example.ui.components.GoogleDriveAccountCard
 import com.example.ui.components.HiPlayerHeader
 import com.example.ui.components.ThemeCustomizationPanel
 import com.example.viewmodel.DiscoverViewModel
@@ -106,7 +105,8 @@ fun SettingsScreen(
     discoverViewModel: DiscoverViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    includeHeader: Boolean = true
+    includeHeader: Boolean = true,
+    onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {}
 ) {
     val settings by libraryViewModel.playerSettings.collectAsState()
     val palette = LocalHiPalette.current
@@ -147,15 +147,11 @@ fun SettingsScreen(
         ) {
             SettingsCollapsibleSection(
                 title = "Google account & media sources",
-                subtitle = "Google sign-in, secure website sessions, and media folders",
+                subtitle = "Google account, My Drive, and personal media servers",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
             ) {
-                com.example.ui.components.GoogleAccountCard()
-                GoogleDriveAccountCard(
-                    discoverViewModel = discoverViewModel,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+                com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia)
                 DiscoverSourceSettings(
                     discoverViewModel = discoverViewModel,
                     modifier = Modifier.padding(horizontal = 0.dp)

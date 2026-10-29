@@ -202,7 +202,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         if (!sources.hasAnySource) {
             _uiState.value = _uiState.value.copy(
                 sourceMatches = emptyList(),
-                sourceMessage = "Connect Google Drive, a Jellyfin server, or a WebDAV folder in Settings to find your own playable copies."
+                sourceMessage = "Connect a Jellyfin server or WebDAV folder in Settings. Google Drive media is available from your signed-in Google account."
             )
             return
         }
@@ -327,17 +327,9 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             val webDavSearch: Deferred<List<RemoteMediaMatch>>? = if (webDav?.isConfigured == true) {
                 async { runCatching { WebDavMediaSourceClient.search(webDav, query) }.getOrDefault(emptyList()) }
             } else null
-            val gDrive = settings.googleDrive
-            val gDriveSearch: Deferred<List<RemoteMediaMatch>>? = if (gDrive?.isConfigured == true) {
-                async {
-                    runCatching { GoogleDriveMediaSourceClient.search(getApplication(), gDrive, query) }
-                        .getOrDefault(emptyList())
-                }
-            } else null
             buildList {
                 jellyfinSearch?.await()?.let(::addAll)
                 webDavSearch?.await()?.let(::addAll)
-                gDriveSearch?.await()?.let(::addAll)
             }
         }
     }

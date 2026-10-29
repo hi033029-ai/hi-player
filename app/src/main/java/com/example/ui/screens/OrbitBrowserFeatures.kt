@@ -29,6 +29,10 @@ internal class OrbitBrowserStore(context: Context) {
         }
     }
 
+    var searchProviderName: String
+        get() = prefs.getString("search_provider", "GOOGLE") ?: "GOOGLE"
+        set(value) { prefs.edit().putString("search_provider", value).apply() }
+
     var darkMode: Boolean
         get() = prefs.getBoolean("dark", false)
         set(value) { prefs.edit().putBoolean("dark", value).apply() }
@@ -70,6 +74,13 @@ internal class OrbitBrowserStore(context: Context) {
     fun addHistory(entry: OrbitBrowserEntry) {
         if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
             write("history", listOf(entry) + history().filterNot { it.url == entry.url }.take(499))
+        }
+    }
+    // Update suggestions only from a redirect actually observed by this WebView.
+    // Never guess a replacement domain or rewrite bookmarks to a different owner.
+    fun replaceRedirectedHistory(oldUrl: String, newUrl: String) {
+        if (oldUrl != newUrl && BrowserHistoryPolicy.isWebUrl(newUrl) && newUrl.startsWith("https://")) {
+            write("history", history().filterNot { it.url == oldUrl })
         }
     }
     fun removeHistory(url: String) = write("history", history().filterNot { it.url == url })

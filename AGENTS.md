@@ -15,5 +15,10 @@
 - Missing OAuth configuration must be shown as setup-required; never fabricate OAuth client identifiers or claim live sign-in is working before configured and tested.
 
 ## Themes
-- Container outlines must use the active palette's visible surfaceBorder or the shared hiContainerBorder modifier; do not set built-in theme border colors to transparent.
+- Prefer subtle theme-aware separators, not high-contrast frames around every container. Never outline each bottom-nav item. Player overlays must not inherit the light library theme's outline.
 - Do not put container frames over the video-rendering surface or change media playback behavior as part of styling.
+
+## Google Drive
+- Request read-only Drive authorization only on user action under the signed-in Google identity. Verify Drive API owner email and clear local credentials/lists on sign-out or account changes.
+- No separate Android account chooser, Firebase ID token for Drive, cookie copying, credential URLs, generic stream-header registration, or bearer forwarding through redirects.
+- OAuth access tokens stay in memory. drive.readonly is restricted; public distribution requires consent configuration and Google's review requirements. Never claim verification without evidence.

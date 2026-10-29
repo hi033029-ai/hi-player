@@ -42,7 +42,11 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
     val configured: Boolean get() = auth != null && GoogleSignInConfiguration.clientId(getApplication()).isNotBlank()
-    private val listener = FirebaseAuth.AuthStateListener { _profile.value = it.currentUser.toProfile() }
+    private val listener = FirebaseAuth.AuthStateListener {
+        val updated = it.currentUser.toProfile()
+        if (_profile.value?.uid != updated?.uid) com.example.drive.GoogleDriveSession.clear()
+        _profile.value = updated
+    }
     init { auth?.addAuthStateListener(listener) }
 
     fun signIn(activity: Activity) {
@@ -85,6 +89,7 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
         _busy.value = true
         viewModelScope.launch {
             try {
+                com.example.drive.GoogleDriveSession.clear()
                 auth?.signOut()
                 _profile.value = null
                 _message.value = null

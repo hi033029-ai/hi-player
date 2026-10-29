@@ -285,11 +285,10 @@ private fun captureOrbitHistory(view: WebView): android.os.Bundle? = runCatching
 @Composable
 fun HiBrowserScreen(
     onBack: () -> Unit,
+    appNavigation: @Composable () -> Unit = {},
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
     isInPictureInPicture: Boolean = false,
-    appNavigationVisible: Boolean = false,
-    onRequestAppNavigation: () -> Unit = {},
     onEnterPictureInPicture: (() -> Boolean)? = null,
     externalUrl: String? = null,
     openDownloads: Boolean = false,
@@ -322,7 +321,6 @@ fun HiBrowserScreen(
     val adBlockFlag = remember { HiBrowserFlag(store.adBlock) }
     val fullscreen = remember { HiBrowserFullscreen() }
     val latestOnPlayBrowserVideo by rememberUpdatedState(onPlayBrowserVideo)
-    val latestOnRequestAppNavigation by rememberUpdatedState(onRequestAppNavigation)
     var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
     val latestTabs by rememberUpdatedState(tabs)
     val latestOnPlayDirectMedia by rememberUpdatedState(onPlayDirectMedia)
@@ -334,7 +332,7 @@ fun HiBrowserScreen(
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
     var showStartPage by remember { mutableStateOf(true) }
-    var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.DUCKDUCKGO) }
+    var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.entries.firstOrNull { it.name == store.searchProviderName } ?: BrowserSearchProvider.GOOGLE) }
     var pageTitle by remember { mutableStateOf("Hi Browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var rendererGone by remember { mutableStateOf(false) }
@@ -344,6 +342,10 @@ fun HiBrowserScreen(
     var showDownloadsDialog by remember { mutableStateOf(false) }
     var entryList by remember { mutableStateOf<OrbitEntryList?>(null) }
     var entriesVersion by remember { mutableIntStateOf(0) }
+    var addressFocused by remember { mutableStateOf(false) }
+    val browserFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val recentEntries = remember(entriesVersion) { store.history() }
+    val redirectSources = remember { mutableMapOf<Int, String>() }
     var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
     var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
     var findBarVisible by remember { mutableStateOf(false) }
@@ -478,6 +480,7 @@ fun HiBrowserScreen(
         showStartPage = false
         rendererGone = false
         val tab = activeTab ?: return
+        redirectSources.remove(tab.id)
         updateTab(tab.id) { it.copy(url = destination, title = destination) }
         val existing = tab.webView
         if (existing != null) existing.loadUrl(destination)
@@ -910,9 +913,7 @@ fun HiBrowserScreen(
     val density = LocalDensity.current
     val imeVisibleNow = hiImeVisible()
     val onPageNow = !showStartPage
-    val showBrowserBar = !appNavigationVisible && (
-        !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint
-    )
+    val showBrowserBar = !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint
     // The address bar floats over the page and slides away by moving its layer,
     // so the WebView is never resized while the page scrolls.
     val barHiddenFraction by animateFloatAsState(
@@ -924,8 +925,10 @@ fun HiBrowserScreen(
     val barHeightDp = with(density) { barHeightPx.toDp() }
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
-    Box(
+    BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
+        enabled = !isInPictureInPicture && !fullscreen.active,
+        navigation = appNavigation,
     ) {
         Box(
             modifier = Modifier
@@ -979,40 +982,6 @@ fun HiBrowserScreen(
                             applyOrbitDarkMode(this, store.darkMode)
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
                             val browserWebView = this
-                            val gestureDensity = resources.displayMetrics.density
-                            val revealEdgePx = 64f * gestureDensity
-                            val revealDistancePx = 72f * gestureDensity
-                            var revealStartX = 0f
-                            var revealStartY = 0f
-                            setOnTouchListener { touchedView, event ->
-                                if (activeTabId != tabId) return@setOnTouchListener false
-                                when (event.actionMasked) {
-                                    MotionEvent.ACTION_DOWN -> {
-                                        revealStartX = event.x
-                                        revealStartY = event.y
-                                    }
-                                    MotionEvent.ACTION_UP -> {
-                                        if (BrowserAppNavigationGesture.isRevealSwipe(
-                                                viewHeightPx = touchedView.height,
-                                                downX = revealStartX,
-                                                downY = revealStartY,
-                                                upX = event.x,
-                                                upY = event.y,
-                                                bottomEdgePx = revealEdgePx,
-                                                minimumUpwardDistancePx = revealDistancePx,
-                                            )
-                                        ) {
-                                            latestOnRequestAppNavigation()
-                                        }
-                                    }
-                                    MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
-                                        revealStartY = -1f
-                                    }
-                                }
-                                // Keep the complete gesture stream in WebView: this is only an
-                                // observer, never an overlay that can steal page scrolling.
-                                false
-                            }
                             var scrollTravel = 0
                             setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                                 if (activeTabId != tabId) return@setOnScrollChangeListener
@@ -1143,6 +1112,11 @@ fun HiBrowserScreen(
                                                 return true
                                             }
                                         }
+                                        if (request.isForMainFrame && !activeTab.privateTab) {
+                                            if (request.isRedirect) {
+                                                view.url?.takeIf { BrowserHistoryPolicy.isWebUrl(it) }?.let { redirectSources.putIfAbsent(tabId, it) }
+                                            } else redirectSources.remove(tabId)
+                                        }
                                         return false
                                     }
                                     if (uri.scheme in setOf("mailto", "tel", "sms")) {
@@ -1156,7 +1130,7 @@ fun HiBrowserScreen(
                                     updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
-                                        address = url
+                                        if (!addressFocused) address = url
                                         loadingProgress = 1
                                         browserBarHidden = false
                                     }
@@ -1171,12 +1145,17 @@ fun HiBrowserScreen(
                                     // Single-page sites change address without loading a new page.
                                     mediaSniffer.setPage(tabId, url)
                                     updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
+                                    if (!activeTab.privateTab && view.progress == 100) {
+                                        store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
+                                        entriesVersion++
+                                    }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
-                                        address = url
+                                        if (!addressFocused) address = url
                                     }
                                 }
                                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                                    if (request.isForMainFrame) redirectSources.remove(tabId)
                                     if (request.isForMainFrame && activeTabId == tabId) pendingFirstPaint = false
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
@@ -1186,12 +1165,16 @@ fun HiBrowserScreen(
                                     view.title?.takeIf(String::isNotBlank)?.let { mediaSniffer.setTitle(tabId, it) }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
-                                        address = url
+                                        if (!addressFocused) address = url
                                         pageTitle = view.title?.takeIf(String::isNotBlank) ?: url
                                         loadingProgress = 100
                                         pendingFirstPaint = false
                                     }
-                                    if (!activeTab.privateTab) store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
+                                    if (!activeTab.privateTab && BrowserHistoryPolicy.isWebUrl(url)) {
+                                        redirectSources.remove(tabId)?.let { old -> store.replaceRedirectedHistory(old, url) }
+                                        store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
+                                        entriesVersion++
+                                    }
                                     injectCosmeticCss(view, url)
                                     if (!HiBrowserDocumentScripts.isSupported()) {
                                         if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
@@ -1281,8 +1264,15 @@ fun HiBrowserScreen(
                         )
                     }
                 }
+                if (addressFocused && activeTab?.privateTab != true) {
+                    BrowserHistorySuggestions(
+                        entries = BrowserHistoryPolicy.suggestions(recentEntries, address),
+                        onOpen = { browserFocusManager.clearFocus(); addressFocused = false; loadAddress(it) },
+                    )
+                }
                 HiBrowserToolbar(
                     address = address,
+                    onFocusChange = { addressFocused = it },
                     onAddressChange = { address = it },
                     onSubmit = { loadAddress(it) },
                     isPrivate = activeTab?.privateTab == true,
@@ -1292,7 +1282,10 @@ fun HiBrowserScreen(
                     tabCount = tabs.size,
                     providers = BrowserSearchProvider.entries.map { it.displayName },
                     selectedProvider = searchProvider.displayName,
-                    onProviderSelect = { index -> searchProvider = BrowserSearchProvider.entries[index] },
+                    onProviderSelect = { index ->
+                        searchProvider = BrowserSearchProvider.entries[index]
+                        store.searchProviderName = searchProvider.name
+                    },
                     onHome = { showBrowserHome() },
                     onVoiceSearch = { startVoiceSearch() },
                     onReloadOrStop = {
@@ -1395,6 +1388,7 @@ fun HiBrowserScreen(
         key(section) {
         HiBrowserLibrary(
             initialSection = section,
+            appNavigation = appNavigation,
             bookmarks = libraryBookmarks,
             history = libraryHistory,
             onOpen = { loadAddress(it) },

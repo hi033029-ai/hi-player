@@ -89,7 +89,7 @@ data class MediaSourceSettings(
     val googleDrive: GoogleDriveConnection? = null,
 ) {
     val hasAnySource: Boolean
-        get() = jellyfin?.isConfigured == true || webDav?.isConfigured == true || googleDrive?.isConfigured == true
+        get() = jellyfin?.isConfigured == true || webDav?.isConfigured == true
 }
 
 data class RemoteMediaMatch(

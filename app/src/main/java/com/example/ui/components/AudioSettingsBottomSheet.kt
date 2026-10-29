@@ -57,7 +57,7 @@ fun AudioSettingsBottomSheet(
         modifier = modifier
             .widthIn(max = 220.dp)
             .heightIn(max = 205.dp)
-            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(Color.Black.copy(alpha = 0.94f))
             .padding(horizontal = 9.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,

@@ -219,7 +219,7 @@ internal fun HiProviderIcon(name: String, size: Dp, modifier: Modifier = Modifie
     val bitmap = HiSiteIcons.bundled(name.lowercase().replace(" ", ""))
     if (bitmap != null) {
         Box(
-            modifier = modifier.size(size).clip(CircleShape).background(Color.White),
+            modifier = modifier.size(size),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -233,7 +233,7 @@ internal fun HiProviderIcon(name: String, size: Dp, modifier: Modifier = Modifie
     } else {
         val color = hiSiteLetterColor(name)
         Box(
-            modifier = modifier.size(size).clip(CircleShape).background(color.copy(alpha = 0.15f)),
+            modifier = modifier.size(size),
             contentAlignment = Alignment.Center,
         ) {
             Text(name.take(1), color = color, fontSize = (size.value * 0.45f).sp, fontWeight = FontWeight.Bold)

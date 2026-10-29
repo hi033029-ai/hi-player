@@ -38,8 +38,8 @@ jobs:
       # debug.keystore is checked into this private repository so every APK
       # remains signed with the same key and can update the previous APK.
 
-      - name: Build debug APK
-        run: gradle assembleDebug
+      - name: Build APK with user-approved Drive testing
+        run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -54,5 +54,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Debug APK built from commit ${{ github.sha }}."
+          body: "Hi Player 1.0.68 (69), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk
