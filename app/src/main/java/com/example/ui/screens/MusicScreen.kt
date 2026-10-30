@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.example.ui.components.AudioLyricsPanel
+import com.example.ui.components.MusicEqualizerDialog
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.animation.AnimatedVisibility
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.Subtitles
 import com.example.ui.components.WavyAudioWaveform
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -57,6 +59,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -130,7 +133,8 @@ fun MusicScreen(
     val continueWatchingVideos by (libraryViewModel?.continueWatchingVideos
         ?: flowOf(emptyList<LibraryViewModel.ContinueWatchingItem>()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val equalizerPreset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
+    val equalizerState by musicViewModel.equalizerState.collectAsStateWithLifecycle()
+    val expandedPlayer by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
     val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
 
     var showEqDialog by remember { mutableStateOf(false) }
@@ -198,108 +202,163 @@ fun MusicScreen(
             }
         }
 
-        // Keep the toolbar outside the list so it remains available when a
-        // library mode has no matching tracks (for example an empty playlist).
-        MusicLibraryAccess(onRefresh = { musicViewModel.loadAudioTracks() })
-        audioToolbar()
+        if (currentTrack == null || !expandedPlayer) {
+            // Keep the toolbar outside the list so it remains available when a
+            // library mode has no matching tracks (for example an empty playlist).
+            MusicLibraryAccess(onRefresh = { musicViewModel.loadAudioTracks() })
+            audioToolbar()
 
-        // Track List
-        Box(modifier = Modifier.weight(1f)) {
-            if (filteredList.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = palette.textTertiary.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = when (libraryMode) {
-                                "Playlists" -> "No playlist tracks yet"
-                                "Folders" -> "No folder tracks found"
-                                "Albums" -> "No album tracks found"
-                                "Artists" -> "No artist tracks found"
-                                else -> "No audio tracks found"
-                            },
-                            color = palette.textSecondary,
-                            fontSize = 14.sp
-                        )
-                        androidx.compose.material3.TextButton(onClick = {
-                            musicViewModel.setSearchQuery("")
-                            libraryMode = "All Music"
-                            selectedCollection = null
-                            musicViewModel.loadAudioTracks()
-                        }) { Text(if (audioList.isEmpty()) "Scan music" else "Show all music") }
+            // Track List
+            Box(modifier = Modifier.weight(1f)) {
+                if (filteredList.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = palette.textTertiary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = when (libraryMode) {
+                                    "Playlists" -> "No playlist tracks yet"
+                                    "Folders" -> "No folder tracks found"
+                                    "Albums" -> "No album tracks found"
+                                    "Artists" -> "No artist tracks found"
+                                    else -> "No audio tracks found"
+                                },
+                                color = palette.textSecondary,
+                                fontSize = 14.sp
+                            )
+                            androidx.compose.material3.TextButton(onClick = {
+                                musicViewModel.setSearchQuery("")
+                                libraryMode = "All Music"
+                                selectedCollection = null
+                                musicViewModel.loadAudioTracks()
+                            }) { Text(if (audioList.isEmpty()) "Scan music" else "Show all music") }
+                        }
                     }
-                }
-            } else if (groupedAudio.isNotEmpty() && selectedCollection == null) {
-                // Artists, albums, and folders are collections, not simply a
-                // flat track list sorted by one field. Open a collection to
-                // show only the tracks that belong to it.
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 148.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    gridItems(groupedAudio.entries.toList(), key = { entry -> "audio_collection_${entry.key}" }) { entry ->
-                        Card(
-                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedCollection = entry.key },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                            elevation = CardDefaults.cardElevation(0.dp),
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Icon(
-                                    imageVector = when (libraryMode) {
-                                        "Artists" -> Icons.Default.Headphones
-                                        "Albums" -> Icons.Default.Audiotrack
-                                        else -> Icons.Default.MusicNote
-                                    },
-                                    contentDescription = null,
-                                    tint = palette.primary,
-                                    modifier = Modifier.size(24.dp),
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = entry.key,
-                                    color = palette.textPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = "${entry.value.size} ${if (entry.value.size == 1) "track" else "tracks"}",
-                                    color = palette.textSecondary,
-                                    fontSize = 11.sp,
-                                )
+                } else if (groupedAudio.isNotEmpty() && selectedCollection == null) {
+                    // Artists, albums, and folders are collections, not simply a
+                    // flat track list sorted by one field. Open a collection to
+                    // show only the tracks that belong to it.
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 148.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        gridItems(groupedAudio.entries.toList(), key = { entry -> "audio_collection_${entry.key}" }) { entry ->
+                            Card(
+                                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedCollection = entry.key },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                                elevation = CardDefaults.cardElevation(0.dp),
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Icon(
+                                        imageVector = when (libraryMode) {
+                                            "Artists" -> Icons.Default.Headphones
+                                            "Albums" -> Icons.Default.Audiotrack
+                                            else -> Icons.Default.MusicNote
+                                        },
+                                        contentDescription = null,
+                                        tint = palette.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = entry.key,
+                                        color = palette.textPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = "${entry.value.size} ${if (entry.value.size == 1) "track" else "tracks"}",
+                                        color = palette.textSecondary,
+                                        fontSize = 11.sp,
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                if (compactAudioView) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = audioGridMinSize.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
-                    ) {
-                        if (groupedAudio.isNotEmpty()) {
+                } else {
+                    if (compactAudioView) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = audioGridMinSize.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize().then(audioGridGestureModifier)
+                        ) {
+                            if (groupedAudio.isNotEmpty()) {
+                                groupedAudio.forEach { (groupName, tracks) ->
+                                    item(key = "audio_grid_group_$groupName", span = { GridItemSpan(maxLineSpan) }) {
+                                        Text(
+                                            text = groupName,
+                                            color = palette.primary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                                        )
+                                    }
+                                    gridItems(tracks, key = { track -> "audio_grid_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
+                                        val isSelected = currentTrack?.id == track.id
+                                        AudioTrackCard(
+                                            track = track,
+                                            isSelected = isSelected,
+                                            isPlaying = isSelected && isPlaying,
+                                            onClick = { musicViewModel.playTrack(track) },
+                                            modifier = Modifier.padding(4.dp),
+                                        )
+                                    }
+                                }
+                            } else {
+                                gridItemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
+                                    val isSelected = currentTrack?.id == track.id
+                                    AudioTrackCard(
+                                        track = track,
+                                        isSelected = isSelected,
+                                        isPlaying = isSelected && isPlaying,
+                                        onClick = { musicViewModel.playTrack(track) },
+                                        modifier = Modifier
+                                            .padding(4.dp)
+                                            .reorderableDrag(
+                                                itemIndex = index,
+                                                itemCount = filteredList.size,
+                                                thresholdPx = reorderThresholdPx,
+                                                onMove = { from, to ->
+                                                    audioSort = "Custom"
+                                                    musicViewModel.moveTrackInDisplayOrder(
+                                                        filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
+                                                        filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
+                                                    )
+                                                }
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    } else if (groupedAudio.isNotEmpty()) {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             groupedAudio.forEach { (groupName, tracks) ->
-                                item(key = "audio_grid_group_$groupName", span = { GridItemSpan(maxLineSpan) }) {
+                                item(key = "audio_group_$groupName") {
                                     Text(
                                         text = groupName,
                                         color = palette.primary,
@@ -307,103 +366,51 @@ fun MusicScreen(
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                                        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                                     )
                                 }
-                                gridItems(tracks, key = { track -> "audio_grid_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
+                                items(tracks, key = { track -> "audio_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
                                     val isSelected = currentTrack?.id == track.id
                                     AudioTrackCard(
                                         track = track,
                                         isSelected = isSelected,
                                         isPlaying = isSelected && isPlaying,
-                                        onClick = { musicViewModel.playTrack(track) },
-                                        modifier = Modifier.padding(4.dp),
+                                        onClick = { musicViewModel.playTrack(track) }
                                     )
                                 }
                             }
-                        } else {
-                            gridItemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            itemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
                                 val isSelected = currentTrack?.id == track.id
                                 AudioTrackCard(
                                     track = track,
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
                                     onClick = { musicViewModel.playTrack(track) },
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .reorderableDrag(
-                                            itemIndex = index,
-                                            itemCount = filteredList.size,
-                                            thresholdPx = reorderThresholdPx,
-                                            onMove = { from, to ->
-                                                audioSort = "Custom"
-                                                musicViewModel.moveTrackInDisplayOrder(
-                                                    filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
-                                                    filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
-                                                )
-                                            }
-                                        )
+                                    modifier = Modifier.reorderableDrag(
+                                        itemIndex = index,
+                                        itemCount = filteredList.size,
+                                        thresholdPx = reorderThresholdPx,
+                                        onMove = { from, to ->
+                                            audioSort = "Custom"
+                                            musicViewModel.moveTrackInDisplayOrder(
+                                                filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
+                                                filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
+                                            )
+                                        }
+                                    )
                                 )
                             }
-                        }
-                    }
-                } else if (groupedAudio.isNotEmpty()) {
-                    LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        groupedAudio.forEach { (groupName, tracks) ->
-                            item(key = "audio_group_$groupName") {
-                                Text(
-                                    text = groupName,
-                                    color = palette.primary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
-                                )
-                            }
-                            items(tracks, key = { track -> "audio_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
-                                val isSelected = currentTrack?.id == track.id
-                                AudioTrackCard(
-                                    track = track,
-                                    isSelected = isSelected,
-                                    isPlaying = isSelected && isPlaying,
-                                    onClick = { musicViewModel.playTrack(track) }
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
-                            val isSelected = currentTrack?.id == track.id
-                            AudioTrackCard(
-                                track = track,
-                                isSelected = isSelected,
-                                isPlaying = isSelected && isPlaying,
-                                onClick = { musicViewModel.playTrack(track) },
-                                modifier = Modifier.reorderableDrag(
-                                    itemIndex = index,
-                                    itemCount = filteredList.size,
-                                    thresholdPx = reorderThresholdPx,
-                                    onMove = { from, to ->
-                                        audioSort = "Custom"
-                                        musicViewModel.moveTrackInDisplayOrder(
-                                            filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
-                                            filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
-                                        )
-                                    }
-                                )
-                            )
                         }
                     }
                 }
             }
+
         }
 
         MusicPlaybackSurface(
@@ -413,15 +420,15 @@ fun MusicScreen(
         )
     }
 
-    // Equalizer Preset Dialog
     if (showEqDialog) {
-        EqualizerPresetDialog(
-            currentPreset = equalizerPreset,
-            onPresetSelected = {
-                musicViewModel.setEqualizerPreset(it)
-                showEqDialog = false
-            },
-            onDismiss = { showEqDialog = false }
+        MusicEqualizerDialog(
+            state = equalizerState,
+            onEnabled = musicViewModel::setEqualizerEnabled,
+            onPreset = musicViewModel::setEqualizerPreset,
+            onBand = musicViewModel::setEqualizerBand,
+            onBass = musicViewModel::setEqualizerBass,
+            onReset = musicViewModel::resetEqualizer,
+            onDismiss = { showEqDialog = false },
         )
     }
 
@@ -573,296 +580,38 @@ fun WavyNowPlayingBottomSheet(
     onRetryLyrics: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
-    val context = LocalContext.current
-    val progress = if (duration > 0) (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
-
-    val formatTime: (Long) -> String = { ms ->
-        val totalSeconds = ms / 1000
-        val min = totalSeconds / 60
-        val sec = totalSeconds % 60
-        String.format(java.util.Locale.US, "%02d:%02d", min, sec)
-    }
-
+    val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("now_playing_bottom_sheet"),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        modifier = modifier.fillMaxWidth().testTag("now_playing_bottom_sheet")
+            .clickable(onClickLabel = "Expand music player", onClick = onExpandFullScreen),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-        border = BorderStroke(1.dp, palette.surfaceBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        ) {
-            // Top Quick Options Bar (Subtitles Search, Video Search, Equalizer, Cancel X)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Subtitle Search Button
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                            .background(palette.primary.copy(alpha = 0.15f))
-                            .clickable(onClick = onLyricsToggle)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Lyrics",
-                                tint = palette.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (lyricsEnabled) "Lyrics Off" else "Lyrics",
-                                fontSize = 11.sp,
-                                color = palette.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // EQ Preset Chip
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.surface)
-                            .border(0.5.dp, palette.surfaceBorder, RoundedCornerShape(8.dp))
-                            .clickable(onClick = onOpenEq)
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = eqPreset,
-                            fontSize = 10.sp,
-                            color = palette.textSecondary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                // CANCEL Playing Sheet Button (Close X)
-                IconButton(
-                    onClick = onCancel,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .testTag("cancel_audio_sheet")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cancel Playing",
-                        tint = palette.textSecondary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+        Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            AudioTrackThumbnail(track, Modifier.size(44.dp), shape = RoundedCornerShape(10.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = palette.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = palette.textSecondary, fontSize = 11.sp)
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Wavy Audio Soundwave Canvas
-            WavyAudioWaveform(
-                isPlaying = isPlaying,
-                waveColor = palette.primary,
-                height = 20.dp
-            )
-
-            // Slider Scrub Bar
-            Slider(
-                value = progress,
-                onValueChange = { frac ->
-                    onSeek((frac * duration).toLong())
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(20.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = palette.primary,
-                    activeTrackColor = palette.primary,
-                    inactiveTrackColor = palette.surfaceBorder
-                )
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(text = formatTime(currentPos), fontSize = 10.sp, color = palette.textSecondary)
-                Text(text = formatTime(duration), fontSize = 10.sp, color = palette.textSecondary)
+            IconButton(onClick = onTogglePlay) {
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    if (isPlaying) "Pause" else "Play", tint = palette.textPrimary)
             }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Track Info & Controls Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(onClick = onExpandFullScreen),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // The thumbnail becomes a compact live lyric preview when enabled.
-                    Box(
-                        modifier = Modifier
-                            .size(width = 210.dp, height = 54.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.surface)
-                            .border(1.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (lyricsEnabled) {
-                            AudioLyricsPanel(
-                                text = lyricsText, activeIndex = activeLyricLineIndex,
-                                message = lyricsMessage, loading = lyricsLoading,
-                                retryable = lyricsRetryable, onRetry = onRetryLyrics, compact = true,
-                            )
-                        } else {
-                            AudioTrackThumbnail(
-                                track = track,
-                                modifier = Modifier.fillMaxSize(),
-                                shape = RoundedCornerShape(10.dp),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column {
-                        Text(
-                            text = track.title,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp,
-                            color = palette.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = track.artist,
-                            fontSize = 11.5.sp,
-                            color = palette.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = palette.textPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(palette.primary)
-                            .clickable(onClick = onTogglePlay)
-                            .testTag("audio_toggle_play_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = if (palette.isDark) Color.Black else Color.White,
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-
-                    IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
-                            tint = palette.textPrimary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
+            IconButton(onClick = onNext) { Icon(Icons.Default.SkipNext, "Next Track", tint = palette.textPrimary) }
+            IconButton(onClick = onExpandFullScreen, modifier = Modifier.testTag("expand_audio_sheet")) {
+                Icon(Icons.Default.KeyboardArrowUp, "Expand music player", tint = palette.textPrimary)
+            }
+            IconButton(onClick = onCancel, modifier = Modifier.testTag("cancel_audio_sheet")) {
+                Icon(Icons.Default.Close, "Cancel Playing", tint = palette.textSecondary)
             }
         }
+        LinearProgressIndicator(progress = { if (total > 0) (currentPos.toFloat() / total).coerceIn(0f, 1f) else 0f },
+            modifier = Modifier.fillMaxWidth().height(2.dp), color = palette.primary,
+            trackColor = palette.surfaceBorder, drawStopIndicator = {})
     }
-}
-
-@Composable
-fun EqualizerPresetDialog(
-    currentPreset: String,
-    onPresetSelected: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val palette = LocalHiPalette.current
-    val presets = listOf("Cinema 3D", "Bass Boost 200%", "Vocal Clarity", "Rock & Metal", "Electronic / EDM", "Audiophile Flat")
-
-    AlertDialog(
-
-        modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Equalizer, contentDescription = null, tint = palette.primary)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Audio Equalizer & DSP", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Select hardware-tuned acoustic profile:",
-                    color = palette.textSecondary,
-                    fontSize = 12.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                presets.forEach { preset ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                            .clickable { onPresetSelected(preset) }
-                            .padding(vertical = 6.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = currentPreset == preset,
-                            onClick = { onPresetSelected(preset) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = palette.primary,
-                                unselectedColor = palette.textSecondary
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = preset,
-                            color = if (currentPreset == preset) palette.primary else palette.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = if (currentPreset == preset) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = palette.primary)
-            }
-        },
-        containerColor = palette.surfaceElevated
-    )
 }
 
 @Composable
