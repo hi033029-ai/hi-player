@@ -100,7 +100,7 @@ internal object BrowserDownloads {
             DownloadingFilesRegistry.completeOwned(part(context, it.id).absolutePath, it.savedUri)
         }
         restored = true
-        scope.launch { repairCompletedVideos(context) }
+        scope.launch { repairCompletedMedia(context) }
     }
 
     private fun persistLocked(context: Context) {
@@ -425,14 +425,14 @@ internal object BrowserDownloads {
         if (!path.isNullOrBlank()) MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf(mime), null)
     }
 
-    private fun repairCompletedVideos(context: Context) {
+    private fun repairCompletedMedia(context: Context) {
         val entries = synchronized(lock) { _downloads.value.filter { it.status == BrowserDownloadStatus.COMPLETED && !it.formatChecked && it.savedUri != null } }
         entries.forEach { entry ->
             runCatching {
                 val uri = Uri.parse(entry.savedUri)
                 val info = DownloadMediaInspector.inspect(context, uri, entry)
                 var corrected = entry
-                if (info.resolved.isVideo && uri.authority == MediaStore.AUTHORITY) {
+                if ((info.resolved.isVideo || info.resolved.isAudio) && uri.authority == MediaStore.AUTHORITY) {
                     val values = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, info.resolved.fileName)
                         put(MediaStore.MediaColumns.MIME_TYPE, info.resolved.mimeType)
@@ -442,7 +442,7 @@ internal object BrowserDownloads {
                             durationMs = info.durationMs, width = info.width, height = info.height)
                         scanPublishedFile(context, uri, info.resolved.mimeType)
                     }
-                } else if (info.resolved.isVideo && uri.authority == "${context.packageName}.provider") {
+                } else if ((info.resolved.isVideo || info.resolved.isAudio) && uri.authority == "${context.packageName}.provider") {
                     // Pre-Android-10 app-specific/public files are also repairable without redownloading.
                     val roots = listOfNotNull(
                         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, "Hi Browser") },
@@ -468,6 +468,15 @@ internal object BrowserDownloads {
                 }
             }
         }
+    }
+
+    /** Call on IO: read completed app-owned audio even before Android indexes it as music. */
+    fun libraryAudioItems(context: Context): List<com.example.model.AudioItem> {
+        val entries = synchronized(lock) {
+            restoreLocked(context.applicationContext)
+            _downloads.value.filter { it.isCompletedAudio }
+        }
+        return entries.mapNotNull { CompletedAudioLibrary.read(context, it) }
     }
 
     /** Both partial and completed app-owned videos remain discoverable in every app mode. */

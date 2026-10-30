@@ -72,7 +72,7 @@ fun HiBottomNavigationBar(
             TabSpec(NavTab.VIDEOS, "Videos", Icons.Default.Movie, "nav_item_videos"),
             TabSpec(NavTab.MUSIC, "Music", Icons.Default.MusicNote, "nav_item_music"),
             TabSpec(NavTab.BROWSER, "Browser", Icons.Default.Language, "nav_item_browser"),
-            TabSpec(NavTab.FILE_MANAGER, "File Manager", Icons.Default.Folder, "nav_item_files"),
+            TabSpec(NavTab.FILE_MANAGER, "Files", Icons.Default.Folder, "nav_item_files"),
             TabSpec(NavTab.SETTINGS, "Settings", Icons.Default.Settings, "nav_item_settings")
         )
     }
@@ -107,7 +107,7 @@ fun HiBottomNavigationBar(
                 .fillMaxWidth()
                 .height(64.dp)
                 .clip(pillShape)
-                .background(palette.surface.copy(alpha = 0.62f))
+                .background(palette.surface)
                 .border(0.5.dp, palette.surfaceBorder, pillShape)
         ) {
             Row(
@@ -156,7 +156,8 @@ fun HiBottomNavigationBar(
                                 color = if (selected) palette.primary else palette.textSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }

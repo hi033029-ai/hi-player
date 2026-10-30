@@ -36,9 +36,10 @@ fun VideoThumbnail(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    val cacheKey = remember(video.id, video.uri, video.path) {
+    val cacheKey = remember(video.id, video.uri, video.path, video.sizeBytes) {
         val p = video.path
-        if (!p.isNullOrEmpty()) p else video.uri.toString().ifEmpty { video.id.toString() }
+        val revision = if (video.isPartialDownload) video.sizeBytes / (64L * 1024 * 1024) else video.sizeBytes
+        (if (!p.isNullOrEmpty()) p else video.uri.toString().ifEmpty { video.id.toString() }) + ":$revision"
     }
 
     var extractedBitmap by remember(cacheKey) {
@@ -47,10 +48,9 @@ fun VideoThumbnail(
 
     if (!video.thumbnailUrl.isNullOrEmpty()) {
         AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(video.thumbnailUrl)
-                .crossfade(true)
-                .build(),
+            model = remember(context, video.thumbnailUrl) {
+                ImageRequest.Builder(context).data(video.thumbnailUrl).crossfade(false).build()
+            },
             contentDescription = "Thumbnail for ${video.title}",
             contentScale = contentScale,
             modifier = modifier

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.AudioLyricsPanel
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.activity.compose.BackHandler
@@ -94,7 +95,11 @@ fun FullScreenAudioPlayerScreen(
     onLyricsTap: () -> Unit = {},
     onBack: () -> Unit,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lyricsMessage: String? = null,
+    lyricsLoading: Boolean = false,
+    lyricsRetryable: Boolean = false,
+    onRetryLyrics: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
     val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
@@ -139,38 +144,12 @@ fun FullScreenAudioPlayerScreen(
                     .border(1.5.dp, palette.primary.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (lyricsEnabled && !lyricsText.isNullOrBlank()) {
-                    val lrcRegex = remember { Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""") }
-                    val lyricLines = remember(lyricsText) {
-                        lyricsText.lines().mapNotNull { line ->
-                            lrcRegex.find(line)?.groupValues?.getOrNull(4)?.trim()
-                        }
-                    }
-                    val start = if (activeLyricLineIndex >= 0) {
-                        (activeLyricLineIndex - 3).coerceAtLeast(0)
-                    } else 0
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        lyricLines.drop(start).take(10).forEachIndexed { offset, line ->
-                            val actualIndex = start + offset
-                            Text(
-                                text = line.ifBlank { "♪" },
-                                color = if (actualIndex == activeLyricLineIndex) palette.primary else palette.textSecondary,
-                                fontSize = if (actualIndex == activeLyricLineIndex) 18.sp else 14.sp,
-                                fontWeight = if (actualIndex == activeLyricLineIndex) FontWeight.Bold else FontWeight.Normal,
-                                style = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrRtl),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            )
-                        }
-                    }
+                if (lyricsEnabled) {
+                    AudioLyricsPanel(
+                        text = lyricsText, activeIndex = activeLyricLineIndex,
+                        message = lyricsMessage, loading = lyricsLoading,
+                        retryable = lyricsRetryable, onRetry = onRetryLyrics,
+                    )
                 } else {
                     AudioTrackThumbnail(
                         track = track,
@@ -180,8 +159,8 @@ fun FullScreenAudioPlayerScreen(
                     )
                 }
 
-                // Overlay Gradient Badge at top
-                Box(
+                // Artwork shading must not cover lyrics or their retry button.
+                if (!lyricsEnabled) Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
@@ -259,7 +238,7 @@ fun FullScreenAudioPlayerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Subtitles,
-                            contentDescription = "Subtitles",
+                            contentDescription = "Lyrics",
                             tint = palette.primary,
                             modifier = Modifier.size(16.dp)
                         )

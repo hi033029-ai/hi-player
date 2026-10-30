@@ -35,11 +35,34 @@ jobs:
         with:
           gradle-version: 9.3.1
 
-      # debug.keystore is checked into this private repository so every APK
+      # debug.keystore is checked into this repository so every APK
       # remains signed with the same key and can update the previous APK.
 
       - name: Build APK with user-approved Drive testing
         run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true
+
+      - name: Targeted lyrics, downloaded audio and theme regression tests
+        id: regression_tests
+        continue-on-error: true
+        timeout-minutes: 10
+        run: >-
+          gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
+          --tests 'com.example.lyrics.LyricsTextTest'
+          --tests 'com.example.lyrics.LyricsQueryTest'
+          --tests 'com.example.ui.components.AudioLyricsPanelTest'
+          --tests 'com.example.downloads.CompletedAudioLibraryTest'
+          --tests 'com.example.data.SystemThemeDefaultMigrationTest'
+
+      - name: Upload regression reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: regression-test-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -54,5 +77,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Hi Player 1.0.68 (69), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
+          body: "Hi Player 1.0.70 (71), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk

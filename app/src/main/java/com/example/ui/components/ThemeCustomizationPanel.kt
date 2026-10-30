@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +16,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import com.example.ui.theme.contrastContentColor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,22 +52,22 @@ fun ThemeCustomizationPanel(
     val palette = LocalHiPalette.current
     Column(
         modifier = modifier.fillMaxWidth().background(palette.surface.copy(alpha = 0.72f), RoundedCornerShape(14.dp)).padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("CUSTOMIZE COLORS", color = palette.primary, fontSize = 11.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeColorRole(Modifier.weight(1f), "Text", s.customThemeTextHex, s.customThemeTextOpacity,
+        Text("Custom appearance", color = contrastContentColor(palette.surface, palette.background), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThemeColorRole(Modifier.fillMaxWidth(), "Text", s.customThemeTextHex, s.customThemeTextOpacity,
                 { v -> onChange(v, s.customThemeBackgroundHex, s.customThemePrimaryHex, s.customThemeSurfaceHex, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) },
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, s.customThemePrimaryHex, s.customThemeSurfaceHex, v, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) })
-            ThemeColorRole(Modifier.weight(1f), "Background", s.customThemeBackgroundHex, s.customThemeBackgroundOpacity,
+            ThemeColorRole(Modifier.fillMaxWidth(), "Background", s.customThemeBackgroundHex, s.customThemeBackgroundOpacity,
                 { v -> onChange(s.customThemeTextHex, v, s.customThemePrimaryHex, s.customThemeSurfaceHex, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) },
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, s.customThemePrimaryHex, s.customThemeSurfaceHex, s.customThemeTextOpacity, v, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) })
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ThemeColorRole(Modifier.weight(1f), "Accent", s.customThemePrimaryHex, s.customThemePrimaryOpacity,
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThemeColorRole(Modifier.fillMaxWidth(), "Accent", s.customThemePrimaryHex, s.customThemePrimaryOpacity,
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, v, s.customThemeSurfaceHex, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) },
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, s.customThemePrimaryHex, s.customThemeSurfaceHex, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, v, s.customThemeSurfaceOpacity) })
-            ThemeColorRole(Modifier.weight(1f), "Surface", s.customThemeSurfaceHex, s.customThemeSurfaceOpacity,
+            ThemeColorRole(Modifier.fillMaxWidth(), "Surface", s.customThemeSurfaceHex, s.customThemeSurfaceOpacity,
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, s.customThemePrimaryHex, v, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, s.customThemeSurfaceOpacity) },
                 { v -> onChange(s.customThemeTextHex, s.customThemeBackgroundHex, s.customThemePrimaryHex, s.customThemeSurfaceHex, s.customThemeTextOpacity, s.customThemeBackgroundOpacity, s.customThemePrimaryOpacity, v) })
         }
@@ -77,26 +84,50 @@ private fun ThemeColorRole(
     onOpacity: (Int) -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+    val cardColor = palette.surfaceElevated
+    val foreground = contrastContentColor(cardColor, palette.background)
+    var previewOpacity by remember(opacity) { mutableStateOf(opacity.toFloat()) }
+    Column(
+        modifier = modifier.background(cardColor, RoundedCornerShape(16.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(title, color = palette.textPrimary, fontSize = 11.sp)
-            Text("${opacity}%", color = palette.textSecondary, fontSize = 9.sp)
+            Column {
+                Text(title, color = foreground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(selectedHex.uppercase(), color = foreground.copy(alpha = 0.7f), fontSize = 11.sp)
+            }
+            Text("${previewOpacity.toInt()}%", color = foreground, fontSize = 12.sp)
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             themeSwatches.forEach { swatch ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier.size(22.dp).background(swatch.color, CircleShape).border(
-                            if (swatch.hex.equals(selectedHex, true)) 2.dp else 1.dp,
-                            if (swatch.hex.equals(selectedHex, true)) palette.primary else palette.surfaceBorder,
-                            CircleShape,
-                        ).clickable { onColor(swatch.hex) },
-                    )
-                    Text(swatch.name, color = palette.textSecondary, fontSize = 7.sp)
+                val selected = swatch.hex.equals(selectedHex, true)
+                Column(
+                    Modifier.size(56.dp, 70.dp)
+                        .background(if (selected) foreground.copy(alpha = 0.08f) else Color.Transparent, RoundedCornerShape(12.dp))
+                        .clickable { onColor(swatch.hex) }
+                        .semantics { contentDescription = "$title: ${swatch.name}"; this.selected = selected },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(
+                        modifier = Modifier.size(32.dp).background(swatch.color, CircleShape)
+                            .border(1.dp, foreground.copy(alpha = 0.3f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (selected) Icon(Icons.Default.Check, contentDescription = null,
+                            tint = contrastContentColor(swatch.color), modifier = Modifier.size(20.dp))
+                    }
+                    Text(swatch.name, color = foreground, fontSize = 10.sp, maxLines = 1)
                 }
             }
         }
-        Slider(value = opacity.toFloat(), onValueChange = { onOpacity(it.toInt()) }, valueRange = 10f..100f, modifier = Modifier.fillMaxWidth())
+        Slider(
+            value = previewOpacity,
+            onValueChange = { previewOpacity = it },
+            onValueChangeFinished = { onOpacity(previewOpacity.toInt()) },
+            valueRange = 10f..100f,
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$title opacity" },
+        )
     }
 }
 

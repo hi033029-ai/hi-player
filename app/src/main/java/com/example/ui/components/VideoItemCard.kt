@@ -77,11 +77,13 @@ fun VideoItemCard(
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     catalogMetadata: LibraryCatalogMetadata? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reorderHandle: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
     var menuExpanded by remember { mutableStateOf(false) }
+    val compactScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
 
     Column(
         modifier = modifier
@@ -100,9 +102,9 @@ fun VideoItemCard(
             // Video Thumbnail with Duration & 4K badge
             Box(
                 modifier = Modifier
-                    .width(118.dp)
-                    .height(76.dp)
-                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
+                    .width(if (compactScreen) 96.dp else 118.dp)
+                    .height(if (compactScreen) 68.dp else 76.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(palette.surface)
             ) {
                 VideoThumbnail(
@@ -306,6 +308,8 @@ fun VideoItemCard(
 
             }
 
+            reorderHandle?.invoke()
+
             // Favorite Quick Icon
             IconButton(
                 onClick = { onFavoriteToggle(video.isFavorite) },
@@ -420,7 +424,8 @@ fun VideoGridCard(
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     catalogMetadata: LibraryCatalogMetadata? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reorderHandle: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -570,6 +575,8 @@ fun VideoGridCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+
+                    reorderHandle?.invoke()
 
                     Box {
                         IconButton(

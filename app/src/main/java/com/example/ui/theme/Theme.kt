@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -33,15 +34,15 @@ val LocalHiUiMetrics = compositionLocalOf {
 private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
     darkColorScheme(
         primary = palette.primary,
-        onPrimary = if (palette.isDark) palette.background else palette.surface,
+        onPrimary = contrastContentColor(palette.primary, palette.surface),
         primaryContainer = palette.surfaceElevated,
         onPrimaryContainer = palette.textPrimary,
         secondary = palette.secondary,
-        onSecondary = palette.background,
+        onSecondary = contrastContentColor(palette.secondary, palette.surface),
         secondaryContainer = palette.surfaceElevated,
         onSecondaryContainer = palette.textPrimary,
         tertiary = palette.secondary,
-        onTertiary = palette.background,
+        onTertiary = contrastContentColor(palette.secondary, palette.surface),
         background = palette.background,
         onBackground = palette.textPrimary,
         surface = palette.surface,
@@ -53,15 +54,15 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
 } else {
     lightColorScheme(
         primary = palette.primary,
-        onPrimary = androidx.compose.ui.graphics.Color.White,
+        onPrimary = contrastContentColor(palette.primary, palette.surface),
         primaryContainer = palette.surfaceElevated,
         onPrimaryContainer = palette.textPrimary,
         secondary = palette.secondary,
-        onSecondary = androidx.compose.ui.graphics.Color.White,
+        onSecondary = contrastContentColor(palette.secondary, palette.surface),
         secondaryContainer = palette.surfaceElevated,
         onSecondaryContainer = palette.textPrimary,
         tertiary = palette.secondary,
-        onTertiary = androidx.compose.ui.graphics.Color.White,
+        onTertiary = contrastContentColor(palette.secondary, palette.surface),
         background = palette.background,
         onBackground = palette.textPrimary,
         surface = palette.surface,
@@ -74,7 +75,7 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
 
 @Composable
 fun HiPlayerTheme(
-    themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     uiTextScale: Float = 1f,
     customPalette: HiThemePalette? = null,
     content: @Composable () -> Unit
@@ -82,9 +83,9 @@ fun HiPlayerTheme(
     val palette = if (themeMode == AppThemeMode.CUSTOM) {
         customPalette ?: IceBluePalette
     } else {
-        getPaletteForTheme(themeMode)
+        getPaletteForTheme(themeMode, isSystemInDarkTheme())
     }
-    val colorScheme = createColorScheme(palette)
+    val colorScheme = remember(palette) { createColorScheme(palette) }
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,

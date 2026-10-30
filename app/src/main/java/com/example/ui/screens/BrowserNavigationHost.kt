@@ -31,6 +31,7 @@ import kotlin.math.abs
 internal fun BrowserNavigationHost(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    revealButtonBottomInset: androidx.compose.ui.unit.Dp = 12.dp,
     navigation: @Composable () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -44,8 +45,14 @@ internal fun BrowserNavigationHost(
     val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
     val available = enabled && !keyboardVisible
     LaunchedEffect(available) { if (!available) visible = false }
-    LaunchedEffect(visible, lastActivity) {
-        if (visible) { delay(5_000L); visible = false }
+    // One clock-driven loop: hover/synthetic page events cannot perpetually
+    // restart the timeout through recomposition.
+    LaunchedEffect(visible, available) {
+        while (visible && available) {
+            val remaining = BrowserNavigationPolicy.remainingIdleMillis(SystemClock.elapsedRealtime(), lastActivity)
+            if (remaining == 0L) { visible = false; break }
+            delay(remaining.coerceAtMost(250L))
+        }
     }
     fun reveal() { visible = true; lastActivity = SystemClock.elapsedRealtime() }
     Box(modifier.fillMaxSize().pointerInput(available, edge, threshold) {
@@ -59,7 +66,9 @@ internal fun BrowserNavigationHost(
             var revealed = false
             do {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
-                if (visible) lastActivity = SystemClock.elapsedRealtime()
+                if (visible && event.changes.any {
+                        BrowserNavigationPolicy.isUserActivity(it.pressed, it.previousPressed, it.position != it.previousPosition)
+                    }) lastActivity = SystemClock.elapsedRealtime()
                 val change = event.changes.firstOrNull { it.id == down.id }
                 if (fromEdge && !revealed && change != null &&
                     BrowserNavigationPolicy.isUpSwipe(origin.y - change.position.y, change.position.x - origin.x, threshold)) {
@@ -73,7 +82,8 @@ internal fun BrowserNavigationHost(
             // Accessible alternative to a gesture, also makes the hidden navigation discoverable.
             if (!visible) IconButton(
                 onClick = { reveal() },
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().size(32.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                    .padding(end = 12.dp, bottom = revealButtonBottomInset).size(48.dp)
                     .background(palette.surface.copy(alpha = .92f), RoundedCornerShape(16.dp)),
             ) { Icon(Icons.Default.KeyboardArrowUp, "Show Videos, Music and app navigation", tint = palette.textSecondary) }
             AnimatedVisibility(
@@ -91,6 +101,10 @@ internal fun BrowserNavigationHost(
 }
 
 internal object BrowserNavigationPolicy {
+    fun remainingIdleMillis(now: Long, lastActivity: Long): Long =
+        (5_000L - (now - lastActivity).coerceAtLeast(0L)).coerceIn(0L, 5_000L)
+    fun isUserActivity(pressed: Boolean, previousPressed: Boolean, moved: Boolean): Boolean =
+        pressed != previousPressed || (pressed && moved)
     fun isUpSwipe(up: Float, horizontal: Float, threshold: Float): Boolean =
         up >= threshold && up > abs(horizontal) * 1.5f
 }

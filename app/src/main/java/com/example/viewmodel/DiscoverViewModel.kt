@@ -50,7 +50,8 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
-        loadHome()
+        // The Discover destination is retired. Settings may still manage saved
+        // personal-source credentials without starting catalog requests.
     }
 
     fun setQuery(query: String) {

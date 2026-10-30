@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -268,24 +269,16 @@ fun PlayerScreen(
         }
     }
 
+    // Preserve the library's displayed/saved ordering, but never leave this exact folder.
     fun playAdjacentVideo(step: Int) {
         val current = currentVideo ?: return
-        if (videoQueue.size < 2) return
-        val index = videoQueue.indexOfFirst { it.uri == current.uri }
-        if (index < 0) return
-        val nextIndex = (index + step + videoQueue.size) % videoQueue.size
-        playerViewModel.playVideo(videoQueue[nextIndex])
-    }
-
-    fun playNextVideoAutomatically() {
-        val current = currentVideo ?: return
-        val index = videoQueue.indexOfFirst { it.uri == current.uri }
-        val next = videoQueue.getOrNull(index + 1) ?: return
+        val next = com.example.player.FolderPlaybackQueue.adjacent(current, videoQueue, step) ?: return
         playerViewModel.playVideo(next)
     }
 
-    DisposableEffect(playerViewModel.engine, videoQueue) {
-        playerViewModel.engine.onVideoEnded = { playNextVideoAutomatically() }
+    val onEnded by rememberUpdatedState(newValue = { playAdjacentVideo(1) })
+    DisposableEffect(playerViewModel.engine) {
+        playerViewModel.engine.onVideoEnded = { onEnded() }
         onDispose { playerViewModel.engine.onVideoEnded = null }
     }
 
@@ -438,17 +431,6 @@ fun PlayerScreen(
             playerViewModel.setVideoScale(videoScale * zoomFactor)
             showZoomOverlay = true
         }
-        surface.onHdrToggle = {
-            if (showHdrPresetMenu || showHdrCustomizer) {
-                showHdrPresetMenu = false
-                showHdrCustomizer = false
-            } else {
-                showHdrPresetMenu = true
-                showHdrCustomizer = false
-            }
-            hdrInteractionTick++
-        }
-        surface.onHdrLongPress = {}
         surface.isInteractionLocked = { isScreenLocked }
         surface.onLockedScreenTap = {
             if (isScreenLocked) {

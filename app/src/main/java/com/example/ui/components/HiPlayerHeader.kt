@@ -45,7 +45,6 @@ fun HiPlayerHeader(
     val palette = LocalHiPalette.current
     val metrics = LocalHiUiMetrics.current
     Surface(
-        border = androidx.compose.foundation.BorderStroke(1.dp, palette.surfaceBorder),
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
@@ -96,7 +95,7 @@ fun HiPlayerHeader(
                     IconButton(onClick = onStreamClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Cast,
-                            contentDescription = "Stream URL",
+                            contentDescription = "Stream and Google Cast",
                             tint = palette.textPrimary
                         )
                     }

@@ -34,11 +34,12 @@ data class AudioItem(
     val audioFormat: String
         get() {
             return when {
-                path.endsWith(".flac", ignoreCase = true) -> "FLAC Hi-Res"
+                path.endsWith(".flac", ignoreCase = true) -> "FLAC"
                 path.endsWith(".wav", ignoreCase = true) -> "WAV Lossless"
                 path.endsWith(".m4a", ignoreCase = true) || path.endsWith(".aac", ignoreCase = true) -> "AAC"
                 path.endsWith(".ogg", ignoreCase = true) || path.endsWith(".opus", ignoreCase = true) -> "OGG"
-                else -> "MP3 320k"
+                path.endsWith(".mp3", ignoreCase = true) || mimeType == "audio/mpeg" -> "MP3"
+                else -> mimeType.substringAfter('/').substringAfter("x-").uppercase(java.util.Locale.ROOT).ifBlank { "AUDIO" }
             }
         }
 }

@@ -256,7 +256,7 @@ fun ControlsOverlay(
                                 isSwitching = isHdrSwitching,
                                 onClick = onToggleHdrEnhance,
                                 onLongClick = onLongPressHdrEnhance,
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(48.dp),
                             )
                             Text(
                                 text = "HDR",

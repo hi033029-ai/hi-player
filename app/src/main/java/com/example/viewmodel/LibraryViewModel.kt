@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
@@ -408,7 +409,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 progressText = progressText
             )
             }.take(5)
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val favoriteRecords = videoDao.getFavorites()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -493,7 +494,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
 
         // Apply Sorting
-        when (sort) {
+        val sorted = when (sort) {
             VideoSortOption.NAME_ASC -> list.sortedBy { it.title.lowercase() }
             VideoSortOption.NAME_DESC -> list.sortedByDescending { it.title.lowercase() }
             VideoSortOption.DATE_DESC -> list.sortedByDescending { it.id }
@@ -509,7 +510,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     .thenByDescending { it.sizeBytes }
             )
         }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+        applySavedVideoOrder(sorted)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val folders = _allVideos.map { videos ->
         videos.groupBy { it.folderName }
@@ -521,14 +523,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     hasNewVideo = group.any { it.isNewVideo }
                 )
             }.sortedBy { it.name.lowercase() }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
         viewModelScope.launch {
             try {
                 val cached = withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.readVideos(application) }
                 if (cached != null) {
-                    _allVideos.value = applySavedVideoOrder(cached)
+                    _allVideos.value = withContext(Dispatchers.Default) { applySavedVideoOrder(cached) }
                     _isLoading.value = false
                 }
             } finally { cacheReady.complete(Unit) }
@@ -593,16 +595,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         cacheReady.await()
         try {
             val snapshot = MediaScanner.scanLocalVideos(getApplication())
-            // A denied/temporarily unavailable provider is not proof that files were deleted.
-            val scanned = if (snapshot.complete) snapshot.videos else
-                (snapshot.videos + _allVideos.value.filterNot { it.isPartialDownload }).distinctBy { it.path.ifBlank { it.uri.toString() } }
-            val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
-            val resolvedVideos = applySavedVideoOrder(scanned.map { video ->
-                if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) video.copy(isNewVideo = false) else video
-            })
+            val resolvedVideos = withContext(Dispatchers.Default) {
+                // Provider failures are not proof that existing files disappeared.
+                val scanned = if (snapshot.complete) snapshot.videos else
+                    (snapshot.videos + _allVideos.value.filterNot { it.isPartialDownload }).distinctBy { it.path.ifBlank { it.uri.toString() } }
+                val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
+                applySavedVideoOrder(scanned.map { video ->
+                    if (video.isNewVideo && seen.contains(video.path.ifBlank { video.uri.toString() })) video.copy(isNewVideo = false) else video
+                })
+            }
             _allVideos.value = resolvedVideos
             if (snapshot.complete) withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveVideos(getApplication(), resolvedVideos) }
-            resolvedVideos.forEach(::requestCatalogMetadata)
+            // Visible cards request catalog data on demand. Do not launch a
+            // coroutine/network lookup for every file in a large library.
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -619,12 +624,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     val treeRoot: kotlinx.coroutines.flow.StateFlow<TreeFolderNode?> = _allVideos
         .map { videos -> buildFolderTree(videos) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     /** The tree node currently being browsed (root when [treeCurrentPath] is null). */
     val currentTreeNode: kotlinx.coroutines.flow.StateFlow<TreeFolderNode?> = combine(
         treeRoot, _treeCurrentPath
     ) { root, path -> findTreeNode(root, path) }
+        .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     private fun buildFolderTree(videos: List<VideoItem>): TreeFolderNode? {

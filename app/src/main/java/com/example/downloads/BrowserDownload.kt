@@ -28,6 +28,8 @@ internal data class BrowserDownload(
     val customName: Boolean = false,
     val finalizing: Boolean = false,
 ) {
+    val isCompletedAudio get() = status == BrowserDownloadStatus.COMPLETED && savedUri != null &&
+        DownloadFileResolver.isAudioFile(fileName, mimeType)
     val isVideo get() = mimeType?.startsWith("video/") == true
     val isActive get() = status in setOf(BrowserDownloadStatus.QUEUED, BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.PAUSED)
     val needsService get() = status == BrowserDownloadStatus.QUEUED || status == BrowserDownloadStatus.RUNNING

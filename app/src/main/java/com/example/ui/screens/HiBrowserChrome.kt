@@ -486,7 +486,7 @@ private fun HiSegment(selected: Boolean, onClick: () -> Unit, content: @Composab
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        content(if (selected) Color.White else palette.textPrimary)
+        content(if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textPrimary)
     }
 }
 

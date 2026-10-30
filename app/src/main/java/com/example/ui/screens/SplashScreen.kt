@@ -102,7 +102,7 @@ fun SplashScreen(
 ) {
     val context = LocalContext.current
     var currentStep by remember { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
-    var selectedTheme by remember { mutableStateOf<AppThemeMode>(AppThemeMode.WARM_SUNSET_LIGHT) }
+    var selectedTheme by remember { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
     var textSizeSp by remember { mutableStateOf(14) }
 
     // Smooth In & Out Animation for Logo
@@ -203,7 +203,7 @@ private fun TextSizeSetupView(
     onTextSizeChanged: (Int) -> Unit,
     onComplete: () -> Unit
 ) {
-    val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme).primary
+    val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -544,7 +544,7 @@ private fun ChooseThemeView(
     onThemeSelected: (AppThemeMode) -> Unit,
     onProceed: () -> Unit
 ) {
-    val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme)
+    val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme())
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -772,7 +772,7 @@ private fun PermissionsSetupView(
         onComplete()
     }
 
-    val accentColor = com.example.ui.theme.getPaletteForTheme(selectedTheme).primary
+    val accentColor = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
