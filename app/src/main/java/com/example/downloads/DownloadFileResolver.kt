@@ -8,6 +8,7 @@ import java.util.Locale
 internal object DownloadFileResolver {
     data class Result(val fileName: String, val mimeType: String?) {
         val isVideo get() = mimeType?.startsWith("video/") == true
+        val isAudio get() = mimeType?.startsWith("audio/") == true
     }
     private data class Type(val extension: String, val mime: String)
     private val types = listOf(
@@ -24,6 +25,7 @@ internal object DownloadFileResolver {
         "video/x-mp4", "application/mp4" -> "video/mp4"
         "video/matroska" -> "video/x-matroska"
         "video/avi", "video/msvideo" -> "video/x-msvideo"
+        "audio/mp3", "audio/x-mp3", "audio/mpeg3", "audio/x-mpeg3", "application/mp3" -> "audio/mpeg"
         "audio/x-wav" -> "audio/wav"
         else -> mime
     }
@@ -34,6 +36,12 @@ internal object DownloadFileResolver {
         "m2ts", "mts" -> types.first { it.extension == "ts" }
         "3gpp" -> types.first { it.extension == "3gp" }
         else -> types.firstOrNull { it.extension == ext }
+    }
+    /** Cheap enough for queue change detection; never inspects URLs or allocates sanitized names. */
+    fun isAudioFile(fileName: String, mimeType: String?): Boolean {
+        val mime = normalizeMime(mimeType)
+        return if (isGenericMime(mime)) typeForExtension(extension(fileName))?.mime?.startsWith("audio/") == true
+        else mime?.startsWith("audio/") == true
     }
     fun resolve(
         fileName: String, sourceUrl: String, mimeType: String?, contentDisposition: String? = null,

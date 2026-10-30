@@ -50,9 +50,9 @@ internal object AudioMediaScanner {
             android.util.Log.w("HiLibrary", "Audio provider unavailable; preserving cached music", e)
         }
 
-        // WhatsApp voice notes and audio files are sometimes not indexed as
-        // Music by MediaStore. Include only its well-known shared-media
-        // directories that Android lets us read, then deduplicate by path.
+        // App-owned Downloads/SAF URIs don't need filesystem access or an Audio index row.
+        tracks += com.example.downloads.BrowserDownloads.libraryAudioItems(context)
+        // Also include readable shared Music/Download/recording/messenger directories.
         tracks += scanKnownMessengerAudio(tracks.map { it.path }.filter(String::isNotBlank).toSet())
         val uniqueTracks = tracks.distinctBy { track -> track.path.ifBlank { track.uri.toString() } }
 
@@ -114,6 +114,7 @@ internal object AudioMediaScanner {
             sizeBytes = file.length(),
             path = file.absolutePath,
             mimeType = when (file.extension.lowercase(Locale.ROOT)) {
+                "mp3" -> "audio/mpeg"
                 "opus" -> "audio/opus"
                 "ogg" -> "audio/ogg"
                 "m4a" -> "audio/mp4"

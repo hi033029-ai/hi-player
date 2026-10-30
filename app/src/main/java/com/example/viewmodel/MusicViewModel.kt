@@ -22,6 +22,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -332,6 +334,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             loadAudioTracks()
         }
         application.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, audioObserver)
+        if (Build.VERSION.SDK_INT >= 29) {
+            application.contentResolver.registerContentObserver(MediaStore.Downloads.EXTERNAL_CONTENT_URI, true, audioObserver)
+        }
+        com.example.downloads.BrowserDownloads.restore(application)
+        viewModelScope.launch {
+            com.example.downloads.BrowserDownloads.downloads.map { entries ->
+                entries.filter { it.isCompletedAudio }.map { listOf(it.id, it.savedUri, it.fileName, it.mimeType, it.durationMs) }
+            }.distinctUntilChanged().collect { loadAudioTracks() }
+        }
+
         viewModelScope.launch { while (isActive) { delay(60_000); loadAudioTracks() } }
     }
 
