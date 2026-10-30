@@ -198,6 +198,7 @@ fun FileManagerScreen(
     var showRecycleBin by remember { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     var selectAllScope by remember { mutableStateOf(SelectAllScope.FOLDERS) }
+    var sectionRequest by remember { mutableStateOf(0) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by remember { mutableStateOf(TextFieldValue()) }
     val activeTab = FileViewTab.ALL_MERGED
@@ -301,6 +302,9 @@ fun FileManagerScreen(
     val palette = com.example.ui.theme.LocalHiPalette.current
     val isInsideFolder = currentDir.absolutePath != fileManagerViewModel.rootDir.absolutePath
 
+    val rootFileSections = remember(filteredArchives, filteredDocuments, filteredFolderItems) {
+        RootFileSections.from(filteredArchives, filteredDocuments, filteredFolderItems)
+    }
     val visibleSelectableItems = (filteredFolderItems + filteredArchives + filteredDocuments).distinctBy { it.path }
     val selectedItems = selectedPaths.mapNotNull { path -> visibleSelectableItems.find { it.path == path } }
     val selectionActions: @Composable () -> Unit = {
@@ -308,11 +312,7 @@ fun FileManagerScreen(
             count = selectedPaths.size,
             onClose = { fileManagerViewModel.clearSelection() },
             onSelectAll = {
-                val items = if (isInsideFolder) filteredFolderItems else when (selectAllScope) {
-                    SelectAllScope.ARCHIVES -> filteredArchives
-                    SelectAllScope.DOCUMENTS -> filteredDocuments
-                    SelectAllScope.FOLDERS -> filteredFolderItems
-                }
+                val items = if (isInsideFolder) filteredFolderItems else rootFileSections.items(selectAllScope)
                 fileManagerViewModel.selectAll(items.map { it.path }.toSet())
             },
             onClear = { fileManagerViewModel.deselectAll() },
@@ -336,7 +336,7 @@ fun FileManagerScreen(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
-                        if (isSelectionMode) selectionActions() else {
+                        run {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -406,7 +406,7 @@ fun FileManagerScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // These shortcuts replace the duplicate section panels below storage.
+                    // Shortcuts expand and scroll to the separate section below storage.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(
                             Triple(SelectAllScope.ARCHIVES, "Archives", allArchives.size),
@@ -420,6 +420,7 @@ fun FileManagerScreen(
                                     .clickable {
                                         fileManagerViewModel.clearSelection()
                                         selectAllScope = scope
+                                        sectionRequest++
                                     }
                                     .padding(horizontal = 4.dp, vertical = 8.dp)
                                     .testTag("storage_category_${scope.name}"),
@@ -623,6 +624,9 @@ fun FileManagerScreen(
                             currentDir = currentDir,
                             headerContent = storageOverview,
                             rootSection = selectAllScope,
+                            sectionRequest = sectionRequest,
+                            onSectionSelected = { selectAllScope = it },
+                            selectionHeader = selectionActions,
                             onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
                             onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                             onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
@@ -1087,8 +1091,9 @@ fun FileManagerScreen(
 }
 
 // -------------------------------------------------------------
-// ROOT VIEW: One storage summary and one category list; no duplicate panels.
+// ROOT VIEW: Scrollable storage overview and three independent file sections.
 // -------------------------------------------------------------
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MergedFilesView(
     archives: List<FileItem>,
@@ -1111,16 +1116,34 @@ fun MergedFilesView(
     onContentScrolled: (Boolean) -> Unit = {},
     headerContent: @Composable () -> Unit = {},
     rootSection: SelectAllScope = SelectAllScope.FOLDERS,
+    sectionRequest: Int = 0,
+    onSectionSelected: (SelectAllScope) -> Unit = {},
+    selectionHeader: @Composable () -> Unit = {},
     onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
-    val displayedItems = when (rootSection) {
-        SelectAllScope.ARCHIVES -> archives
-        SelectAllScope.DOCUMENTS -> documents
-        SelectAllScope.FOLDERS -> folderItems
-    }
+    val sections = remember(archives, documents, folderItems) { RootFileSections.from(archives, documents, folderItems) }
+    var archivesOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var documentsOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var foldersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     val mergedListState = rememberLazyListState()
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
+    LaunchedEffect(sectionRequest) {
+        if (sectionRequest > 0) {
+            when (rootSection) {
+                SelectAllScope.ARCHIVES -> archivesOpen = true
+                SelectAllScope.DOCUMENTS -> documentsOpen = true
+                SelectAllScope.FOLDERS -> foldersOpen = true
+            }
+            val documentIndex = 2 + if (archivesOpen) sections.archives.size.coerceAtLeast(1) else 0
+            val folderIndex = documentIndex + 1 + if (documentsOpen) sections.documents.size.coerceAtLeast(1) else 0
+            mergedListState.requestScrollToItem(when (rootSection) {
+                SelectAllScope.ARCHIVES -> 1
+                SelectAllScope.DOCUMENTS -> documentIndex
+                SelectAllScope.FOLDERS -> folderIndex
+            })
+        }
+    }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -1128,60 +1151,101 @@ fun MergedFilesView(
         modifier = Modifier.fillMaxSize(),
     ) {
         item(key = "storage_overview", contentType = "storage_overview") { headerContent() }
-        if (displayedItems.isEmpty()) {
-            item(key = "empty_${rootSection.name}") {
-                Text(
-                    when (rootSection) {
-                        SelectAllScope.ARCHIVES -> "No archives found"
-                        SelectAllScope.DOCUMENTS -> "No documents found"
-                        SelectAllScope.FOLDERS -> "No files in this location"
-                    },
-                    color = palette.textSecondary,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                )
+        listOf(SelectAllScope.ARCHIVES, SelectAllScope.DOCUMENTS, SelectAllScope.FOLDERS).forEach { scope ->
+            val displayedItems = sections.items(scope)
+            val expanded = when (scope) {
+                SelectAllScope.ARCHIVES -> archivesOpen
+                SelectAllScope.DOCUMENTS -> documentsOpen
+                SelectAllScope.FOLDERS -> foldersOpen
             }
-        }
-        itemsIndexed(displayedItems, key = { _, item -> item.path }) { index, item ->
-            val selected = selectedPaths.contains(item.path)
-            val dragModifier = Modifier.reorderableDrag(index, displayedItems.size, reorderThresholdPx,
-                { from, to -> onReorder(displayedItems[from].path, displayedItems[to].path) })
-            when {
-                item.isDirectory -> FolderItemCard(
-                    folder = item,
-                    onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
-                    onLongClick = { onItemLongClick(item) },
-                    isSelected = selected, showSelectionControl = isSelectionMode,
-                    isNew = newFolderPaths.contains(item.path),
-                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
-                )
-                item.isApk -> GenericFileItemCard(
-                    item = item,
-                    onClick = { if (isSelectionMode) onItemTap(item) else onInstallApk(item) },
-                    onLongClick = { onItemLongClick(item) },
-                    isSelected = selected, showSelectionControl = isSelectionMode,
-                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
-                )
-                item.isArchive -> ArchiveItemCard(
-                    archive = item,
-                    onInspect = { if (isSelectionMode) onItemTap(item) else onInspectArchive(item) },
-                    onExtract = { onExtractArchive(item) }, onLongClick = { onItemLongClick(item) },
-                    isSelected = selected, showSelectionControl = isSelectionMode,
-                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
-                )
-                item.isDocument -> DocumentItemCard(
-                    doc = item,
-                    onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
-                    onLongClick = { onItemLongClick(item) },
-                    isSelected = selected, showSelectionControl = isSelectionMode,
-                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
-                )
-                else -> GenericFileItemCard(
-                    item = item,
-                    onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
-                    onLongClick = { onItemLongClick(item) },
-                    isSelected = selected, showSelectionControl = isSelectionMode,
-                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
-                )
+            stickyHeader(key = "file_section_${scope.name}", contentType = "file_section_header") {
+                val title = when (scope) {
+                    SelectAllScope.ARCHIVES -> "Archives"
+                    SelectAllScope.DOCUMENTS -> "Documents"
+                    SelectAllScope.FOLDERS -> "Folders & files"
+                }
+                Card(
+                    modifier = Modifier.fillMaxWidth().testTag("file_section_${scope.name}").clickable(enabled = !isSelectionMode) {
+                        onSectionSelected(scope)
+                        when (scope) {
+                            SelectAllScope.ARCHIVES -> archivesOpen = !archivesOpen
+                            SelectAllScope.DOCUMENTS -> documentsOpen = !documentsOpen
+                            SelectAllScope.FOLDERS -> foldersOpen = !foldersOpen
+                        }
+                    },
+                    colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isSelectionMode && rootSection == scope) selectionHeader() else {
+                            Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(when (scope) {
+                                    SelectAllScope.ARCHIVES -> Icons.Default.FolderZip
+                                    SelectAllScope.DOCUMENTS -> Icons.Default.Description
+                                    SelectAllScope.FOLDERS -> Icons.Default.Folder
+                                }, null, tint = palette.primary, modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
+                                Text("${displayedItems.size}", color = palette.textSecondary, fontSize = 12.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    if (expanded) "Collapse $title" else "Expand $title", tint = palette.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+            if (expanded) {
+                if (displayedItems.isEmpty()) item(key = "empty_${scope.name}") {
+                    Text("No ${when (scope) {
+                        SelectAllScope.ARCHIVES -> "archives"
+                        SelectAllScope.DOCUMENTS -> "documents"
+                        SelectAllScope.FOLDERS -> "files"
+                    }} found", color = palette.textSecondary, modifier = Modifier.padding(16.dp))
+                }
+                itemsIndexed(displayedItems, key = { _, item -> "${scope.name}:${item.path}" }) { index, item ->
+                    val selected = selectedPaths.contains(item.path)
+                    val dragModifier = Modifier.reorderableDrag(index, displayedItems.size, reorderThresholdPx,
+                        { from, to -> onReorder(displayedItems[from].path, displayedItems[to].path) })
+                    when {
+                        item.isDirectory -> FolderItemCard(
+                            folder = item,
+                            onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
+                            onLongClick = { onSectionSelected(scope); onItemLongClick(item) },
+                            isSelected = selected, showSelectionControl = isSelectionMode,
+                            isNew = newFolderPaths.contains(item.path),
+                            onMenuClick = { onSectionSelected(scope); onItemMenuClick(item) }, modifier = dragModifier,
+                        )
+                        item.isApk -> GenericFileItemCard(
+                            item = item,
+                            onClick = { if (isSelectionMode) onItemTap(item) else onInstallApk(item) },
+                            onLongClick = { onSectionSelected(scope); onItemLongClick(item) },
+                            isSelected = selected, showSelectionControl = isSelectionMode,
+                            onMenuClick = { onSectionSelected(scope); onItemMenuClick(item) }, modifier = dragModifier,
+                        )
+                        item.isArchive -> ArchiveItemCard(
+                            archive = item,
+                            onInspect = { if (isSelectionMode) onItemTap(item) else onInspectArchive(item) },
+                            onExtract = { onExtractArchive(item) }, onLongClick = { onSectionSelected(scope); onItemLongClick(item) },
+                            isSelected = selected, showSelectionControl = isSelectionMode,
+                            onMenuClick = { onSectionSelected(scope); onItemMenuClick(item) }, modifier = dragModifier,
+                        )
+                        item.isDocument -> DocumentItemCard(
+                            doc = item,
+                            onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
+                            onLongClick = { onSectionSelected(scope); onItemLongClick(item) },
+                            isSelected = selected, showSelectionControl = isSelectionMode,
+                            onMenuClick = { onSectionSelected(scope); onItemMenuClick(item) }, modifier = dragModifier,
+                        )
+                        else -> GenericFileItemCard(
+                            item = item,
+                            onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
+                            onLongClick = { onSectionSelected(scope); onItemLongClick(item) },
+                            isSelected = selected, showSelectionControl = isSelectionMode,
+                            onMenuClick = { onSectionSelected(scope); onItemMenuClick(item) }, modifier = dragModifier,
+                        )
+                    }
+                }
             }
         }
     }

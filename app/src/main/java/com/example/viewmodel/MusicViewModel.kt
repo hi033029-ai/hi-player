@@ -3,7 +3,6 @@ package com.example.viewmodel
 import android.app.Application
 import android.content.ContentUris
 import android.media.MediaMetadataRetriever
-import android.media.audiofx.Equalizer
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -84,8 +83,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedFilter = MutableStateFlow("All")
     val selectedFilter = _selectedFilter.asStateFlow()
 
-    private val _equalizerPreset = MutableStateFlow("Cinema 3D")
-    val equalizerPreset = _equalizerPreset.asStateFlow()
+    private val audioEqualizer = com.example.audio.AudioEqualizerController(application)
+    val equalizerPreset = audioEqualizer.preset
+    val equalizerState = audioEqualizer.state
 
     private val _activeSubtitle = MutableStateFlow<String?>(null)
     val activeSubtitle = _activeSubtitle.asStateFlow()
@@ -264,6 +264,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .setHandleAudioBecomingNoisy(true)
             .build().apply {
             addListener(object : Player.Listener {
+                override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                    audioEqualizer.attach(audioSessionId)
+                }
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.value = playing
                     if (playing) {
@@ -275,6 +278,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
+                        audioEqualizer.attach(audioSessionId)
                         _durationMs.value = duration.coerceAtLeast(0L)
                     } else if (playbackState == Player.STATE_ENDED) {
                         playNext()
@@ -414,9 +418,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         progressJob?.cancel()
     }
 
-    fun setEqualizerPreset(preset: String) {
-        _equalizerPreset.value = preset
-    }
+    fun setEqualizerPreset(preset: String) = audioEqualizer.setPreset(preset)
+    fun setEqualizerEnabled(enabled: Boolean) = audioEqualizer.setEnabled(enabled)
+    fun setEqualizerBand(index: Int, gainDb: Float) = audioEqualizer.setBand(index, gainDb)
+    fun setEqualizerBass(strength: Int) = audioEqualizer.setBass(strength)
+    fun resetEqualizer() = audioEqualizer.reset()
 
     private fun startProgressUpdates() {
         progressJob?.cancel()
@@ -436,6 +442,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         refreshCoordinator.close()
         getApplication<Application>().contentResolver.unregisterContentObserver(audioObserver)
         progressJob?.cancel()
+        audioEqualizer.release()
         exoPlayer?.release()
         exoPlayer = null
     }

@@ -1,410 +1,113 @@
 package com.example.ui.screens
 
-import com.example.ui.components.AudioLyricsPanel
-import com.example.ui.theme.hiContainerBorder
-
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Equalizer
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay10
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import com.example.R
 import com.example.model.AudioItem
+import com.example.ui.components.AudioLyricsPanel
 import com.example.ui.components.AudioTrackThumbnail
-import com.example.ui.components.HiPlayerLogoBadge
-import com.example.ui.components.WavyAudioWaveform
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.contrastContentColor
 
+/** Metadata stays above the flexible lyrics pane; transport controls never scroll away. */
 @Composable
 fun FullScreenAudioPlayerScreen(
-    track: AudioItem,
-    isPlaying: Boolean,
-    currentPos: Long,
-    duration: Long,
-    eqPreset: String,
-    activeSubtitle: String?,
-    lyricsEnabled: Boolean = false,
-    lyricsText: String? = null,
-    activeLyricLineIndex: Int = -1,
-    onTogglePlay: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onOpenEq: () -> Unit,
-    onOpenSubtitleSearch: () -> Unit,
-    onLyricsTap: () -> Unit = {},
-    onBack: () -> Unit,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier,
-    lyricsMessage: String? = null,
-    lyricsLoading: Boolean = false,
-    lyricsRetryable: Boolean = false,
+    track: AudioItem, isPlaying: Boolean, currentPos: Long, duration: Long, eqPreset: String,
+    activeSubtitle: String?, lyricsEnabled: Boolean = false, lyricsText: String? = null,
+    activeLyricLineIndex: Int = -1, onTogglePlay: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit,
+    onSeek: (Long) -> Unit, onOpenEq: () -> Unit, onOpenSubtitleSearch: () -> Unit,
+    onLyricsTap: () -> Unit = {}, onBack: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier,
+    lyricsMessage: String? = null, lyricsLoading: Boolean = false, lyricsRetryable: Boolean = false,
     onRetryLyrics: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
-    val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
-    val progress = if (duration > 0) (currentPos.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
-
-    // Intercept hardware/gesture Back button -> collapse to sheet mode
+    val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
+    val position = currentPos.coerceIn(0, total.coerceAtLeast(0))
+    val progress = if (total > 0) (position.toFloat() / total).coerceIn(0f, 1f) else 0f
+    fun clock(ms: Long): String = "%02d:%02d".format(java.util.Locale.US, ms / 60000, ms / 1000 % 60)
     BackHandler(onBack = onBack)
-
-    val formatTime: (Long) -> String = { ms ->
-        val totalSec = (ms / 1000).toInt()
-        val min = totalSec / 60
-        val sec = totalSec % 60
-        String.format("%02d:%02d", min, sec)
-    }
-
-    Surface(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("full_screen_audio_player"),
-        color = palette.background
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 0.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Top
-        ) {
-            // The global Hi Player header is owned by the root shell. Keep the
-            // expanded player content directly below it; do not render a second header.
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Large Hero Album Art / PNG Artwork Display Card
-            Box(
-                modifier = Modifier
-                    .size(260.dp)
-                    .shadow(12.dp, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(palette.surfaceElevated)
-                    .border(1.5.dp, palette.primary.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
-                contentAlignment = Alignment.Center
-            ) {
+    Surface(modifier.fillMaxSize().testTag("full_screen_audio_player"), color = palette.background) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth().testTag("audio_song_header"), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.KeyboardArrowDown, "Minimize player", tint = palette.textPrimary)
+                }
+                Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                    Text(track.title, maxLines = 2, overflow = TextOverflow.Ellipsis, color = palette.textPrimary,
+                        fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = palette.textSecondary, fontSize = 12.sp)
+                }
+                IconButton(onClick = onCancel, modifier = Modifier.testTag("cancel_audio_player")) {
+                    Icon(Icons.Default.Close, "Stop music", tint = palette.textSecondary)
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = lyricsEnabled, onClick = onOpenSubtitleSearch,
+                    label = { Text(if (lyricsEnabled) "Lyrics on" else "Lyrics") },
+                    leadingIcon = { Icon(Icons.Default.Subtitles, null, Modifier.size(16.dp)) },
+                    colors = FilterChipDefaults.filterChipColors(labelColor = palette.textPrimary,
+                        selectedContainerColor = palette.primary,
+                        selectedLabelColor = contrastContentColor(palette.primary, palette.background),
+                        selectedLeadingIconColor = contrastContentColor(palette.primary, palette.background)))
+                AssistChip(onClick = onOpenEq, label = { Text("Equalizer · $eqPreset", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Icon(Icons.Default.Equalizer, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.weight(1f), colors = AssistChipDefaults.assistChipColors(labelColor = palette.textPrimary,
+                        leadingIconContentColor = palette.textPrimary))
+            }
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp).testTag("audio_lyrics_area"),
+                contentAlignment = Alignment.Center) {
                 if (lyricsEnabled) {
-                    AudioLyricsPanel(
-                        text = lyricsText, activeIndex = activeLyricLineIndex,
-                        message = lyricsMessage, loading = lyricsLoading,
-                        retryable = lyricsRetryable, onRetry = onRetryLyrics,
-                    )
+                    AudioLyricsPanel(lyricsText, activeLyricLineIndex, lyricsMessage, lyricsLoading, lyricsRetryable, onRetryLyrics)
                 } else {
-                    AudioTrackThumbnail(
-                        track = track,
-                        modifier = Modifier.fillMaxSize(),
-                        shape = RoundedCornerShape(24.dp),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-
-                // Artwork shading must not cover lyrics or their retry button.
-                if (!lyricsEnabled) Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f))
-                            )
-                        )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Track Title & Artist Info
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = track.title,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.textPrimary,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = track.artist,
-                        fontSize = 13.5.sp,
-                        color = palette.textSecondary,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
-                            .background(palette.primary.copy(alpha = 0.15f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "AUDIO PRO",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.primary
-                        )
-                    }
+                    AudioTrackThumbnail(track, modifier = Modifier.size(minOf(maxWidth, maxHeight, 260.dp)),
+                        shape = RoundedCornerShape(20.dp))
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Quick Options Row (Lyrics and EQ Preset)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Subtitles Search Button
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp)).hiContainerBorder(RoundedCornerShape(12.dp))
-                        .background(palette.primary.copy(alpha = 0.15f))
-                        .clickable(onClick = onOpenSubtitleSearch)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Subtitles,
-                            contentDescription = "Lyrics",
-                            tint = palette.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (lyricsEnabled) "Lyrics Off" else "Lyrics",
-                            fontSize = 12.sp,
-                            color = palette.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Equalizer Chip Button
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(palette.surfaceElevated)
-                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onOpenEq)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Equalizer,
-                            contentDescription = "Equalizer",
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = eqPreset,
-                            fontSize = 12.sp,
-                            color = palette.textPrimary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+            Column(Modifier.fillMaxWidth()) {
+                Slider(value = progress, onValueChange = { onSeek((it * total).toLong()) }, enabled = total > 0,
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Music playback position" },
+                    colors = SliderDefaults.colors(thumbColor = palette.primary, activeTrackColor = palette.primary,
+                        inactiveTrackColor = palette.surfaceBorder))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(clock(position), color = palette.textSecondary, fontSize = 11.sp)
+                    Text(clock(total), color = palette.textSecondary, fontSize = 11.sp)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Animated Wavy Audio Soundwave
-            WavyAudioWaveform(
-                isPlaying = isPlaying,
-                waveColor = palette.primary,
-                height = 32.dp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Progress Slider Scrub Bar
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Slider(
-                    value = progress,
-                    onValueChange = { frac ->
-                        onSeek((frac * duration).toLong())
-                    },
-                    colors = SliderDefaults.colors(
-                        thumbColor = palette.primary,
-                        activeTrackColor = palette.primary,
-                        inactiveTrackColor = palette.surfaceBorder
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = formatTime(currentPos),
-                        fontSize = 12.sp,
-                        color = palette.textSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = formatTime(duration),
-                        fontSize = 12.sp,
-                        color = palette.textSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onSeek((position - 10000).coerceAtLeast(0)) }) {
+                    Icon(Icons.Default.Replay10, "Seek Back 10s", tint = palette.textPrimary)
+                }
+                IconButton(onClick = onPrevious) { Icon(Icons.Default.SkipPrevious, "Previous Track", tint = palette.textPrimary) }
+                Box(Modifier.size(56.dp).clip(CircleShape).background(palette.primary).clickable(onClick = onTogglePlay),
+                    contentAlignment = Alignment.Center) {
+                    Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (isPlaying) "Pause" else "Play", Modifier.size(32.dp),
+                        tint = contrastContentColor(palette.primary, palette.background))
+                }
+                IconButton(onClick = onNext) { Icon(Icons.Default.SkipNext, "Next Track", tint = palette.textPrimary) }
+                IconButton(onClick = { onSeek((position + 10000).coerceAtMost(total)) }) {
+                    Icon(Icons.Default.Forward10, "Seek Forward 10s", tint = palette.textPrimary)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Main Playback Controls Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Seek -10s
-                IconButton(
-                    onClick = { onSeek((currentPos - 10000).coerceAtLeast(0L)) },
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Replay10,
-                        contentDescription = "Seek Back 10s",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                // Previous Track
-                IconButton(
-                    onClick = onPrevious,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous Track",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                // Play / Pause Primary Fab Button
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(palette.primary)
-                        .clickable(onClick = onTogglePlay),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = if (palette.isDark) Color.Black else Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                // Next Track
-                IconButton(
-                    onClick = onNext,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Track",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                // Seek +10s
-                IconButton(
-                    onClick = { onSeek((currentPos + 10000).coerceAtMost(duration)) },
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Forward10,
-                        contentDescription = "Seek Forward 10s",
-                        tint = palette.textPrimary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
