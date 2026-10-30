@@ -1,0 +1,19 @@
+name: Apply downloaded audio source only
+on:
+  push:
+    branches: [feature/stream-cast-music-polish]
+    paths: [downloaded-audio-source.patch.xz.b64]
+permissions:
+  contents: write
+jobs:
+  source-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply source changes only (no build or APK)
+        run: |
+          base64 -d downloaded-audio-source.patch.xz.b64 | xz -d > /tmp/source.patch
+          git apply --index /tmp/source.patch
+          git rm downloaded-audio-source.patch.xz.b64
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Discover completed browser audio directly and refresh Music on completion (source only)'
+          git push
