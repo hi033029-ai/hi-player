@@ -69,7 +69,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var volumeLevel = 1f // 1.0 = 100%, 2.0 = 200%
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-            if (!isHdrTap(e.x, e.y)) onSingleTap?.invoke()
+            onSingleTap?.invoke()
             return true
         }
 
@@ -84,9 +84,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
         override fun onLongPress(e: MotionEvent) {
             longPressHandled = true
-            if (isHdrTap(e.x, e.y)) {
-                onHdrLongPress?.invoke()
-            } else if (e.x < width / 3f) {
+            if (e.x < width / 3f) {
                 beginHoldSeek(-1)
             } else if (e.x > width * 2f / 3f) {
                 beginHoldSeek(1)
@@ -108,8 +106,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var isInteractionLocked: (() -> Boolean)? = null
     /** Receives only a simple touch-up while locked; media gestures stay blocked. */
     var onLockedScreenTap: (() -> Unit)? = null
-    var onHdrToggle: (() -> Unit)? = null
-    var onHdrLongPress: (() -> Unit)? = null
     var onPresetSelected: ((com.example.player.ColorPreset) -> Unit)? = null
     var onPinchZoom: ((Float) -> Unit)? = null
     var onPinchStart: (() -> Unit)? = null
@@ -279,11 +275,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 }
                 if (horizontalScrub) onScrubEnd?.invoke()
                 endHoldSeek()
-                if (!longPressHandled && !horizontalScrub && !verticalControl &&
-                    isHdrTap(downX, downY)
-                ) {
-                    onHdrToggle?.invoke()
-                }
                 pinchDistance = 0f
                 horizontalScrub = false
                 verticalControl = false
@@ -347,14 +338,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             onHoldSeekEnd?.invoke()
         }
         holdSeekDirection = 0
-    }
-
-    private fun isHdrTap(x: Float, y: Float): Boolean {
-        val d = resources.displayMetrics.density
-        val rowBottom = height - 88f * d
-        val rowTop = height - 172f * d
-        // Rotate, PiP, HDR: the HDR icon is the third utility action from the left.
-        return y in rowTop..rowBottom && x in (80f * d)..(176f * d)
     }
 
     private fun pointerDistance(event: MotionEvent): Float {

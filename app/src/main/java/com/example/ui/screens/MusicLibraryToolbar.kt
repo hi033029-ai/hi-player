@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalHiPalette
 
 internal fun musicSelectedLabelColor(background: Color): Color =
-    if (background.luminance() > .179f) Color.Black else Color.White
+    com.example.ui.theme.contrastContentColor(background)
 
 @Composable
 internal fun MusicLibraryToolbar(
@@ -47,7 +47,7 @@ internal fun MusicLibraryToolbar(
                         .clickable { onCategory(category) }.padding(horizontal = 14.dp)
                         .testTag("music_library_category_$category"), contentAlignment = Alignment.Center) {
                         Text(if (category == "All Music") "Songs" else category,
-                            color = if (active) musicSelectedLabelColor(palette.primary) else palette.textSecondary,
+                            color = if (active) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary,
                             fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                             maxLines = 1)
                     }

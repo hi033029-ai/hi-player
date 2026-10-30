@@ -56,6 +56,7 @@ fun HorizontalThemeSelector(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
 ) {
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themes = AppThemeMode.entries.filter { showCustom || it != AppThemeMode.CUSTOM }
 
     LazyRow(
@@ -66,7 +67,7 @@ fun HorizontalThemeSelector(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         itemsIndexed(themes) { _, theme ->
-            val themePalette = if (theme == AppThemeMode.CUSTOM && customPalette != null) customPalette else getPaletteForTheme(theme)
+            val themePalette = if (theme == AppThemeMode.CUSTOM && customPalette != null) customPalette else getPaletteForTheme(theme, systemDark)
             val isSelected = selectedTheme == theme
 
             RoundColorThemeItem(
@@ -164,7 +165,7 @@ fun RoundColorThemeItem(
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = "Selected",
-                        tint = if (palette.isDark) Color.Black else Color.White,
+                        tint = com.example.ui.theme.contrastContentColor(palette.primary, palette.background),
                         modifier = Modifier.size(12.dp)
                     )
                 } else {

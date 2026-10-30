@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "hi_player_settings")
 
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
+    SYSTEM("SYSTEM", "System", "Follow device light or dark appearance"),
     CYAN_NEON_DARK("CYAN_NEON_DARK", "Monochrome Dark", "Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF"),
     WARM_SUNSET_LIGHT("WARM_SUNSET_LIGHT", "Monochrome Light", "Background: #FFFFFF | Accent: #000000 | Text: #000000"),
     HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Ice Blue", "Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate"),
@@ -28,7 +29,7 @@ enum class AppThemeMode(val id: String, val displayName: String, val description
                 "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CYAN_NEON_DARK
                 "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
                 "CUSTOM" -> CUSTOM
-                else -> entries.find { it.id == id } ?: CYAN_NEON_DARK
+                else -> entries.find { it.id == id } ?: SYSTEM
             }
         }
     }
@@ -52,7 +53,7 @@ enum class HwAccelerationMode(val id: String, val displayName: String, val descr
  * or browsing the library never changes the device's current volume.
  */
 data class AppPlayerSettings(
-    val themeMode: AppThemeMode = AppThemeMode.WARM_SUNSET_LIGHT,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val isFirstLaunch: Boolean = true,
     val hwAccelerationMode: HwAccelerationMode = HwAccelerationMode.HW,
     val hardwareDecoding: Boolean = true,
@@ -145,7 +146,7 @@ class PlayerPreferencesRepository(private val context: Context) {
     }
 
     val settingsFlow: Flow<AppPlayerSettings> = context.dataStore.data.map { prefs ->
-        val themeStr = prefs[Keys.THEME_MODE] ?: AppThemeMode.WARM_SUNSET_LIGHT.id
+        val themeStr = prefs[Keys.THEME_MODE] ?: AppThemeMode.SYSTEM.id
         val hwStr = prefs[Keys.HW_ACCEL_MODE] ?: HwAccelerationMode.HW.id
         val isFirst = prefs[Keys.IS_FIRST_LAUNCH] ?: true
         val hwMode = HwAccelerationMode.fromId(hwStr)

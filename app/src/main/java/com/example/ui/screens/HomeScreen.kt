@@ -424,8 +424,8 @@ fun HomeScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(icon, contentDescription = label, tint = if (selected) Color.White else palette.textSecondary, modifier = Modifier.size(15.dp))
-                                Text(label, color = if (selected) Color.White else palette.textPrimary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
+                                Icon(icon, contentDescription = label, tint = if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary, modifier = Modifier.size(15.dp))
+                                Text(label, color = if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textPrimary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
                             }
                         }
                     }
