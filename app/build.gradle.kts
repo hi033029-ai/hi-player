@@ -32,8 +32,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 69
-    versionName = "1.0.68"
+    versionCode = 70
+    versionName = "1.0.69"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
@@ -111,9 +111,9 @@ dependencies {
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
   implementation("com.google.android.gms:play-services-auth:21.4.0")
-  implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
+  implementation("com.google.android.gms:play-services-cast-framework:22.3.0")
   implementation("androidx.appcompat:appcompat:1.7.0")
-  implementation("androidx.mediarouter:mediarouter:1.7.0")
+  implementation("androidx.mediarouter:mediarouter:1.8.0")
   implementation("androidx.fragment:fragment-ktx:1.8.6")
   implementation("androidx.browser:browser:1.8.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
