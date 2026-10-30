@@ -4,7 +4,6 @@ import androidx.datastore.core.DataMigration
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.toMutablePreferences
 
 /** User-requested one-time reset to System for upgrades as well as fresh installations. */
 internal object SystemThemeDefaultMigration : DataMigration<Preferences> {
