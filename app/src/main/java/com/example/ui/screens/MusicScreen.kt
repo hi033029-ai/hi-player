@@ -21,12 +21,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -76,7 +78,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,21 +122,15 @@ fun MusicScreen(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    val audioList by musicViewModel.audioList.collectAsState()
-    val currentTrack by musicViewModel.currentTrack.collectAsState()
-    val isPlaying by musicViewModel.isPlaying.collectAsState()
-    val currentPos by musicViewModel.currentPositionMs.collectAsState()
-    val duration by musicViewModel.durationMs.collectAsState()
-    val searchQuery by musicViewModel.searchQuery.collectAsState()
+    val audioList by musicViewModel.audioList.collectAsStateWithLifecycle()
+    val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
+    val isPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
+    val searchQuery by musicViewModel.searchQuery.collectAsStateWithLifecycle()
     val continueWatchingVideos by (libraryViewModel?.continueWatchingVideos
         ?: flowOf(emptyList<LibraryViewModel.ContinueWatchingItem>()))
-        .collectAsState(initial = emptyList())
-    val equalizerPreset by musicViewModel.equalizerPreset.collectAsState()
-    val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
-    val lyricsText by musicViewModel.lyricsText.collectAsState()
-    val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsState()
-    val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
-    val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val equalizerPreset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
+    val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
 
     var showEqDialog by remember { mutableStateOf(false) }
     val toggleLyrics: () -> Unit = {
@@ -170,53 +166,15 @@ fun MusicScreen(
         enabled = compactAudioView
     )
 
-    val filteredList = remember(audioList, searchQuery, audioSort, libraryMode, selectedCollection) {
-        audioList.filter { track ->
-            val matchesQuery = searchQuery.isBlank() ||
-                    track.title.contains(searchQuery, ignoreCase = true) ||
-                    track.artist.contains(searchQuery, ignoreCase = true) ||
-                    track.album.contains(searchQuery, ignoreCase = true)
-
-            val matchesLibrary = when (libraryMode) {
-                "Playlists" -> track.isFavorite
-                else -> true
-            }
-            val matchesCollection = selectedCollection?.let { collection ->
-                when (libraryMode) {
-                    "Folders" -> track.path.substringBeforeLast('/', "").substringAfterLast('/', "Music") == collection
-                    "Albums" -> track.album.ifBlank { "Unknown album" } == collection
-                    "Artists" -> track.artist.ifBlank { "Unknown artist" } == collection
-                    else -> true
-                }
-            } ?: true
-            matchesQuery && matchesLibrary && matchesCollection
-        }.let { list ->
-            when (audioSort) {
-                "Custom" -> list
-                "Artist" -> list.sortedBy { it.artist.lowercase() }
-                "Duration" -> list.sortedByDescending { it.durationMs }
-                "Newest" -> list.sortedByDescending { it.dateAdded }
-                else -> when (libraryMode) {
-                    "Folders" -> list.sortedWith(compareBy({ it.path.substringBeforeLast('/', "").lowercase() }, { it.title.lowercase() }))
-                    "Albums" -> list.sortedWith(compareBy({ it.album.lowercase() }, { it.title.lowercase() }))
-                    "Artists" -> list.sortedWith(compareBy({ it.artist.lowercase() }, { it.title.lowercase() }))
-                    else -> list.sortedBy { it.title.lowercase() }
-                }
-            }
+    val presentation by androidx.compose.runtime.produceState(
+        AudioLibraryPresentation(), audioList, searchQuery, audioSort, libraryMode, selectedCollection,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            buildAudioLibraryPresentation(audioList, searchQuery, audioSort, libraryMode, selectedCollection)
         }
     }
-
-    // Folders, albums, and artists are genuine grouped views rather than a
-    // flat track list merely sorted by that field. The selected sort still
-    // determines ordering inside each group.
-    val groupedAudio = remember(filteredList, libraryMode) {
-        when (libraryMode) {
-            "Folders" -> filteredList.groupBy { it.path.substringBeforeLast('/', "").substringAfterLast('/', "Music") }
-            "Albums" -> filteredList.groupBy { it.album.ifBlank { "Unknown album" } }
-            "Artists" -> filteredList.groupBy { it.artist.ifBlank { "Unknown artist" } }
-            else -> emptyMap()
-        }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
-    }
+    val filteredList = presentation.tracks
+    val groupedAudio = presentation.groups
 
     Column(
         modifier = modifier
@@ -354,7 +312,7 @@ fun MusicScreen(
                                         modifier = Modifier.padding(top = 8.dp, start = 4.dp),
                                     )
                                 }
-                                gridItems(tracks, key = { track -> "audio_grid_${groupName}_${track.id}" }) { track ->
+                                gridItems(tracks, key = { track -> "audio_grid_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
                                     val isSelected = currentTrack?.id == track.id
                                     AudioTrackCard(
                                         track = track,
@@ -366,7 +324,7 @@ fun MusicScreen(
                                 }
                             }
                         } else {
-                            gridItems(filteredList, key = { it.id }) { track ->
+                            gridItemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
                                 val isSelected = currentTrack?.id == track.id
                                 AudioTrackCard(
                                     track = track,
@@ -376,7 +334,7 @@ fun MusicScreen(
                                     modifier = Modifier
                                         .padding(4.dp)
                                         .reorderableDrag(
-                                            itemIndex = filteredList.indexOf(track),
+                                            itemIndex = index,
                                             itemCount = filteredList.size,
                                             thresholdPx = reorderThresholdPx,
                                             onMove = { from, to ->
@@ -408,7 +366,7 @@ fun MusicScreen(
                                     modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                                 )
                             }
-                            items(tracks, key = { track -> "audio_${groupName}_${track.id}" }) { track ->
+                            items(tracks, key = { track -> "audio_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
                                 val isSelected = currentTrack?.id == track.id
                                 AudioTrackCard(
                                     track = track,
@@ -424,7 +382,7 @@ fun MusicScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        itemsIndexed(filteredList, key = { _, it -> it.id }) { index, track ->
+                        itemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
                             val isSelected = currentTrack?.id == track.id
                             AudioTrackCard(
                                 track = track,
@@ -450,53 +408,11 @@ fun MusicScreen(
             }
         }
 
-        // Full Screen Audio Player or Wavy Now Playing Sheet
-        if (currentTrack != null) {
-            if (isFullScreenPlayerOpen) {
-                FullScreenAudioPlayerScreen(
-                    track = currentTrack!!,
-                    isPlaying = isPlaying,
-                    currentPos = currentPos,
-                    duration = duration,
-                    eqPreset = equalizerPreset,
-                    activeSubtitle = activeSubtitle,
-                    lyricsEnabled = lyricsEnabled,
-                    lyricsText = lyricsText,
-                    activeLyricLineIndex = currentLyricLineIndex,
-                    onTogglePlay = { musicViewModel.togglePlayPause() },
-                    onNext = { musicViewModel.playNext() },
-                    onPrevious = { musicViewModel.playPrevious() },
-                    onSeek = { musicViewModel.seekTo(it) },
-                    onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = toggleLyrics,
-                    onBack = { musicViewModel.closeFullScreenPlayer() },
-                    onLyricsTap = toggleLyrics,
-                    onCancel = { musicViewModel.stopTrack() }
-                )
-            } else {
-                WavyNowPlayingBottomSheet(
-                    track = currentTrack!!,
-                    isPlaying = isPlaying,
-                    currentPos = currentPos,
-                    duration = if (duration > 0) duration else currentTrack!!.durationMs,
-                    eqPreset = equalizerPreset,
-                    activeSubtitle = activeSubtitle,
-                    onTogglePlay = { musicViewModel.togglePlayPause() },
-                    onNext = { musicViewModel.playNext() },
-                    onPrevious = { musicViewModel.playPrevious() },
-                    onSeek = { musicViewModel.seekTo(it) },
-                    onOpenEq = { showEqDialog = true },
-                    onOpenSubtitleSearch = toggleLyrics,
-                    onLyricsTap = toggleLyrics,
-                    onCancel = { musicViewModel.stopTrack() },
-                    onExpandFullScreen = { musicViewModel.openFullScreenPlayer() },
-                    lyricsEnabled = lyricsEnabled,
-                    lyricsText = lyricsText,
-                    activeLyricLineIndex = currentLyricLineIndex,
-                    onLyricsToggle = toggleLyrics
-                )
-            }
-        }
+        MusicPlaybackSurface(
+            musicViewModel = musicViewModel,
+            onOpenEq = { showEqDialog = true },
+            toggleLyrics = toggleLyrics,
+        )
     }
 
     // Equalizer Preset Dialog
@@ -527,17 +443,18 @@ fun AudioTrackCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .hiContainerBorder(RoundedCornerShape(12.dp), selected = isSelected)
+            .then(if (isSelected) Modifier.hiContainerBorder(RoundedCornerShape(12.dp), selected = true) else Modifier)
+            .background(if (isSelected) palette.primary.copy(alpha = 0.08f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 6.dp)
+            .padding(horizontal = 10.dp, vertical = 10.dp)
             .testTag("audio_track_${track.id}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Audio Track Thumbnail
         Box(
             modifier = Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(
                     if (isSelected) palette.primary.copy(alpha = 0.25f)
                     else palette.surfaceElevated
@@ -582,6 +499,7 @@ fun AudioTrackCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = track.artist,
+                    modifier = Modifier.weight(1f),
                     fontSize = 11.5.sp,
                     color = palette.textSecondary,
                     maxLines = 1,
@@ -592,6 +510,7 @@ fun AudioTrackCard(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = track.album,
+                    modifier = Modifier.weight(1f),
                     fontSize = 11.sp,
                     color = palette.textSecondary,
                     maxLines = 1,
@@ -602,7 +521,7 @@ fun AudioTrackCard(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        Column(horizontalAlignment = Alignment.End) {
+        Column(modifier = Modifier.widthIn(max = 80.dp), horizontalAlignment = Alignment.End) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
@@ -611,6 +530,8 @@ fun AudioTrackCard(
             ) {
                 Text(
                     text = track.audioFormat,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     fontSize = 9.sp,
                     color = palette.primary,
                     fontWeight = FontWeight.Bold
@@ -953,4 +874,69 @@ fun EqualizerPresetDialog(
         },
         containerColor = palette.surfaceElevated
     )
+}
+
+@Composable
+private fun MusicPlaybackSurface(
+    musicViewModel: MusicViewModel,
+    onOpenEq: () -> Unit,
+    toggleLyrics: () -> Unit,
+) {
+    val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
+    val isPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
+    val currentPos by musicViewModel.currentPositionMs.collectAsStateWithLifecycle()
+    val duration by musicViewModel.durationMs.collectAsStateWithLifecycle()
+    val equalizerPreset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
+    val activeSubtitle by musicViewModel.activeSubtitle.collectAsStateWithLifecycle()
+    val lyricsText by musicViewModel.lyricsText.collectAsStateWithLifecycle()
+    val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
+    val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsStateWithLifecycle()
+    val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
+        // Full Screen Audio Player or Wavy Now Playing Sheet
+        if (currentTrack != null) {
+            if (isFullScreenPlayerOpen) {
+                FullScreenAudioPlayerScreen(
+                    track = currentTrack!!,
+                    isPlaying = isPlaying,
+                    currentPos = currentPos,
+                    duration = duration,
+                    eqPreset = equalizerPreset,
+                    activeSubtitle = activeSubtitle,
+                    lyricsEnabled = lyricsEnabled,
+                    lyricsText = lyricsText,
+                    activeLyricLineIndex = currentLyricLineIndex,
+                    onTogglePlay = { musicViewModel.togglePlayPause() },
+                    onNext = { musicViewModel.playNext() },
+                    onPrevious = { musicViewModel.playPrevious() },
+                    onSeek = { musicViewModel.seekTo(it) },
+                    onOpenEq = onOpenEq,
+                    onOpenSubtitleSearch = toggleLyrics,
+                    onBack = { musicViewModel.closeFullScreenPlayer() },
+                    onLyricsTap = toggleLyrics,
+                    onCancel = { musicViewModel.stopTrack() }
+                )
+            } else {
+                WavyNowPlayingBottomSheet(
+                    track = currentTrack!!,
+                    isPlaying = isPlaying,
+                    currentPos = currentPos,
+                    duration = if (duration > 0) duration else currentTrack!!.durationMs,
+                    eqPreset = equalizerPreset,
+                    activeSubtitle = activeSubtitle,
+                    onTogglePlay = { musicViewModel.togglePlayPause() },
+                    onNext = { musicViewModel.playNext() },
+                    onPrevious = { musicViewModel.playPrevious() },
+                    onSeek = { musicViewModel.seekTo(it) },
+                    onOpenEq = onOpenEq,
+                    onOpenSubtitleSearch = toggleLyrics,
+                    onLyricsTap = toggleLyrics,
+                    onCancel = { musicViewModel.stopTrack() },
+                    onExpandFullScreen = { musicViewModel.openFullScreenPlayer() },
+                    lyricsEnabled = lyricsEnabled,
+                    lyricsText = lyricsText,
+                    activeLyricLineIndex = currentLyricLineIndex,
+                    onLyricsToggle = toggleLyrics
+                )
+            }
+        }
 }

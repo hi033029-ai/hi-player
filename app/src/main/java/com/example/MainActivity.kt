@@ -53,7 +53,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -144,8 +144,8 @@ class MainActivity : FragmentActivity() {
         handleIntent(intent)
 
         setContent {
-            val settings by libraryViewModel.playerSettings.collectAsState()
-            val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsState()
+            val settings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
+            val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsStateWithLifecycle()
             var isShowingSplash by remember { mutableStateOf(true) }
 
             HiPlayerTheme(
@@ -237,17 +237,11 @@ class MainActivity : FragmentActivity() {
                     currentTab = NavTab.BROWSER
                 }
 
-                val videos by libraryViewModel.allVideos.collectAsState()
-                val audios by musicViewModel.audioList.collectAsState()
-                val currentAudioTrack by musicViewModel.currentTrack.collectAsState()
-                val isAudioPlaying by musicViewModel.isPlaying.collectAsState()
-                val currentAudioPos by musicViewModel.currentPositionMs.collectAsState()
-                val audioDuration by musicViewModel.durationMs.collectAsState()
-                val activeSubtitle by musicViewModel.activeSubtitle.collectAsState()
-                val lyricsText by musicViewModel.lyricsText.collectAsState()
-                val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsState()
-                val isAudioFullScreenOpen by musicViewModel.isFullScreenPlayerOpen.collectAsState()
-                val audioEqPreset by musicViewModel.equalizerPreset.collectAsState()
+                val videos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
+                val audios by musicViewModel.audioList.collectAsStateWithLifecycle()
+                val currentAudioTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
+                val isAudioPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
+                val isAudioFullScreenOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
 
                 if (!settingsLoaded) {
                     // Hold on the bare logo/background until the real persisted
@@ -383,21 +377,9 @@ class MainActivity : FragmentActivity() {
                                     bottomBar = {
                                         if (!browserPip) Column {
                                             if (currentTab != com.example.ui.components.NavTab.MUSIC && currentTab != NavTab.BROWSER && currentAudioTrack != null && !isAudioFullScreenOpen) {
-                                                com.example.ui.screens.WavyNowPlayingBottomSheet(
-                                                    track = currentAudioTrack!!,
-                                                    isPlaying = isAudioPlaying,
-                                                    currentPos = currentAudioPos,
-                                                    duration = if (audioDuration > 0) audioDuration else currentAudioTrack!!.durationMs,
-                                                    eqPreset = audioEqPreset,
-                                                    activeSubtitle = activeSubtitle,
-                                                    onTogglePlay = { musicViewModel.togglePlayPause() },
-                                                    onNext = { musicViewModel.playNext() },
-                                                    onPrevious = { musicViewModel.playPrevious() },
-                                                    onSeek = { musicViewModel.seekTo(it) },
-                                                    onOpenEq = { currentTab = com.example.ui.components.NavTab.MUSIC },
-                                                    onOpenSubtitleSearch = { currentTab = com.example.ui.components.NavTab.MUSIC },
-                                                    onCancel = { musicViewModel.stopTrack() },
-                                                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() }
+                                                com.example.ui.components.AudioMiniPlayerHost(
+                                                    musicViewModel = musicViewModel,
+                                                    onOpenMusic = { currentTab = NavTab.MUSIC },
                                                 )
                                             }
                                             if (currentTab != NavTab.BROWSER) HiBottomNavigationBar(

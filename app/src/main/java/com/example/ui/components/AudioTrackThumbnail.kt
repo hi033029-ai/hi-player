@@ -53,16 +53,19 @@ fun AudioTrackThumbnail(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    var embeddedBitmap by remember(track.id, track.uri) { mutableStateOf<Bitmap?>(null) }
-    var attemptedExtraction by remember(track.id, track.uri) { mutableStateOf(false) }
+    val artworkKey = remember(track.path, track.uri, track.sizeBytes, track.albumArtUri) {
+        com.example.util.AudioArtworkCache.key(track)
+    }
+    var embeddedBitmap by remember(artworkKey) {
+        mutableStateOf<Bitmap?>(com.example.util.AudioArtworkCache.get(artworkKey))
+    }
 
     // If artworkUrl exists (e.g. for web/demo tracks or remote streams), load with Coil
     if (!track.artworkUrl.isNullOrEmpty()) {
         AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(track.artworkUrl)
-                .crossfade(true)
-                .build(),
+            model = remember(context, track.artworkUrl) {
+                ImageRequest.Builder(context).data(track.artworkUrl).crossfade(false).build()
+            },
             contentDescription = "Artwork for ${track.title}",
             contentScale = contentScale,
             modifier = modifier
@@ -72,55 +75,8 @@ fun AudioTrackThumbnail(
         return
     }
 
-    // Extract embedded ID3 picture or MediaStore album art on I/O dispatcher
-    LaunchedEffect(track.id, track.uri, track.albumArtUri, track.path) {
-        if (!attemptedExtraction) {
-            withContext(Dispatchers.IO) {
-                var bitmap: Bitmap? = null
-
-                // 1. Try MediaStore albumArtUri if present
-                track.albumArtUri?.let { artUri ->
-                    try {
-                        context.contentResolver.openInputStream(artUri)?.use { stream ->
-                            bitmap = BitmapFactory.decodeStream(stream)
-                        }
-                    } catch (_: Exception) {}
-                }
-
-                // 2. Try MediaMetadataRetriever on track.uri
-                if (bitmap == null && track.uri != Uri.EMPTY) {
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        retriever.setDataSource(context, track.uri)
-                        val picBytes = retriever.embeddedPicture
-                        if (picBytes != null) {
-                            bitmap = BitmapFactory.decodeByteArray(picBytes, 0, picBytes.size)
-                        }
-                    } catch (_: Exception) {
-                    } finally {
-                        try { retriever.release() } catch (_: Exception) {}
-                    }
-                }
-
-                // 3. Try MediaMetadataRetriever on track.path
-                if (bitmap == null && track.path.isNotEmpty()) {
-                    val retriever = MediaMetadataRetriever()
-                    try {
-                        retriever.setDataSource(track.path)
-                        val picBytes = retriever.embeddedPicture
-                        if (picBytes != null) {
-                            bitmap = BitmapFactory.decodeByteArray(picBytes, 0, picBytes.size)
-                        }
-                    } catch (_: Exception) {
-                    } finally {
-                        try { retriever.release() } catch (_: Exception) {}
-                    }
-                }
-
-                embeddedBitmap = bitmap
-                attemptedExtraction = true
-            }
-        }
+    LaunchedEffect(artworkKey) {
+        if (embeddedBitmap == null) embeddedBitmap = com.example.util.AudioArtworkCache.load(context.applicationContext, track)
     }
 
     Box(

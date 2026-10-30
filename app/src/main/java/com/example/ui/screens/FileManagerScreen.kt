@@ -88,7 +88,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -165,34 +165,34 @@ fun FileManagerScreen(
         mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager())
     }
     val uiMetrics = com.example.ui.theme.LocalHiUiMetrics.current
-    val currentDir by fileManagerViewModel.currentDirectory.collectAsState()
-    val folderFiles by fileManagerViewModel.folderFiles.collectAsState()
-    val newFolderPaths by fileManagerViewModel.newFolderPaths.collectAsState()
-    val allArchives by fileManagerViewModel.allArchives.collectAsState()
-    val allDocuments by fileManagerViewModel.allDocuments.collectAsState()
-    val usedStorage by fileManagerViewModel.storageUsedBytes.collectAsState()
-    val totalStorage by fileManagerViewModel.storageTotalBytes.collectAsState()
-    val searchQuery by fileManagerViewModel.searchQuery.collectAsState()
-    val isLoading by fileManagerViewModel.isLoading.collectAsState()
+    val currentDir by fileManagerViewModel.currentDirectory.collectAsStateWithLifecycle()
+    val folderFiles by fileManagerViewModel.folderFiles.collectAsStateWithLifecycle()
+    val newFolderPaths by fileManagerViewModel.newFolderPaths.collectAsStateWithLifecycle()
+    val allArchives by fileManagerViewModel.allArchives.collectAsStateWithLifecycle()
+    val allDocuments by fileManagerViewModel.allDocuments.collectAsStateWithLifecycle()
+    val usedStorage by fileManagerViewModel.storageUsedBytes.collectAsStateWithLifecycle()
+    val totalStorage by fileManagerViewModel.storageTotalBytes.collectAsStateWithLifecycle()
+    val searchQuery by fileManagerViewModel.searchQuery.collectAsStateWithLifecycle()
+    val isLoading by fileManagerViewModel.isLoading.collectAsStateWithLifecycle()
 
-    val selectedArchive by fileManagerViewModel.selectedArchive.collectAsState()
-    val activeArchiveEntries by fileManagerViewModel.activeArchiveEntries.collectAsState()
-    val extractingProgress by fileManagerViewModel.extractingProgress.collectAsState()
-    val selectedDocPreview by fileManagerViewModel.selectedDocumentText.collectAsState()
-    val archiveAwaitingDestination by fileManagerViewModel.archiveAwaitingDestination.collectAsState()
-    val extractionDestinationDirectory by fileManagerViewModel.extractionDestinationDirectory.collectAsState()
-    val extractionDestinationFolders by fileManagerViewModel.extractionDestinationFolders.collectAsState()
+    val selectedArchive by fileManagerViewModel.selectedArchive.collectAsStateWithLifecycle()
+    val activeArchiveEntries by fileManagerViewModel.activeArchiveEntries.collectAsStateWithLifecycle()
+    val extractingProgress by fileManagerViewModel.extractingProgress.collectAsStateWithLifecycle()
+    val selectedDocPreview by fileManagerViewModel.selectedDocumentText.collectAsStateWithLifecycle()
+    val archiveAwaitingDestination by fileManagerViewModel.archiveAwaitingDestination.collectAsStateWithLifecycle()
+    val extractionDestinationDirectory by fileManagerViewModel.extractionDestinationDirectory.collectAsStateWithLifecycle()
+    val extractionDestinationFolders by fileManagerViewModel.extractionDestinationFolders.collectAsStateWithLifecycle()
 
-    val isSelectionMode by fileManagerViewModel.isSelectionMode.collectAsState()
-    val selectedPaths by fileManagerViewModel.selectedPaths.collectAsState()
-    val detailsItem by fileManagerViewModel.detailsItem.collectAsState()
+    val isSelectionMode by fileManagerViewModel.isSelectionMode.collectAsStateWithLifecycle()
+    val selectedPaths by fileManagerViewModel.selectedPaths.collectAsStateWithLifecycle()
+    val detailsItem by fileManagerViewModel.detailsItem.collectAsStateWithLifecycle()
     var menuTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var showSelectionProperties by remember { mutableStateOf(false) }
-    val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsState()
-    val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsState()
-    val deleteProgress by fileManagerViewModel.deleteProgress.collectAsState()
-    val recycleBinItems by fileManagerViewModel.recycleBinItems.collectAsState()
-    val selectedRecycleBinIds by fileManagerViewModel.selectedRecycleBinIds.collectAsState()
+    val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsStateWithLifecycle()
+    val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsStateWithLifecycle()
+    val deleteProgress by fileManagerViewModel.deleteProgress.collectAsStateWithLifecycle()
+    val recycleBinItems by fileManagerViewModel.recycleBinItems.collectAsStateWithLifecycle()
+    val selectedRecycleBinIds by fileManagerViewModel.selectedRecycleBinIds.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var showRecycleBin by remember { mutableStateOf(false) }

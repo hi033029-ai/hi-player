@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -84,7 +85,7 @@ fun HiPlayerTheme(
     } else {
         getPaletteForTheme(themeMode)
     }
-    val colorScheme = createColorScheme(palette)
+    val colorScheme = remember(palette) { createColorScheme(palette) }
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,

@@ -311,10 +311,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             return@CoalescingRefresh
         }
         if (result.complete) {
-            _audioList.value = applySavedTrackOrder(result.tracks)
+            _audioList.value = withContext(Dispatchers.Default) { applySavedTrackOrder(result.tracks) }
             withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveAudio(getApplication(), result.tracks) }
         } else if (result.tracks.isNotEmpty()) {
-            _audioList.value = applySavedTrackOrder((result.tracks + _audioList.value).distinctBy(::trackKey))
+            _audioList.value = withContext(Dispatchers.Default) { applySavedTrackOrder((result.tracks + _audioList.value).distinctBy(::trackKey)) }
         }
     }
     private val audioObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
@@ -327,7 +327,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val cached = withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.readAudio(application) }
-                if (cached != null) _audioList.value = applySavedTrackOrder(cached)
+                if (cached != null) _audioList.value = withContext(Dispatchers.Default) { applySavedTrackOrder(cached) }
             } finally { cacheReady.complete(Unit) }
             loadAudioTracks()
         }

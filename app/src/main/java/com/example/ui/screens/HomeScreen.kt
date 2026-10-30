@@ -92,7 +92,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -152,21 +152,21 @@ fun HomeScreen(
     onSearchRequested: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val allVideos by libraryViewModel.allVideos.collectAsState()
-    val filteredVideos by libraryViewModel.filteredVideos.collectAsState()
-    val folders by libraryViewModel.folders.collectAsState()
-    val navMode by libraryViewModel.navMode.collectAsState()
-    val viewMode by libraryViewModel.viewMode.collectAsState()
-    val gridMinSize by libraryViewModel.gridMinSize.collectAsState()
-    val sortOption by libraryViewModel.sortOption.collectAsState()
-    val selectedFolder by libraryViewModel.selectedFolder.collectAsState()
-    val searchQuery by libraryViewModel.searchQuery.collectAsState()
-    val isLoading by libraryViewModel.isLoading.collectAsState()
-    val historyRecords by libraryViewModel.historyRecords.collectAsState()
-    val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsState()
-    val catalogMetadata by libraryViewModel.catalogMetadata.collectAsState()
-    val playerSettings by libraryViewModel.playerSettings.collectAsState()
-    val deleteProgress by libraryViewModel.deleteProgress.collectAsState()
+    val allVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
+    val filteredVideos by libraryViewModel.filteredVideos.collectAsStateWithLifecycle()
+    val folders by libraryViewModel.folders.collectAsStateWithLifecycle()
+    val navMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
+    val viewMode by libraryViewModel.viewMode.collectAsStateWithLifecycle()
+    val gridMinSize by libraryViewModel.gridMinSize.collectAsStateWithLifecycle()
+    val sortOption by libraryViewModel.sortOption.collectAsStateWithLifecycle()
+    val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
+    val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
+    val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
+    val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
+    val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
+    val catalogMetadata by libraryViewModel.catalogMetadata.collectAsStateWithLifecycle()
+    val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
+    val deleteProgress by libraryViewModel.deleteProgress.collectAsStateWithLifecycle()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
         if (viewMode == LibraryViewMode.GRADLE_GRID && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             libraryViewModel.setGridMinSize((gridMinSize / zoomChange).roundToInt())
@@ -176,8 +176,8 @@ fun HomeScreen(
         state = gridTransformState,
         enabled = viewMode == LibraryViewMode.GRADLE_GRID
     )
-    val treeCurrentPath by libraryViewModel.treeCurrentPath.collectAsState()
-    val currentTreeNode by libraryViewModel.currentTreeNode.collectAsState()
+    val treeCurrentPath by libraryViewModel.treeCurrentPath.collectAsStateWithLifecycle()
+    val currentTreeNode by libraryViewModel.currentTreeNode.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var showFolders by remember { mutableStateOf(false) }
@@ -202,9 +202,8 @@ fun HomeScreen(
     val selectedVideos = remember(selectedVideoPaths, allVideos) {
         allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
     }
-    val orderedFilteredVideos = remember(filteredVideos, allVideos) {
-        libraryViewModel.applySavedVideoOrder(filteredVideos)
-    }
+    // Filtering, sorting and saved-order application already completed off-main.
+    val orderedFilteredVideos = filteredVideos
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
     var hasFullDownloadAccess by remember { mutableStateOf(StoragePermission.isGranted()) }
     val allFilesAccessLauncher = rememberLauncherForActivityResult(
@@ -294,7 +293,7 @@ fun HomeScreen(
 
     val palette = LocalHiPalette.current
     val uiMetrics = LocalHiUiMetrics.current
-    val favoriteCount = remember(filteredVideos, allVideos) {
+    val favoriteCount = remember(allVideos) {
         allVideos.count { it.isFavorite }
     }
 
@@ -998,7 +997,7 @@ fun HomeScreen(
                                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
                                 )
                             }
-                            items(node.directVideos, key = { it.id }) { video ->
+                            items(node.directVideos, key = { videoKey(it) }, contentType = { "video" }) { video ->
                                 LaunchedEffect(videoKey(video)) {
                                     libraryViewModel.requestCatalogMetadata(video)
                                 }

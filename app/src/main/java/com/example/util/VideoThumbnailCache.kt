@@ -1,6 +1,10 @@
 package com.example.util
 
 import android.content.Context
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
+import android.os.SystemClock
+import java.util.concurrent.atomic.AtomicBoolean
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -8,6 +12,8 @@ import android.os.Build
 import android.util.LruCache
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -22,14 +28,12 @@ object VideoThumbnailCache {
 
     private const val TARGET_WIDTH = 380
     private const val TARGET_HEIGHT = 240
-    private const val MIN_CACHE_KB = 24 * 1024
-    private const val MAX_CACHE_KB = 96 * 1024
-
-    private val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
-    private val cacheSizeKb = (maxMemoryKb / 8).coerceIn(MIN_CACHE_KB, MAX_CACHE_KB)
+    private val cacheSizeKb = ArtworkMemoryPolicy.cacheBudgetKb(Runtime.getRuntime().maxMemory() / 1024L)
+    private val registered = AtomicBoolean(false)
+    private val failures = LruCache<String, Long>(128)
 
     private val memoryCache = object : LruCache<String, Bitmap>(cacheSizeKb) {
-        override fun sizeOf(key: String, bitmap: Bitmap): Int = bitmap.byteCount / 1024
+        override fun sizeOf(key: String, bitmap: Bitmap): Int = ((bitmap.byteCount.toLong() + 1023) / 1024).toInt().coerceAtLeast(1)
     }
 
     // Serializing retrieval avoids several hardware decoders competing while a
@@ -51,18 +55,37 @@ object VideoThumbnailCache {
         targetHeight: Int = TARGET_HEIGHT
     ): Bitmap? = withContext(Dispatchers.IO) {
         if (key.isBlank()) return@withContext null
+        // Remote thumbnails must use Coil/artwork URLs, not a network retriever
+        // that can stall every local thumbnail behind the serial decoder.
+        if (uri.scheme !in setOf("content", "file") && !filePath.startsWith('/')) return@withContext null
+        registerTrim(context)
         get(key)?.let { return@withContext it }
 
         extractorMutex.withLock {
+            currentCoroutineContext().ensureActive()
             get(key)?.let { return@withLock it }
+            if (failures.get(key)?.let { SystemClock.elapsedRealtime() - it < 30_000L } == true) return@withLock null
 
             val bitmap = loadFromContentResolver(context, uri, targetWidth, targetHeight)
-                ?: extractFromUri(context, uri, targetWidth, targetHeight)
-                ?: extractFromPath(filePath, targetWidth, targetHeight)
-
-            bitmap?.let { put(key, it) }
-            bitmap
+                ?: if (uri.scheme in setOf("content", "file")) extractFromUri(context, uri, targetWidth, targetHeight) else null
+            val resolved = bitmap ?: if (filePath.startsWith('/')) extractFromPath(filePath, targetWidth, targetHeight) else null
+            currentCoroutineContext().ensureActive()
+            if (resolved == null) failures.put(key, SystemClock.elapsedRealtime())
+            resolved?.let { put(key, it) }
+            resolved
         }
+    }
+
+    private fun registerTrim(context: Context) {
+        if (!registered.compareAndSet(false, true)) return
+        context.applicationContext.registerComponentCallbacks(object : ComponentCallbacks2 {
+            override fun onConfigurationChanged(newConfig: Configuration) = Unit
+            override fun onLowMemory() { memoryCache.evictAll(); failures.evictAll() }
+            override fun onTrimMemory(level: Int) {
+                if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) memoryCache.evictAll()
+                else if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) memoryCache.trimToSize(cacheSizeKb / 2)
+            }
+        })
     }
 
     private fun loadFromContentResolver(
@@ -139,8 +162,11 @@ object VideoThumbnailCache {
 
         for (timeUs in candidateTimesUs) {
             val frame = scaledFrameAt(retriever, timeUs, targetWidth, targetHeight) ?: continue
-            if (fallback == null) fallback = frame
-            if (!isMostlyBlack(frame)) return frame
+            if (!isMostlyBlack(frame)) {
+                if (fallback !== frame) fallback?.recycle()
+                return frame
+            }
+            if (fallback == null) fallback = frame else if (fallback !== frame) frame.recycle()
         }
         return fallback
     }

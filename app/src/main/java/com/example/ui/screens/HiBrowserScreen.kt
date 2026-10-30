@@ -118,7 +118,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -300,7 +300,7 @@ fun HiBrowserScreen(
     val context = LocalContext.current
     val palette = LocalHiPalette.current
     val store = remember(context) { OrbitBrowserStore(context) }
-    val downloads by BrowserDownloads.downloads.collectAsState()
+    val downloads by BrowserDownloads.downloads.collectAsStateWithLifecycle()
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
