@@ -1,0 +1,19 @@
+name: Apply music player equalizer and file sections source only
+on:
+  push:
+    branches: [feature/music-now-playing-eq-files]
+    paths: [music-player-eq-files-source.patch.xz.b64]
+permissions:
+  contents: write
+jobs:
+  source-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply source only (no compile, tests or APK)
+        run: |
+          base64 -d music-player-eq-files-source.patch.xz.b64 | xz -d > /tmp/source.patch
+          git apply --index /tmp/source.patch
+          git rm music-player-eq-files-source.patch.xz.b64
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Redesign music playback, add real session equalizer and restore file sections (source only)'
+          git push
