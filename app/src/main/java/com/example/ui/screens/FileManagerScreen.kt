@@ -329,155 +329,106 @@ fun FileManagerScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .padding(vertical = 4.dp)
                     .testTag("storage_overview_banner"),
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                                    .background(palette.primary.copy(alpha = 0.2f)),
-                                contentAlignment = Alignment.Center
+                    Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isSelectionMode) selectionActions() else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Storage,
-                                    contentDescription = null,
-                                    tint = palette.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Internal Storage",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = palette.textPrimary
-                                )
-                                Text(
-                                    text = String.format(Locale.US, "Free: %.1f GB", freeGb),
-                                    fontSize = 11.sp,
-                                    color = palette.textSecondary
-                                )
-                            }
-                        }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
+                                            .background(palette.primary.copy(alpha = 0.2f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Storage,
+                                            contentDescription = null,
+                                            tint = palette.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Internal Storage",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = palette.textPrimary
+                                        )
+                                        Text(
+                                            text = String.format(Locale.US, "Free: %.1f GB", freeGb),
+                                            fontSize = 11.sp,
+                                            color = palette.textSecondary
+                                        )
+                                    }
+                                }
 
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = String.format(Locale.US, "%.1f / %.1f GB", usedGb, totalGb),
-                                fontSize = 13.sp,
-                                color = palette.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${(storageFraction * 100).toInt()}% Used",
-                                fontSize = 11.sp,
-                                color = palette.secondary,
-                                fontWeight = FontWeight.Medium
-                            )
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = String.format(Locale.US, "%.1f / %.1f GB", usedGb, totalGb),
+                                        fontSize = 13.sp,
+                                        color = palette.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "${(storageFraction * 100).toInt()}% Used",
+                                        fontSize = 11.sp,
+                                        color = palette.secondary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
                         }
                     }
-
                     Spacer(modifier = Modifier.height(10.dp))
 
                     LinearProgressIndicator(
                         progress = { storageFraction },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp)),
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
                         color = palette.primary,
-                        trackColor = Color(0x33FFFFFF)
+                        trackColor = palette.textPrimary.copy(alpha = 0.10f),
+                        drawStopIndicator = {}
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Storage summary badges
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                                .background(palette.secondary.copy(alpha = 0.15f))
-                                .padding(vertical = 6.dp, horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.FolderZip,
-                                    contentDescription = null,
-                                    tint = palette.secondary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "${allArchives.size} Archives",
-                                    fontSize = 11.sp,
-                                    color = palette.secondary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                                .background(Color(0x223B82F6))
-                                .padding(vertical = 6.dp, horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Description,
-                                    contentDescription = null,
-                                    tint = Color(0xFF60A5FA),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "${allDocuments.size} Documents",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF60A5FA),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                                .background(Color(0x2210B981))
-                                .padding(vertical = 6.dp, horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = Color(0xFF34D399),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "${folderFiles.count { it.isDirectory }} Folders",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF34D399),
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                    // These shortcuts replace the duplicate section panels below storage.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(
+                            Triple(SelectAllScope.ARCHIVES, "Archives", allArchives.size),
+                            Triple(SelectAllScope.DOCUMENTS, "Docs", allDocuments.size),
+                            Triple(SelectAllScope.FOLDERS, "Folders", folderFiles.count { it.isDirectory }),
+                        ).forEach { (scope, label, count) ->
+                            val selected = scope == selectAllScope
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
+                                    .background(palette.primary.copy(alpha = if (selected) 0.12f else 0.04f))
+                                    .clickable {
+                                        fileManagerViewModel.clearSelection()
+                                        selectAllScope = scope
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                                    .testTag("storage_category_${scope.name}"),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(label, color = palette.textPrimary, fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("$count", color = palette.textSecondary, fontSize = 11.sp)
                             }
                         }
                     }
@@ -671,7 +622,7 @@ fun FileManagerScreen(
                             folderItems = filteredFolderItems,
                             currentDir = currentDir,
                             headerContent = storageOverview,
-                            selectionActions = if (isSelectionMode) selectionActions else null,
+                            rootSection = selectAllScope,
                             onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
                             onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                             onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
@@ -688,7 +639,6 @@ fun FileManagerScreen(
                             onItemTap = { fileManagerViewModel.toggleSelection(it) },
                             onItemMenuClick = { menuTargetItem = it },
                             newFolderPaths = newFolderPaths,
-                            onSelectionScopeChanged = { selectAllScope = it },
                             onReorder = { fromPath, toPath -> fileManagerViewModel.moveMergedItem(fromPath, toPath) }
                         )
                     }
@@ -1137,7 +1087,7 @@ fun FileManagerScreen(
 }
 
 // -------------------------------------------------------------
-// MERGED VIEW: Storage -> Archives Section -> Docs Section -> Android Folders
+// ROOT VIEW: One storage summary and one category list; no duplicate panels.
 // -------------------------------------------------------------
 @Composable
 fun MergedFilesView(
@@ -1159,267 +1109,79 @@ fun MergedFilesView(
     onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {},
-    onSelectionScopeChanged: (SelectAllScope) -> Unit = {},
     headerContent: @Composable () -> Unit = {},
-    selectionActions: (@Composable () -> Unit)? = null,
+    rootSection: SelectAllScope = SelectAllScope.FOLDERS,
     onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
-    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
-    var isArchivesExpanded by remember { mutableStateOf(false) }
-    val mergedListState = rememberLazyListState()
-    LaunchedEffect(mergedListState.firstVisibleItemIndex, mergedListState.firstVisibleItemScrollOffset) {
-        val atTop = mergedListState.firstVisibleItemIndex == 0 && mergedListState.firstVisibleItemScrollOffset <= 48
-        onContentScrolled(atTop)
+    val displayedItems = when (rootSection) {
+        SelectAllScope.ARCHIVES -> archives
+        SelectAllScope.DOCUMENTS -> documents
+        SelectAllScope.FOLDERS -> folderItems
     }
-    var isDocumentsExpanded by remember { mutableStateOf(false) }
-
+    val mergedListState = rememberLazyListState()
+    val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
     LazyColumn(
-        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
         state = mergedListState,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
     ) {
         item(key = "storage_overview", contentType = "storage_overview") { headerContent() }
-        item(key = "folder_header", contentType = "folder_header") {
-            FileFolderHeader(currentDir, folderItems.size, onNavigateUp, selectionActions)
-        }
-        // 2. SECOND: EXTRACTABLE ARCHIVES SECTION (COLLAPSIBLE ON CLICK)
-        item {
-            SectionHeader(
-                title = "Extractable Archives",
-                subtitle = if (isArchivesExpanded) "Tap to collapse / hide files" else "ZIP, RAR, 7Z, TAR, APK • Tap to view",
-                icon = Icons.Default.FolderZip,
-                accentColor = palette.secondary,
-                isCollapsible = true,
-                isExpanded = isArchivesExpanded,
-                itemCount = archives.size,
-                onToggle = {
-                    isArchivesExpanded = !isArchivesExpanded
-                    if (isArchivesExpanded) onSelectionScopeChanged(SelectAllScope.ARCHIVES)
-                }
-            )
-        }
-
-        if (isArchivesExpanded) {
-            if (archives.isEmpty()) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Archive,
-                                contentDescription = null,
-                                tint = palette.textSecondary.copy(alpha = 0.6f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "No zip or rar archive files detected in standard storage.",
-                                color = palette.textSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                itemsIndexed(archives, key = { _, it -> "arch_${it.path}" }) { index, archive ->
-                    val dragModifier = Modifier.reorderableDrag(index, archives.size, reorderThresholdPx, { from, to -> onReorder(archives[from].path, archives[to].path) })
-                    if (archive.isApk) {
-                        GenericFileItemCard(
-                            item = archive,
-                            onClick = { if (isSelectionMode) onItemTap(archive) else onInstallApk(archive) },
-                            onLongClick = { onItemLongClick(archive) },
-                            isSelected = selectedPaths.contains(archive.path),
-                            onMenuClick = { onItemMenuClick(archive) },
-                            modifier = dragModifier
-                        )
-                    } else {
-                        ArchiveItemCard(
-                            archive = archive,
-                            onInspect = { if (isSelectionMode) onItemTap(archive) else onInspectArchive(archive) },
-                            onExtract = { onExtractArchive(archive) },
-                            onLongClick = { onItemLongClick(archive) },
-                            isSelected = selectedPaths.contains(archive.path),
-                            onMenuClick = { onItemMenuClick(archive) },
-                            modifier = dragModifier
-                        )
-                    }
-                }
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        Button(
-                            onClick = { isArchivesExpanded = false },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = palette.secondary.copy(alpha = 0.2f),
-                                contentColor = palette.secondary
-                            ),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Hide Archives (${archives.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
+        if (displayedItems.isEmpty()) {
+            item(key = "empty_${rootSection.name}") {
+                Text(
+                    when (rootSection) {
+                        SelectAllScope.ARCHIVES -> "No archives found"
+                        SelectAllScope.DOCUMENTS -> "No documents found"
+                        SelectAllScope.FOLDERS -> "No files in this location"
+                    },
+                    color = palette.textSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                )
             }
         }
-
-        // 3. THIRD: DOCUMENTS SECTION (COLLAPSIBLE ON CLICK)
-        item {
-            Spacer(modifier = Modifier.height(2.dp))
-            SectionHeader(
-                title = "Documents & Text Files",
-                subtitle = if (isDocumentsExpanded) "Tap to collapse / hide files" else "PDF, DOCX, TXT, Subtitles • Tap to view",
-                icon = Icons.Default.Description,
-                accentColor = Color(0xFF60A5FA),
-                isCollapsible = true,
-                isExpanded = isDocumentsExpanded,
-                itemCount = documents.size,
-                onToggle = {
-                    isDocumentsExpanded = !isDocumentsExpanded
-                    if (isDocumentsExpanded) onSelectionScopeChanged(SelectAllScope.DOCUMENTS)
-                }
-            )
-        }
-
-        if (isDocumentsExpanded) {
-            if (documents.isEmpty()) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
-                                contentDescription = null,
-                                tint = palette.textSecondary.copy(alpha = 0.6f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "No document files found in quick scan.",
-                                color = palette.textSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-            } else {
-                itemsIndexed(documents, key = { _, it -> "doc_${it.path}" }) { index, doc ->
-                    val dragModifier = Modifier.reorderableDrag(index, documents.size, reorderThresholdPx, { from, to -> onReorder(documents[from].path, documents[to].path) })
-                    DocumentItemCard(
-                        doc = doc,
-                        onOpen = { if (isSelectionMode) onItemTap(doc) else onOpenDocument(doc) },
-                        onLongClick = { onItemLongClick(doc) },
-                        isSelected = selectedPaths.contains(doc.path),
-                        onMenuClick = { onItemMenuClick(doc) },
-                        modifier = dragModifier
-                    )
-                }
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        Button(
-                            onClick = { isDocumentsExpanded = false },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0x223B82F6),
-                                contentColor = Color(0xFF60A5FA)
-                            ),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        ) {
-                            Icon(Icons.Default.ExpandLess, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Hide Documents (${documents.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. FOURTH: ALL FOLDERS OF ANDROID
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            SectionHeader(
-                title = "Android Folders & Storage Explorer",
-                subtitle = "Browse Download, DCIM, Documents & system folders",
-                icon = Icons.Default.Folder,
-                accentColor = Color(0xFF34D399)
-            )
-        }
-
-        if (folderItems.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 20.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No folders or supported files in this directory", color = palette.textSecondary, fontSize = 12.sp)
-                }
-            }
-        } else {
-            itemsIndexed(folderItems, key = { _, it -> "folder_${it.path}" }) { index, item ->
-                val dragModifier = Modifier.reorderableDrag(index, folderItems.size, reorderThresholdPx, { from, to -> onReorder(folderItems[from].path, folderItems[to].path) })
-                if (item.isDirectory) {
-                    FolderItemCard(
-                        folder = item,
-                        onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
-                        onLongClick = { onItemLongClick(item) },
-                        isSelected = selectedPaths.contains(item.path),
-                        showSelectionControl = isSelectionMode,
-                        isNew = newFolderPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) },
-                        modifier = dragModifier
-                    )
-                } else if (item.isApk) {
-                    GenericFileItemCard(
-                        item = item,
-                        onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
-                        onLongClick = { onItemLongClick(item) },
-                        isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) },
-                        modifier = dragModifier
-                    )
-                } else if (item.isArchive) {
-                    ArchiveItemCard(
-                        archive = item,
-                        onInspect = { if (isSelectionMode) onItemTap(item) else onInspectArchive(item) },
-                        onExtract = { onExtractArchive(item) },
-                        onLongClick = { onItemLongClick(item) },
-                        isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) },
-                        modifier = dragModifier
-                    )
-                } else if (item.isDocument) {
-                    DocumentItemCard(
-                        doc = item,
-                        onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
-                        onLongClick = { onItemLongClick(item) },
-                        isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) },
-                        modifier = dragModifier
-                    )
-                } else {
-                    GenericFileItemCard(
-                        item = item,
-                        onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
-                        onLongClick = { onItemLongClick(item) },
-                        isSelected = selectedPaths.contains(item.path),
-                        onMenuClick = { onItemMenuClick(item) }
-                    )
-                }
+        itemsIndexed(displayedItems, key = { _, item -> item.path }) { index, item ->
+            val selected = selectedPaths.contains(item.path)
+            val dragModifier = Modifier.reorderableDrag(index, displayedItems.size, reorderThresholdPx,
+                { from, to -> onReorder(displayedItems[from].path, displayedItems[to].path) })
+            when {
+                item.isDirectory -> FolderItemCard(
+                    folder = item,
+                    onClick = { if (isSelectionMode) onItemTap(item) else onNavigateFolder(item) },
+                    onLongClick = { onItemLongClick(item) },
+                    isSelected = selected, showSelectionControl = isSelectionMode,
+                    isNew = newFolderPaths.contains(item.path),
+                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
+                )
+                item.isApk -> GenericFileItemCard(
+                    item = item,
+                    onClick = { if (isSelectionMode) onItemTap(item) else onInstallApk(item) },
+                    onLongClick = { onItemLongClick(item) },
+                    isSelected = selected, showSelectionControl = isSelectionMode,
+                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
+                )
+                item.isArchive -> ArchiveItemCard(
+                    archive = item,
+                    onInspect = { if (isSelectionMode) onItemTap(item) else onInspectArchive(item) },
+                    onExtract = { onExtractArchive(item) }, onLongClick = { onItemLongClick(item) },
+                    isSelected = selected, showSelectionControl = isSelectionMode,
+                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
+                )
+                item.isDocument -> DocumentItemCard(
+                    doc = item,
+                    onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
+                    onLongClick = { onItemLongClick(item) },
+                    isSelected = selected, showSelectionControl = isSelectionMode,
+                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
+                )
+                else -> GenericFileItemCard(
+                    item = item,
+                    onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
+                    onLongClick = { onItemLongClick(item) },
+                    isSelected = selected, showSelectionControl = isSelectionMode,
+                    onMenuClick = { onItemMenuClick(item) }, modifier = dragModifier,
+                )
             }
         }
     }
@@ -1538,7 +1300,7 @@ fun FoldersBrowserView(
         onContentScrolled(atTop)
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        FileFolderHeader(currentDir, items.size, onNavigateUp, selectionActions)
+        FileFolderHeader(currentDir, onNavigateUp, selectionActions)
 
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1575,6 +1337,7 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            showSelectionControl = isSelectionMode,
                             onMenuClick = { onItemMenuClick(item) },
                             modifier = dragModifier
                         )
@@ -1585,6 +1348,7 @@ fun FoldersBrowserView(
                             onExtract = { onExtractArchive(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            showSelectionControl = isSelectionMode,
                             onMenuClick = { onItemMenuClick(item) },
                             modifier = dragModifier
                         )
@@ -1594,6 +1358,7 @@ fun FoldersBrowserView(
                             onOpen = { if (isSelectionMode) onItemTap(item) else onOpenDocument(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            showSelectionControl = isSelectionMode,
                             onMenuClick = { onItemMenuClick(item) },
                             modifier = dragModifier
                         )
@@ -1603,6 +1368,7 @@ fun FoldersBrowserView(
                             onClick = { if (isSelectionMode) onItemTap(item) else onOpenFile(item) },
                             onLongClick = { onItemLongClick(item) },
                             isSelected = selectedPaths.contains(item.path),
+                            showSelectionControl = isSelectionMode,
                             onMenuClick = { onItemMenuClick(item) },
                             modifier = dragModifier
                         )
@@ -1644,7 +1410,7 @@ fun SectionHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 0.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -1760,6 +1526,7 @@ private fun SelectionCheckCircle(isSelected: Boolean, modifier: Modifier = Modif
     Box(
         modifier = modifier
             .size(22.dp)
+            .testTag("file_selection_circle")
             .clip(CircleShape)
             .background(if (isSelected) palette.primary else Color.Transparent)
             .border(1.5.dp, if (isSelected) palette.primary else palette.surfaceBorder, CircleShape),
@@ -1769,7 +1536,7 @@ private fun SelectionCheckCircle(isSelected: Boolean, modifier: Modifier = Modif
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "Selected",
-                tint = Color.White,
+                tint = com.example.ui.theme.contrastContentColor(palette.primary, palette.surface),
                 modifier = Modifier.size(14.dp)
             )
         }
@@ -1785,7 +1552,8 @@ fun ArchiveItemCard(
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
     onMenuClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showSelectionControl: Boolean = false,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val ext = archive.extension.uppercase(Locale.ROOT)
@@ -1805,10 +1573,10 @@ fun ArchiveItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 0.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onLongClick != null) {
+            if (showSelectionControl) {
                 SelectionCheckCircle(isSelected = isSelected)
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -1902,7 +1670,8 @@ fun DocumentItemCard(
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
     onMenuClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showSelectionControl: Boolean = false,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val ext = doc.extension.uppercase(Locale.ROOT)
@@ -1928,10 +1697,10 @@ fun DocumentItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 0.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onLongClick != null) {
+            if (showSelectionControl) {
                 SelectionCheckCircle(isSelected = isSelected)
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -2108,7 +1877,8 @@ fun GenericFileItemCard(
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
     onMenuClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showSelectionControl: Boolean = false,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val (icon, badgeBg, badgeTint, baseTypeLabel) = when {
@@ -2132,10 +1902,10 @@ fun GenericFileItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 0.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onLongClick != null) {
+            if (showSelectionControl) {
                 SelectionCheckCircle(isSelected = isSelected)
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -2608,7 +2378,6 @@ private fun formatRecycleBinSize(bytes: Long): String = when {
 @Composable
 private fun FileFolderHeader(
     currentDir: File,
-    itemCount: Int,
     onNavigateUp: () -> Unit,
     selectionActions: (@Composable () -> Unit)? = null,
 ) {
@@ -2620,11 +2389,8 @@ private fun FileFolderHeader(
                     modifier = Modifier.testTag("navigate_up_button")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Up", tint = palette.textPrimary)
                 }
-                Icon(Icons.Default.FolderOpen, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
                 Text(currentDir.name.ifEmpty { "Internal Storage" }, Modifier.weight(1f),
                     color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$itemCount", color = palette.textSecondary, fontSize = 12.sp)
             }
         }
     }

@@ -565,17 +565,7 @@ fun HomeScreen(
                                             }
                                         }
                                     }
-                                    IconButton(
-                                        onClick = { libraryViewModel.selectFolder(null) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Clear,
-                                            contentDescription = "Close Folder",
-                                            tint = palette.textSecondary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+
                                 }
                             }
                         } else if (navMode != LibraryNavMode.FOLDERS) {
@@ -797,7 +787,7 @@ fun HomeScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         state = folderGridState,
-                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -831,7 +821,7 @@ fun HomeScreen(
                     LazyColumn(
                         state = folderListState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         item(key = "library_controls") { libraryControls() }
@@ -869,7 +859,7 @@ fun HomeScreen(
                 } else {
                     LazyColumn(
                         state = treeListState,
-                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
@@ -979,7 +969,7 @@ fun HomeScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = gridMinSize.dp),
                         state = videoGridState,
-                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
@@ -1055,7 +1045,7 @@ fun HomeScreen(
 
                     LazyColumn(
                         state = videoListState,
-                        contentPadding = PaddingValues(start = 12.dp, top = 24.dp, end = 12.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {

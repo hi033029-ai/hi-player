@@ -12,7 +12,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "hi_player_settings")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "hi_player_settings",
+    produceMigrations = { listOf(SystemThemeDefaultMigration) },
+)
 
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
     SYSTEM("SYSTEM", "System", "Follow device light or dark appearance"),
