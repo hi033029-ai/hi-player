@@ -94,195 +94,97 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var lyricsLines: List<Pair<Long, String>> = emptyList()
     private var loadTracksJob: Job? = null
 
-    private fun normalizeForMatch(text: String): String {
-        return text.lowercase()
-            .replace(Regex("\\.[a-z0-9]{2,4}$"), "")
-            .replace(Regex("[\\[(].*?[\\])]"), "")
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
-    }
-
-    /**
-     * Fetches real, time-synced lyrics for the current track from lrclib.net
-     * (a free, keyless public API) and syncs them to playback position -
-     * replacing the previous fake feature that just set one static made-up
-     * label string with no real timed content behind it.
-     */
+    private var lyricsFetchJob: Job? = null
+    private var lyricsGeneration = 0L
+    private val lyricsRepository = com.example.lyrics.LyricsRepository(application)
     private val _lyricsText = MutableStateFlow<String?>(null)
     val lyricsText = _lyricsText.asStateFlow()
-
     private val _lyricsEnabled = MutableStateFlow(false)
     val lyricsEnabled = _lyricsEnabled.asStateFlow()
+    private val _currentLyricLineIndex = MutableStateFlow(-1)
+    val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
+    private val _lyricsMessage = MutableStateFlow<String?>(null)
+    val lyricsMessage = _lyricsMessage.asStateFlow()
+    private val _lyricsLoading = MutableStateFlow(false)
+    val lyricsLoading = _lyricsLoading.asStateFlow()
+    private val _lyricsRetryable = MutableStateFlow(false)
+    val lyricsRetryable = _lyricsRetryable.asStateFlow()
 
     fun setLyricsEnabled(enabled: Boolean) {
         _lyricsEnabled.value = enabled
-        if (!enabled) clearLyrics()
+        if (!enabled) {
+            lyricsGeneration++
+            lyricsFetchJob?.cancel()
+            lyricsSyncJob?.cancel()
+            _lyricsLoading.value = false
+            _activeSubtitle.value = null
+            _currentLyricLineIndex.value = -1
+        } else if (!_lyricsText.value.isNullOrBlank()) {
+            startLyricsSyncLoop()
+        } else {
+            _currentTrack.value?.let(::fetchAndSyncLyrics)
+        }
     }
 
-    private val _currentLyricLineIndex = MutableStateFlow(-1)
-    val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
-
     fun fetchAndSyncLyrics(track: AudioItem) {
+        lyricsFetchJob?.cancel()
         lyricsSyncJob?.cancel()
+        val generation = ++lyricsGeneration
         _activeSubtitle.value = null
         _lyricsText.value = null
         _currentLyricLineIndex.value = -1
         lyricsLines = emptyList()
-
-        viewModelScope.launch(Dispatchers.IO) {
+        _lyricsLoading.value = true
+        _lyricsRetryable.value = false
+        _lyricsMessage.value = "Searching online lyrics…"
+        lyricsFetchJob = viewModelScope.launch {
             try {
-                val titleQ = java.net.URLEncoder.encode(track.title, "UTF-8")
-                val artistQ = java.net.URLEncoder.encode(track.artist, "UTF-8")
-
-                // 1. Try an exact match first.
-                var synced = ""
-                var plain = ""
-                val durationQ = (track.durationMs / 1000L).coerceIn(1L, 3600L)
-                val exactUrl = java.net.URL("https://lrclib.net/api/get?track_name=$titleQ&artist_name=$artistQ&album_name=${java.net.URLEncoder.encode(track.album, "UTF-8")}&duration=$durationQ")
-                val exactConn = exactUrl.openConnection() as java.net.HttpURLConnection
-                exactConn.setRequestProperty("User-Agent", "HiPlayer/1.0 (https://github.com/hi033029-ai/hi-player)")
-                exactConn.connectTimeout = 8000
-                exactConn.readTimeout = 8000
-                if (exactConn.responseCode in 200..299) {
-                    val obj = org.json.JSONObject(exactConn.inputStream.bufferedReader().use { it.readText() })
-                    synced = obj.optString("syncedLyrics", "")
-                    plain = obj.optString("plainLyrics", "")
-                }
-                exactConn.disconnect()
-
-                // 2. Exact match found nothing - fall back to lrclib's fuzzy
-                // search endpoint, which tolerates messier real-world file
-                // metadata (extra words, punctuation differences, etc.) far
-                // better than the exact-match endpoint.
-                if (synced.isBlank() && plain.isBlank()) {
-                    val searchQ = java.net.URLEncoder.encode("${track.artist} ${track.title}", "UTF-8")
-                    val searchUrl = java.net.URL("https://lrclib.net/api/search?q=$searchQ")
-                    val searchConn = searchUrl.openConnection() as java.net.HttpURLConnection
-                    searchConn.setRequestProperty("User-Agent", "HiPlayer/1.0 (https://github.com/hi033029-ai/hi-player)")
-                    searchConn.connectTimeout = 8000
-                    searchConn.readTimeout = 8000
-                    if (searchConn.responseCode in 200..299) {
-                        val text = searchConn.inputStream.bufferedReader().use { it.readText() }
-                        val arr = org.json.JSONArray(text)
-                        if (arr.length() > 0) {
-                            val best = arr.getJSONObject(0)
-                            synced = best.optString("syncedLyrics", "")
-                            plain = best.optString("plainLyrics", "")
-                        }
-                    }
-                    searchConn.disconnect()
-                }
-
-                // Broaden the search for real-world files whose MediaStore metadata
-                // is missing or whose title still contains filename tags.
-                if (synced.isBlank() && plain.isBlank()) {
-                    val filenameTitle = track.path.substringAfterLast('/').substringBeforeLast('.')
-                    val candidates = linkedSetOf(
-                        track.title to track.artist,
-                        filenameTitle to track.artist
-                    ).flatMap { (candidateTitle, candidateArtist) ->
-                        val cleanedTitle = normalizeForMatch(candidateTitle)
-                        val cleanedArtist = normalizeForMatch(candidateArtist)
-                        val split = candidateTitle.split(" - ", " — ", limit = 2)
-                        buildList {
-                            if (cleanedTitle.isNotBlank() && cleanedArtist.isNotBlank()) {
-                                add(cleanedArtist to cleanedTitle)
-                            }
-                            if (split.size == 2) {
-                                add(normalizeForMatch(split[0]) to normalizeForMatch(split[1]))
-                            }
-                        }
-                    }.distinct()
-
-                    for ((candidateArtist, candidateTitle) in candidates) {
-                        if (synced.isNotBlank() || plain.isNotBlank()) break
-                        val candidateQ = java.net.URLEncoder.encode("$candidateArtist $candidateTitle", "UTF-8")
-                        val candidateUrl = java.net.URL("https://lrclib.net/api/search?q=$candidateQ")
-                        val candidateConn = candidateUrl.openConnection() as java.net.HttpURLConnection
-                        candidateConn.setRequestProperty("User-Agent", "HiPlayer/1.0")
-                        candidateConn.connectTimeout = 8000
-                        candidateConn.readTimeout = 8000
-                        try {
-                            if (candidateConn.responseCode in 200..299) {
-                                val arr = org.json.JSONArray(candidateConn.inputStream.bufferedReader().use { it.readText() })
-                                if (arr.length() > 0) {
-                                    val best = arr.getJSONObject(0)
-                                    synced = best.optString("syncedLyrics", "")
-                                    plain = best.optString("plainLyrics", "")
-                                }
-                            }
-                        } finally {
-                            candidateConn.disconnect()
-                        }
-                    }
-                }
-
-                // Plain-lyrics fallback for tracks not available in LRCLIB.
-                if (synced.isBlank() && plain.isBlank()) {
-                    val fallbackUrl = java.net.URL("https://api.lyrics.ovh/v1/$artistQ/$titleQ")
-                    val fallbackConn = fallbackUrl.openConnection() as java.net.HttpURLConnection
-                    fallbackConn.connectTimeout = 8000
-                    fallbackConn.readTimeout = 8000
-                    if (fallbackConn.responseCode in 200..299) {
-                        val fallbackObj = org.json.JSONObject(fallbackConn.inputStream.bufferedReader().use { it.readText() })
-                        plain = fallbackObj.optString("lyrics", "")
-                    }
-                    fallbackConn.disconnect()
-                }
-
-                when {
-                    synced.isNotBlank() -> {
-                        withContext(Dispatchers.Main) { _lyricsText.value = synced }
-                        val lineRegex = Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""")
-                        lyricsLines = synced.lines().mapNotNull { line ->
-                            val match = lineRegex.find(line) ?: return@mapNotNull null
-                            val minutes = match.groupValues[1].toLong()
-                            val seconds = match.groupValues[2].toLong()
-                            val fraction = match.groupValues[3].padEnd(3, '0').take(3).toLong()
-                            val ms = (minutes * 60_000L) + (seconds * 1000L) + fraction
-                            ms to match.groupValues[4].trim()
-                        }.sortedBy { it.first }
-                        withContext(Dispatchers.Main) { startLyricsSyncLoop() }
-                    }
-                    plain.isNotBlank() -> {
-                        // No time-synced version available, but real lyrics
-                        // text exists - show it as static (non-karaoke) text
-                        // rather than treating "no sync data" as "no lyrics".
-                        withContext(Dispatchers.Main) {
-                            _lyricsText.value = plain
-                            _activeSubtitle.value = plain.replace("\n", "  •  ").take(500)
-                        }
-                    }
-                    else -> {
-                        withContext(Dispatchers.Main) {
-                            _activeSubtitle.value = null
-                        }
-                    }
-                }
+                val result = lyricsRepository.find(track)
+                // A cancelled/slow old lookup must never replace the newly playing song.
+                if (generation != lyricsGeneration || _currentTrack.value?.uri != track.uri) return@launch
+                _lyricsText.value = result.text
+                lyricsLines = result.text?.let { com.example.lyrics.LyricsText.parse(it).timed }.orEmpty()
+                _lyricsMessage.value = result.message.takeIf { it.isNotBlank() }
+                _lyricsRetryable.value = result.retryable
+                if (_lyricsEnabled.value && !result.text.isNullOrBlank()) startLyricsSyncLoop()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
-                withContext(Dispatchers.Main) {
-                    _activeSubtitle.value = null
+                if (generation == lyricsGeneration) {
+                    _lyricsMessage.value = "Could not load lyrics. Check your connection and retry."
+                    _lyricsRetryable.value = true
                 }
+            } finally {
+                if (generation == lyricsGeneration) _lyricsLoading.value = false
             }
         }
     }
 
     private fun startLyricsSyncLoop() {
         lyricsSyncJob?.cancel()
+        if (lyricsLines.isEmpty()) {
+            _activeSubtitle.value = _lyricsText.value?.let { com.example.lyrics.LyricsText.parse(it).plain.firstOrNull() }
+            return
+        }
         lyricsSyncJob = viewModelScope.launch {
-            while (isActive) {
+            while (isActive && _lyricsEnabled.value) {
                 val positionMs = _currentPositionMs.value
                 val lineIndex = lyricsLines.indexOfLast { it.first <= positionMs }
                 _currentLyricLineIndex.value = lineIndex
                 _activeSubtitle.value = lyricsLines.getOrNull(lineIndex)?.second?.takeIf { it.isNotBlank() }
-                delay(300)
+                delay(250)
             }
         }
     }
 
     fun clearLyrics() {
+        lyricsGeneration++
+        lyricsFetchJob?.cancel()
         lyricsSyncJob?.cancel()
         lyricsLines = emptyList()
+        _lyricsLoading.value = false
+        _lyricsMessage.value = null
+        _lyricsRetryable.value = false
         _currentLyricLineIndex.value = -1
         _lyricsText.value = null
         _activeSubtitle.value = null
@@ -437,11 +339,10 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     fun playTrack(track: AudioItem) {
         _currentTrack.value = track
-        _lyricsEnabled.value = false
+        clearLyrics()
         _isFullScreenPlayerOpen.value = true
-        // Prepare lyrics silently in the background for the track now playing.
-        // Results remain available to the existing Lyrics menu and download action.
-        fetchAndSyncLyrics(track)
+        // Respect the user's Lyrics choice across Next/Previous; don't request lyrics while off.
+        if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
         exoPlayer?.let { player ->
             player.stop()
             player.clearMediaItems()

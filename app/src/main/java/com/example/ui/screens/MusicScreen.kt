@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.components.AudioLyricsPanel
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.animation.AnimatedVisibility
@@ -136,9 +137,6 @@ fun MusicScreen(
     val toggleLyrics: () -> Unit = {
         val enabled = !lyricsEnabled
         musicViewModel.setLyricsEnabled(enabled)
-        if (enabled) {
-            currentTrack?.let { musicViewModel.fetchAndSyncLyrics(it) }
-        }
     }
     var libraryMode by remember { mutableStateOf("All Music") }
     val musicPreferences = remember {
@@ -568,7 +566,11 @@ fun WavyNowPlayingBottomSheet(
     lyricsText: String? = null,
     activeLyricLineIndex: Int = -1,
     onLyricsToggle: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lyricsMessage: String? = null,
+    lyricsLoading: Boolean = false,
+    lyricsRetryable: Boolean = false,
+    onRetryLyrics: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
     val context = LocalContext.current
@@ -612,7 +614,7 @@ fun WavyNowPlayingBottomSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Subtitles,
-                                contentDescription = "Subtitles",
+                                contentDescription = "Lyrics",
                                 tint = palette.primary,
                                 modifier = Modifier.size(14.dp)
                             )
@@ -720,25 +722,12 @@ fun WavyNowPlayingBottomSheet(
                             .border(1.dp, palette.primary.copy(alpha = 0.4f), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        if (lyricsEnabled && !lyricsText.isNullOrBlank()) {
-                            val previewLines = lyricsText.lines().mapNotNull { line ->
-                                Regex("""\[(\d{2}):(\d{2})\.(\d{2,3})](.*)""").find(line)?.groupValues?.getOrNull(4)?.trim()
-                            }
-                            val previewStart = if (activeLyricLineIndex >= 0) activeLyricLineIndex else 0
-                            val preview = previewLines.drop(previewStart).take(2)
-                            Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                preview.forEachIndexed { index, line ->
-                                    Text(
-                                        text = line.ifBlank { "♪" },
-                                        color = if (index == 0) palette.primary else palette.textSecondary,
-                                        fontSize = if (index == 0) 11.sp else 9.sp,
-                                        fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Normal,
-                                        style = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrRtl),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
+                        if (lyricsEnabled) {
+                            AudioLyricsPanel(
+                                text = lyricsText, activeIndex = activeLyricLineIndex,
+                                message = lyricsMessage, loading = lyricsLoading,
+                                retryable = lyricsRetryable, onRetry = onRetryLyrics, compact = true,
+                            )
                         } else {
                             AudioTrackThumbnail(
                                 track = track,
@@ -889,6 +878,9 @@ private fun MusicPlaybackSurface(
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
     val activeSubtitle by musicViewModel.activeSubtitle.collectAsStateWithLifecycle()
     val lyricsText by musicViewModel.lyricsText.collectAsStateWithLifecycle()
+    val lyricsMessage by musicViewModel.lyricsMessage.collectAsStateWithLifecycle()
+    val lyricsLoading by musicViewModel.lyricsLoading.collectAsStateWithLifecycle()
+    val lyricsRetryable by musicViewModel.lyricsRetryable.collectAsStateWithLifecycle()
     val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
     val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsStateWithLifecycle()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
@@ -904,6 +896,10 @@ private fun MusicPlaybackSurface(
                     activeSubtitle = activeSubtitle,
                     lyricsEnabled = lyricsEnabled,
                     lyricsText = lyricsText,
+                    lyricsMessage = lyricsMessage,
+                    lyricsLoading = lyricsLoading,
+                    lyricsRetryable = lyricsRetryable,
+                    onRetryLyrics = { currentTrack?.let(musicViewModel::fetchAndSyncLyrics) },
                     activeLyricLineIndex = currentLyricLineIndex,
                     onTogglePlay = { musicViewModel.togglePlayPause() },
                     onNext = { musicViewModel.playNext() },
@@ -934,6 +930,10 @@ private fun MusicPlaybackSurface(
                     onExpandFullScreen = { musicViewModel.openFullScreenPlayer() },
                     lyricsEnabled = lyricsEnabled,
                     lyricsText = lyricsText,
+                    lyricsMessage = lyricsMessage,
+                    lyricsLoading = lyricsLoading,
+                    lyricsRetryable = lyricsRetryable,
+                    onRetryLyrics = { currentTrack?.let(musicViewModel::fetchAndSyncLyrics) },
                     activeLyricLineIndex = currentLyricLineIndex,
                     onLyricsToggle = toggleLyrics
                 )
