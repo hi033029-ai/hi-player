@@ -77,7 +77,8 @@ fun VideoItemCard(
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     catalogMetadata: LibraryCatalogMetadata? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reorderHandle: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -307,6 +308,8 @@ fun VideoItemCard(
 
             }
 
+            reorderHandle?.invoke()
+
             // Favorite Quick Icon
             IconButton(
                 onClick = { onFavoriteToggle(video.isFavorite) },
@@ -421,7 +424,8 @@ fun VideoGridCard(
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
     catalogMetadata: LibraryCatalogMetadata? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reorderHandle: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -571,6 +575,8 @@ fun VideoGridCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
+
+                    reorderHandle?.invoke()
 
                     Box {
                         IconButton(

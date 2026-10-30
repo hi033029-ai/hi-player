@@ -301,169 +301,29 @@ fun FileManagerScreen(
     val palette = com.example.ui.theme.LocalHiPalette.current
     val isInsideFolder = currentDir.absolutePath != fileManagerViewModel.rootDir.absolutePath
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.background)
-    ) {
-        // Local header can be disabled when the root shell owns the global header.
-        if (isSelectionMode) {
-            TopAppBar(
-                modifier = Modifier.height(uiMetrics.headerHeight),
-                title = {
-                    Text(
-                        text = "${selectedPaths.size} selected",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = palette.textPrimary
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { fileManagerViewModel.clearSelection() }) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel selection", tint = palette.textPrimary)
-                    }
-                },
-                actions = {
-                    TextButton(onClick = { fileManagerViewModel.deselectAll() }) {
-                        Text("Deselect", color = palette.primary, fontSize = 12.sp)
-                    }
-                },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-            )
-        } else if (includeHeader) {
-        TopAppBar(
-            modifier = Modifier.height(uiMetrics.headerHeight),
-            title = {
-                if (isSearchActive) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { fileManagerViewModel.setSearchQuery(it) },
-                        placeholder = {
-                            Text("Search documents, archives, folders...", color = palette.textSecondary, fontSize = 13.sp)
-                        },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = palette.textPrimary,
-                            unfocusedTextColor = palette.textPrimary,
-                            focusedBorderColor = palette.primary,
-                            unfocusedBorderColor = Color(0x44FFFFFF)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("file_search_input")
-                    )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isInsideFolder) {
-                            IconButton(
-                                onClick = { fileManagerViewModel.navigateUp() },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = palette.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                        } else {
-                            com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
-                            Spacer(modifier = Modifier.width(10.dp))
-                        }
-                        Column {
-                            Text(
-                                text = if (isInsideFolder) currentDir.name else "Hi Player",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 24.sp,
-                                color = palette.textPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+    val visibleSelectableItems = (filteredFolderItems + filteredArchives + filteredDocuments).distinctBy { it.path }
+    val selectedItems = selectedPaths.mapNotNull { path -> visibleSelectableItems.find { it.path == path } }
+    val selectionActions: @Composable () -> Unit = {
+        com.example.ui.components.InlineSelectionToolbar(
+            count = selectedPaths.size,
+            onClose = { fileManagerViewModel.clearSelection() },
+            onSelectAll = {
+                val items = if (isInsideFolder) filteredFolderItems else when (selectAllScope) {
+                    SelectAllScope.ARCHIVES -> filteredArchives
+                    SelectAllScope.DOCUMENTS -> filteredDocuments
+                    SelectAllScope.FOLDERS -> filteredFolderItems
                 }
+                fileManagerViewModel.selectAll(items.map { it.path }.toSet())
             },
-            actions = {
-                IconButton(
-                    onClick = {
-                        onSearchRequested?.invoke() ?: run {
-                            isSearchActive = !isSearchActive
-                            if (!isSearchActive) fileManagerViewModel.setSearchQuery("")
-                        }
-                    },
-                    modifier = Modifier.testTag("toggle_file_search")
-                ) {
-                    Icon(
-                        imageVector = if (isSearchActive) Icons.Default.Clear else Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = palette.textPrimary
-                    )
-                }
-                                if (!isInsideFolder && !showQuickPanels) {
-                    IconButton(onClick = { showQuickPanels = true }, modifier = Modifier.testTag("show_file_quick_panels")) {
-                        Icon(Icons.Default.Visibility, contentDescription = "Show storage and quick sections", tint = palette.textPrimary)
-                    }
-                }
-                IconButton(
-                    onClick = {
-                        showQuickPanels = true
-                        fileManagerViewModel.refreshAll()
-                    },
-                    modifier = Modifier.testTag("refresh_files_button")
-                ) {
-
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = palette.textPrimary
-                    )
-                }
-                IconButton(onClick = { showRecycleBin = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
-                }
+            onClear = { fileManagerViewModel.deselectAll() },
+            onProperties = {
+                if (selectedItems.size == 1) selectedItems.firstOrNull()?.let { fileManagerViewModel.showDetails(it) }
+                else if (selectedItems.isNotEmpty()) showSelectionProperties = true
             },
-            windowInsets = TopAppBarDefaults.windowInsets,
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
+            onDelete = { fileManagerViewModel.requestDelete(selectedItems) },
         )
-        }
-
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullStorageAccess) {
-            Card(
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D6))
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF9A6700))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow full storage access", fontWeight = FontWeight.Bold, color = Color(0xFF5F4300), fontSize = 13.sp)
-                        Text("Required to delete and manage files reliably.", color = Color(0xFF7A5A12), fontSize = 11.sp)
-                    }
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                            )
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                    ) { Text("Allow", fontSize = 12.sp) }
-                }
-            }
-        }
-
-        // Quick sections are hidden after the file list is scrolled to preserve space.
+    }
+    val storageOverview: @Composable () -> Unit = {
         if (!isInsideFolder && showQuickPanels) {
             Card(
                 border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
@@ -624,9 +484,147 @@ fun FileManagerScreen(
                 }
             }
 
-            // The file list now stays in one stable view; archive/document/folder
-            // categories remain available through the content and context actions.
         }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background)
+    ) {
+        // Local header can be disabled when the root shell owns the global header.
+        if (includeHeader) {
+        TopAppBar(
+            modifier = Modifier.height(uiMetrics.headerHeight),
+            title = {
+                if (isSearchActive) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { fileManagerViewModel.setSearchQuery(it) },
+                        placeholder = {
+                            Text("Search documents, archives, folders...", color = palette.textSecondary, fontSize = 13.sp)
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary,
+                            focusedBorderColor = palette.primary,
+                            unfocusedBorderColor = Color(0x44FFFFFF)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("file_search_input")
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isInsideFolder) {
+                            IconButton(
+                                onClick = { fileManagerViewModel.navigateUp() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = palette.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        } else {
+                            com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Column {
+                            Text(
+                                text = if (isInsideFolder) currentDir.name else "Hi Player",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.sp,
+                                color = palette.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            },
+            actions = {
+                IconButton(
+                    onClick = {
+                        onSearchRequested?.invoke() ?: run {
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) fileManagerViewModel.setSearchQuery("")
+                        }
+                    },
+                    modifier = Modifier.testTag("toggle_file_search")
+                ) {
+                    Icon(
+                        imageVector = if (isSearchActive) Icons.Default.Clear else Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = palette.textPrimary
+                    )
+                }
+                                if (!isInsideFolder && !showQuickPanels) {
+                    IconButton(onClick = { showQuickPanels = true }, modifier = Modifier.testTag("show_file_quick_panels")) {
+                        Icon(Icons.Default.Visibility, contentDescription = "Show storage and quick sections", tint = palette.textPrimary)
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        showQuickPanels = true
+                        fileManagerViewModel.refreshAll()
+                    },
+                    modifier = Modifier.testTag("refresh_files_button")
+                ) {
+
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = palette.textPrimary
+                    )
+                }
+                IconButton(onClick = { showRecycleBin = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)
+                }
+            },
+            windowInsets = TopAppBarDefaults.windowInsets,
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
+        )
+        }
+
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullStorageAccess) {
+            Card(
+                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4D6))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF9A6700))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow full storage access", fontWeight = FontWeight.Bold, color = Color(0xFF5F4300), fontSize = 13.sp)
+                        Text("Required to delete and manage files reliably.", color = Color(0xFF7A5A12), fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                }
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                    ) { Text("Allow", fontSize = 12.sp) }
+                }
+            }
+        }
+
         // Main Content Area
 
         Box(modifier = Modifier.weight(1f)) {
@@ -648,6 +646,7 @@ fun FileManagerScreen(
                 // WHEN INSIDE A FOLDER: HIDE ARCHIVES & DOCUMENTS LAYOUTS AND SHOW PURE FOLDER CONTENTS!
                 FoldersBrowserView(
                     currentDir = currentDir,
+                    selectionActions = if (isSelectionMode) selectionActions else null,
                     items = filteredFolderItems,
                     onNavigateFolder = { fileManagerViewModel.navigateTo(it) },
                     onNavigateUp = { fileManagerViewModel.navigateUp() },
@@ -671,6 +670,8 @@ fun FileManagerScreen(
                             documents = filteredDocuments,
                             folderItems = filteredFolderItems,
                             currentDir = currentDir,
+                            headerContent = storageOverview,
+                            selectionActions = if (isSelectionMode) selectionActions else null,
                             onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
                             onExtractArchive = { fileManagerViewModel.beginExtractTo(it) },
                             onOpenDocument = { fileManagerViewModel.openDocument(it, context) },
@@ -707,6 +708,7 @@ fun FileManagerScreen(
                     FileViewTab.FOLDERS_BROWSER -> {
                         FoldersBrowserView(
                             currentDir = currentDir,
+                            selectionActions = if (isSelectionMode) selectionActions else null,
                             items = filteredFolderItems,
                             onNavigateFolder = { fileManagerViewModel.navigateTo(it) },
                             onNavigateUp = { fileManagerViewModel.navigateUp() },
@@ -725,42 +727,6 @@ fun FileManagerScreen(
                         )
                     }
                 }
-            }
-        }
-    }
-
-    val visibleSelectableItems = (filteredFolderItems + filteredArchives + filteredDocuments).distinctBy { it.path }
-
-    if (isSelectionMode) {
-        val selectedItems = selectedPaths.mapNotNull { path ->
-            visibleSelectableItems.find { it.path == path }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().background(palette.surface).padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = {
-                if (selectedItems.size == 1) selectedItems.firstOrNull()?.let { fileManagerViewModel.showDetails(it) }
-                else if (selectedItems.isNotEmpty()) showSelectionProperties = true
-            }) { Icon(Icons.Default.Info, contentDescription = "Properties", tint = palette.textPrimary) }
-            IconButton(onClick = { fileManagerViewModel.requestDelete(selectedItems) }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
-            }
-            IconButton(onClick = {
-                val items = when (selectAllScope) {
-                    SelectAllScope.ARCHIVES -> filteredArchives
-                    SelectAllScope.DOCUMENTS -> filteredDocuments
-                    SelectAllScope.FOLDERS -> filteredFolderItems
-                }
-                fileManagerViewModel.selectAll(items.map { it.path }.toSet())
-            }) {
-                Icon(Icons.Default.SelectAll, contentDescription = "Select all", tint = palette.textPrimary)
-            }
-            TextButton(onClick = { fileManagerViewModel.deselectAll() }) {
-                Icon(Icons.Default.Clear, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Deselect", color = palette.primary, fontSize = 12.sp)
             }
         }
     }
@@ -1194,6 +1160,8 @@ fun MergedFilesView(
     newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {},
     onSelectionScopeChanged: (SelectAllScope) -> Unit = {},
+    headerContent: @Composable () -> Unit = {},
+    selectionActions: (@Composable () -> Unit)? = null,
     onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
@@ -1212,6 +1180,10 @@ fun MergedFilesView(
         state = mergedListState,
         modifier = Modifier.fillMaxSize()
     ) {
+        item(key = "storage_overview", contentType = "storage_overview") { headerContent() }
+        item(key = "folder_header", contentType = "folder_header") {
+            FileFolderHeader(currentDir, folderItems.size, onNavigateUp, selectionActions)
+        }
         // 2. SECOND: EXTRACTABLE ARCHIVES SECTION (COLLAPSIBLE ON CLICK)
         item {
             SectionHeader(
@@ -1386,60 +1358,6 @@ fun MergedFilesView(
             )
         }
 
-        // Breadcrumbs & Up bar
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 0.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (currentDir.parentFile != null && currentDir.parentFile?.canRead() == true) {
-                        IconButton(
-                            onClick = onNavigateUp,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .testTag("navigate_up_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Up",
-                                tint = palette.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.FolderOpen,
-                        contentDescription = null,
-                        tint = Color(0xFF34D399),
-                        modifier = Modifier.size(18.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Text(
-                        text = currentDir.name.ifEmpty { "Internal Storage" },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = palette.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Text(
-                        text = "${folderItems.size} items",
-                        fontSize = 11.sp,
-                        color = palette.textSecondary
-                    )
-                }
-            }
-        }
-
         if (folderItems.isEmpty()) {
             item {
                 Box(
@@ -1609,6 +1527,7 @@ fun FoldersBrowserView(
         onItemMenuClick: (FileItem) -> Unit = {},
     newFolderPaths: Set<String> = emptySet(),
     onContentScrolled: (Boolean) -> Unit = {},
+    selectionActions: (@Composable () -> Unit)? = null,
     onReorder: (String, String) -> Unit = { _, _ -> }
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
@@ -1619,62 +1538,7 @@ fun FoldersBrowserView(
         onContentScrolled(atTop)
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        // Folder Bar
-        Card(
-            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            shape = RoundedCornerShape(0.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 0.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (currentDir.parentFile != null && currentDir.parentFile?.canRead() == true) {
-                    IconButton(
-                        onClick = onNavigateUp,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Up",
-                            tint = palette.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
-
-                Icon(
-                    imageVector = Icons.Default.FolderOpen,
-                    contentDescription = null,
-                    tint = Color(0xFF34D399),
-                    modifier = Modifier.size(18.dp)
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Text(
-                    text = currentDir.name.ifEmpty { "Internal Storage" },
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = palette.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Text(
-                    text = "${items.size} items",
-                    fontSize = 11.sp,
-                    color = palette.textSecondary
-                )
-            }
-        }
+        FileFolderHeader(currentDir, items.size, onNavigateUp, selectionActions)
 
         if (items.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -2738,4 +2602,30 @@ private fun formatRecycleBinSize(bytes: Long): String = when {
     bytes >= 1024L * 1024L -> String.format(Locale.US, "%.2f MB", bytes / (1024.0 * 1024.0))
     bytes >= 1024L -> String.format(Locale.US, "%.2f KB", bytes / 1024.0)
     else -> "$bytes B"
+}
+
+/** Stable folder-title slot; selection changes content, never the list viewport. */
+@Composable
+private fun FileFolderHeader(
+    currentDir: File,
+    itemCount: Int,
+    onNavigateUp: () -> Unit,
+    selectionActions: (@Composable () -> Unit)? = null,
+) {
+    val palette = com.example.ui.theme.LocalHiPalette.current
+    Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp).testTag("file_folder_header"), contentAlignment = Alignment.CenterStart) {
+        if (selectionActions != null) selectionActions() else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onNavigateUp, enabled = currentDir.parentFile?.canRead() == true,
+                    modifier = Modifier.testTag("navigate_up_button")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Up", tint = palette.textPrimary)
+                }
+                Icon(Icons.Default.FolderOpen, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(currentDir.name.ifEmpty { "Internal Storage" }, Modifier.weight(1f),
+                    color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$itemCount", color = palette.textSecondary, fontSize = 12.sp)
+            }
+        }
+    }
 }

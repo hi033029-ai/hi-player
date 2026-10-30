@@ -53,6 +53,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -216,14 +217,8 @@ fun HomeScreen(
         selectedFolder == null &&
         (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null) &&
         continueWatchingVideos.isNotEmpty()
-    val currentVideoHeaderOffset = rememberUpdatedState(
-        when {
-            !selectionMode && showContinueWatching -> 2
-            !selectionMode -> 1
-            showContinueWatching -> 1
-            else -> 0
-        }
-    )
+    // The controls item remains mounted during selection, keeping row indices stable.
+    val currentVideoHeaderOffset = rememberUpdatedState(1 + if (showContinueWatching) 1 else 0)
     val videoListState = rememberLazyListState()
     val reorderableVideoListState = rememberReorderableLazyListState(videoListState) { from, to ->
         val items = currentOrderedVideos.value
@@ -301,9 +296,6 @@ fun HomeScreen(
     BackHandler(enabled = selectedFolder != null) {
         libraryViewModel.selectFolder(null)
     }
-    BackHandler(enabled = selectionMode) {
-        exitVideoSelectionMode()
-    }
 
     // Back handler for Tree Folders: step up one directory level at a time
     // instead of exiting the tree entirely.
@@ -311,12 +303,36 @@ fun HomeScreen(
         libraryViewModel.navigateTreeUp()
     }
 
+    // The last enabled handler wins: cancel selection before navigating a tree folder.
+    BackHandler(enabled = selectionMode) { exitVideoSelectionMode() }
+
+    val isVideoHome = selectedFolder == null &&
+        (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null)
+    LaunchedEffect(isVideoHome) {
+        if (!isVideoHome) {
+            isSearchActive = false
+            libraryViewModel.setSearchQuery("")
+        }
+    }
+    val selectionCandidates = if (navMode == LibraryNavMode.TREE_FOLDERS) currentTreeNode?.directVideos.orEmpty() else filteredVideos
+    LaunchedEffect(selectedFolder, treeCurrentPath, navMode) { exitVideoSelectionMode() }
+    val videoSelectionActions: @Composable () -> Unit = {
+        com.example.ui.components.InlineSelectionToolbar(
+            count = selectedVideos.size,
+            onClose = { exitVideoSelectionMode() },
+            onSelectAll = { selectedVideoPaths = selectionCandidates.map(::videoKey).toSet() },
+            onClear = { selectedVideoPaths = emptySet() },
+            onProperties = { showSelectionProperties = true },
+            onDelete = { pendingDeleteVideos = selectedVideos },
+        )
+    }
+
     // These controls must be a scrollable content item, not a sibling above a
     // Lazy list. Keeping them outside the list made the folder name and search
     // look permanently fixed; removing them on scroll made the viewport jump.
     val libraryControls: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (!selectionMode) {
+            if (isVideoHome) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -386,7 +402,7 @@ fun HomeScreen(
             // Keep these controls mounted while the media list scrolls. Removing
             // a toolbar above a Lazy list changes its viewport height mid-gesture
             // and was the source of the visible jump in the recording.
-            if (selectedFolder == null && searchQuery.isBlank()) {
+            if (isVideoHome && searchQuery.isBlank()) {
                 val navOptions = listOf(
                     Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
                     Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
@@ -452,239 +468,244 @@ fun HomeScreen(
                 }
             }
 
-                // 3. FOLDER NAVIGATION BREADCRUMB & STATUS BAR
-                if (selectedFolder != null) {
-                    // Inside Folder Header Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(palette.surfaceElevated)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { libraryViewModel.selectFolder(null) }
-                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to Folders",
-                                tint = palette.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = selectedFolder ?: "",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = palette.textPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "${filteredVideos.size} videos in folder",
-                                    fontSize = 11.sp,
-                                    color = palette.textSecondary
-                                )
-                            }
-                        }
-
-                        // Right: View Mode Toggle & Sort Dropdown
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            IconButton(
-                                onClick = { libraryViewModel.toggleViewMode() },
-                                modifier = Modifier.size(32.dp)
+            if (selectedFolder != null || navMode != LibraryNavMode.FOLDERS || selectionMode) {
+                Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
+                    if (selectionMode) videoSelectionActions() else {
+                        // 3. FOLDER NAVIGATION BREADCRUMB & STATUS BAR
+                        if (selectedFolder != null) {
+                            // Inside Folder Header Bar
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(palette.surfaceElevated)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                                    contentDescription = "Toggle View",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            Box {
-                                IconButton(
-                                    onClick = { sortMenuExpanded = true },
-                                    modifier = Modifier.size(32.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { libraryViewModel.selectFolder(null) }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Sort,
-                                        contentDescription = "Sort By",
-                                        tint = palette.textSecondary,
-                                        modifier = Modifier.size(18.dp)
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back to Folders",
+                                        tint = palette.primary,
+                                        modifier = Modifier.size(20.dp)
                                     )
-                                }
-                                DropdownMenu(
-                                    expanded = sortMenuExpanded,
-                                    onDismissRequest = { sortMenuExpanded = false },
-                                    modifier = Modifier.background(palette.surfaceElevated)
-                                ) {
-                                    VideoSortOption.entries.forEach { option ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    option.displayName,
-                                                    color = if (sortOption == option) palette.primary else palette.textPrimary,
-                                                    fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
-                                                    fontSize = 12.5.sp
-                                                )
-                                            },
-                                            onClick = {
-                                                sortMenuExpanded = false
-                                                libraryViewModel.setSortOption(option)
-                                            }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedFolder ?: "",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = palette.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${filteredVideos.size} videos in folder",
+                                            fontSize = 11.sp,
+                                            color = palette.textSecondary
                                         )
                                     }
                                 }
-                            }
-                            IconButton(
-                                onClick = { libraryViewModel.selectFolder(null) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Close Folder",
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                } else if (navMode != LibraryNavMode.FOLDERS) {
-                    // Status & Toolbar when in main view
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(palette.primary)
-                            )
-                            Text(
-                                text = when (navMode) {
-                                    LibraryNavMode.FOLDERS -> "Folders Directory (${folders.size} folders)"
-                                    LibraryNavMode.FAVORITES -> "Favorites (${filteredVideos.size} files)"
-                                    LibraryNavMode.RECENT -> "Recent History (${continueWatchingVideos.size} files)"
-                                    LibraryNavMode.TREE_FOLDERS -> {
-                                        val label = treeCurrentPath?.substringAfterLast('/') ?: "Storage"
-                                        val count = currentTreeNode?.totalVideoCount ?: 0
-                                        "$label ($count videos)"
-                                    }
-                                    else -> "All Media (${filteredVideos.size} files)"
-                                },
-                                color = palette.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
-                            )
-                        }
 
-                        // Tree navigation keeps only its back button here; All Videos and
-                        // Tree Folders use the single control row above, avoiding duplicates.
-                        if (false) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                // Up-one-level button while browsing inside the folder tree
-                                if (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
+                                // Right: View Mode Toggle & Sort Dropdown
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
                                     IconButton(
-                                        onClick = { libraryViewModel.navigateTreeUp() },
+                                        onClick = { libraryViewModel.toggleViewMode() },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                            contentDescription = "Up one folder",
-                                            tint = palette.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                                IconButton(
-                                    onClick = { libraryViewModel.toggleViewMode() },
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .testTag("view_mode_toggle")
-                                ) {
-                                    Icon(
-                                        imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                                        contentDescription = if (viewMode == LibraryViewMode.LAYER_LIST) "Switch to Grid" else "Switch to List",
-                                        tint = palette.textSecondary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                Box {
-                                    IconButton(
-                                        onClick = { sortMenuExpanded = true },
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .testTag("sort_by_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Sort,
-                                            contentDescription = "Sort By",
+                                            imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                                            contentDescription = "Toggle View",
                                             tint = palette.textSecondary,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
 
-                                    DropdownMenu(
-                                        expanded = sortMenuExpanded,
-                                        onDismissRequest = { sortMenuExpanded = false },
-                                        modifier = Modifier.background(palette.surfaceElevated)
-                                    ) {
-                                        Text(
-                                            text = "SORT MEDIA BY",
-                                            color = palette.primary,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-
-                                        VideoSortOption.entries.forEach { option ->
-                                            DropdownMenuItem(
-                                                text = {
-                                                    Text(
-                                                        text = option.displayName,
-                                                        color = if (sortOption == option) palette.primary else palette.textPrimary,
-                                                        fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
-                                                        fontSize = 12.5.sp
-                                                    )
-                                                },
-                                                trailingIcon = {
-                                                    if (sortOption == option) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(8.dp)
-                                                                .clip(CircleShape)
-                                                                .background(palette.primary)
-                                                        )
-                                                    }
-                                                },
-                                                onClick = {
-                                                    sortMenuExpanded = false
-                                                    libraryViewModel.setSortOption(option)
-                                                }
+                                    Box {
+                                        IconButton(
+                                            onClick = { sortMenuExpanded = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Sort,
+                                                contentDescription = "Sort By",
+                                                tint = palette.textSecondary,
+                                                modifier = Modifier.size(18.dp)
                                             )
+                                        }
+                                        DropdownMenu(
+                                            expanded = sortMenuExpanded,
+                                            onDismissRequest = { sortMenuExpanded = false },
+                                            modifier = Modifier.background(palette.surfaceElevated)
+                                        ) {
+                                            VideoSortOption.entries.forEach { option ->
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            option.displayName,
+                                                            color = if (sortOption == option) palette.primary else palette.textPrimary,
+                                                            fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
+                                                            fontSize = 12.5.sp
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        sortMenuExpanded = false
+                                                        libraryViewModel.setSortOption(option)
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { libraryViewModel.selectFolder(null) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Close Folder",
+                                            tint = palette.textSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else if (navMode != LibraryNavMode.FOLDERS) {
+                            // Status & Toolbar when in main view
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(palette.primary)
+                                    )
+                                    Text(
+                                        text = when (navMode) {
+                                            LibraryNavMode.FOLDERS -> "Folders Directory (${folders.size} folders)"
+                                            LibraryNavMode.FAVORITES -> "Favorites (${filteredVideos.size} files)"
+                                            LibraryNavMode.RECENT -> "Recent History (${continueWatchingVideos.size} files)"
+                                            LibraryNavMode.TREE_FOLDERS -> {
+                                                val label = treeCurrentPath?.substringAfterLast('/') ?: "Storage"
+                                                val count = currentTreeNode?.totalVideoCount ?: 0
+                                                "$label ($count videos)"
+                                            }
+                                            else -> "All Media (${filteredVideos.size} files)"
+                                        },
+                                        color = palette.textPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+
+                                // Tree navigation keeps only its back button here; All Videos and
+                                // Tree Folders use the single control row above, avoiding duplicates.
+                                if (false) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // Up-one-level button while browsing inside the folder tree
+                                        if (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
+                                            IconButton(
+                                                onClick = { libraryViewModel.navigateTreeUp() },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                                    contentDescription = "Up one folder",
+                                                    tint = palette.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+
+                                        IconButton(
+                                            onClick = { libraryViewModel.toggleViewMode() },
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .testTag("view_mode_toggle")
+                                        ) {
+                                            Icon(
+                                                imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                                                contentDescription = if (viewMode == LibraryViewMode.LAYER_LIST) "Switch to Grid" else "Switch to List",
+                                                tint = palette.textSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        Box {
+                                            IconButton(
+                                                onClick = { sortMenuExpanded = true },
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .testTag("sort_by_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Sort,
+                                                    contentDescription = "Sort By",
+                                                    tint = palette.textSecondary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = sortMenuExpanded,
+                                                onDismissRequest = { sortMenuExpanded = false },
+                                                modifier = Modifier.background(palette.surfaceElevated)
+                                            ) {
+                                                Text(
+                                                    text = "SORT MEDIA BY",
+                                                    color = palette.primary,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                                )
+
+                                                VideoSortOption.entries.forEach { option ->
+                                                    DropdownMenuItem(
+                                                        text = {
+                                                            Text(
+                                                                text = option.displayName,
+                                                                color = if (sortOption == option) palette.primary else palette.textPrimary,
+                                                                fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
+                                                                fontSize = 12.5.sp
+                                                            )
+                                                        },
+                                                        trailingIcon = {
+                                                            if (sortOption == option) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(8.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(palette.primary)
+                                                                )
+                                                            }
+                                                        },
+                                                        onClick = {
+                                                            sortMenuExpanded = false
+                                                            libraryViewModel.setSortOption(option)
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -692,6 +713,7 @@ fun HomeScreen(
                         }
                     }
                 }
+            }
         }
     }
 
@@ -700,65 +722,21 @@ fun HomeScreen(
         containerColor = palette.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            if (includeHeader && !selectionMode) TopAppBar(
-                modifier = Modifier.fillMaxWidth(),
-                navigationIcon = {
-                    if (selectionMode) {
-                        IconButton(onClick = { exitVideoSelectionMode() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
-                        }
-                    }
-                },
+            if (includeHeader) TopAppBar(
                 title = {
-                    if (selectionMode) {
-                        Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold)
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            com.example.ui.components.HiPlayerLogoBadge(
-                                size = uiMetrics.logoSize
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Hi Player",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 24.sp,
-                                    color = palette.textPrimary
-                                )
-                            }
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.example.ui.components.HiPlayerLogoBadge(size = uiMetrics.logoSize)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Hi Player", color = palette.textPrimary, fontWeight = FontWeight.Bold)
                     }
                 },
                 actions = {
-                    if (selectionMode) {
-                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
-                            Text("Select all", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
-                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { showSelectionProperties = true }) {
-                            Text("Properties", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
-                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
-                        }
-                    } else {
-                        IconButton(
-                            onClick = { libraryViewModel.refreshVideos() },
-                            modifier = Modifier.testTag("refresh_videos_button")
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = palette.textPrimary)
-                        }
+                    IconButton(onClick = { libraryViewModel.refreshVideos() }, modifier = Modifier.testTag("refresh_videos_button")) {
+                        Icon(Icons.Default.Refresh, "Refresh", tint = palette.textPrimary)
                     }
                 },
-                // Let Material3 consume the status-bar inset. The previous
-                // fixed-height modifier measured the app bar over the inset,
-                // which made the header merge into the notification area.
                 windowInsets = TopAppBarDefaults.windowInsets,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = palette.surface
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface),
             )
         },
         floatingActionButton = {}
@@ -768,32 +746,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (selectionMode) {
-                TopAppBar(
-                    title = { Text("${selectedVideos.size} selected", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = { exitVideoSelectionMode() }) {
-                            Icon(Icons.Default.Close, contentDescription = "Deselect", tint = palette.textPrimary)
-                        }
-                    },
-                    actions = {
-                        TextButton(onClick = { selectedVideoPaths = filteredVideos.map(::videoKey).toSet() }) {
-                            Text("Select all", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { selectedVideoPaths = emptySet(); isVideoSelectionMode = true }) {
-                            Text("Deselect", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { showSelectionProperties = true }) {
-                            Text("Properties", color = palette.primary, fontSize = 12.sp)
-                        }
-                        TextButton(onClick = { pendingDeleteVideos = selectedVideos }) {
-                            Text("Delete", color = Color(0xFFEF4444), fontSize = 12.sp)
-                        }
-                    },
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = palette.surface)
-                )
-            }
+
             // 4. PLAN SHEET CONTENT CANVAS
             // Keep branch-specific fillMaxSize() lists below the toolbar/header.
             // A weighted canvas prevents them from drawing underneath the controls.
@@ -849,9 +802,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!selectionMode) {
-                            item(span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
-                        }
+                        item(key = "library_controls", span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
                         if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
@@ -883,9 +834,7 @@ fun HomeScreen(
                         contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (!selectionMode) {
-                            item { libraryControls() }
-                        }
+                        item(key = "library_controls") { libraryControls() }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -924,9 +873,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!selectionMode) {
-                            item { libraryControls() }
-                        }
+                        item(key = "library_controls") { libraryControls() }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -1009,7 +956,9 @@ fun HomeScreen(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
                                     catalogMetadata = catalogMetadata[videoKey(video)],
-                                    onClick = { onVideoSelected(video) },
+                                    isSelected = selectedVideoPaths.contains(videoKey(video)),
+                                    onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
+                                    onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav ->
                                         libraryViewModel.toggleFavorite(video, isFav)
                                     },
@@ -1035,9 +984,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
-                        if (!selectionMode) {
-                            item(span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
-                        }
+                        item(key = "library_controls", span = { GridItemSpan(maxLineSpan) }) { libraryControls() }
                         if (showContinueWatching) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
@@ -1080,9 +1027,20 @@ fun HomeScreen(
                                         exitVideoSelectionMode()
                                         pendingDeleteVideos = listOf(video)
                                     },
+                                    reorderHandle = {
+                                        Icon(
+                                            Icons.Default.DragHandle,
+                                            contentDescription = "Hold to reorder video",
+                                            tint = palette.textSecondary,
+                                            modifier = with(this) {
+                                                Modifier.size(32.dp).then(
+                                                    if (!selectionMode) Modifier.longPressDraggableHandle() else Modifier
+                                                )
+                                            },
+                                        )
+                                    },
                                     modifier = with(this) {
                                         Modifier
-                                            .longPressDraggableHandle()
                                             .graphicsLayer {
                                                 scaleX = if (isDragging) 1.03f else 1f
                                                 scaleY = if (isDragging) 1.03f else 1f
@@ -1101,9 +1059,7 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        if (!selectionMode) {
-                            item { libraryControls() }
-                        }
+                        item(key = "library_controls") { libraryControls() }
                         if (showContinueWatching) {
                             item {
                                 ContinueWatchingStrip(
@@ -1147,9 +1103,20 @@ fun HomeScreen(
                                         exitVideoSelectionMode()
                                         pendingDeleteVideos = listOf(video)
                                     },
+                                    reorderHandle = {
+                                        Icon(
+                                            Icons.Default.DragHandle,
+                                            contentDescription = "Hold to reorder video",
+                                            tint = palette.textSecondary,
+                                            modifier = with(this) {
+                                                Modifier.size(32.dp).then(
+                                                    if (!selectionMode) Modifier.longPressDraggableHandle() else Modifier
+                                                )
+                                            },
+                                        )
+                                    },
                                     modifier = with(this) {
                                         Modifier
-                                            .longPressDraggableHandle()
                                             .graphicsLayer {
                                                 scaleX = if (isDragging) 1.03f else 1f
                                                 scaleY = if (isDragging) 1.03f else 1f
