@@ -152,7 +152,7 @@ class MainActivity : FragmentActivity() {
 
             HiPlayerTheme(
                 themeMode = settings.themeMode,
-                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(0.75f, 1.5f),
+                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(12f / 14f, 24f / 14f),
                 customPalette = getCustomPalette(settings),
             ) {
                 val palette = LocalHiPalette.current
@@ -450,6 +450,12 @@ class MainActivity : FragmentActivity() {
                                             }
                                             NavTab.BROWSER -> {
                                                     HiBrowserScreen(
+                                                        appTextSizeSp = settings.uiTextSizeSp,
+                                                        onAppTextSizeChange = libraryViewModel::setUiTextSize,
+                                                        onPlayAccountMedia = { video ->
+                                                            playerViewModel.playVideo(video)
+                                                            currentScreen = AppScreen.Player
+                                                        },
                                                         modifier = Modifier.fillMaxSize(),
                                                         isInPictureInPicture = isPip && browserPip,
                                                         onEnterPictureInPicture = { enterBrowserPipMode() },

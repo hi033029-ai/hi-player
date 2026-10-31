@@ -131,3 +131,47 @@ account/Drive → return to the same settings state. Check footer/label fit,
 keyboard visibility, TalkBack and restoration after process death separately
 from ordinary app switching. No runtime timing, layout or end-to-end correctness
 has been established by these source-only changes.
+
+
+## Browser appearance and one Hi Player account
+
+- Browser appearance now supplies matching light/dark UI colors and explicit
+  WebView host `uiMode` / `isLightTheme`, with guarded algorithmic darkening.
+  It does not invert video/images. Sites that opt out of darkening or do not
+  support a dark scheme may remain light; older WebViews differ in support.
+- Switching theme snapshots each tab's latest Back/Forward history when within
+  the existing snapshot limit, then recreates its WebView. Pages reload and
+  unsent page input can be lost; the setting explicitly warns about this.
+- Webpage text has an 80–200% slider/reset, applied live to all retained views,
+  new views and page commits. Fixed-layout pages can limit resizing.
+- A distinct 12–24sp app-text slider uses the existing global preference and
+  reset. The old 1.5x app-only cap no longer made 22–24sp behave identically;
+  OS font scaling is still inherited, not multiplied twice in the browser.
+- Desktop requests use the installed Chromium version, matching non-mobile
+  client hints when supported and a desktop viewport document script. Mobile
+  reload restores the original hints and removes the desktop script. Some sites
+  can still choose their own layout; this is not a guarantee about every site.
+- Removed the outer bottom-sheet frame and outlined loading progress track;
+  these were potential sources of the reported overlay hairline. The screenshot
+  cannot establish its only cause; confirm on the reporting device/WebView.
+- The old static Google sign-in menu tile opened accounts.google.com, not app
+  authentication. It now opens the activity-scoped Firebase account card and
+  indicates whether Hi Player is signed in. The same card is in browser settings
+  and accessible from the unlocked player's top controls. A signed-in profile is
+  shown rather than asking the user to authorize the app again.
+- Google website sign-in is a separate, clearly labelled secure Custom Tab
+  action. App authorization does not create website cookies; no Firebase tokens
+  or Google cookies are imported into WebView. Drive still requests its separate
+  read-only permission only on user action.
+
+Added `BrowserAppearancePolicyTest` sources for zoom bounds and preserving the
+installed engine's version. **Source review only: no compile, Gradle, lint, tests,
+APK, merge, or main push performed for this feature update.**
+
+Next approved device review: dark/light switching on old/new WebView providers,
+media colors, all open tabs and Back/Forward, webpage 80/100/200%, app 12/14/24sp
+plus large OS fonts and narrow/landscape settings, desktop/mobile reload with
+client hints and viewport-sensitive sites, overlay hairline, and app account
+sign-in/cancel/sign-out/restart consistency across Settings/Browser/Player.
+Verify Google OAuth setup and real sign-in on an approved signed build, and
+confirm that a secure website tab remains a distinct session.

@@ -71,7 +71,7 @@ internal class OrbitBrowserStore(context: Context) {
         get() = prefs.getBoolean("auto_play_in_player", true)
         set(value) { prefs.edit().putBoolean("auto_play_in_player", value).apply() }
 
-    /** Page text size as a percentage of the site's own size (50–200). */
+    /** Page text size as a percentage of the site's own size (80–200). */
     var textZoom: Int
         get() = prefs.getInt("text_zoom", 100).coerceIn(80, 200)
         set(value) { prefs.edit().putInt("text_zoom", value.coerceIn(80, 200)).apply() }

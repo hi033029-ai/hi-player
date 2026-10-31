@@ -212,6 +212,7 @@ fun PlayerScreen(
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
+    var showAccount by remember { mutableStateOf(false) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
     var equalizerInteractionTick by remember { mutableStateOf(0) }
@@ -764,6 +765,7 @@ fun PlayerScreen(
             onPrevious = { playAdjacentVideo(-1) },
             onNext = { playAdjacentVideo(1) },
             onBack = onBack,
+            onOpenAccount = { showAccount = true },
             onToggleLock = {
                 val locking = !isScreenLocked
                 playerViewModel.engine.setScreenLocked(locking)
@@ -950,6 +952,11 @@ fun PlayerScreen(
                 }
             }
         }
+
+        if (showAccount) com.example.ui.components.GoogleAccountDialog(
+            onDismiss = { showAccount = false },
+            onPlayDriveMedia = { video -> showAccount = false; playerViewModel.playVideo(video) },
+        )
 
         // 4. Modal Bottom Sheets & Dialogs
         when (activeSheet) {
