@@ -12,7 +12,7 @@
 - AndroidX's native splash remains only until persisted settings load. Returning users skip the extra Compose logo page, and the settings gate uses the current palette instead of a hardcoded white frame. Onboarding is unchanged for first launch.
 
 ## Validation status
-Source-only change. No Gradle, compilation, lint, unit tests, APK build, main push/merge, or device validation has been run. Version and signing key are unchanged. RecycleBinVisibilityTest is added but not executed. Source delimiter review and git diff --check are not runtime validation.
+Khan approved push/build. Release version is 1.0.74 (75); signing key unchanged. Local :app:compileDebugKotlin and :app:processDebugResources passed. Local Java-dependent test compilation is blocked because the available JRE lacks JAVA_COMPILER. GitHub CI will build with JDK 21 and run the targeted regression suite including RecycleBinVisibilityTest. Native/device checks below are not yet performed; compilation is not runtime or visual validation.
 
 ## Required next approved build/device checks
 - Compile/package with the new core-splashscreen dependency; run existing regression tests plus RecycleBinVisibilityTest.
