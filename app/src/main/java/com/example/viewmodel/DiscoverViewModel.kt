@@ -27,6 +27,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 class DiscoverViewModel(application: Application) : AndroidViewModel(application) {
@@ -91,7 +94,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                     _uiState.value = _uiState.value.copy(
                         isLoadingHome = false,
                         homeSections = emptyList(),
-                        errorMessage = "TMDB Discover is unavailable: ${error.message ?: "check your network connection"}",
+                        errorMessage = com.example.ui.feedback.UserFacingErrors.report("catalog_home", error, "Couldn't load titles. Check your connection and try again."),
                     )
                 }
         }
@@ -126,7 +129,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        errorMessage = "Catalog search failed: ${error.message ?: "check your network connection"}"
+                        errorMessage = com.example.ui.feedback.UserFacingErrors.report("catalog_search", error, "Couldn't search titles. Check your connection and try again.")
                     )
                 }
         }
@@ -167,7 +170,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
                 _uiState.value = _uiState.value.copy(
                     isBrowsingGoogleDrive = false,
                     googleDriveFiles = emptyList(),
-                    googleDriveMessage = error.message ?: "Could not read the selected Google Drive folder."
+                    googleDriveMessage = com.example.ui.feedback.UserFacingErrors.report("drive_folder", error, "Couldn't open this Drive folder. Reconnect Drive in Settings and try again.")
                 )
             }
         }
@@ -235,21 +238,21 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             }.onFailure { error ->
                 _uiState.value = _uiState.value.copy(
                     isSearchingSources = false,
-                    sourceMessage = "Source search failed: ${error.message ?: "check the source connection"}"
+                    sourceMessage = com.example.ui.feedback.UserFacingErrors.report("source_search", error, "Couldn't search your media. Check the server connection in Settings and try again.")
                 )
             }
         }
     }
 
-    fun connectJellyfin(baseUrl: String, username: String, password: String, onResult: (Result<Unit>) -> Unit) {
-        viewModelScope.launch {
-            val result = JellyfinMediaSourceClient.authenticate(baseUrl, username, password)
-                .map { connection ->
-                    mediaSources.saveJellyfin(connection)
-                    RemoteStreamHeadersRegistry.register(connection.baseUrl, JellyfinMediaSourceClient.requestHeaders(connection))
-                }
-            onResult(result)
-        }
+    fun connectJellyfin(baseUrl: String, username: String, password: String, onResult: (Result<Unit>) -> Unit): Job = viewModelScope.launch {
+        val result = JellyfinMediaSourceClient.authenticate(baseUrl, username, password)
+            .map { connection ->
+                currentCoroutineContext().ensureActive()
+                mediaSources.saveJellyfin(connection)
+                RemoteStreamHeadersRegistry.register(connection.baseUrl, JellyfinMediaSourceClient.requestHeaders(connection))
+            }
+        currentCoroutineContext().ensureActive()
+        onResult(result)
     }
 
     fun saveGoogleDriveFolder(
@@ -284,24 +287,24 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         mediaSources.clearGoogleDrive()
     }
 
-    fun saveWebDav(folderUrl: String, username: String, password: String, displayName: String, onResult: (Result<Unit>) -> Unit) {
-        viewModelScope.launch {
-            val result = runCatching {
-                val connection = WebDavConnection(
-                    folderUrl = folderUrl.trim(),
-                    username = username.trim(),
-                    password = password,
-                    displayName = displayName.trim().ifBlank { "WebDAV" }
-                )
-                require(connection.isConfigured) { "Enter the WebDAV folder URL, username, and password." }
-                // Validate the configured folder itself without performing a full
-                // media crawl during setup.
-                WebDavMediaSourceClient.verify(connection)
-                mediaSources.saveWebDav(connection)
-                RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
-            }
-            onResult(result)
+    fun saveWebDav(folderUrl: String, username: String, password: String, displayName: String, onResult: (Result<Unit>) -> Unit): Job = viewModelScope.launch {
+        val result = runCatching {
+            val connection = WebDavConnection(
+                folderUrl = folderUrl.trim(),
+                username = username.trim(),
+                password = password,
+                displayName = displayName.trim().ifBlank { "WebDAV" }
+            )
+            require(connection.isConfigured) { "Enter the WebDAV folder URL, username, and password." }
+            // Validate the configured folder itself without performing a full
+            // media crawl during setup.
+            WebDavMediaSourceClient.verify(connection)
+            currentCoroutineContext().ensureActive()
+            mediaSources.saveWebDav(connection)
+            RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
         }
+        currentCoroutineContext().ensureActive()
+        onResult(result)
     }
 
     fun removeJellyfin() {

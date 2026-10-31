@@ -87,6 +87,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.DisposableEffect
@@ -174,6 +175,7 @@ fun FileManagerScreen(
     val totalStorage by fileManagerViewModel.storageTotalBytes.collectAsStateWithLifecycle()
     val searchQuery by fileManagerViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by fileManagerViewModel.isLoading.collectAsStateWithLifecycle()
+    val isRenaming by fileManagerViewModel.isRenaming.collectAsStateWithLifecycle()
 
     val selectedArchive by fileManagerViewModel.selectedArchive.collectAsStateWithLifecycle()
     val activeArchiveEntries by fileManagerViewModel.activeArchiveEntries.collectAsStateWithLifecycle()
@@ -194,12 +196,12 @@ fun FileManagerScreen(
     val recycleBinItems by fileManagerViewModel.recycleBinItems.collectAsStateWithLifecycle()
     val selectedRecycleBinIds by fileManagerViewModel.selectedRecycleBinIds.collectAsStateWithLifecycle()
 
-    var isSearchActive by remember { mutableStateOf(false) }
-    var showRecycleBin by remember { mutableStateOf(false) }
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
+    var showRecycleBin by rememberSaveable { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     var selectAllScope by remember { mutableStateOf(SelectAllScope.FOLDERS) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
-    var renameText by remember { mutableStateOf(TextFieldValue()) }
+    var renameText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     val activeTab = FileViewTab.ALL_MERGED
     var apkInstallCandidate by remember { mutableStateOf<FileItem?>(null) }
     var showQuickPanels by remember { mutableStateOf(true) }
@@ -576,6 +578,11 @@ fun FileManagerScreen(
             }
         }
 
+        if (isRenaming) {
+            Text("Renaming file…", color = palette.textSecondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = palette.primary)
+        }
+
         // Main Content Area
 
         Box(modifier = Modifier.weight(1f)) {
@@ -590,9 +597,9 @@ fun FileManagerScreen(
                     onDeletePermanently = { showPermanentDeleteConfirm = true }
                 )
             } else if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = palette.primary)
-                }
+                com.example.ui.components.ContentSkeleton(
+                    label = "Loading files…", layout = com.example.ui.components.SkeletonLayout.FILES,
+                )
             } else if (isInsideFolder) {
                 // WHEN INSIDE A FOLDER: HIDE ARCHIVES & DOCUMENTS LAYOUTS AND SHOW PURE FOLDER CONTENTS!
                 FoldersBrowserView(
@@ -818,6 +825,7 @@ fun FileManagerScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !isRenaming,
                     onClick = {
                         fileManagerViewModel.renameItem(item, renameText.text)
                         renameTargetItem = null

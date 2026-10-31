@@ -349,7 +349,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             } catch (e: Exception) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    android.widget.Toast.makeText(context, "Couldn't save subtitle: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(context, com.example.ui.feedback.UserFacingErrors.report("subtitle_save", e, "Couldn't save subtitles. Check storage access and free space, then try again."), android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }

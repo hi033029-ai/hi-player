@@ -83,7 +83,7 @@ internal object BrowserDownloads {
                     destinationTreeUri = o.optString("treeUri").ifBlank { null }, customName = o.optBoolean("customName"),
                     formatChecked = o.optBoolean("formatChecked", false),
                     durationMs = o.optLong("duration"), width = o.optInt("width"), height = o.optInt("height"),
-                    error = if (interrupted) "Interrupted — tap Resume" else o.optString("error").ifBlank { null },
+                    error = if (interrupted) "Interrupted — tap Resume" else if (oldStatus == BrowserDownloadStatus.FAILED) "Download interrupted. Tap Retry, or reopen the website for a fresh link." else null,
                 )
             }
         }.getOrDefault(emptyList())

@@ -144,6 +144,16 @@ import androidx.compose.ui.unit.sp
 import org.json.JSONObject
 import org.json.JSONArray
 import org.json.JSONTokener
+import com.example.auth.GoogleAccountViewModel
+import com.example.ui.components.GoogleAccountCard
+import com.example.ui.components.GoogleAccountDialog
+import com.example.data.AppThemeMode
+import com.example.ui.theme.HiPlayerTheme
+import com.example.ui.theme.getPaletteForTheme
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import com.example.ui.theme.LocalHiPalette
 import com.example.model.StreamUrlClassifier
 import kotlinx.coroutines.delay
@@ -198,7 +208,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material3.CircularProgressIndicator
 import java.util.concurrent.CopyOnWriteArrayList
 
 private data class OrbitBrowserTab(
@@ -300,10 +309,13 @@ private object HiBrowserDocumentScripts {
 
     fun isSupported(): Boolean = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
 
-    fun apply(webView: WebView, context: Context, store: OrbitBrowserStore) {
+    fun apply(webView: WebView, context: Context, store: OrbitBrowserStore, desktop: Boolean) {
         remove(webView)
         if (!isSupported()) return
         val registered = mutableListOf<ScriptHandler>()
+        if (desktop) readAsset(context, "orbit_desktop_viewport.js")?.let {
+            registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
+        }
         if (store.adBlock) {
             readAsset(context, "orbit_adblock.js")?.let {
                 registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
@@ -354,6 +366,9 @@ fun HiBrowserScreen(
     appNavigation: @Composable () -> Unit = {},
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
+    appTextSizeSp: Int = 14,
+    onAppTextSizeChange: (Int) -> Unit = {},
+    onPlayAccountMedia: (com.example.model.VideoItem) -> Unit = {},
     isInPictureInPicture: Boolean = false,
     onEnterPictureInPicture: (() -> Boolean)? = null,
     externalUrl: String? = null,
@@ -364,11 +379,15 @@ fun HiBrowserScreen(
     onPlayBrowserVideo: ((url: String, mimeType: String?, title: String?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val palette = LocalHiPalette.current
     val store = remember(context) { OrbitBrowserStore(context) }
     val downloads by BrowserDownloads.downloads.collectAsStateWithLifecycle()
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
+    val browserTheme = if (darkModeEnabled) AppThemeMode.CYAN_NEON_DARK else AppThemeMode.WARM_SUNSET_LIGHT
+    val palette = getPaletteForTheme(browserTheme)
+    val accountModel: GoogleAccountViewModel = viewModel()
+    val accountProfile by accountModel.profile.collectAsStateWithLifecycle()
+    var showAccount by remember { mutableStateOf(false) }
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
     var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
     var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
@@ -470,8 +489,6 @@ fun HiBrowserScreen(
     val pausedForPip = remember { mutableStateOf(false) }
     // The bottom address bar slides away while the page scrolls down and returns on scroll up.
     var browserBarHidden by remember { mutableStateOf(false) }
-    // "Browser mode" intro plays every time the browser is entered.
-    var showModeIntro by remember { mutableStateOf(true) }
 
     androidx.compose.runtime.SideEffect { mediaSniffer.activeTabId = activeTabId }
 
@@ -613,20 +630,24 @@ fun HiBrowserScreen(
         val desktop = !tab.desktop
         updateTab(tab.id) { it.copy(desktop = desktop) }
         tab.webView?.let { view ->
-            view.settings.userAgentString = if (desktop) DESKTOP_USER_AGENT else null
-            view.settings.useWideViewPort = desktop
-            view.settings.loadWithOverviewMode = desktop
+            applyOrbitDesktopMode(view, desktop)
+            HiBrowserDocumentScripts.apply(view, context, store, desktop)
             view.reload()
+            Toast.makeText(context, if (desktop) "Requesting desktop site…" else "Requesting mobile site…", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun setDarkMode(enabled: Boolean) {
         store.darkMode = enabled
         darkModeEnabled = enabled
-        // Sites choose light or dark colours from the WebView's theme when it is
-        // created, so rebuild the tabs' WebViews; each reloads its page.
-        tabs.forEach { tab -> tab.webView?.let(::disposeOrbitWebView) }
-        tabs = tabs.map { it.copy(webView = null) }
+        // Both uiMode and isLightTheme are fixed at WebView creation. Save each
+        // tab's latest Back/Forward list BEFORE replacing its renderer.
+        tabs = tabs.map { tab ->
+            val view = tab.webView
+            val history = view?.let(::captureOrbitHistory) ?: tab.historyState
+            view?.let(::disposeOrbitWebView)
+            tab.copy(webView = null, historyState = history)
+        }
         if (!showStartPage) pendingFirstPaint = true
         webViewGeneration++
     }
@@ -678,7 +699,10 @@ fun HiBrowserScreen(
         }
         val tab = tabs.firstOrNull { it.id == tabId }
         val pageUrl = mediaSniffer.pageUrl(tabId).ifBlank { tab?.url.orEmpty() }
-        val userAgent = if (tab?.desktop == true) DESKTOP_USER_AGENT else runCatching { WebSettings.getDefaultUserAgent(context) }.getOrNull()
+        val userAgent = tab?.webView?.settings?.userAgentString ?: runCatching {
+            val mobile = WebSettings.getDefaultUserAgent(context)
+            if (tab?.desktop == true) BrowserAppearancePolicy.desktopUserAgent(mobile) else mobile
+        }.getOrNull()
         registerBrowserStreamHeaders(url, pageUrl, userAgent, mediaSniffer.mediaHosts(tabId))
         val title = mediaSniffer.title(tabId).ifBlank { tab?.title.orEmpty() }.takeIf { it.isNotBlank() && !it.startsWith("http") }
         tab?.webView?.evaluateJavascript(HI_BROWSER_PAUSE_MEDIA_SCRIPT, null)
@@ -687,7 +711,7 @@ fun HiBrowserScreen(
     }
 
     fun refreshDocumentScripts() {
-        tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store) } }
+        tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store, tab.desktop) } }
         webView?.reload()
     }
 
@@ -762,10 +786,10 @@ fun HiBrowserScreen(
     }
 
     fun setTextZoom(percent: Int) {
-        val value = percent.coerceIn(80, 200)
+        val value = BrowserAppearancePolicy.textZoom(percent)
         store.textZoom = value
         textZoomPercent = value
-        tabs.forEach { tab -> tab.webView?.settings?.textZoom = value }
+        tabs.forEach { tab -> tab.webView?.let { applyOrbitTextZoom(it, value) } }
     }
 
     fun setPopupBlockEnabled(enabled: Boolean) {
@@ -1140,6 +1164,8 @@ fun HiBrowserScreen(
     val barHeightDp = with(density) { barHeightPx.toDp() }
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
+    // Inherit the already-scaled app density; do not multiply the app text size twice.
+    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f) {
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,
@@ -1168,11 +1194,7 @@ fun HiBrowserScreen(
                         val tabId = activeTab.id
                         // The WebView's theme decides prefers-color-scheme for every site:
                         // a light theme unless the browser's dark theme is switched on.
-                        val themedContext = ContextThemeWrapper(
-                            viewContext,
-                            if (store.darkMode) android.R.style.Theme_DeviceDefault_NoActionBar
-                            else android.R.style.Theme_DeviceDefault_Light_NoActionBar,
-                        )
+                        val themedContext = createOrbitWebContext(viewContext, store.darkMode)
                         // A tab that is still loaded (e.g. after returning to browser mode) keeps
                         // its WebView and page; only its callbacks are rebound to this screen.
                         val existing = activeTab.webView?.takeIf { isOrbitWebViewUsable(it) }
@@ -1196,14 +1218,14 @@ fun HiBrowserScreen(
                                 mediaPlaybackRequiresUserGesture = true
                                 builtInZoomControls = true
                                 displayZoomControls = false
-                                useWideViewPort = activeTab.desktop
-                                loadWithOverviewMode = activeTab.desktop
-                                userAgentString = if (activeTab.desktop) DESKTOP_USER_AGENT else null
+                                useWideViewPort = true
+                                loadWithOverviewMode = true
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
                             }
+                            applyOrbitDesktopMode(this, activeTab.desktop)
                             applyOrbitDarkMode(this, store.darkMode)
-                            HiBrowserDocumentScripts.apply(this, viewContext, store)
+                            HiBrowserDocumentScripts.apply(this, viewContext, store, activeTab.desktop)
                             // The bridge only talks to session-level objects, so it stays valid
                             // when this WebView is reattached to a later browser screen.
                             addJavascriptInterface(
@@ -1373,6 +1395,9 @@ fun HiBrowserScreen(
                                     }
                                 }
                                 override fun onPageCommitVisible(view: WebView, url: String) {
+                                    applyOrbitTextZoom(view, store.textZoom)
+                                    if (!HiBrowserDocumentScripts.isSupported() && tabs.firstOrNull { it.id == tabId }?.desktop == true)
+                                        injectOrbitAsset(view, viewContext, "orbit_desktop_viewport.js")
                                     if (activeTabId == tabId) pendingFirstPaint = false
                                     injectCosmeticCss(view, url)
                                 }
@@ -1392,12 +1417,32 @@ fun HiBrowserScreen(
                                     if (!request.isForMainFrame) return
                                     redirectSources.remove(tabId)
                                     if (activeTabId == tabId) pendingFirstPaint = false
-                                    if (activeTabId == tabId && hiBrowserIsNetworkError(error.errorCode, error.description?.toString().orEmpty())) {
+                                    if (activeTabId == tabId) {
                                         pageError = HiBrowserPageError(tabId, request.url.toString(), offline = !networkOnline)
                                         loadingProgress = 100
                                     }
                                 }
+                                override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                                    if (request.isForMainFrame && activeTabId == tabId && response.statusCode >= 400) {
+                                        android.util.Log.w("HiBrowser", "Page request failed (${response.statusCode})")
+                                        pendingFirstPaint = false
+                                        pageError = HiBrowserPageError(tabId, request.url.toString(), offline = false)
+                                        loadingProgress = 100
+                                    }
+                                }
+                                override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                                    handler.cancel() // Never bypass certificate validation to make an error disappear.
+                                    // A broken third-party subresource must not replace an otherwise valid page.
+                                    if (activeTabId == tabId && error.url == view.url) {
+                                        pendingFirstPaint = false
+                                        pageError = HiBrowserPageError(tabId, view.url.orEmpty(), offline = false)
+                                        loadingProgress = 100
+                                    }
+                                }
                                 override fun onPageFinished(view: WebView, url: String) {
+                                    applyOrbitTextZoom(view, store.textZoom)
+                                    if (!HiBrowserDocumentScripts.isSupported() && tabs.firstOrNull { it.id == tabId }?.desktop == true)
+                                        injectOrbitAsset(view, viewContext, "orbit_desktop_viewport.js")
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
                                     // One update per finished page: history snapshot, address and title.
                                     val history = captureOrbitHistory(view)
@@ -1450,6 +1495,11 @@ fun HiBrowserScreen(
                         }
                         updateTab(tabId) { it.copy(webView = view) }
                         view
+                    },
+                    update = { view ->
+                        // Retained tabs must receive live settings, not just factory defaults.
+                        applyOrbitTextZoom(view, textZoomPercent)
+                        applyOrbitDarkMode(view, darkModeEnabled)
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -1535,7 +1585,7 @@ fun HiBrowserScreen(
                     if (onPage && loadingProgress in 1..99) {
                         LinearProgressIndicator(
                             progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder.copy(alpha = 0.6f),
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(1.dp)).hiContainerBorder(RoundedCornerShape(1.dp)),
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(1.dp)),
                         )
                     }
                 }
@@ -1586,6 +1636,10 @@ fun HiBrowserScreen(
 
     if (showBrowserSettings) {
         BrowserSettingsDialog(
+            accountModel = accountModel,
+            onPlayAccountMedia = onPlayAccountMedia,
+            appTextSizeSp = appTextSizeSp,
+            onAppTextSizeChange = onAppTextSizeChange,
             darkMode = darkModeEnabled,
             adBlock = adBlockEnabled,
             pageSkipper = pageSkipperEnabled,
@@ -1716,7 +1770,10 @@ fun HiBrowserScreen(
             ) },
             confirmButton = { TextButton(onClick = {
                 pendingSecureSite = null
-                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure {
+                    Toast.makeText(context, com.example.ui.feedback.UserFacingErrors.report("website_sign_in", it,
+                        "Couldn't open secure sign-in. Try again or use your device browser."), Toast.LENGTH_LONG).show()
+                }
             }) { Text("Open secure tab") } },
             dismissButton = { TextButton(onClick = { pendingSecureSite = null }) { Text("Stay in Hi Browser") } },
         )
@@ -1738,7 +1795,7 @@ fun HiBrowserScreen(
         val bookmarked = onPage && store.isBookmarked(currentUrl)
         HiBrowserMenuSheet(
             tiles = listOf(
-                HiMenuAction("Google sign-in", Icons.Default.AccountCircle) { requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT) },
+                HiMenuAction(if (accountProfile == null) "Sign in with Google" else "Your account · signed in", Icons.Default.AccountCircle) { showAccount = true },
                 HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
                 HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
                 HiMenuAction("Downloads", Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
@@ -1780,6 +1837,7 @@ fun HiBrowserScreen(
             rows = listOf(
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { openNewTab(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { showBrowserSettings = true },
+                HiMenuAction("Google website sign-in", Icons.Default.Language) { requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT) },
                 HiMenuAction("Close this tab", Icons.Default.Close) { closeTab(activeTabId) },
             ),
             bottomRow = listOf(
@@ -1797,10 +1855,12 @@ fun HiBrowserScreen(
             onDismiss = { menuExpanded = false },
         )
     }
-
-    if (showModeIntro && !isInPictureInPicture) {
-        HiBrowserModeIntro(onFinished = { showModeIntro = false })
-    }
+    if (showAccount) GoogleAccountDialog(
+        onDismiss = { showAccount = false },
+        onPlayDriveMedia = { video -> showAccount = false; onPlayAccountMedia(video) },
+        model = accountModel,
+    )
+    } // Browser appearance theme
 }
 
 /** WebViews already destroyed; a stale tab reference to one must never be reattached. */
@@ -1811,6 +1871,7 @@ private fun isOrbitWebViewUsable(webView: WebView?): Boolean = webView != null &
 private fun disposeOrbitWebView(webView: WebView) {
     if (!hiDestroyedWebViews.add(webView)) return
     HiBrowserDocumentScripts.remove(webView)
+    orbitMobileMetadata.remove(webView)
     runCatching {
         webView.removeJavascriptInterface("HiBrowserNative")
         webView.stopLoading()
@@ -2125,10 +2186,53 @@ private fun applyOrbitDarkMode(webView: WebView, enabled: Boolean) {
     }
 }
 
-private const val DESKTOP_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+/** Explicit configuration AND theme: WebView uses both to negotiate page colors. */
+private fun createOrbitWebContext(context: Context, dark: Boolean): Context {
+    val configuration = android.content.res.Configuration(context.resources.configuration).apply {
+        uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+            if (dark) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO
+    }
+    return ContextThemeWrapper(context.createConfigurationContext(configuration),
+        if (dark) com.example.R.style.Theme_HiBrowser_Dark else com.example.R.style.Theme_HiBrowser_Light)
+}
+
+private fun applyOrbitTextZoom(view: WebView, percent: Int) {
+    val value = BrowserAppearancePolicy.textZoom(percent)
+    if (view.settings.textZoom != value) {
+        view.settings.textZoom = value
+        view.requestLayout()
+        view.invalidate()
+    }
+}
+
+private val orbitMobileMetadata = WeakHashMap<WebView, androidx.webkit.UserAgentMetadata>()
+
+private fun applyOrbitDesktopMode(view: WebView, desktop: Boolean) {
+    val settings = view.settings
+    val supportsHints = WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)
+    val mobileMetadata = if (supportsHints) orbitMobileMetadata.getOrPut(view) {
+        WebSettingsCompat.getUserAgentMetadata(settings)
+    } else null
+    settings.userAgentString = if (desktop)
+        BrowserAppearancePolicy.desktopUserAgent(WebSettings.getDefaultUserAgent(view.context)) else null
+    if (mobileMetadata != null) {
+        val metadata = if (desktop) androidx.webkit.UserAgentMetadata.Builder(mobileMetadata)
+            .setPlatform("Linux").setPlatformVersion("").setArchitecture("x86")
+            .setModel("").setMobile(false).setBitness(64).setWow64(false).build() else mobileMetadata
+        WebSettingsCompat.setUserAgentMetadata(settings, metadata)
+    }
+    // Mobile pages also need their viewport meta tag honored. Overview is not desktop-only.
+    settings.useWideViewPort = true
+    settings.loadWithOverviewMode = true
+    view.setInitialScale(0)
+}
 
 @Composable
 private fun BrowserSettingsDialog(
+    accountModel: GoogleAccountViewModel,
+    onPlayAccountMedia: (com.example.model.VideoItem) -> Unit,
+    appTextSizeSp: Int,
+    onAppTextSizeChange: (Int) -> Unit,
     darkMode: Boolean,
     adBlock: Boolean,
     pageSkipper: Boolean,
@@ -2153,7 +2257,7 @@ private fun BrowserSettingsDialog(
 ) {
     val palette = LocalHiPalette.current
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
+        Column(modifier = Modifier.fillMaxSize().background(palette.background).safeDrawingPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2171,30 +2275,22 @@ private fun BrowserSettingsDialog(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                GoogleAccountCard(onPlayDriveMedia = { video -> onDismiss(); onPlayAccountMedia(video) }, model = accountModel)
                 BrowserSettingsGroup("Appearance") {
-                    BrowserSettingsSwitchRow("Dark theme", "Show web pages with dark colors", darkMode, onDarkModeChange)
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Text size", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                            Text("How big text looks on web pages", color = palette.textSecondary, fontSize = 12.sp)
-                        }
-                        IconButton(onClick = { onTextZoomChange(textZoom - 10) }, enabled = textZoom > 80) {
-                            Icon(Icons.Default.Remove, contentDescription = "Smaller text", tint = palette.textPrimary)
-                        }
-                        Text(
-                            "$textZoom%",
-                            color = palette.textPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.width(56.dp),
-                        )
-                        IconButton(onClick = { onTextZoomChange(textZoom + 10) }, enabled = textZoom < 200) {
-                            Icon(Icons.Default.Add, contentDescription = "Bigger text", tint = palette.textPrimary)
-                        }
-                    }
-                    if (textZoom != 100) {
-                        TextButton(onClick = { onTextZoomChange(100) }) { Text("Reset text size to 100%") }
+                    BrowserSettingsSwitchRow("Dark theme", "Dark browser controls and web pages where supported. Open pages reload; unsent page input may be lost.", darkMode, onDarkModeChange)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Text("Webpage text · $textZoom%", color = palette.textPrimary, fontWeight = FontWeight.Medium)
+                        Text("Applies to all tabs. Some fixed-layout sites limit text resizing.", color = palette.textSecondary)
+                        Slider(value = textZoom.toFloat(), valueRange = 80f..200f, steps = 11,
+                            onValueChange = { onTextZoomChange((it / 10f).roundToInt() * 10) },
+                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Webpage text size" })
+                        TextButton(onClick = { onTextZoomChange(100) }, enabled = textZoom != 100) { Text("Reset webpage text to 100%") }
+                        Text("App text · ${appTextSizeSp}sp", color = palette.textPrimary, fontWeight = FontWeight.Medium)
+                        Text("Changes Hi Player controls and menus, including this screen. System font size is respected too.", color = palette.textSecondary)
+                        Slider(value = appTextSizeSp.coerceIn(12, 24).toFloat(), valueRange = 12f..24f, steps = 11,
+                            onValueChange = { onAppTextSizeChange(it.roundToInt()) },
+                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "App text size" })
+                        TextButton(onClick = { onAppTextSizeChange(14) }, enabled = appTextSizeSp != 14) { Text("Reset app text to 14sp") }
                     }
                 }
                 BrowserSettingsGroup("Privacy and content") {
@@ -2336,13 +2432,6 @@ private fun HiBrowserLoadingPage(
 ) {
     val palette = LocalHiPalette.current
     val host = hiBrowserDisplayAddress(url).ifBlank { "page" }
-    val shimmer = rememberInfiniteTransition(label = "browser-loading")
-    val pulse by shimmer.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
-        label = "browser-loading-pulse",
-    )
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -2356,25 +2445,10 @@ private fun HiBrowserLoadingPage(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(24.dp))
-        CircularProgressIndicator(
-            color = palette.primary,
-            strokeWidth = 3.dp,
-            modifier = Modifier.size(44.dp),
-        )
+        LinearProgressIndicator(color = palette.primary, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
         Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(28.dp))
-        // Page-shaped placeholder so the screen does not look frozen.
-        listOf(1f, 0.92f, 0.75f, 0.85f, 0.6f).forEachIndexed { index, width ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(width)
-                    .height(if (index == 0) 120.dp else 14.dp)
-                    .clip(RoundedCornerShape(if (index == 0) 14.dp else 7.dp))
-                    .background(palette.surfaceBorder.copy(alpha = pulse * 0.6f)),
-            )
-            Spacer(Modifier.height(12.dp))
-        }
+        TextButton(onClick = onStop) { Text("Stop loading") }
         if (slow || offline) {
             Spacer(Modifier.height(16.dp))
             Text(
@@ -2392,7 +2466,7 @@ private fun HiBrowserLoadingPage(
     }
 }
 
-/** Replaces WebView's built-in error page when a page fails because of the network. */
+/** Clear recovery for network, HTTP and certificate failures; no raw WebView errors. */
 @Composable
 private fun HiBrowserErrorPage(
     url: String,
@@ -2433,7 +2507,7 @@ private fun HiBrowserErrorPage(
         Spacer(Modifier.height(8.dp))
         Text(
             if (offline) "Check Wi-Fi or mobile data. The page reloads by itself when you're back online."
-            else "${hiBrowserDisplayAddress(url)} took too long to respond or couldn't be found.",
+            else "This page is unavailable or couldn't be opened securely. Try again, check the address, or return Home.",
             color = palette.textSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,

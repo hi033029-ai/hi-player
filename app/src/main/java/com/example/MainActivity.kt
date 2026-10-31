@@ -59,6 +59,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -106,6 +108,7 @@ sealed class AppScreen {
 class MainActivity : FragmentActivity() {
     // Retained only to manage/remove existing personal media-source credentials.
     private val mediaSourceViewModel: DiscoverViewModel by viewModels()
+    private val sessionDrafts: com.example.ui.feedback.SessionDraftsViewModel by viewModels()
 
     private companion object {
         const val PIP_ACTION_PLAY_PAUSE = "com.example.hiplayer.PIP_PLAY_PAUSE"
@@ -139,37 +142,45 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        com.example.ui.components.HiPlayerLogo.preload(this)
 
         handleIntent(intent)
 
         setContent {
             val settings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
             val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsStateWithLifecycle()
-            var isShowingSplash by remember { mutableStateOf(true) }
+            var isShowingSplash by rememberSaveable { mutableStateOf(true) }
 
             HiPlayerTheme(
                 themeMode = settings.themeMode,
-                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(0.75f, 1.5f),
+                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(12f / 14f, 24f / 14f),
                 customPalette = getCustomPalette(settings),
             ) {
                 val palette = LocalHiPalette.current
-                var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
-                var currentTab by remember { mutableStateOf(NavTab.VIDEOS) }
-                // Where Back from browser mode returns to.
-                var tabBeforeBrowser by remember { mutableStateOf(NavTab.VIDEOS) }
-                androidx.compose.runtime.LaunchedEffect(currentTab) {
-                    if (currentTab != NavTab.BROWSER) tabBeforeBrowser = currentTab
+                val libraryRefreshing by libraryViewModel.isLoading.collectAsStateWithLifecycle()
+                var currentScreen by rememberSaveable(stateSaver = Saver<AppScreen, String>(
+                    save = { if (it == AppScreen.Player) "player" else "main" },
+                    restore = { if (it == "player" && playerViewModel.currentVideo.value != null) AppScreen.Player else AppScreen.Main },
+                )) { mutableStateOf<AppScreen>(AppScreen.Main) }
+                var tabHistory by rememberSaveable { mutableStateOf(arrayListOf(NavTab.VIDEOS.name)) }
+                val currentTab = NavTab.valueOf(tabHistory.last())
+                fun navigateTab(tab: NavTab) {
+                    tabHistory = ArrayList(com.example.ui.navigation.TabHistory.open(tabHistory, tab.name))
+                }
+                fun backToPreviousTab() {
+                    tabHistory = ArrayList(com.example.ui.navigation.TabHistory.back(tabHistory))
+                }
+                androidx.activity.compose.BackHandler(enabled = currentScreen == AppScreen.Main && tabHistory.size > 1) {
+                    backToPreviousTab()
                 }
                 var showHubBottomSheet by remember { mutableStateOf(false) }
-                var showGlobalSearchDialog by remember { mutableStateOf(false) }
-                var showStreamUrlDialog by remember { mutableStateOf(false) }
+                var showGlobalSearchDialog by rememberSaveable { mutableStateOf(false) }
+                var showStreamUrlDialog by rememberSaveable { mutableStateOf(false) }
                 var recycleBinOpenRequest by remember { mutableStateOf(0) }
-                var globalSearchQuery by remember { mutableStateOf("") }
-                var streamUrl by remember { mutableStateOf("") }
+                var globalSearchQuery by rememberSaveable { mutableStateOf("") }
+                var streamUrl by sessionDrafts.streamUrl
                 var streamUrlError by remember { mutableStateOf<String?>(null) }
                 var isResolvingStreamUrl by remember { mutableStateOf(false) }
-                var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
+                var streamResolutionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
@@ -208,6 +219,7 @@ class MainActivity : FragmentActivity() {
                     streamUrlError = null
                     isResolvingStreamUrl = false
                     showStreamUrlDialog = false
+                    streamUrl = ""
                 }
 
                 // File managers, browsers, and share sheets route here through
@@ -220,7 +232,6 @@ class MainActivity : FragmentActivity() {
                     libraryViewModel.addExternalVideo(uri) { video ->
                         libraryViewModel.markVideoOpened(video)
                         playerViewModel.playVideo(video)
-                        currentTab = NavTab.VIDEOS
                         currentScreen = AppScreen.Player
                     }
                 }
@@ -234,7 +245,7 @@ class MainActivity : FragmentActivity() {
                         currentScreen = AppScreen.Main
                     }
                     musicViewModel.closeFullScreenPlayer()
-                    currentTab = NavTab.BROWSER
+                    navigateTab(NavTab.BROWSER)
                 }
 
                 val videos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
@@ -266,28 +277,13 @@ class MainActivity : FragmentActivity() {
                             musicViewModel.loadAudioTracks()
                         },
                         onSkip = {
-                            libraryViewModel.setThemeMode(com.example.data.AppThemeMode.CYAN_NEON_DARK)
-                            libraryViewModel.setUiTextSize(14)
-                            completeFirstLaunchAfterPermission = true
+                            libraryViewModel.setFirstLaunchCompleted()
                             isShowingSplash = false
                             libraryViewModel.refreshVideos()
                             musicViewModel.loadAudioTracks()
                         }
                     )
                 } else {
-                    // Dynamic Permission Request on Launch (Only prompt dialog on first launch)
-                    RequestPermissionsOnLaunch(
-                        isFirstLaunch = settings.isFirstLaunch || completeFirstLaunchAfterPermission,
-                        onGranted = {
-                            if (completeFirstLaunchAfterPermission) {
-                                libraryViewModel.setFirstLaunchCompleted()
-                                completeFirstLaunchAfterPermission = false
-                            }
-                            libraryViewModel.refreshVideos()
-                            musicViewModel.loadAudioTracks()
-                        }
-                    )
-
                     // Handle system back press
                     androidx.activity.compose.BackHandler(enabled = currentScreen != AppScreen.Main && !isPip) {
                         if (currentScreen == AppScreen.Player) {
@@ -355,7 +351,8 @@ class MainActivity : FragmentActivity() {
                                     topBar = {
                                         if (currentTab != NavTab.BROWSER) {
                                             HiPlayerHeader(
-                                                onAccountClick = { currentTab = NavTab.SETTINGS },
+                                                refreshing = libraryRefreshing,
+                                                onAccountClick = { navigateTab(NavTab.SETTINGS) },
                                                 showSearch = false,
                                                 onSearchClick = null,
                                                 onRefreshClick = {
@@ -379,14 +376,14 @@ class MainActivity : FragmentActivity() {
                                             if (currentTab != com.example.ui.components.NavTab.MUSIC && currentTab != NavTab.BROWSER && currentAudioTrack != null && !isAudioFullScreenOpen) {
                                                 com.example.ui.components.AudioMiniPlayerHost(
                                                     musicViewModel = musicViewModel,
-                                                    onOpenMusic = { currentTab = NavTab.MUSIC },
+                                                    onOpenMusic = { navigateTab(NavTab.MUSIC) },
                                                 )
                                             }
                                             if (currentTab != NavTab.BROWSER) HiBottomNavigationBar(
                                                 currentTab = currentTab,
                                                 onTabSelected = { tab ->
                                                     if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
-                                                    currentTab = tab
+                                                    navigateTab(tab)
                                                 },
                                                 onOpenHubSheet = {
                                                     showHubBottomSheet = true
@@ -404,6 +401,7 @@ class MainActivity : FragmentActivity() {
                                                 bottom = if (currentTab == NavTab.BROWSER) 0.dp else paddingValues.calculateBottomPadding(),
                                             )
                                     ) {
+                                        mainTabStateHolder.SaveableStateProvider(currentTab.name) {
                                         when (currentTab) {
                                             NavTab.VIDEOS -> {
                                                 HomeScreen(
@@ -419,7 +417,7 @@ class MainActivity : FragmentActivity() {
                                                         currentScreen = AppScreen.Player
                                                     },
                                                     onOpenSettings = {
-                                                        currentTab = NavTab.SETTINGS
+                                                        navigateTab(NavTab.SETTINGS)
                                                     },
                                                     onMoveVideosToRecycleBin = { selectedVideos ->
                                                         // Library overflow deletion must not inherit a stale
@@ -451,8 +449,13 @@ class MainActivity : FragmentActivity() {
                                                 )
                                             }
                                             NavTab.BROWSER -> {
-                                                mainTabStateHolder.SaveableStateProvider("hi_browser") {
                                                     HiBrowserScreen(
+                                                        appTextSizeSp = settings.uiTextSizeSp,
+                                                        onAppTextSizeChange = libraryViewModel::setUiTextSize,
+                                                        onPlayAccountMedia = { video ->
+                                                            playerViewModel.playVideo(video)
+                                                            currentScreen = AppScreen.Player
+                                                        },
                                                         modifier = Modifier.fillMaxSize(),
                                                         isInPictureInPicture = isPip && browserPip,
                                                         onEnterPictureInPicture = { enterBrowserPipMode() },
@@ -460,13 +463,13 @@ class MainActivity : FragmentActivity() {
                                                         openDownloads = openBrowserDownloads,
                                                         onDownloadsConsumed = { pendingBrowserDownloads.value = false },
                                                         onExternalUrlConsumed = { pendingBrowserUrl.value = null },
-                                                        onBack = { currentTab = tabBeforeBrowser },
+                                                        onBack = { backToPreviousTab() },
                                                         appNavigation = {
                                                             HiBottomNavigationBar(
                                                                 currentTab = NavTab.BROWSER,
                                                                 onTabSelected = { tab ->
                                                                     if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
-                                                                    currentTab = tab
+                                                                    navigateTab(tab)
                                                                 },
                                                                 onOpenHubSheet = { showHubBottomSheet = true },
                                                             )
@@ -539,7 +542,6 @@ class MainActivity : FragmentActivity() {
                                                             }
                                                         },
                                                     )
-                                                }
                                             }
                                             NavTab.FILE_MANAGER -> {
                                                 FileManagerScreen(
@@ -587,7 +589,7 @@ class MainActivity : FragmentActivity() {
                                                 SettingsScreen(
                                                     libraryViewModel = libraryViewModel,
                                                     discoverViewModel = mediaSourceViewModel,
-                                                    onBack = { currentTab = NavTab.VIDEOS },
+                                                    onBack = { backToPreviousTab() },
                                                     onPlayDriveMedia = { video ->
                                                         playerViewModel.playVideo(video)
                                                         currentScreen = AppScreen.Player
@@ -595,6 +597,7 @@ class MainActivity : FragmentActivity() {
                                                     includeHeader = false
                                                 )
                                             }
+                                        }
                                         }
                                     }
                                 }
@@ -631,7 +634,13 @@ class MainActivity : FragmentActivity() {
                                         onUrlChange = { streamUrl = it; streamUrlError = null },
                                         error = streamUrlError,
                                         resolving = isResolvingStreamUrl,
-                                        onDismiss = { streamUrlError = null; showStreamUrlDialog = false },
+                                        onDismiss = {
+                                            streamResolutionJob?.cancel()
+                                            isResolvingStreamUrl = false
+                                            streamUrlError = null
+                                            streamUrl = ""
+                                            showStreamUrlDialog = false
+                                        },
                                         onCastStarted = { if (isAudioPlaying) musicViewModel.togglePlayPause() },
                                         onPlay = {
                                             val result = StreamUrlClassifier.classify(streamUrl)
@@ -643,9 +652,10 @@ class MainActivity : FragmentActivity() {
                                                 val requestedUrl = streamUrl
                                                 isResolvingStreamUrl = true
                                                 streamUrlError = null
-                                                scope.launch {
+                                                streamResolutionJob = scope.launch {
                                                     try {
                                                         val resolution = withContext(Dispatchers.IO) { PublicWebVideoResolver.resolve(requestedUrl) }
+                                                        if (!showStreamUrlDialog) return@launch
                                                         resolution.stream?.let(openResolvedStream) ?: run { streamUrlError = resolution.errorMessage }
                                                     } finally { isResolvingStreamUrl = false }
                                                 }
@@ -663,7 +673,7 @@ class MainActivity : FragmentActivity() {
                                         audioCount = audios.size,
                                         onTabSelected = { tab ->
                                             if (tab != NavTab.MUSIC) musicViewModel.closeFullScreenPlayer()
-                                            currentTab = tab
+                                            navigateTab(tab)
                                             showHubBottomSheet = false
                                         },
                                         onDismiss = {
@@ -843,48 +853,5 @@ class MainActivity : FragmentActivity() {
         // activity, which triggers onStop() above and pauses playback there
         // if the user hasn't opted into background audio. Nothing further
         // needed here beyond keeping the mode flag in sync.
-    }
-}
-
-@Composable
-fun RequestPermissionsOnLaunch(
-    isFirstLaunch: Boolean = false,
-    onGranted: () -> Unit
-) {
-    val context = LocalContext.current
-
-    val permissionsToRequest = remember {
-        val list = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.READ_MEDIA_VIDEO)
-            if (Build.VERSION.SDK_INT >= 34) list.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-            list.add(Manifest.permission.READ_MEDIA_AUDIO)
-            list.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        list.toTypedArray()
-    }
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val anyGranted = permissions.values.any { it }
-        if (anyGranted) {
-            onGranted()
-        } else {
-            onGranted() // Proceed smoothly to main UI even if permissions rejected
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val hasPermissions = permissionsToRequest.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        if (!hasPermissions && isFirstLaunch) {
-            launcher.launch(permissionsToRequest)
-        } else {
-            onGranted()
-        }
     }
 }

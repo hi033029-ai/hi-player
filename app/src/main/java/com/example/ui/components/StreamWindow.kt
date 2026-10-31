@@ -45,7 +45,7 @@ internal fun StreamWindow(
     val clipboard = LocalClipboardManager.current
     val castState by cast.state.collectAsState()
     val busy = resolving || castState.busy
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(16.dp), contentAlignment = Alignment.Center) {
             Surface(Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(max = maxHeight),
                 shape = RoundedCornerShape(28.dp), color = palette.surfaceElevated) {
@@ -55,7 +55,7 @@ internal fun StreamWindow(
                             Text("Stream & Cast", color = palette.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                             Text("Your link. Your screen.", color = palette.textSecondary, fontSize = 13.sp)
                         }
-                        IconButton(enabled = !busy, onClick = onDismiss) { Icon(Icons.Default.Close, "Close stream window", tint = palette.textSecondary) }
+                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close stream window", tint = palette.textSecondary) }
                     }
                     OutlinedTextField(
                         value = url, onValueChange = onUrlChange, enabled = !busy,

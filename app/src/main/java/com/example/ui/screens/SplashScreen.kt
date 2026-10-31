@@ -4,6 +4,7 @@ import com.example.ui.theme.hiContainerBorder
 
 import android.Manifest
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -17,14 +18,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,11 +58,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +75,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -82,7 +89,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
 import com.example.data.AppThemeMode
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 enum class OnboardingStep {
@@ -101,29 +107,29 @@ fun SplashScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var currentStep by remember { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
-    var selectedTheme by remember { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
-    var textSizeSp by remember { mutableStateOf(14) }
+    var currentStep by rememberSaveable { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
+    var selectedTheme by rememberSaveable { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
+    var textSizeSp by rememberSaveable { mutableStateOf(14) }
 
-    // Smooth In & Out Animation for Logo
-    val logoScale = remember { Animatable(0.6f) }
-    val logoAlpha = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        // Logo Entrance (In)
-        logoAlpha.animateTo(1f, animationSpec = tween(500, easing = LinearOutSlowInEasing))
-        logoScale.animateTo(1f, animationSpec = tween(600, easing = FastOutSlowInEasing))
-
-        if (isFirstLaunch) {
-            delay(900)
-            currentStep = OnboardingStep.WELCOME_NOTE
-        } else {
-            delay(1100)
-            // Logo Exit (Out)
-            logoAlpha.animateTo(0f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-            logoScale.animateTo(1.12f, animationSpec = tween(400, easing = FastOutSlowInEasing))
+    var finishing by rememberSaveable { mutableStateOf(false) }
+    fun finishOnce() {
+        if (!finishing) {
+            finishing = true
             onFinish(selectedTheme, textSizeSp)
         }
+    }
+    BackHandler(enabled = currentStep != OnboardingStep.SPLASH_LOGO && currentStep != OnboardingStep.WELCOME_NOTE) {
+        currentStep = when (currentStep) {
+            OnboardingStep.CHOOSE_THEME -> OnboardingStep.WELCOME_NOTE
+            OnboardingStep.PERMISSIONS -> OnboardingStep.CHOOSE_THEME
+            else -> OnboardingStep.PERMISSIONS
+        }
+    }
+
+    // Only persisted settings gate entry. Branding must not impose an artificial wait.
+    LaunchedEffect(Unit) {
+        if (currentStep != OnboardingStep.SPLASH_LOGO) return@LaunchedEffect
+        if (isFirstLaunch) currentStep = OnboardingStep.WELCOME_NOTE else finishOnce()
     }
 
     Box(
@@ -136,22 +142,22 @@ fun SplashScreen(
                         Color(0xFFF8FAFC)
                     )
                 )
-            ),
+            )
+            .safeDrawingPadding(),
         contentAlignment = Alignment.Center
     ) {
         AnimatedContent(
             targetState = currentStep,
             transitionSpec = {
-                slideInHorizontally { width -> width } + fadeIn() togetherWith
-                        slideOutHorizontally { width -> -width } + fadeOut()
+                fadeIn() togetherWith fadeOut()
             },
             label = "onboarding_step"
         ) { step ->
             when (step) {
                 OnboardingStep.SPLASH_LOGO -> {
                     SplashLogoView(
-                        scale = logoScale.value,
-                        alpha = logoAlpha.value
+                        scale = 1f,
+                        alpha = 1f
                     )
                 }
 
@@ -160,7 +166,9 @@ fun SplashScreen(
                         onContinue = {
                             currentStep = OnboardingStep.CHOOSE_THEME
                         },
-                        onSkip = onSkip
+                        onSkip = {
+                            if (!finishing) { finishing = true; onSkip() }
+                        }
                     )
                 }
 
@@ -168,6 +176,7 @@ fun SplashScreen(
                     ChooseThemeView(
                         selectedTheme = selectedTheme,
                         onThemeSelected = { selectedTheme = it },
+                        onBack = { currentStep = OnboardingStep.WELCOME_NOTE },
                         onProceed = {
                             currentStep = OnboardingStep.PERMISSIONS
                         }
@@ -188,7 +197,8 @@ fun SplashScreen(
                         selectedTheme = selectedTheme,
                         textSizeSp = textSizeSp,
                         onTextSizeChanged = { textSizeSp = it },
-                        onComplete = { onFinish(selectedTheme, textSizeSp) }
+                        onBack = { currentStep = OnboardingStep.PERMISSIONS },
+                        onComplete = { finishOnce() }
                     )
                 }
             }
@@ -201,16 +211,18 @@ private fun TextSizeSetupView(
     selectedTheme: AppThemeMode,
     textSizeSp: Int,
     onTextSizeChanged: (Int) -> Unit,
+    onBack: () -> Unit,
     onComplete: () -> Unit
 ) {
     val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 20.dp)
-                .padding(bottom = 86.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -250,17 +262,11 @@ private fun TextSizeSetupView(
                 }
             }
         }
-        Button(
-            onClick = onComplete,
-            colors = ButtonDefaults.buttonColors(containerColor = accent),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp)
-                .height(46.dp)
-        ) {
-            Text("Enter Hi Player", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        }
+        OnboardingActions(
+            onHeightChanged = { footerHeight = it },
+            primaryLabel = "Enter Hi Player", onPrimary = onComplete, accent = accent,
+            secondaryLabel = "Back", onSecondary = onBack, primaryTag = "onboarding_finish_button",
+        )
     }
 }
 
@@ -343,13 +349,14 @@ private fun WelcomeNoteView(
 ) {
     val context = LocalContext.current
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = 92.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -441,47 +448,12 @@ private fun WelcomeNoteView(
         }
 
         }
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = onSkip,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .testTag("welcome_skip_button"),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFF0056B3)
-                ),
-                border = BorderStroke(1.dp, Color(0xFF0056B3))
-            ) {
-                Text("Skip", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            }
-
-            Button(
-                onClick = onContinue,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .testTag("welcome_continue_button"),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF0056B3),
-                contentColor = Color.White
-            )
-        ) {
-                Text(
-                    text = "Continue",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                )
-            }
-        }
+        OnboardingActions(
+            onHeightChanged = { footerHeight = it },
+            primaryLabel = "Continue", onPrimary = onContinue, accent = Color(0xFF0056B3),
+            secondaryLabel = "Skip setup", onSecondary = onSkip, primaryTag = "welcome_continue_button",
+            secondaryTag = "welcome_skip_button",
+        )
     }
 }
 
@@ -542,17 +514,19 @@ private fun FeatureRow(
 private fun ChooseThemeView(
     selectedTheme: AppThemeMode,
     onThemeSelected: (AppThemeMode) -> Unit,
+    onBack: () -> Unit,
     onProceed: () -> Unit
 ) {
     val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme())
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 24.dp)
-                .padding(bottom = 86.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -651,22 +625,12 @@ private fun ChooseThemeView(
         }
 
         }
-        Button(
-            onClick = onProceed,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp)
-                .height(44.dp)
-                .testTag("theme_proceed_button"),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = selectedPalette.primary,
-                contentColor = if (selectedPalette.isDark) Color.Black else Color.White
-            )
-        ) {
-            Text("Apply & Continue", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        }
+        OnboardingActions(
+            onHeightChanged = { footerHeight = it },
+            primaryLabel = "Apply & Continue", onPrimary = onProceed, accent = selectedPalette.primary,
+            secondaryLabel = "Back", onSecondary = onBack, primaryTag = "theme_proceed_button",
+            contentColor = if (selectedPalette.isDark) Color.Black else Color.White,
+        )
     }
 }
 
@@ -754,6 +718,9 @@ private fun PermissionsSetupView(
 ) {
     val context = LocalContext.current
 
+    var requesting by remember { mutableStateOf(false) }
+    var permissionMessage by remember { mutableStateOf<String?>(null) }
+
     val permissionsToRequest = remember {
         val list = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -769,18 +736,20 @@ private fun PermissionsSetupView(
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        onComplete()
+        requesting = false
+        onComplete() // Declining permissions does not block entry; allow later from the library.
     }
 
     val accentColor = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = 90.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -806,7 +775,7 @@ private fun PermissionsSetupView(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Permissions Required",
+                text = "Optional permissions",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF0C2133),
@@ -816,7 +785,7 @@ private fun PermissionsSetupView(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "To scan your videos, audio, and provide media controls, please grant storage and notification access.",
+                text = "Allow media access to scan your library and notifications for playback controls. You can choose Not now and grant access later.",
                 fontSize = 10.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center,
@@ -843,39 +812,28 @@ private fun PermissionsSetupView(
         }
 
         }
-        Button(
-            onClick = {
+        OnboardingActions(
+            onHeightChanged = { footerHeight = it },
+            primaryLabel = if (requesting) "Opening permissions…" else "Allow permissions",
+            onPrimary = {
                 val hasAll = permissionsToRequest.all {
                     androidx.core.content.ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED
                 }
-                if (hasAll) {
-                    onComplete()
-                } else {
-                    try {
-                        launcher.launch(permissionsToRequest)
-                    } catch (e: Exception) {
-                        onComplete()
+                if (hasAll) onComplete() else {
+                    requesting = true
+                    permissionMessage = null
+                    try { launcher.launch(permissionsToRequest) }
+                    catch (error: Exception) {
+                        requesting = false
+                        permissionMessage = com.example.ui.feedback.UserFacingErrors.report("permission_prompt", error,
+                            "Couldn't open permissions. Try again, or choose Not now and allow access later in Settings.")
                     }
                 }
             },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 20.dp)
-                .height(48.dp)
-                .testTag("grant_permissions_button"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accentColor,
-                contentColor = Color.White
-            )
-        ) {
-            Text(
-                text = "Give Permission",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-        }
+            accent = accentColor, primaryEnabled = !requesting,
+            secondaryLabel = "Not now", onSecondary = onComplete, secondaryEnabled = !requesting,
+            primaryTag = "grant_permissions_button", message = permissionMessage,
+        )
     }
 }
 
@@ -929,6 +887,43 @@ private fun PermissionCard(
                     lineHeight = 13.sp
                 )
             }
+        }
+    }
+}
+
+/** Shared bottom anchor and 48dp minimum actions; labels may grow for accessibility. */
+@Composable
+private fun BoxScope.OnboardingActions(
+    primaryLabel: String,
+    onPrimary: () -> Unit,
+    accent: Color,
+    secondaryLabel: String,
+    onSecondary: () -> Unit,
+    primaryTag: String,
+    secondaryTag: String = "onboarding_secondary_button",
+    primaryEnabled: Boolean = true,
+    secondaryEnabled: Boolean = true,
+    contentColor: Color = Color.White,
+    message: String? = null,
+    onHeightChanged: (Dp) -> Unit = {},
+) {
+    val density = LocalDensity.current
+    Column(
+        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            .onSizeChanged { with(density) { onHeightChanged(it.height.toDp()) } }
+            .background(Color(0xFFF8FAFC)).padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        message?.let { Text(it, color = Color(0xFF2C4A60), fontSize = 14.sp) }
+        TextButton(onClick = onSecondary, enabled = secondaryEnabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(secondaryTag)) {
+            Text(secondaryLabel, color = Color(0xFF0056B3), fontSize = 14.sp)
+        }
+        Button(onClick = onPrimary, enabled = primaryEnabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(primaryTag),
+            shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = contentColor)) {
+            Text(primaryLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

@@ -89,13 +89,13 @@ fun HiPlayerTheme(
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,
-        fontScale = (baseDensity.fontScale * uiTextScale).coerceIn(0.75f, 1.5f)
+        fontScale = (baseDensity.fontScale * uiTextScale).coerceAtLeast(0.75f)
     )
 
     val uiMetrics = HiUiMetrics(
         headerHeight = (64.dp * uiTextScale).coerceIn(56.dp, 88.dp),
         logoSize = (38.dp * uiTextScale).coerceIn(34.dp, 52.dp),
-        titleTextSize = (24f * uiTextScale).coerceIn(18f, 32f).sp
+        titleTextSize = 24.sp
     )
 
     CompositionLocalProvider(

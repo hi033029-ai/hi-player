@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -86,4 +87,26 @@ internal fun GoogleAccountAvatar(onClick: () -> Unit, model: GoogleAccountViewMo
         if (photo != null) AsyncImage(photo, "Google account settings", Modifier.size(30.dp).clip(CircleShape))
         else Icon(Icons.Default.AccountCircle, "Google account settings", tint = palette.textPrimary)
     }
+}
+
+/** Same activity-scoped Firebase account as Settings; never a WebView login. */
+@Composable
+internal fun GoogleAccountDialog(
+    onDismiss: () -> Unit,
+    onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {},
+    model: GoogleAccountViewModel = viewModel(),
+) {
+    val palette = LocalHiPalette.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = palette.background,
+        title = { Text("Hi Player account", color = palette.textPrimary) },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia, model = model)
+                Text("This account is shared across Hi Player settings, browser controls and the player. Websites use their own sign-in sessions; authorizing the app does not sign you into Google websites.", color = palette.textSecondary)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
