@@ -9,7 +9,7 @@
 - Do not hide the whole ad-control module or remove enforcement dialogs/backdrops. Initial cosmetic styles retry if document-start runs before the root exists. WebViews lacking document-start scripts get a first-paint fallback injection instead of waiting solely for page-finished.
 
 ## Status
-Source-only. Version remains 1.0.74 (75), main/APK unchanged. No Gradle, compile, lint, unit tests, JS fixture execution, build or native/device visual validation run for this correction. Only source inspection, delimiter checks and git diff --check. The Kotlin policy tests and tools/test_youtube_skipper.cjs are added for the next explicitly approved validation run.
+Khan approved the APK build. Release version is 1.0.75 (76), with the signing key preserved. Local Kotlin compilation and Android resource linking passed. Deterministic YouTube JS fixtures passed; CI runs them again and includes BrowserLoadingPolicyTest in the targeted Kotlin regression suite. Native/device visual checks and real-site YouTube tests have not been performed. Fixture/compile success is not live-site validation.
 
 ## Next approved validation
 - Compile/link and run existing suite plus BrowserLoadingPolicyTest; run node tools/test_youtube_skipper.cjs.
