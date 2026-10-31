@@ -1,0 +1,20 @@
+# Signed blocker package updates
+
+## Behaviour
+- Background work checks every 6 hours when connected and battery is not low. Declarative filter downloads still have a daily freshness window. Android controls timing; Doze, OEM restrictions and force-stop can delay checks.
+- The signed-code channel is fixed to the `blocker-updates` branch of hi033029-ai/hi-player on raw.githubusercontent.com. No custom host, redirect or manifest-selected URL is accepted. This branch does not trigger the main-only APK workflow.
+- The app pins a dedicated P-256 public key. It verifies SHA256withECDSA over the exact manifest bytes before parsing, then verifies the downloaded script's SHA-256. Only the YouTube asset and compiled YouTube injection origins are supported.
+- Manifest schema, maximum size, positive increasing versions, compatibility floor, issued time and distribution expiry are checked. New installs reject expired packages. Previously verified installed code remains usable offline after distribution expiry. The device clock must be reasonably accurate.
+- An atomic app-private/no-backup state file contains the active package, previous accepted package and highest accepted version. Cached packages are verified again on process start. The version high-water mark prevents network downgrades/reinstallation of a rolled-back version during normal operation; clearing app data/reinstall resets local history.
+- Failed downloads/signatures/digests never replace active code. Browser settings displays the selected version, provides manual update and explicit rollback to the previous verified package or bundled fallback. Rollback is not automatic proof of correct website behaviour: signatures establish publisher identity/integrity, not absence of bugs.
+- Updates refresh document-start registration on the UI thread, but do not reload pages or inject replacement code into an already-running document. Reload/new navigation applies the selected version; unsent page input is not discarded automatically.
+
+## Publishing maintenance releases
+The first signed package and pinned public key are included with this source change. The first client supporting this updater is the next approved APK, versionCode 77 or later; the initial package has that floor. Existing installed APKs do not gain this updater remotely.
+
+Use `tools/sign_blocker_package.py --key /secure/path/key.pem --version N --output /staging/channel` after reviewing a changed YouTube blocker and validating it with appropriate approval. The dedicated private key must remain outside the repository; it is different from debug.keystore and must be securely backed up. A workspace-protected copy was generated for initial signing; do not print, commit, or distribute it with the app. Losing it requires shipping a new APK with a new trust key.
+
+Publish the script under its content-addressed packages/<sha256>.js path and manifest.json plus manifest.sig.b64 to the dedicated blocker-updates branch in one commit. Retain old immutable package files. Increment package version even for rollback/reverts; publish a corrected higher version so clients that quarantined a release can recover. Manifests expire after 30 days by default (maximum 90), so maintain the channel. Repository writes alone are insufficient to forge updates without the private signing key. This updater does not automatically author/review YouTube fixes or give third parties publishing permission.
+
+## Validation/release status
+Source-only: no APK version change, compiler/Gradle/tests/device validation run. Added protocol cases for signature tampering, wrong key, script digest/size, expiry and compatibility, but not executed. An initial package was signed/staged as source-distribution material, not certified as runtime-tested code. Next approved validation must include protocol tests, cache corruption/rollback/high-water persistence, failed/interrupted downloads, Android background scheduling, document-start integration, old WebViews, and real YouTube ad-to-content behaviour. No Brave/uBlock equivalence or zero-ads guarantee.

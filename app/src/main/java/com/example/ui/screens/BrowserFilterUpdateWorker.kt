@@ -17,9 +17,11 @@ import java.util.concurrent.TimeUnit
 class BrowserFilterUpdateWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
     override fun doWork(): Result {
         if (isStopped) return Result.retry()
-        // Disabled blocking stays disabled. No account, website URL or cookie is sent.
-        if (!OrbitBrowserStore(applicationContext).adBlock) return Result.success()
-        val updated = OrbitBrowserFilterEngine.autoUpdateIfStale(applicationContext) { isStopped }
+        // Disabled protections stay disabled. Checks send no account/cookie/page data.
+        val store = OrbitBrowserStore(applicationContext)
+        val filters = !store.adBlock || OrbitBrowserFilterEngine.autoUpdateIfStale(applicationContext) { isStopped }
+        val script = !store.youtubeAdSkip || SignedBlockerUpdates.update(applicationContext) { isStopped }
+        val updated = filters && script
         if (isStopped) return Result.retry()
         return if (updated) Result.success() else if (runAttemptCount < 3) Result.retry() else Result.failure()
     }
@@ -31,8 +33,9 @@ class BrowserFilterUpdateWorker(context: Context, parameters: WorkerParameters) 
                 .setRequiresBatteryNotLow(true)
                 .build()
             val manager = WorkManager.getInstance(context.applicationContext)
-            manager.enqueueUniquePeriodicWork("browser-filter-daily", ExistingPeriodicWorkPolicy.KEEP,
-                PeriodicWorkRequestBuilder<BrowserFilterUpdateWorker>(24, TimeUnit.HOURS)
+            manager.cancelUniqueWork("browser-filter-daily") // Superseded daily-only schedule.
+            manager.enqueueUniquePeriodicWork("browser-blocker-refresh", ExistingPeriodicWorkPolicy.KEEP,
+                PeriodicWorkRequestBuilder<BrowserFilterUpdateWorker>(6, TimeUnit.HOURS)
                     .setConstraints(constraints)
                     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
                     .build())

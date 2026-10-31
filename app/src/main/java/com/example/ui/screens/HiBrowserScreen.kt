@@ -161,6 +161,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import com.example.ui.theme.LocalHiPalette
 import com.example.model.StreamUrlClassifier
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -356,9 +357,12 @@ private object HiBrowserDocumentScripts {
     }
 
     private val assets = ConcurrentHashMap<String, String>()
-    fun readAsset(context: Context, name: String): String? = assets[name] ?: runCatching {
-        context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
-    }.getOrNull()?.also { assets[name] = it }
+    fun readAsset(context: Context, name: String): String? {
+        if (name == "orbit_youtube.js") SignedBlockerUpdates.script()?.let { return it }
+        return assets[name] ?: runCatching {
+            context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
+        }.getOrNull()?.also { assets[name] = it }
+    }
 }
 
 private fun captureOrbitHistory(view: WebView): android.os.Bundle? = runCatching {
@@ -390,6 +394,10 @@ fun HiBrowserScreen(
     val context = LocalContext.current
     val store = remember(context) { OrbitBrowserStore(context) }
     val downloads by BrowserDownloads.downloads.collectAsStateWithLifecycle()
+    val blockerRevision by SignedBlockerUpdates.revision.collectAsStateWithLifecycle()
+    val blockerVersion by SignedBlockerUpdates.version.collectAsStateWithLifecycle()
+    val blockerScope = androidx.compose.runtime.rememberCoroutineScope()
+    var blockerUpdating by remember { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
     val browserTheme = if (darkModeEnabled) AppThemeMode.CYAN_NEON_DARK else AppThemeMode.WARM_SUNSET_LIGHT
@@ -789,14 +797,35 @@ fun HiBrowserScreen(
     }
 
     fun updateFilterLists() {
-        Toast.makeText(context, "Updating filter lists…", Toast.LENGTH_SHORT).show()
-        Thread {
-            val ok = OrbitBrowserFilterEngine.update(context)
-            android.os.Handler(context.mainLooper).post {
-                Toast.makeText(context, if (ok) "Updated ${OrbitBrowserFilterEngine.ruleCount()} rules" else "Filter update failed", Toast.LENGTH_SHORT).show()
-                webView?.reload()
-            }
-        }.start()
+        if (blockerUpdating) return
+        blockerUpdating = true
+        blockerScope.launch {
+            try {
+                val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                val result = withContext(Dispatchers.IO) {
+                    val filters = OrbitBrowserFilterEngine.update(context) { job?.isActive == false }
+                    val script = SignedBlockerUpdates.update(context, force = true) { job?.isActive == false }
+                    filters to script
+                }
+                Toast.makeText(context, if (result.first && result.second)
+                    "Blockers updated. Reload a page to apply script changes."
+                    else "Some updates were unavailable. Existing protection is still in use.", Toast.LENGTH_LONG).show()
+            } finally { blockerUpdating = false }
+        }
+    }
+
+    fun rollbackBlocker() {
+        if (blockerUpdating) return
+        blockerUpdating = true
+        blockerScope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) { SignedBlockerUpdates.rollback(context) }
+                Toast.makeText(context, if (ok) {
+                    if (SignedBlockerUpdates.version.value > 0) "Previous blocker selected. Reload the page to apply."
+                    else "Bundled blocker selected. Reload the page to apply."
+                } else "Could not change the blocker. Current protection is still in use.", Toast.LENGTH_LONG).show()
+            } finally { blockerUpdating = false }
+        }
     }
 
     fun addBookmark() {
@@ -1184,6 +1213,7 @@ fun HiBrowserScreen(
     LaunchedEffect(context) {
         BrowserDownloads.restore(context)
         withContext(Dispatchers.IO) {
+            SignedBlockerUpdates.load(context)
             listOf("orbit_adblock.js", "orbit_page_skipper.js", "orbit_youtube.js", "orbit_desktop_viewport.js")
                 .forEach { HiBrowserDocumentScripts.readAsset(context, it) }
         }
@@ -1191,6 +1221,11 @@ fun HiBrowserScreen(
         withContext(Dispatchers.IO) {
             OrbitBrowserFilterEngine.load(context)
             // WorkManager refreshes lists independently of this browser screen.
+        }
+    }
+    LaunchedEffect(blockerRevision) {
+        if (blockerRevision > 0) tabs.forEach { tab ->
+            tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store, tab.desktop) }
         }
     }
     // A page that cannot scroll (short page, or a dialog that locks scrolling)
@@ -1798,6 +1833,9 @@ fun HiBrowserScreen(
             },
             onDesktopSiteChange = { enabled -> if (enabled != (activeTab?.desktop == true)) toggleDesktopSite() },
             onUpdateFilterLists = { updateFilterLists() },
+            onRollbackBlocker = { rollbackBlocker() },
+            blockerUpdating = blockerUpdating,
+            blockerVersion = blockerVersion,
             textZoom = textZoomPercent,
             popupBlock = popupBlockEnabled,
             onTextZoomChange = { setTextZoom(it) },
@@ -2401,6 +2439,9 @@ private fun BrowserSettingsDialog(
     onYoutubeAdSkipChange: (Boolean) -> Unit,
     onDesktopSiteChange: (Boolean) -> Unit,
     onUpdateFilterLists: () -> Unit,
+    onRollbackBlocker: () -> Unit,
+    blockerUpdating: Boolean,
+    blockerVersion: Long,
     textZoom: Int,
     popupBlock: Boolean,
     onTextZoomChange: (Int) -> Unit,
@@ -2472,7 +2513,14 @@ private fun BrowserSettingsDialog(
                     BrowserSettingsSwitchRow("Desktop site", "Ask sites for their desktop layout", desktopSite, onDesktopSiteChange)
                 }
                 BrowserSettingsGroup("Data") {
-                    BrowserSettingsActionRow("Update ad-block filter lists", onUpdateFilterLists)
+                    Text(if (blockerVersion > 0) "YouTube blocker · signed version $blockerVersion" else "YouTube blocker · bundled version",
+                        color = palette.textSecondary, fontSize = 12.sp)
+                    BrowserSettingsActionRow(if (blockerUpdating) "Updating blockers…" else "Update blockers now",
+                        onUpdateFilterLists, enabled = !blockerUpdating)
+                    BrowserSettingsActionRow("Roll back YouTube blocker", onRollbackBlocker,
+                        enabled = !blockerUpdating && blockerVersion > 0)
+                    Text("Automatic checks every 6 hours when Android allows. Rollback uses the previous signed version or the bundled blocker. Reload to apply changes.",
+                        color = palette.textSecondary, fontSize = 12.sp)
                     BrowserSettingsActionRow("Clear browsing data", onClearBrowsingData)
                 }
                 Spacer(Modifier.height(16.dp))
@@ -2532,14 +2580,14 @@ private fun BrowserSettingsSwitchRow(
 }
 
 @Composable
-private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit) {
+private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled: Boolean = true) {
     val palette = LocalHiPalette.current
     Text(
         title,
         color = palette.primary,
         fontSize = 15.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 14.dp),
     )
 }
 
