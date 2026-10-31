@@ -6,21 +6,24 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,
   '../app/src/main/assets/orbit_youtube.js'), 'utf8');
 
-function fixture({ ad = false, duration = 300 } = {}) {
+function fixture({ ad = false, duration = 300, mobile = false } = {}) {
   const observers = [], tasks = new Map(), events = new Map();
   let taskId = 0;
   const video = { tagName: 'VIDEO', muted: false, playbackRate: 1.25, duration, currentTime: 2 };
   function makePlayer(v, showing) {
     return { video: v, ad: showing, isConnected: true, buttons: [],
       classList: { contains(name) { return name === 'ad-showing' && this.owner.ad; }, owner: null },
-      querySelector() { return this.video; }, querySelectorAll() { return this.buttons; } };
+      querySelector(selector) { return selector === 'video' ? this.video : null; },
+      querySelectorAll(selector) { return mobile && !selector.includes('ytm-skip-ad-renderer') ? [] : this.buttons; } };
   }
   function connectedPlayer(v, showing) {
     const p = makePlayer(v, showing); p.classList.owner = p; return p;
   }
   let player = connectedPlayer(video, ad);
   const document = { hidden: false, head: { appendChild() {} }, documentElement: {},
-    createElement() { return {}; }, querySelector() { return player; },
+    createElement() { return {}; }, querySelector(selector) {
+      return mobile && !selector.includes('#player-container-id') ? null : player;
+    },
     addEventListener(name, callback) { if (!events.has(name)) events.set(name, []); events.get(name).push(callback); } };
   const context = { document, JSON: { parse: JSON.parse, stringify: JSON.stringify }, Date, console,
     MutationObserver: class {
@@ -29,7 +32,8 @@ function fixture({ ad = false, duration = 300 } = {}) {
       disconnect() { this.target = null; }
     },
     setTimeout(callback, delay) { const id = ++taskId; tasks.set(id, { callback, delay }); return id; },
-    clearTimeout(id) { tasks.delete(id); } };
+    clearTimeout(id) { tasks.delete(id); },
+    getComputedStyle(element) { return { display: 'block', visibility: element.hidden ? 'hidden' : 'visible' }; } };
   context.window = context;
   vm.runInNewContext(source, context);
   function flush() {
@@ -84,5 +88,23 @@ function fixture({ ad = false, duration = 300 } = {}) {
   const f = fixture({ ad: true, duration: 30 }); let clicks = 0;
   f.player.buttons = [{ disabled: true, getAttribute() { return null; }, getClientRects() { return [{}]; }, click() { clicks++; } }];
   f.mutation(f.player); assert.equal(clicks, 0, 'Disabled countdown controls are not skippable');
+}
+
+{
+  const f = fixture({ ad: true, duration: Infinity, mobile: true }); let clicks = 0;
+  f.player.buttons = [{ disabled: false, getAttribute() { return null; },
+    getClientRects() { return [{}]; }, click() { clicks++; } }];
+  f.mutation(f.player);
+  f.mutation(f.player);
+  assert.equal(clicks, 1, 'Mobile Skip is discovered immediately, without duplicate mutation clicks');
+  assert.equal(f.video.currentTime, 2, 'Pending Skip must not seek content during its click cooldown');
+}
+{
+  const f = fixture({ mobile: true }); let clicks = 0;
+  f.player.buttons = [{ hidden: true, disabled: false, getAttribute() { return null; },
+    getClientRects() { return [{}]; }, click() { clicks++; } }];
+  f.mutation(f.player);
+  assert.equal(clicks, 0, 'CSS-hidden Skip is not an available ad control');
+  assert.equal(f.video.currentTime, 2, 'Ordinary mobile content must not be seeked');
 }
 console.log('YouTube skipper deterministic fixtures passed (not live-site validation).');

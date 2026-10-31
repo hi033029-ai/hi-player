@@ -355,8 +355,10 @@ private object HiBrowserDocumentScripts {
         handlers.remove(webView)?.forEach { handler -> runCatching { handler.remove() } }
     }
 
-    private fun readAsset(context: Context, name: String): String? =
-        runCatching { context.assets.open(name).bufferedReader().use { it.readText().take(100_000) } }.getOrNull()
+    private val assets = ConcurrentHashMap<String, String>()
+    fun readAsset(context: Context, name: String): String? = assets[name] ?: runCatching {
+        context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
+    }.getOrNull()?.also { assets[name] = it }
 }
 
 private fun captureOrbitHistory(view: WebView): android.os.Bundle? = runCatching {
@@ -455,6 +457,7 @@ fun HiBrowserScreen(
     var searchProvider by rememberSaveable { mutableStateOf(BrowserSearchProvider.entries.firstOrNull { it.name == store.searchProviderName } ?: BrowserSearchProvider.GOOGLE) }
     var pageTitle by remember { mutableStateOf("Hi Browser") }
     var loadingProgress by remember { mutableIntStateOf(0) }
+    val pixelComet = remember(activeTabId) { com.example.ui.components.BrowserProgressState() }
     var rendererGone by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
     var showBrowserSettings by remember { mutableStateOf(false) }
@@ -560,7 +563,7 @@ fun HiBrowserScreen(
             pageTitle = Uri.parse(url).host.orEmpty()
             showStartPage = false
             pendingFirstPaint = false
-            loadingProgress = 100
+            pixelComet.cancel(); loadingProgress = 100
             pageError = null
             rendererGone = false
         }
@@ -634,6 +637,7 @@ fun HiBrowserScreen(
             onPlayDirectMedia(destination)
             return
         }
+        pixelComet.restart()
         address = destination
         currentUrl = destination
         pageTitle = destination
@@ -650,6 +654,7 @@ fun HiBrowserScreen(
     }
 
     fun showBrowserHome() {
+        pixelComet.cancel()
         webView?.stopLoading()
         address = ""
         currentUrl = ""
@@ -664,6 +669,7 @@ fun HiBrowserScreen(
 
     fun navigateBrowserBack() {
         if (!showStartPage && webView?.canGoBack() == true) {
+            pixelComet.restart()
             webView?.goBack()
             return
         }
@@ -681,6 +687,7 @@ fun HiBrowserScreen(
         tab.webView?.let { view ->
             applyOrbitDesktopMode(view, desktop)
             HiBrowserDocumentScripts.apply(view, context, store, desktop)
+            pixelComet.restart()
             view.reload()
             Toast.makeText(context, if (desktop) "Requesting desktop site…" else "Requesting mobile site…", Toast.LENGTH_SHORT).show()
         }
@@ -716,6 +723,7 @@ fun HiBrowserScreen(
         val view = tabs.firstOrNull { it.id == error.tabId }?.webView
         pageError = null
         if (error.tabId == activeTabId) {
+            pixelComet.restart()
             pendingFirstPaint = true
             loadingProgress = 1
         }
@@ -1175,6 +1183,10 @@ fun HiBrowserScreen(
 
     LaunchedEffect(context) {
         BrowserDownloads.restore(context)
+        withContext(Dispatchers.IO) {
+            listOf("orbit_adblock.js", "orbit_page_skipper.js", "orbit_youtube.js", "orbit_desktop_viewport.js")
+                .forEach { HiBrowserDocumentScripts.readAsset(context, it) }
+        }
         // Parse (and, when a few days old, refresh) the block lists off the main thread.
         withContext(Dispatchers.IO) {
             OrbitBrowserFilterEngine.load(context)
@@ -1220,7 +1232,7 @@ fun HiBrowserScreen(
     LaunchedEffect(useSecureWebsite) {
         if (useSecureWebsite) {
             pendingFirstPaint = false
-            loadingProgress = 100
+            pixelComet.cancel(); loadingProgress = 100
             pageError = null
         }
     }
@@ -1333,7 +1345,10 @@ fun HiBrowserScreen(
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                             webChromeClient = object : WebChromeClient() {
                                 override fun onProgressChanged(view: WebView, progress: Int) {
-                                    if (activeTabId == tabId) loadingProgress = progress
+                                    if (activeTabId == tabId) {
+                                        pixelComet.onProgress(progress)
+                                        loadingProgress = if (pixelComet.loading) maxOf(1, (pixelComet.value * 100).toInt()) else 100
+                                    }
                                 }
                                 override fun onReceivedTitle(view: WebView, title: String?) {
                                     val value = title?.takeIf(String::isNotBlank) ?: view.url ?: "Hi Browser"
@@ -1439,7 +1454,7 @@ fun HiBrowserScreen(
                                                 currentUrl = uri.toString()
                                                 address = uri.toString()
                                                 pendingFirstPaint = false
-                                                loadingProgress = 100
+                                                pixelComet.cancel(); loadingProgress = 100
                                             }
                                         }
                                         return true
@@ -1484,7 +1499,8 @@ fun HiBrowserScreen(
                                     if (activeTabId == tabId) {
                                         currentUrl = url
                                         if (!addressFocused) address = url
-                                        loadingProgress = 1
+                                        pixelComet.start()
+                                        loadingProgress = maxOf(1, (pixelComet.value * 100).toInt())
                                         pendingFirstPaint = true
                                         browserBarHidden = false
                                     }
@@ -1516,7 +1532,7 @@ fun HiBrowserScreen(
                                     if (activeTabId == tabId) pendingFirstPaint = false
                                     if (activeTabId == tabId) {
                                         pageError = HiBrowserPageError(tabId, request.url.toString(), offline = !networkOnline)
-                                        loadingProgress = 100
+                                        pixelComet.cancel(); loadingProgress = 100
                                     }
                                 }
                                 override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
@@ -1524,7 +1540,7 @@ fun HiBrowserScreen(
                                         android.util.Log.w("HiBrowser", "Page request failed (${response.statusCode})")
                                         pendingFirstPaint = false
                                         pageError = HiBrowserPageError(tabId, request.url.toString(), offline = false)
-                                        loadingProgress = 100
+                                        pixelComet.cancel(); loadingProgress = 100
                                     }
                                 }
                                 override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
@@ -1533,7 +1549,7 @@ fun HiBrowserScreen(
                                     if (activeTabId == tabId && error.url == view.url) {
                                         pendingFirstPaint = false
                                         pageError = HiBrowserPageError(tabId, view.url.orEmpty(), offline = false)
-                                        loadingProgress = 100
+                                        pixelComet.cancel(); loadingProgress = 100
                                     }
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
@@ -1549,7 +1565,6 @@ fun HiBrowserScreen(
                                         currentUrl = url
                                         if (!addressFocused) address = url
                                         pageTitle = view.title?.takeIf(String::isNotBlank) ?: url
-                                        loadingProgress = 100
                                         pendingFirstPaint = false
                                     }
                                     if (!activeTab.privateTab && BrowserHistoryPolicy.isWebUrl(url)) {
@@ -1634,9 +1649,10 @@ fun HiBrowserScreen(
                 onStop = {
                     webView?.stopLoading()
                     pendingFirstPaint = false
-                    loadingProgress = 100
+                    pixelComet.cancel(); loadingProgress = 100
                 },
                 onRetry = {
+                    pixelComet.restart()
                     pendingFirstPaint = true
                     slowLoad = false
                     val target = currentUrl
@@ -1693,8 +1709,8 @@ fun HiBrowserScreen(
                 // Fixed-height slot so the bar's height never changes while pages load.
                 Box(modifier = Modifier.padding(horizontal = 30.dp).fillMaxWidth().height(2.dp)) {
                     if (onPage && !useSecureWebsite && visibleError == null &&
-                        (pendingFirstPaint || loadingProgress in 1..99)) {
-                        BrowserLoadingBar(modifier = Modifier.fillMaxSize())
+                        pixelComet.visible) {
+                        BrowserLoadingBar(state = pixelComet, modifier = Modifier.fillMaxSize())
                     }
                 }
                 if (addressFocused && activeTab?.privateTab != true) {
@@ -1710,7 +1726,7 @@ fun HiBrowserScreen(
                     onSubmit = { loadAddress(it) },
                     isPrivate = activeTab?.privateTab == true,
                     isSecure = onPage && currentUrl.startsWith("https://"),
-                    isLoading = onPage && loadingProgress in 1..99,
+                    isLoading = onPage && pixelComet.loading,
                     showReload = onPage,
                     tabCount = tabs.size,
                     providers = BrowserSearchProvider.entries.map { it.displayName },
@@ -1724,11 +1740,12 @@ fun HiBrowserScreen(
                     onReloadOrStop = {
                         if (useSecureWebsite) {
                             openSecureWebsite(currentUrl, activeTab?.privateTab == true)
-                        } else if (loadingProgress in 1..99) {
+                        } else if (pixelComet.loading) {
                             webView?.stopLoading()
-                            loadingProgress = 100
+                            pixelComet.cancel(); loadingProgress = 100
                             pendingFirstPaint = false
                         } else {
+                            pixelComet.restart()
                             webView?.reload()
                         }
                     },
@@ -1967,7 +1984,7 @@ fun HiBrowserScreen(
             ),
             bottomRow = listOf(
                 HiMenuAction("Back", Icons.Default.ArrowBack, enabled = !showStartPage || tabs.size > 1) { navigateBrowserBack() },
-                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = webView?.canGoForward() == true) { webView?.goForward() },
+                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = webView?.canGoForward() == true) { pixelComet.restart(); webView?.goForward() },
                 HiMenuAction(
                     if (bookmarked) "Remove bookmark" else "Add bookmark",
                     if (bookmarked) Icons.Default.Star else Icons.Default.StarBorder,
@@ -1975,7 +1992,7 @@ fun HiBrowserScreen(
                     checked = bookmarked,
                 ) { addBookmark() },
                 HiMenuAction("Exit browser", Icons.Default.PowerSettingsNew) { onBack() },
-                HiMenuAction("Reload", Icons.Default.Refresh, enabled = onPage) { webView?.reload() },
+                HiMenuAction("Reload", Icons.Default.Refresh, enabled = onPage) { pixelComet.restart(); webView?.reload() },
             ),
             onDismiss = { menuExpanded = false },
         )
@@ -2295,8 +2312,9 @@ internal const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
 
 @SuppressLint("SetJavaScriptEnabled")
 private fun injectOrbitAsset(webView: WebView, context: Context, name: String) {
-    runCatching { context.assets.open(name).bufferedReader().use { it.readText().take(100_000) } }
-        .onSuccess { script -> webView.post { webView.evaluateJavascript(script, null) } }
+    HiBrowserDocumentScripts.readAsset(context, name)?.let { script ->
+        webView.post { webView.evaluateJavascript(script, null) }
+    }
 }
 
 @Suppress("DEPRECATION")
