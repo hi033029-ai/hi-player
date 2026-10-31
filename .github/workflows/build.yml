@@ -41,6 +41,14 @@ jobs:
       - name: YouTube skipper deterministic regression fixtures
         run: node tools/test_youtube_skipper.cjs
 
+      - name: Signed blocker and progress security regression tests
+        timeout-minutes: 10
+        run: >-
+          gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
+          --tests 'com.example.ui.screens.BlockerPackageProtocolTest'
+          --tests 'com.example.ui.screens.BrowserFilterFileUpdaterTest'
+          --tests 'com.example.ui.components.BrowserProgressStateTest'
+
       - name: Build APK with user-approved Drive testing
         run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true
 
