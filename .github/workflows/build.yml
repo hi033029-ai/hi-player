@@ -38,6 +38,9 @@ jobs:
       # debug.keystore is checked into this repository so every APK
       # remains signed with the same key and can update the previous APK.
 
+      - name: YouTube skipper deterministic regression fixtures
+        run: node tools/test_youtube_skipper.cjs
+
       - name: Build APK with user-approved Drive testing
         run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true
 
@@ -59,6 +62,7 @@ jobs:
           --tests 'com.example.ui.navigation.TabHistoryTest'
           --tests 'com.example.auth.SecureWebsitePolicyTest'
           --tests 'com.example.data.RecycleBinVisibilityTest'
+          --tests 'com.example.ui.screens.BrowserLoadingPolicyTest'
 
       - name: Upload regression reports
         if: always()
@@ -84,5 +88,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Hi Player 1.0.74 (75), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
+          body: "Hi Player 1.0.75 (76), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk
