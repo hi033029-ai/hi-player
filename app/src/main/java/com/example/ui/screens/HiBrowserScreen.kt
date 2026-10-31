@@ -699,7 +699,10 @@ fun HiBrowserScreen(
         }
         val tab = tabs.firstOrNull { it.id == tabId }
         val pageUrl = mediaSniffer.pageUrl(tabId).ifBlank { tab?.url.orEmpty() }
-        val userAgent = if (tab?.desktop == true) DESKTOP_USER_AGENT else runCatching { WebSettings.getDefaultUserAgent(context) }.getOrNull()
+        val userAgent = tab?.webView?.settings?.userAgentString ?: runCatching {
+            val mobile = WebSettings.getDefaultUserAgent(context)
+            if (tab?.desktop == true) BrowserAppearancePolicy.desktopUserAgent(mobile) else mobile
+        }.getOrNull()
         registerBrowserStreamHeaders(url, pageUrl, userAgent, mediaSniffer.mediaHosts(tabId))
         val title = mediaSniffer.title(tabId).ifBlank { tab?.title.orEmpty() }.takeIf { it.isNotBlank() && !it.startsWith("http") }
         tab?.webView?.evaluateJavascript(HI_BROWSER_PAUSE_MEDIA_SCRIPT, null)
