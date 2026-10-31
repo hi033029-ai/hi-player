@@ -1,13 +1,12 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.util.AtomicFile
 import android.net.Uri
 import android.text.TextUtils
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 internal data class OrbitBrowserEntry(val title: String, val url: String)
 
@@ -193,8 +192,8 @@ internal object OrbitBrowserFilterEngine {
     @Volatile private var genericCss: String = ""
     @Volatile private var ruleTotal = 0
     @Volatile private var loaded = false
-    @Volatile private var autoUpdateTried = false
     private val loadLock = Any()
+    private val updateLock = Any()
     private val builtInHosts = setOf(
         "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com",
         "google-analytics.com", "googletagmanager.com", "googletagservices.com", "adnxs.com",
@@ -229,12 +228,12 @@ internal object OrbitBrowserFilterEngine {
         // Peter Lowe's ad/tracking server list (small, host-only, AdBlock Plus format).
         "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
     )
-    /** Bump when [filterUrls] changes so stored lists refresh with the new sources. */
-    private const val FILTER_SOURCES_VERSION = "3"
+    /** Bump when sources or installed format changes, forcing a fresh combined file. */
+    private const val FILTER_SOURCES_VERSION = "4"
     private const val MAX_FILTER_LINES = 300_000
     private const val MAX_GENERIC_SELECTORS = 1_500
     private const val MAX_SUBSTRING_RULES = 8_000
-    private const val AUTO_UPDATE_AGE_MS = 4L * 24 * 60 * 60 * 1000
+    private const val AUTO_UPDATE_AGE_MS = 24L * 60 * 60 * 1000
 
     /** Loads the stored (or bundled) lists. Safe to call repeatedly; parses once. */
     fun load(context: Context) {
@@ -248,25 +247,21 @@ internal object OrbitBrowserFilterEngine {
     private fun reload(context: Context) {
         val stored = File(context.filesDir, "orbit-filters.txt")
         runCatching {
-            val reader = if (stored.isFile) stored.bufferedReader()
-            else context.assets.open("orbit_filters.txt").bufferedReader()
+            // openRead recovers AtomicFile's backup after an interrupted install.
+            val reader = runCatching { AtomicFile(stored).openRead().bufferedReader() }
+                .getOrElse { context.assets.open("orbit_filters.txt").bufferedReader() }
             reader.useLines { lines -> parse(lines.take(MAX_FILTER_LINES)) }
         }
         loaded = true
     }
 
-    /**
-     * Downloads fresh EasyList/EasyPrivacy rules in the background when they are
-     * missing or a few days old, so blocking works well without a manual update.
-     */
-    fun autoUpdateIfStale(context: Context) {
-        if (autoUpdateTried) return
-        autoUpdateTried = true
+    /** Called by durable background work; failed updates remain eligible for retry. */
+    fun autoUpdateIfStale(context: Context, cancelled: () -> Boolean = { false }): Boolean = synchronized(updateLock) {
         val stored = File(context.filesDir, "orbit-filters.txt")
         val version = runCatching { File(context.filesDir, "orbit-filters.version").readText().trim() }.getOrNull()
-        val stale = !stored.isFile || version != FILTER_SOURCES_VERSION ||
-            System.currentTimeMillis() - stored.lastModified() > AUTO_UPDATE_AGE_MS
-        if (stale) update(context)
+        val age = System.currentTimeMillis() - stored.lastModified()
+        val stale = !stored.isFile || version != FILTER_SOURCES_VERSION || age < 0 || age >= AUTO_UPDATE_AGE_MS
+        !stale || update(context, cancelled)
     }
 
     fun ruleCount(): Int = ruleTotal
@@ -368,45 +363,12 @@ internal object OrbitBrowserFilterEngine {
         return (genericCss + "\n" + hostCss).take(160_000)
     }
 
-    /** Downloads trusted HTTPS lists with strict byte/time caps, and atomically replaces stored rules. */
-    fun update(context: Context): Boolean = runCatching {
-        val file = File(context.filesDir, "orbit-filters.txt")
-        val temporary = File(context.filesDir, "orbit-filters.tmp")
-        temporary.bufferedWriter().use { writer ->
-            var combined = 0L
-            for (source in filterUrls) {
-                val connection = (URL(source).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 10_000
-                    readTimeout = 20_000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "HiPlayer-OrbitBrowser/1.1")
-                }
-                try {
-                    require(connection.responseCode in 200..299) { "Filter download failed" }
-                    connection.inputStream.bufferedReader().use { reader ->
-                        val buffer = CharArray(16_384)
-                        var total = 0
-                        while (true) {
-                            val count = reader.read(buffer)
-                            if (count < 0) break
-                            total += count
-                            combined += count
-                            require(total <= 8_000_000) { "Filter list too large" }
-                            require(combined <= 16_000_000) { "Combined lists too large" }
-                            writer.write(buffer, 0, count)
-                        }
-                        writer.write("\n")
-                    }
-                } finally {
-                    connection.disconnect()
-                }
-            }
+    /** Serialized install retains bundled YouTube rules and the last valid downloaded file. */
+    fun update(context: Context, cancelled: () -> Boolean = { false }): Boolean = synchronized(updateLock) {
+        BrowserFilterFileUpdater.install(context, filterUrls, FILTER_SOURCES_VERSION, cancelled) { commit ->
+            synchronized(loadLock) { commit(); reload(context) }
         }
-        check(temporary.renameTo(file)) { "Unable to install updated filters" }
-        runCatching { File(context.filesDir, "orbit-filters.version").writeText(FILTER_SOURCES_VERSION) }
-        synchronized(loadLock) { reload(context) }
-        true
-    }.getOrDefault(false)
+    }
 
     private fun parse(lines: Sequence<String>) {
         val blocks = HashMap<String, MutableList<Rule>>()

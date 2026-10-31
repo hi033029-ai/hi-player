@@ -48,11 +48,11 @@ internal fun MusicLibraryToolbar(
                     val active = selected == category
                     Box(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
                         .background(if (active) palette.primary else Color.Transparent)
-                        .clickable { onCategory(category) }.padding(horizontal = 14.dp)
+                        .clickable { onCategory(category) }.padding(horizontal = 10.dp)
                         .testTag("music_library_category_$category"), contentAlignment = Alignment.Center) {
                         Text(if (category == "All Music") "Songs" else category,
                             color = if (active) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary,
-                            fontSize = 12.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 10.sp, fontWeight = FontWeight.Medium,
                             maxLines = 1)
                     }
                 }
@@ -63,22 +63,22 @@ internal fun MusicLibraryToolbar(
         Box {
             IconButton(onClick = { viewMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
                 Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                    if (grid) "Grid view; change layout" else "List view; change layout", tint = palette.textPrimary)
+                    if (grid) "Grid view; change layout" else "List view; change layout", tint = palette.textPrimary, modifier = Modifier.size(20.dp))
             }
             DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
                 listOf("List" to false, "Grid" to true).forEach { (name, value) ->
-                    DropdownMenuItem(text = { Text(if (grid == value) "$name ✓" else name) },
+                    DropdownMenuItem(text = { Text(if (grid == value) "$name ✓" else name, fontSize = 11.sp) },
                         onClick = { onGridChange(value); viewMenu = false })
                 }
             }
         }
         Box {
             IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_sort_button")) {
-                Icon(Icons.AutoMirrored.Filled.Sort, "Sort music: $sort", tint = palette.textPrimary)
+                Icon(Icons.AutoMirrored.Filled.Sort, "Sort music: $sort", tint = palette.textPrimary, modifier = Modifier.size(20.dp))
             }
             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                 listOf("Custom", "Name", "Artist", "Duration", "Newest").forEach { option ->
-                    DropdownMenuItem(text = { Text(if (sort == option) "$option ✓" else option) },
+                    DropdownMenuItem(text = { Text(if (sort == option) "$option ✓" else option, fontSize = 11.sp) },
                         onClick = { onSort(option); sortMenu = false })
                 }
             }

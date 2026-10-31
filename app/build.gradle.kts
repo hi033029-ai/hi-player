@@ -32,8 +32,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 76
-    versionName = "1.0.75"
+    versionCode = 77
+    versionName = "1.0.76"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
@@ -116,6 +116,7 @@ dependencies {
   implementation("androidx.mediarouter:mediarouter:1.8.0")
   implementation("androidx.fragment:fragment-ktx:1.8.6")
   implementation("androidx.browser:browser:1.8.0")
+  implementation("androidx.work:work-runtime-ktx:2.10.1")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
   // formats that may be unsupported by a device hardware decoder.

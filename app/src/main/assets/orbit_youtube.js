@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hi Browser YouTube Ad Skipper
 // @namespace    hi.browser
-// @version      3.0
+// @version      3.1
 // @description  Best-effort ad response cleanup and event-driven skipping of recognized YouTube ads
 // @match        *://*.youtube.com/*
 // @run-at       document-start
@@ -9,6 +9,10 @@
 // ==/UserScript==
 (function () {
   'use strict';
+  // Fallback callbacks can still execute in the outgoing document. Never
+  // install player/JSON hooks on an unrelated site's document.
+  var host = (location.hostname || '').toLowerCase();
+  if (!/(^|\.)(youtube|youtube-nocookie)\.com$/.test(host)) return;
   if (window.__orbitYT) return;
   window.__orbitYT = true;
 
@@ -155,10 +159,11 @@
 
   // ---- 3. React to player/ad-control changes immediately; a timer is only a
   // safety net. No 1-second wait for a new Skip button or SPA-replaced player.
-  var PLAYER = '.html5-video-player,#movie_player';
+  var PLAYER = '.html5-video-player,#movie_player,#player-container-id,#player';
   var SKIP = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,' +
     '.ytp-ad-skip-button-container button,.ytm-ad-skip-button-container button,' +
-    'button[class*="skip-ad"],button[class*="ad-skip"]';
+    'ytm-skip-ad-renderer button,ytm-ad-skip-button-renderer button,' +
+    '.ytp-ad-skip-button-slot button,button[class*="skip-ad"],button[class*="ad-skip"]';
   var player = null;
   var adState = null;
   var queued = false;
@@ -169,8 +174,12 @@
   var lastSkipAt = 0;
 
   function visible(element) {
-    try { return element && !element.disabled && element.getAttribute('aria-disabled') !== 'true' &&
-      element.getClientRects().length > 0; } catch (e) { return false; }
+    try {
+      if (!element || element.disabled || element.getAttribute('aria-disabled') === 'true' ||
+          !element.getClientRects().length) return false;
+      var style = window.getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse';
+    } catch (e) { return false; }
   }
   function visibleSkip(p) {
     var buttons = p.querySelectorAll(SKIP);
@@ -195,7 +204,7 @@
     if (playerObserver) playerObserver.disconnect();
     if (!p || !playerObserver) return;
     try { playerObserver.observe(p, {
-      attributes: true, attributeFilter: ['class', 'disabled', 'aria-disabled'],
+      attributes: true, attributeFilter: ['class', 'disabled', 'aria-disabled', 'style', 'hidden'],
       childList: true, subtree: true
     }); } catch (e) {}
   }
@@ -216,7 +225,7 @@
     if (adState && adState.video !== video) restoreVideo();
     var skip = visibleSkip(p);
     var showing = p.classList.contains('ad-showing') ||
-      p.classList.contains('ad-interrupting') || !!skip;
+      p.classList.contains('ad-interrupting') || !!p.querySelector('.ad-showing,.ad-interrupting') || !!skip;
     if (!showing || !video) {
       restoreVideo();
       scheduleFallback();
@@ -226,10 +235,12 @@
     // Try the real available control first. Disabled/countdown controls are not
     // treated as skippable, and repeated mutations cannot spam the same button.
     var now = Date.now();
-    if (skip && (skip !== lastSkip || now - lastSkipAt >= 300)) {
-      lastSkip = skip;
-      lastSkipAt = now;
-      try { skip.click(); } catch (e) {}
+    if (skip) {
+      if (skip !== lastSkip || now - lastSkipAt >= 300) {
+        lastSkip = skip;
+        lastSkipAt = now;
+        try { skip.click(); } catch (e) {}
+      }
       // A click can synchronously switch to content while the old ad class
       // lingers. Never seek/mute in the same turn after invoking Skip.
       if (!(p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting')) &&
@@ -256,7 +267,7 @@
     });
     discoveryObserver.observe(document, { childList: true, subtree: true });
   } catch (e) {}
-  ['loadedmetadata', 'durationchange', 'playing', 'emptied'].forEach(function (name) {
+  ['loadedmetadata', 'durationchange', 'playing', 'emptied', 'canplay', 'timeupdate'].forEach(function (name) {
     document.addEventListener(name, function (event) {
       if (event.target && event.target.tagName === 'VIDEO') queueCheck();
     }, true);
