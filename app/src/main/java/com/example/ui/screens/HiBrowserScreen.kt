@@ -686,6 +686,11 @@ fun HiBrowserScreen(
         if (player != null) player(url, hiBrowserStreamMimeType(url), title) else latestOnPlayDirectMedia(url)
     }
 
+    fun refreshDocumentScripts() {
+        tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store) } }
+        webView?.reload()
+    }
+
     fun setAdBlockEnabled(enabled: Boolean) {
         store.adBlock = enabled
         adBlockEnabled = enabled
@@ -711,11 +716,6 @@ fun HiBrowserScreen(
                 webView?.reload()
             }
         }.start()
-    }
-
-    fun refreshDocumentScripts() {
-        tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store) } }
-        webView?.reload()
     }
 
     fun addBookmark() {
