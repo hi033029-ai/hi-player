@@ -1493,6 +1493,13 @@ fun HiBrowserScreen(
                                 }
                                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
+                                    // Best effort only on older WebViews. This callback is NOT a
+                                    // document-start guarantee; commit/finish retry in the new document.
+                                    if (!HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url)) {
+                                        HiBrowserDocumentScripts.readAsset(viewContext, "orbit_youtube.js")?.let {
+                                            view.evaluateJavascript(it, null)
+                                        }
+                                    }
                                     mediaSniffer.setPage(tabId, url)
                                     updateTab(tabId) { it.copy(url = url) }
                                     if (pageError?.tabId == tabId) pageError = null

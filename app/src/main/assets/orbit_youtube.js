@@ -9,6 +9,10 @@
 // ==/UserScript==
 (function () {
   'use strict';
+  // Fallback callbacks can still execute in the outgoing document. Never
+  // install player/JSON hooks on an unrelated site's document.
+  var host = (location.hostname || '').toLowerCase();
+  if (!/(^|\.)(youtube|youtube-nocookie)\.com$/.test(host)) return;
   if (window.__orbitYT) return;
   window.__orbitYT = true;
 

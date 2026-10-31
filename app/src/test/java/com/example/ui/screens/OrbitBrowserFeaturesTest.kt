@@ -32,6 +32,30 @@ class OrbitBrowserFeaturesTest {
     }
 
     @Test
+    fun youtubeLayeredRequestRulesHaveExactHostBoundaries() {
+        OrbitBrowserFilterEngine.load(ApplicationProvider.getApplicationContext())
+        listOf(
+            "https://www.youtube.com/pagead/interaction/",
+            "https://m.youtube.com/pagead/ads",
+            "https://doubleclick.net/ads",
+            "https://securepubads.g.doubleclick.net/ads",
+            "https://pagead2.googlesyndication.com/pagead/ads",
+            "https://www.googleadservices.com/pagead/conversion/",
+        ).forEach { url ->
+            assertTrue(url, OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), enabled = true, mainFrame = false))
+            assertFalse(url, OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), enabled = false, mainFrame = false))
+        }
+        listOf(
+            "https://notdoubleclick.net/assets/app.js",
+            "https://youtube.com.example.org/pagead/example",
+            "https://www.youtube.com/youtubei/v1/player",
+            "https://www.youtube.com/watch?v=example",
+        ).forEach { url ->
+            assertFalse(url, OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), enabled = true, mainFrame = false))
+        }
+    }
+
+    @Test
     fun genericUrlRulesOnlyApplyToSubresources() {
         OrbitBrowserFilterEngine.load(ApplicationProvider.getApplicationContext())
         val adScript = Uri.parse("https://cdn.example.org/adserver/loader.js")

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,
   '../app/src/main/assets/orbit_youtube.js'), 'utf8');
 
-function fixture({ ad = false, duration = 300, mobile = false } = {}) {
+function fixture({ ad = false, duration = 300, mobile = false, host = 'm.youtube.com', initialResponse = undefined } = {}) {
   const observers = [], tasks = new Map(), events = new Map();
   let taskId = 0;
   const video = { tagName: 'VIDEO', muted: false, playbackRate: 1.25, duration, currentTime: 2 };
@@ -25,7 +25,7 @@ function fixture({ ad = false, duration = 300, mobile = false } = {}) {
       return mobile && !selector.includes('#player-container-id') ? null : player;
     },
     addEventListener(name, callback) { if (!events.has(name)) events.set(name, []); events.get(name).push(callback); } };
-  const context = { document, JSON: { parse: JSON.parse, stringify: JSON.stringify }, Date, console,
+  const context = { document, location: { hostname: host }, ytInitialPlayerResponse: initialResponse, JSON: { parse: JSON.parse, stringify: JSON.stringify }, Date, console,
     MutationObserver: class {
       constructor(callback) { this.callback = callback; observers.push(this); }
       observe(target, options) { this.target = target; this.options = options; }
@@ -45,7 +45,8 @@ function fixture({ ad = false, duration = 300, mobile = false } = {}) {
     throw new Error('Immediate callback loop');
   }
   function mutation(target) { observers.filter(o => o.target === target).forEach(o => o.callback([])); flush(); }
-  return { video, document, get player() { return player; }, mutation,
+  return { video, document, parse: text => context.JSON.parse(text),
+    get initialResponse() { return context.ytInitialPlayerResponse; }, get player() { return player; }, mutation,
     replace() {
       player.isConnected = false;
       const next = { tagName: 'VIDEO', muted: false, playbackRate: 1, duration: 600, currentTime: 10 };
@@ -106,5 +107,21 @@ function fixture({ ad = false, duration = 300, mobile = false } = {}) {
   f.mutation(f.player);
   assert.equal(clicks, 0, 'CSS-hidden Skip is not an available ad control');
   assert.equal(f.video.currentTime, 2, 'Ordinary mobile content must not be seeked');
+}
+{
+  const original = { videoDetails: { videoId: 'kept' }, adPlacements: [{}],
+    playerResponse: { playerAds: [{}], streamingData: { formats: [] } } };
+  const f = fixture({ initialResponse: original });
+  assert.equal(f.initialResponse.videoDetails.videoId, 'kept', 'Existing player response must be retained');
+  assert.equal(f.initialResponse.adPlacements, undefined);
+  assert.equal(f.initialResponse.playerResponse.playerAds, undefined);
+  assert.ok(f.initialResponse.playerResponse.streamingData);
+  const parsed = f.parse('{"adSlots":[{}],"videoDetails":{"videoId":"normal"}}');
+  assert.equal(parsed.adSlots, undefined); assert.equal(parsed.videoDetails.videoId, 'normal');
+}
+{
+  const f = fixture({ host: 'youtube.com.example.org', ad: true, duration: 30 });
+  assert.equal(f.video.currentTime, 2, 'Outgoing/unrelated documents must not receive YouTube hooks');
+  assert.equal(f.video.muted, false);
 }
 console.log('YouTube skipper deterministic fixtures passed (not live-site validation).');

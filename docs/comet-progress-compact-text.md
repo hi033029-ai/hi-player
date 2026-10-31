@@ -12,3 +12,8 @@ Source-only change. APK version unchanged. No compiler, Gradle, unit/JS fixture 
 
 ## Next approved validation
 Compile and run BrowserProgressStateTest, BrowserLoadingPolicyTest and existing targeted regressions; run tools/test_youtube_skipper.cjs. Check actual WebView redirects, progress without page-start, repeated finish, rapid navigation during fade, back/forward, tab switching, stop/retry, offline and larger fonts on narrow screens. Check mobile/desktop YouTube Skip appearance, countdown-to-enabled state, SPA player replacement, ad-to-content transition and original mute/rate restoration on real sites. Sites can change player markup and server-stitched ads cannot be assumed skippable.
+
+## Three-layer YouTube follow-up
+The existing asset already strips player response ad fields (JSON/Response/XHR and initial globals), is registered at document start for YouTube origins on supported WebViews, and works with native request blocking. Bundled rules already include youtube.com/pagead/ and the named ad network domains with domain boundaries, so no duplicate suffix-only filter was added. Added explicit request-boundary and response-preservation regression cases (not run). Added an immediate onPageStarted best-effort fallback for older WebViews, keeping commit/finish retries and a runtime host guard; early injection is not guaranteed on unsupported WebViews. Existing per-video mute/playback-rate restoration is retained.
+
+No equivalence to Brave/uBlock is claimed. Server-stitched ads without exposed ad state/control cannot be reliably identified by this loop; no guaranteed skip, detection evasion, ad-view accounting claim, or remote executable-script updater is added. Scripts stay bundled and reviewable.
