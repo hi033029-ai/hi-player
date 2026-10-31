@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,6 +75,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -85,7 +89,6 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
 import com.example.data.AppThemeMode
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 enum class OnboardingStep {
@@ -123,27 +126,10 @@ fun SplashScreen(
         }
     }
 
-    // Smooth In & Out Animation for Logo
-    val logoScale = remember { Animatable(0.6f) }
-    val logoAlpha = remember { Animatable(0f) }
-
+    // Only persisted settings gate entry. Branding must not impose an artificial wait.
     LaunchedEffect(Unit) {
-        // Do not reset a restored in-progress setup back to Welcome after rotation.
-        if (isFirstLaunch && currentStep != OnboardingStep.SPLASH_LOGO) return@LaunchedEffect
-        // Logo Entrance (In)
-        logoAlpha.animateTo(1f, animationSpec = tween(500, easing = LinearOutSlowInEasing))
-        logoScale.animateTo(1f, animationSpec = tween(600, easing = FastOutSlowInEasing))
-
-        if (isFirstLaunch) {
-            delay(900)
-            currentStep = OnboardingStep.WELCOME_NOTE
-        } else {
-            delay(1100)
-            // Logo Exit (Out)
-            logoAlpha.animateTo(0f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-            logoScale.animateTo(1.12f, animationSpec = tween(400, easing = FastOutSlowInEasing))
-            finishOnce()
-        }
+        if (currentStep != OnboardingStep.SPLASH_LOGO) return@LaunchedEffect
+        if (isFirstLaunch) currentStep = OnboardingStep.WELCOME_NOTE else finishOnce()
     }
 
     Box(
@@ -170,8 +156,8 @@ fun SplashScreen(
             when (step) {
                 OnboardingStep.SPLASH_LOGO -> {
                     SplashLogoView(
-                        scale = logoScale.value,
-                        alpha = logoAlpha.value
+                        scale = 1f,
+                        alpha = 1f
                     )
                 }
 
@@ -229,13 +215,14 @@ private fun TextSizeSetupView(
     onComplete: () -> Unit
 ) {
     val accent = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 20.dp)
-                .padding(bottom = 180.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -276,6 +263,7 @@ private fun TextSizeSetupView(
             }
         }
         OnboardingActions(
+            onHeightChanged = { footerHeight = it },
             primaryLabel = "Enter Hi Player", onPrimary = onComplete, accent = accent,
             secondaryLabel = "Back", onSecondary = onBack, primaryTag = "onboarding_finish_button",
         )
@@ -361,13 +349,14 @@ private fun WelcomeNoteView(
 ) {
     val context = LocalContext.current
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = 180.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -460,6 +449,7 @@ private fun WelcomeNoteView(
 
         }
         OnboardingActions(
+            onHeightChanged = { footerHeight = it },
             primaryLabel = "Continue", onPrimary = onContinue, accent = Color(0xFF0056B3),
             secondaryLabel = "Skip setup", onSecondary = onSkip, primaryTag = "welcome_continue_button",
             secondaryTag = "welcome_skip_button",
@@ -529,13 +519,14 @@ private fun ChooseThemeView(
 ) {
     val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme())
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 24.dp)
-                .padding(bottom = 180.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -635,6 +626,7 @@ private fun ChooseThemeView(
 
         }
         OnboardingActions(
+            onHeightChanged = { footerHeight = it },
             primaryLabel = "Apply & Continue", onPrimary = onProceed, accent = selectedPalette.primary,
             secondaryLabel = "Back", onSecondary = onBack, primaryTag = "theme_proceed_button",
             contentColor = if (selectedPalette.isDark) Color.Black else Color.White,
@@ -750,13 +742,14 @@ private fun PermissionsSetupView(
 
     val accentColor = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme()).primary
 
+    var footerHeight by remember { mutableStateOf(180.dp) }
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = 180.dp),
+                .padding(bottom = footerHeight + 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -820,6 +813,7 @@ private fun PermissionsSetupView(
 
         }
         OnboardingActions(
+            onHeightChanged = { footerHeight = it },
             primaryLabel = if (requesting) "Opening permissions…" else "Allow permissions",
             onPrimary = {
                 val hasAll = permissionsToRequest.all {
@@ -839,25 +833,7 @@ private fun PermissionsSetupView(
             accent = accentColor, primaryEnabled = !requesting,
             secondaryLabel = "Not now", onSecondary = onComplete, secondaryEnabled = !requesting,
             primaryTag = "grant_permissions_button", message = permissionMessage,
-        ),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 20.dp)
-                .height(48.dp)
-                .testTag("grant_permissions_button"),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accentColor,
-                contentColor = Color.White
-            )
-        ) {
-            Text(
-                text = "Give Permission",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-        }
+        )
     }
 }
 
@@ -915,7 +891,7 @@ private fun PermissionCard(
     }
 }
 
-/** One geometry for every step: fixed 48dp primary action, equal margins and a visible exit. */
+/** Shared bottom anchor and 48dp minimum actions; labels may grow for accessibility. */
 @Composable
 private fun BoxScope.OnboardingActions(
     primaryLabel: String,
@@ -929,19 +905,22 @@ private fun BoxScope.OnboardingActions(
     secondaryEnabled: Boolean = true,
     contentColor: Color = Color.White,
     message: String? = null,
+    onHeightChanged: (Dp) -> Unit = {},
 ) {
+    val density = LocalDensity.current
     Column(
         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            .onSizeChanged { with(density) { onHeightChanged(it.height.toDp()) } }
             .background(Color(0xFFF8FAFC)).padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         message?.let { Text(it, color = Color(0xFF2C4A60), fontSize = 14.sp) }
         TextButton(onClick = onSecondary, enabled = secondaryEnabled,
-            modifier = Modifier.fillMaxWidth().height(48.dp).testTag(secondaryTag)) {
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(secondaryTag)) {
             Text(secondaryLabel, color = Color(0xFF0056B3), fontSize = 14.sp)
         }
         Button(onClick = onPrimary, enabled = primaryEnabled,
-            modifier = Modifier.fillMaxWidth().height(48.dp).testTag(primaryTag),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(primaryTag),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = contentColor)) {
             Text(primaryLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold)

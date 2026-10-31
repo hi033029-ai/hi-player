@@ -29,6 +29,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -51,11 +53,12 @@ import com.example.viewmodel.DiscoverViewModel
 @Composable
 fun DiscoverSourceSettings(
     discoverViewModel: DiscoverViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    drafts: com.example.ui.feedback.SessionDraftsViewModel = viewModel(),
 ) {
     val sources by discoverViewModel.sourceSettings.collectAsState()
     val palette = LocalHiPalette.current
-    var dialog by remember { mutableStateOf<SourceDialog?>(null) }
+    var dialog by rememberSaveable { mutableStateOf<SourceDialog?>(null) }
 
     Column(modifier = modifier) {
         Card(
@@ -96,13 +99,15 @@ fun DiscoverSourceSettings(
 
     when (dialog) {
         SourceDialog.JELLYFIN -> JellyfinSetupDialog(
-            onDismiss = { dialog = null },
+            draft = drafts.jellyfin,
+            onDismiss = { drafts.jellyfin.clear(); dialog = null },
             onConnect = { baseUrl, username, password, onComplete ->
                 discoverViewModel.connectJellyfin(baseUrl, username, password, onComplete)
             }
         )
         SourceDialog.WEBDAV -> WebDavSetupDialog(
-            onDismiss = { dialog = null },
+            draft = drafts.webDav,
+            onDismiss = { drafts.webDav.clear(); dialog = null },
             onConnect = { url, username, password, name, onComplete ->
                 discoverViewModel.saveWebDav(url, username, password, name, onComplete)
             }
@@ -151,13 +156,14 @@ private fun SourceDivider() {
 
 @Composable
 private fun JellyfinSetupDialog(
+    draft: com.example.ui.feedback.SourceSetupDraft,
     onDismiss: () -> Unit,
     onConnect: (String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
-    var url by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var url by draft.url
+    var username by draft.username
+    var password by draft.password
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -177,7 +183,7 @@ private fun JellyfinSetupDialog(
                 SourceTextField(username, { username = it }, "Username")
                 Spacer(Modifier.height(6.dp))
                 SourceTextField(password, { password = it }, "Password (if required)", password = true)
-                error?.let { Text(it, color = Color(0xFFD14343), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                error?.let { Text(it, color = Color(0xFFD14343), fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
         confirmButton = {
@@ -200,14 +206,15 @@ private fun JellyfinSetupDialog(
 
 @Composable
 private fun WebDavSetupDialog(
+    draft: com.example.ui.feedback.SourceSetupDraft,
     onDismiss: () -> Unit,
     onConnect: (String, String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
-    var url by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("WebDAV") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var url by draft.url
+    var name by draft.name
+    var username by draft.username
+    var password by draft.password
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
@@ -229,7 +236,7 @@ private fun WebDavSetupDialog(
                 SourceTextField(username, { username = it }, "Username")
                 Spacer(Modifier.height(6.dp))
                 SourceTextField(password, { password = it }, "Password", password = true)
-                error?.let { Text(it, color = Color(0xFFD14343), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                error?.let { Text(it, color = Color(0xFFD14343), fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
         confirmButton = {

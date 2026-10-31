@@ -91,6 +91,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -180,13 +181,13 @@ fun HomeScreen(
     val treeCurrentPath by libraryViewModel.treeCurrentPath.collectAsStateWithLifecycle()
     val currentTreeNode by libraryViewModel.currentTreeNode.collectAsStateWithLifecycle()
 
-    var isSearchActive by remember { mutableStateOf(false) }
-    var showFolders by remember { mutableStateOf(false) }
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
+    var showFolders by rememberSaveable { mutableStateOf(false) }
     var inspectVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isVideoSelectionMode by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<VideoItem?>(null) }
-    var renameText by remember { mutableStateOf("") }
+    var renameText by rememberSaveable { mutableStateOf("") }
     // Overflow-menu deletion is independent from long-press multi-select.
     // A one-item delete must never turn on the library action bar.
     var pendingDeleteVideos by remember { mutableStateOf<List<VideoItem>?>(null) }

@@ -30,7 +30,7 @@ This is a source update, not a claim that every screen has passed device QA.
 
 ## 3. Consistent onboarding actions
 
-- Four steps share one footer component: 48dp primary action, 20dp horizontal and
+- Four steps share one footer component: 48dp minimum primary action, 20dp horizontal and
   bottom margins, visible secondary action and safe drawing insets. Scrollable
   content reserves footer space. Transitions fade rather than slide buttons.
 - Theme/text choices and the current step survive activity recreation. Completing
@@ -87,3 +87,47 @@ Next approved build/device review must cover:
   Check log redaction and that existing deletion controls still behave correctly.
 - Confirm rendering/accessibility on-device; source review cannot establish
   frame latency, layout fit or runtime correctness.
+
+## Additional continuity and end-to-end polish review
+
+- Explicit bounded tab history replaces the guessed browser origin and hard-coded
+  Settings-to-Videos route. Settings has visible/system Back. Child dialogs,
+  selections and folder handlers retain priority before outer navigation.
+- Active tab/history and the player/main destination use saved state. On activity
+  recreation, an existing retained player returns to its player screen. If a new
+  process has no live player, restoration falls back to the library rather than
+  inventing a playable session. Existing periodic/onStop resume-position saves
+  remain unchanged; no private stream URL is persisted for automatic playback.
+- A shared saveable-state provider retains tab scroll state; Settings expansion
+  and non-sensitive search UI use saved state. Rename text is retained, but stale
+  destructive targets are not automatically restored/replayed.
+- Source setup and Stream & Cast drafts survive activity recreation in session
+  ViewModel memory, including passwords/URLs that must not go into saved-state
+  Bundles. Explicit cancel/success clears their draft. Process death does not
+  preserve these sensitive drafts; privacy takes precedence over disk persistence.
+  Interrupted requests are not automatically resubmitted. Cancelling the stream
+  resolver also prevents it from opening a player after dismissal. Closing the
+  stream window does not pretend to undo a Cast request already sent remotely.
+- Removed artificial startup waits and the browser-entry branding overlay. Real
+  persisted-settings loading and real network/media buffering remain truthful.
+- Shared header switches to wrapping actions on narrow/large-font layouts; its
+  refresh icon now reflects the actual library busy state. Navigation hub scrolls
+  and its labels wrap. OS font scaling is no longer capped at 1.5x; header titles
+  no longer multiply the app's scale twice.
+- Onboarding action heights are minimums, not fixed clip boxes. Footer height is
+  measured so scrolling content reserves the real space as labels grow. Corrected
+  leftover permission-button arguments found during this source review.
+- Added TabHistoryTest source for actual origin, duplicate tab selection, root
+  safety and reverse-order Back. Tests have NOT been run.
+
+### Release matrix (pending an approved build/device session)
+
+Verify the real Android app, not HTML imitations, at phone/tablet widths,
+landscape, OS font scales 1x/1.5x/2x, the largest app text size and long labels.
+Review every core journey: local video/audio play → seek → background/return →
+resume; library/files → settings → Back; browser → player → Back; download →
+pause/retry/open; source setup → switch apps/rotate → continue/cancel; Google
+account/Drive → return to the same settings state. Check footer/label fit,
+keyboard visibility, TalkBack and restoration after process death separately
+from ordinary app switching. No runtime timing, layout or end-to-end correctness
+has been established by these source-only changes.

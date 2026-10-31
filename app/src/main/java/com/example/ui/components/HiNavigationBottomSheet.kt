@@ -3,6 +3,8 @@ package com.example.ui.components
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,6 +95,7 @@ fun HiNavigationBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = 6.dp)
         ) {
             // Header with Hi Logo & Close
@@ -341,6 +344,7 @@ fun NavHubTile(
                 ) {
                     Text(
                         text = title,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.5.sp,
                         color = if (isSelected) palette.primary else palette.textPrimary
@@ -362,8 +366,7 @@ fun NavHubTile(
                 Text(
                     text = subtitle,
                     fontSize = 10.5.sp,
-                    color = palette.textSecondary,
-                    maxLines = 1
+                    color = palette.textSecondary
                 )
             }
         }

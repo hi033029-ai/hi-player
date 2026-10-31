@@ -63,6 +63,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -113,13 +115,15 @@ fun SettingsScreen(
     val uiMetrics = LocalHiUiMetrics.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showCustomTheme by remember { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
+    var showCustomTheme by rememberSaveable { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
     var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
-    var showAccountSources by remember { mutableStateOf(true) }
-    var showThemes by remember { mutableStateOf(false) }
-    var showTextSize by remember { mutableStateOf(false) }
-    var showDecoder by remember { mutableStateOf(false) }
-    var showPlayback by remember { mutableStateOf(false) }
+    var showAccountSources by rememberSaveable { mutableStateOf(true) }
+    var showThemes by rememberSaveable { mutableStateOf(false) }
+    var showTextSize by rememberSaveable { mutableStateOf(false) }
+    var showDecoder by rememberSaveable { mutableStateOf(false) }
+    var showPlayback by rememberSaveable { mutableStateOf(false) }
+
+    BackHandler(onBack = onBack)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -145,6 +149,12 @@ fun SettingsScreen(
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to previous screen", tint = palette.textPrimary) }
+                Text("Settings", modifier = Modifier.weight(1f), color = palette.textPrimary,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+            }
             SettingsCollapsibleSection(
                 title = "Google account & media sources",
                 subtitle = "Google account, My Drive, and personal media servers",

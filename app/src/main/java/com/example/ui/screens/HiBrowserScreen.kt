@@ -469,8 +469,6 @@ fun HiBrowserScreen(
     val pausedForPip = remember { mutableStateOf(false) }
     // The bottom address bar slides away while the page scrolls down and returns on scroll up.
     var browserBarHidden by remember { mutableStateOf(false) }
-    // "Browser mode" intro plays every time the browser is entered.
-    var showModeIntro by remember { mutableStateOf(true) }
 
     androidx.compose.runtime.SideEffect { mediaSniffer.activeTabId = activeTabId }
 
@@ -1817,9 +1815,6 @@ fun HiBrowserScreen(
         )
     }
 
-    if (showModeIntro && !isInPictureInPicture) {
-        HiBrowserModeIntro(onFinished = { showModeIntro = false })
-    }
 }
 
 /** WebViews already destroyed; a stale tab reference to one must never be reattached. */
