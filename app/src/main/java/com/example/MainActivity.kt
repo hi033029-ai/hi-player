@@ -151,6 +151,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         startupSplash.setKeepOnScreenCondition { !startupSettingsReady }
         enableEdgeToEdge()
+        com.example.ui.screens.BrowserFilterUpdateWorker.schedule(applicationContext)
 
         handleIntent(intent)
 

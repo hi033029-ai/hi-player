@@ -116,6 +116,7 @@ dependencies {
   implementation("androidx.mediarouter:mediarouter:1.8.0")
   implementation("androidx.fragment:fragment-ktx:1.8.6")
   implementation("androidx.browser:browser:1.8.0")
+  implementation("androidx.work:work-runtime-ktx:2.10.1")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
   // formats that may be unsupported by a device hardware decoder.

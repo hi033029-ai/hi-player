@@ -1190,7 +1190,7 @@ fun HiBrowserScreen(
         // Parse (and, when a few days old, refresh) the block lists off the main thread.
         withContext(Dispatchers.IO) {
             OrbitBrowserFilterEngine.load(context)
-            OrbitBrowserFilterEngine.autoUpdateIfStale(context)
+            // WorkManager refreshes lists independently of this browser screen.
         }
     }
     // A page that cannot scroll (short page, or a dialog that locks scrolling)
