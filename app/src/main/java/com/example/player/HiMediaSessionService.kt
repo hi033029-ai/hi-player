@@ -20,28 +20,56 @@ class HiMediaSessionService : MediaSessionService() {
         const val CHANNEL_ID = "hi_player_playback_channel"
         const val NOTIFICATION_ID = 4001
         var sharedPlayer: androidx.media3.common.Player? = null
+            private set
+
+        private var activeService: HiMediaSessionService? = null
+
+        /**
+         * Points the playback notification at the engine's current player. The
+         * engine replaces its ExoPlayer when settings change; a session still
+         * holding the released instance could crash or control nothing.
+         * Must be called on the main thread.
+         */
+        fun updatePlayer(player: androidx.media3.common.Player?) {
+            sharedPlayer = player
+            val service = activeService ?: return
+            if (player == null) return
+            val session = service.mediaSession
+            if (session == null) {
+                service.createSession(player)
+            } else if (session.player !== player) {
+                runCatching { session.player = player }
+                    .onFailure {
+                        session.release()
+                        service.mediaSession = null
+                        service.createSession(player)
+                    }
+            }
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         createNotificationChannel()
+        sharedPlayer?.let(::createSession)
+    }
 
-        val player = sharedPlayer
-        if (player != null) {
-            val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                sessionActivityIntent,
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            )
-
-            mediaSession = MediaSession.Builder(this, player)
+    private fun createSession(player: androidx.media3.common.Player) {
+        val sessionActivityIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            sessionActivityIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        mediaSession = runCatching {
+            MediaSession.Builder(this, player)
                 .setSessionActivity(pendingIntent)
                 .build()
-        }
+        }.getOrNull()
     }
 
     private fun createNotificationChannel() {
@@ -64,6 +92,7 @@ class HiMediaSessionService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        if (activeService === this) activeService = null
         mediaSession?.run {
             release()
             mediaSession = null

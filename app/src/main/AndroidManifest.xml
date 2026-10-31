@@ -39,6 +39,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.MyApplication"
         android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:usesCleartextTraffic="true">
 
         <service android:name=".data.MediaLibraryScanService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />

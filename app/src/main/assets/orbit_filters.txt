@@ -19,3 +19,10 @@
 ###ad-banner
 ###ads
 ###sidebar-ads
+/adserver/
+/adframe.
+-ad-banner.
+/banner_ads/
+/popunder.
+/pop_under.
+/prebid.js

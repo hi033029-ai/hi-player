@@ -1,41 +1,30 @@
 package com.example.player
 
 import androidx.compose.runtime.*
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.SeekParameters
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Fixes "backward/forward not smooth on remux/HEVC files".
+ * Double-tap skip that acts on the first tap.
  *
- * Root cause: every seekTo() forces MediaCodec to flush and reconfigure, then find
- * and decode from the nearest keyframe. On remuxed MKV/HEVC files that often have
- * sparse or missing seek indexes (Cues), that round trip is genuinely expensive —
- * and if the user taps rewind/FF a few times quickly (or drags the seek bar), each
- * tap fired its own immediate seekTo(), so the codec was interrupted mid-seek by
- * the next one before finishing the last, which is what actually reads as
- * "stuttering" or "not smooth" — it's seek requests piling up, not decode speed.
- *
- * Fix: coalesce rapid seek requests into a single call. Taps accumulate an offset;
- * only after a short quiet period (280ms of no further taps) does one seekTo() fire
- * with the total offset — so five quick "-10s" taps do exactly one keyframe seek to
- * -50s, not five sequential ones fighting each other.
- *
- * Combined with SeekParameters.CLOSEST_SYNC (set once, in OptimizedPlayerBuilder),
- * which snaps to the nearest keyframe instead of decoding forward to an exact
- * frame, this is the actual fix for "any type of file, remux, HEVC" — it doesn't
- * depend on the file having a full seek index.
+ * The old controller waited for 280 ms of quiet before seeking, so every skip
+ * felt late and a single tap appeared to do nothing for a moment. Now each tap
+ * seeks at once. Rapid taps add up from the last target (not from the
+ * still-moving playhead), so three quick "+10s" taps land on +30s. ExoPlayer
+ * replaces a pending seek with the newest one, so taps never queue up behind
+ * each other's decoding.
  */
 @UnstableApi
 class SmoothSeekController(
     private val player: ExoPlayer,
     private val scope: CoroutineScope,
 ) {
-    /** Accumulated but not-yet-applied offset — drive an on-screen "-20s" indicator with this. */
+    /** Accumulated offset of the current tap burst — drives the on-screen "+20s" indicator. */
     var pendingOffsetMs by mutableStateOf(0L)
         private set
 
@@ -43,16 +32,21 @@ class SmoothSeekController(
         private set
 
     private var debounceJob: Job? = null
+    private var burstTargetMs: Long? = null
 
     fun seekBy(deltaMs: Long) {
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+        val base = burstTargetMs ?: player.currentPosition.coerceAtLeast(0L)
+        var target = (base + deltaMs).coerceAtLeast(0L)
+        if (duration != null) target = target.coerceAtMost(duration)
+        burstTargetMs = target
         pendingOffsetMs += deltaMs
         isPending = true
+        player.seekTo(target)
         debounceJob?.cancel()
         debounceJob = scope.launch {
-            delay(280)
-            val durationMs = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-            val target = (player.currentPosition + pendingOffsetMs).coerceIn(0, durationMs)
-            player.seekTo(target)
+            delay(BURST_WINDOW_MS)
+            burstTargetMs = null
             pendingOffsetMs = 0L
             isPending = false
         }
@@ -74,7 +68,12 @@ class SmoothSeekController(
 
     fun commitFinalSeek(targetMs: Long) {
         debounceJob?.cancel()
+        burstTargetMs = null
         player.seekTo(targetMs)
+    }
+
+    private companion object {
+        const val BURST_WINDOW_MS = 650L
     }
 }
 

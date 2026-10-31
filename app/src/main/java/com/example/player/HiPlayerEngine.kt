@@ -81,9 +81,39 @@ class HiPlayerEngine(
 ) {
     private companion object {
         const val GROWING_INITIAL_GRACE_MS = 120_000L
+        const val BACK_BUFFER_MS = 15_000
+        const val MAX_TARGET_BUFFER_BYTES = 192L * 1024 * 1024
+        const val MIN_TARGET_BUFFER_BYTES = 32L * 1024 * 1024
+    }
+
+    /**
+     * Media buffers live on the Java heap. A fixed 192 MB target could exceed
+     * what the heap allows on many phones and crash playback with an
+     * OutOfMemoryError, so the cap scales with the heap the system grants.
+     */
+    private fun safeTargetBufferBytes(): Int {
+        val heap = Runtime.getRuntime().maxMemory().takeIf { it in 1 until Long.MAX_VALUE } ?: MAX_TARGET_BUFFER_BYTES * 3
+        return (heap / 3).coerceIn(MIN_TARGET_BUFFER_BYTES, MAX_TARGET_BUFFER_BYTES).toInt()
+    }
+
+    /**
+     * Network streams (browser videos, HLS, DASH, Drive) snap to the nearest key
+     * frame, which starts at a segment boundary and plays without waiting for a
+     * download-and-decode to an exact frame. Local files keep exact seeking,
+     * which avoids the HEVC picture-freeze described below.
+     */
+    private fun seekParametersFor(uri: Uri?): SeekParameters {
+        val scheme = uri?.scheme?.lowercase()
+        return if (scheme == "http" || scheme == "https") SeekParameters.CLOSEST_SYNC else SeekParameters.EXACT
     }
 
     private var exoPlayer: ExoPlayer? = null
+    // The engine replaces its ExoPlayer when decoder settings change or after a
+    // Dolby Vision decoder failure. Screens observe this so the video surface,
+    // gestures and media session always talk to the live instance instead of a
+    // released one (which left a black picture and dead skip buttons).
+    private val _playerInstance = MutableStateFlow<ExoPlayer?>(null)
+    val playerInstance = _playerInstance.asStateFlow()
     private var trackSelector: DefaultTrackSelector? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
@@ -312,7 +342,7 @@ class HiPlayerEngine(
                 val resumePosition = pendingResumePositionMs
                 if (resumePosition > 0L) {
                     pendingResumePositionMs = 0L
-                    exoPlayer?.setSeekParameters(SeekParameters.EXACT)
+                    exoPlayer?.setSeekParameters(seekParametersFor(exoPlayer?.currentMediaItem?.localConfiguration?.uri))
                     exoPlayer?.seekTo(resumePosition)
                 }
                 audioSelectionRecoveryParameters = null
@@ -467,6 +497,7 @@ class HiPlayerEngine(
         // else got ExoPlayer's small default buffers, which is exactly what
         // causes stutter/rebuffering on big 4K/HDR files. Now a solid buffer
         // is applied by default; the setting simply pushes it further.
+        val targetBufferBytes = safeTargetBufferBytes()
         val loadControl = if (enableRemuxUltraBuffer) {
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
@@ -475,8 +506,10 @@ class HiPlayerEngine(
                     250,      // Start local playback after a short preroll.
                     1_000     // Recover quickly after a rebuffer.
                 )
-                .setTargetBufferBytes(192 * 1024 * 1024) // Safe cap for 4K/HDR phones.
-                .setBackBuffer(0, false)
+                .setTargetBufferBytes(targetBufferBytes) // Bounded by the app's heap size.
+                // Keep the last few seconds so a 10-second rewind is served from
+                // memory instead of reopening the file or stream.
+                .setBackBuffer(BACK_BUFFER_MS, true)
                 // Stop at either the two-minute target or the memory cap.
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
@@ -492,10 +525,10 @@ class HiPlayerEngine(
                 // Reserve a bounded allocator for high-bitrate local media.
                 // This improves 4K/HDR rebuffering without reading the full
                 // file into memory or changing any UI/player behavior.
-                .setTargetBufferBytes(192 * 1024 * 1024)
-                // Preserve a short decoded range behind the playhead so quick
-                // reverse seeks do not immediately trigger another disk read.
-                .setBackBuffer(0, false)
+                .setTargetBufferBytes(targetBufferBytes)
+                // Preserve a short range behind the playhead so quick reverse
+                // seeks do not immediately trigger another disk or network read.
+                .setBackBuffer(BACK_BUFFER_MS, true)
                 // Keeps 4K/HDR buffering bounded on memory-constrained phones.
                 .setPrioritizeTimeOverSizeThresholds(false)
                 .setAllocator(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE))
@@ -565,6 +598,8 @@ class HiPlayerEngine(
                 playWhenReady = true
                 addListener(playerListener)
             }
+        _playerInstance.value = exoPlayer
+        HiMediaSessionService.updatePlayer(exoPlayer)
         setupLoudnessEnhancer()
         setupEqualizer()
         startProgressTracker()
@@ -785,7 +820,7 @@ class HiPlayerEngine(
             // STATE_READY-to-seek-to-buffer cycle on Continue Watching. This is
             // still exact seeking, but the decoder resolves it during prepare
             // instead of starting at zero and seeking only after audio is ready.
-            setSeekParameters(SeekParameters.EXACT)
+            setSeekParameters(seekParametersFor(uri))
             pendingResumePositionMs = 0L
             playWhenReady = autoPlay
             prepare()
@@ -974,8 +1009,13 @@ class HiPlayerEngine(
     }
 
     fun seekTo(positionMs: Long) {
-        val clamped = positionMs.coerceIn(0L, _durationMs.value)
-        exoPlayer?.seekTo(clamped)
+        val player = exoPlayer ?: return
+        // Clamp only to a known duration. Before the duration is published (and
+        // for live streams) the old clamp to 0..0 sent every skip back to the start.
+        val known = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            ?: _durationMs.value.takeIf { it > 0L }
+        val clamped = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
+        player.seekTo(clamped)
         _currentPositionMs.value = clamped
     }
 
@@ -1319,6 +1359,7 @@ class HiPlayerEngine(
         loudnessEnhancer = null
         equalizer?.release()
         equalizer = null
+        _playerInstance.value = null
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
         exoPlayer = null

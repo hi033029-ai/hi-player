@@ -11,6 +11,15 @@ import java.net.URL
 
 internal data class OrbitBrowserEntry(val title: String, val url: String)
 
+/** A regular (non-private) tab persisted so the browser reopens where the user left it. */
+internal data class OrbitSavedTab(
+    val id: Int,
+    val url: String,
+    val title: String,
+    val desktop: Boolean = false,
+    val openerTabId: Int? = null,
+)
+
 /** Small private-app-storage store for Hi Browser's user-owned browser data. */
 internal class OrbitBrowserStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE)
@@ -54,6 +63,14 @@ internal class OrbitBrowserStore(context: Context) {
         get() = prefs.getBoolean("video_handoff", true)
         set(value) { prefs.edit().putBoolean("video_handoff", value).apply() }
 
+    /**
+     * Opens a website video in Hi Player as soon as the user starts it on the page.
+     * Only user-started, full-length, non-ad videos are handed off.
+     */
+    var autoPlayInPlayer: Boolean
+        get() = prefs.getBoolean("auto_play_in_player", true)
+        set(value) { prefs.edit().putBoolean("auto_play_in_player", value).apply() }
+
     /** Page text size as a percentage of the site's own size (50–200). */
     var textZoom: Int
         get() = prefs.getInt("text_zoom", 100).coerceIn(80, 200)
@@ -65,26 +82,72 @@ internal class OrbitBrowserStore(context: Context) {
         set(value) { prefs.edit().putBoolean("popup_block", value).apply() }
 
     fun bookmarks(): List<OrbitBrowserEntry> = read("bookmarks")
-    fun history(): List<OrbitBrowserEntry> = read("history")
+
+    /** History is read on every keystroke for suggestions, so keep one parsed copy in memory. */
+    fun history(): List<OrbitBrowserEntry> {
+        historyCache?.let { return it }
+        synchronized(historyLock) {
+            historyCache?.let { return it }
+            return read("history").also { historyCache = it }
+        }
+    }
+
+    /** Tabs from the last session (regular tabs only; private tabs are never written to disk). */
+    fun savedTabs(): List<OrbitSavedTab> = runCatching {
+        val array = JSONArray(prefs.getString("open_tabs", "[]"))
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optInt("id", -1).takeIf { it > 0 } ?: return@mapNotNull null
+            val url = item.optString("url").take(4096)
+            if (url.isNotBlank() && !url.startsWith("http://") && !url.startsWith("https://")) return@mapNotNull null
+            OrbitSavedTab(
+                id = id,
+                url = url,
+                title = item.optString("title", "New tab").take(500).ifBlank { "New tab" },
+                desktop = item.optBoolean("desktop", false),
+                openerTabId = item.optInt("opener", -1).takeIf { it > 0 },
+            )
+        }.distinctBy { it.id }.take(12)
+    }.getOrDefault(emptyList())
+
+    val savedActiveTabId: Int
+        get() = prefs.getInt("open_tabs_active", -1)
+
+    fun saveTabs(tabs: List<OrbitSavedTab>, activeTabId: Int) {
+        val array = JSONArray()
+        tabs.take(12).forEach { tab ->
+            val item = JSONObject()
+                .put("id", tab.id)
+                .put("url", tab.url.take(4096))
+                .put("title", tab.title.take(500))
+                .put("desktop", tab.desktop)
+            tab.openerTabId?.let { item.put("opener", it) }
+            array.put(item)
+        }
+        prefs.edit().putString("open_tabs", array.toString()).putInt("open_tabs_active", activeTabId).apply()
+    }
+
     fun isBookmarked(url: String): Boolean = bookmarks().any { it.url == url }
 
     fun addBookmark(entry: OrbitBrowserEntry) = write("bookmarks", listOf(entry) + bookmarks().filterNot { it.url == entry.url })
     fun removeBookmark(url: String) = write("bookmarks", bookmarks().filterNot { it.url == url })
 
     fun addHistory(entry: OrbitBrowserEntry) {
-        if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
-            write("history", listOf(entry) + history().filterNot { it.url == entry.url }.take(499))
+        if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) synchronized(historyLock) {
+            val current = history()
+            if (current.firstOrNull() == entry) return
+            write("history", listOf(entry) + current.filterNot { it.url == entry.url }.take(499))
         }
     }
     // Update suggestions only from a redirect actually observed by this WebView.
     // Never guess a replacement domain or rewrite bookmarks to a different owner.
     fun replaceRedirectedHistory(oldUrl: String, newUrl: String) {
-        if (oldUrl != newUrl && BrowserHistoryPolicy.isWebUrl(newUrl) && newUrl.startsWith("https://")) {
+        if (oldUrl != newUrl && BrowserHistoryPolicy.isWebUrl(newUrl) && newUrl.startsWith("https://")) synchronized(historyLock) {
             write("history", history().filterNot { it.url == oldUrl })
         }
     }
-    fun removeHistory(url: String) = write("history", history().filterNot { it.url == url })
-    fun clearHistory() = write("history", emptyList())
+    fun removeHistory(url: String) = synchronized(historyLock) { write("history", history().filterNot { it.url == url }) }
+    fun clearHistory() = synchronized(historyLock) { write("history", emptyList()) }
 
     fun shortcuts(): List<OrbitBrowserEntry> =
         if (prefs.contains("shortcuts")) read("shortcuts") else ORBIT_DEFAULT_SHORTCUTS
@@ -101,23 +164,33 @@ internal class OrbitBrowserStore(context: Context) {
     }.getOrDefault(emptyList())
 
     private fun write(key: String, entries: List<OrbitBrowserEntry>) {
+        if (key == "history") historyCache = entries.take(500)
         val array = JSONArray()
         entries.take(500).forEach { entry ->
             array.put(JSONObject().put("title", entry.title.take(500)).put("url", entry.url.take(4096)))
         }
         prefs.edit().putString(key, array.toString()).apply()
     }
+
+    private companion object {
+        val historyLock = Any()
+        @Volatile var historyCache: List<OrbitBrowserEntry>? = null
+    }
 }
 
 /** Bounded EasyList-subset rules; remote filter data is never interpreted as script. */
 internal object OrbitBrowserFilterEngine {
     private class Rule(val pathPrefix: String, val thirdPartyOnly: Boolean)
+    /** EasyList's generic URL-fragment rules (e.g. "/adserver/", "-banner-ad."), matched on sub-resources only. */
+    private class SubstringRule(val pattern: String, val separatorEnd: Boolean, val thirdPartyOnly: Boolean)
     // Rules are indexed by host so each request checks a handful of entries
     // (one per domain level) instead of scanning every rule.
     @Volatile private var blockIndex: Map<String, List<Rule>> = emptyMap()
     @Volatile private var allowIndex: Map<String, List<Rule>> = emptyMap()
     @Volatile private var genericSelectors: List<String> = emptyList()
     @Volatile private var hostSelectors: Map<String, List<String>> = emptyMap()
+    @Volatile private var substringIndex: Map<String, List<SubstringRule>> = emptyMap()
+    @Volatile private var genericCss: String = ""
     @Volatile private var ruleTotal = 0
     @Volatile private var loaded = false
     @Volatile private var autoUpdateTried = false
@@ -137,6 +210,13 @@ internal object OrbitBrowserFilterEngine {
         "bidswitch.net", "contextweb.com", "lijit.com", "sovrn.com", "spotxchange.com", "springserve.com",
         "imasdk.googleapis.com", "pagead2.googlesyndication.com", "popmyads.com", "propellerclick.com",
         "admaven.com", "ad-maven.com", "adsco.re", "monetag.com", "galaksion.com", "richads.com",
+        // Video, pop-under and redirect ad networks common on streaming/download sites.
+        "realsrv.com", "tsyndicate.com", "trafficstars.com", "adspyglass.com", "plugrush.com",
+        "ero-advertising.com", "adnium.com", "bidvertiser.com", "yllix.com", "clickadilla.com",
+        "adxpansion.com", "trafficfactory.biz", "zergnet.com", "adblade.com", "lockerdome.com",
+        "vidoomy.com", "aniview.com", "primis.tech", "vdo.ai", "unrulymedia.com", "innovid.com",
+        "tremorhub.com", "adition.com", "doubleverify.com", "popunder.net", "popcash.com",
+        "adtelligent.com", "vidazoo.com", "connatix.com", "adhigh.net", "adzerk.net",
     )
     private val ignoredTypeOptions = setOf(
         "script", "image", "stylesheet", "css", "subdocument", "frame", "xmlhttprequest", "xhr", "media",
@@ -146,8 +226,14 @@ internal object OrbitBrowserFilterEngine {
     private val filterUrls = listOf(
         "https://easylist.to/easylist/easylist.txt",
         "https://easylist.to/easylist/easyprivacy.txt",
+        // Peter Lowe's ad/tracking server list (small, host-only, AdBlock Plus format).
+        "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=0&mimetype=plaintext",
     )
-    private const val MAX_FILTER_LINES = 220_000
+    /** Bump when [filterUrls] changes so stored lists refresh with the new sources. */
+    private const val FILTER_SOURCES_VERSION = "3"
+    private const val MAX_FILTER_LINES = 300_000
+    private const val MAX_GENERIC_SELECTORS = 1_500
+    private const val MAX_SUBSTRING_RULES = 8_000
     private const val AUTO_UPDATE_AGE_MS = 4L * 24 * 60 * 60 * 1000
 
     /** Loads the stored (or bundled) lists. Safe to call repeatedly; parses once. */
@@ -177,13 +263,19 @@ internal object OrbitBrowserFilterEngine {
         if (autoUpdateTried) return
         autoUpdateTried = true
         val stored = File(context.filesDir, "orbit-filters.txt")
-        val stale = !stored.isFile || System.currentTimeMillis() - stored.lastModified() > AUTO_UPDATE_AGE_MS
+        val version = runCatching { File(context.filesDir, "orbit-filters.version").readText().trim() }.getOrNull()
+        val stale = !stored.isFile || version != FILTER_SOURCES_VERSION ||
+            System.currentTimeMillis() - stored.lastModified() > AUTO_UPDATE_AGE_MS
         if (stale) update(context)
     }
 
     fun ruleCount(): Int = ruleTotal
 
-    fun shouldBlock(uri: Uri, enabled: Boolean, pageHost: String? = null): Boolean {
+    /**
+     * [mainFrame] is true for page navigations: those only use host rules, while
+     * sub-resources (scripts, frames, images, XHR, media) also use URL-fragment rules.
+     */
+    fun shouldBlock(uri: Uri, enabled: Boolean, pageHost: String? = null, mainFrame: Boolean = true): Boolean {
         if (!enabled) return false
         val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
         val blocks = blockIndex
@@ -206,6 +298,9 @@ internal object OrbitBrowserFilterEngine {
             val dot = suffix.indexOf('.')
             suffix = if (dot < 0) null else suffix.substring(dot + 1)
         }
+        if (!blocked && !mainFrame) {
+            blocked = matchesSubstringRule(uri.toString(), host, pageHost)
+        }
         if (!blocked) return false
         val allows = allowIndex
         val requestPath = path ?: requestPath(uri)
@@ -221,6 +316,29 @@ internal object OrbitBrowserFilterEngine {
             suffix = if (dot < 0) null else suffix.substring(dot + 1)
         }
         return true
+    }
+
+    private fun matchesSubstringRule(url: String, host: String, pageHost: String?): Boolean {
+        val index = substringIndex
+        if (index.isEmpty()) return false
+        val value = url.take(2_048).lowercase()
+        var thirdParty: Boolean? = null
+        for (position in 0..value.length - 3) {
+            val candidates = index[value.substring(position, position + 3)] ?: continue
+            for (rule in candidates) {
+                if (!value.startsWith(rule.pattern, position)) continue
+                if (rule.separatorEnd) {
+                    val next = position + rule.pattern.length
+                    if (next < value.length) {
+                        val c = value[next]
+                        if (c.isLetterOrDigit() || c == '_' || c == '-' || c == '.' || c == '%') continue
+                    }
+                }
+                if (rule.thirdPartyOnly && !(thirdParty ?: isThirdParty(host, pageHost).also { thirdParty = it })) continue
+                return true
+            }
+        }
+        return false
     }
 
     private fun requestPath(uri: Uri): String = (uri.encodedPath ?: "/") + (uri.encodedQuery?.let { "?$it" } ?: "")
@@ -242,11 +360,12 @@ internal object OrbitBrowserFilterEngine {
     fun cosmeticCss(host: String?, enabled: Boolean): String {
         if (!enabled) return ""
         val data = hostSelectors
-        val selectors = (genericSelectors + generateSequence(host?.lowercase()?.removePrefix("www.")) { value ->
+        val hostCss = generateSequence(host?.lowercase()?.removePrefix("www.")) { value ->
             val dot = value.indexOf('.')
             if (dot < 0) null else value.substring(dot + 1)
-        }.flatMap { data[it].orEmpty().asSequence() }).distinct().take(800)
-        return selectors.joinToString("\n") { "$it{display:none!important}" }.take(100_000)
+        }.flatMap { data[it].orEmpty().asSequence() }.distinct().take(600)
+            .joinToString("\n") { "$it{display:none!important}" }
+        return (genericCss + "\n" + hostCss).take(160_000)
     }
 
     /** Downloads trusted HTTPS lists with strict byte/time caps, and atomically replaces stored rules. */
@@ -272,8 +391,8 @@ internal object OrbitBrowserFilterEngine {
                             if (count < 0) break
                             total += count
                             combined += count
-                            require(total <= 6_000_000) { "Filter list too large" }
-                            require(combined <= 10_000_000) { "Combined lists too large" }
+                            require(total <= 8_000_000) { "Filter list too large" }
+                            require(combined <= 16_000_000) { "Combined lists too large" }
                             writer.write(buffer, 0, count)
                         }
                         writer.write("\n")
@@ -284,6 +403,7 @@ internal object OrbitBrowserFilterEngine {
             }
         }
         check(temporary.renameTo(file)) { "Unable to install updated filters" }
+        runCatching { File(context.filesDir, "orbit-filters.version").writeText(FILTER_SOURCES_VERSION) }
         synchronized(loadLock) { reload(context) }
         true
     }.getOrDefault(false)
@@ -295,6 +415,8 @@ internal object OrbitBrowserFilterEngine {
         var allowCount = 0
         val generic = ArrayList<String>()
         val perHost = LinkedHashMap<String, MutableList<String>>()
+        val substrings = HashMap<String, MutableList<SubstringRule>>()
+        var substringCount = 0
         for (raw in lines) {
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith('!') || line.startsWith('[')) continue
@@ -304,7 +426,7 @@ internal object OrbitBrowserFilterEngine {
                 val selector = line.substring(cosmetic + 2)
                 if (!safeSelector.matches(selector)) continue
                 if (hostList.isBlank()) {
-                    if (generic.size < 300) generic.add(selector)
+                    if (generic.size < MAX_GENERIC_SELECTORS) generic.add(selector)
                 } else {
                     hostList.split(',').filter { it.isNotBlank() && !it.startsWith('~') }.take(20).forEach { host ->
                         val cleanHost = host.lowercase().removePrefix("www.")
@@ -335,7 +457,17 @@ internal object OrbitBrowserFilterEngine {
                 ruleBody = ruleBody.substring(0, dollar)
             }
             if (ruleBody.contains('*') || ruleBody.contains(' ')) continue
-            if (!ruleBody.startsWith("||")) continue
+            if (!ruleBody.startsWith("||")) {
+                // Generic URL fragments ("/adserver/", "-ad-banner."); anchored or regex rules are skipped.
+                if (exception || substringCount >= MAX_SUBSTRING_RULES) continue
+                if (ruleBody.startsWith('|') || (ruleBody.startsWith('/') && ruleBody.endsWith('/') && ruleBody.length > 2)) continue
+                val separatorEnd = ruleBody.endsWith('^')
+                val pattern = ruleBody.trimEnd('^').lowercase()
+                if (pattern.length < 5 || pattern.length > 200 || pattern.contains('^') || pattern.contains('|')) continue
+                substrings.getOrPut(pattern.substring(0, 3)) { ArrayList(1) }.add(SubstringRule(pattern, separatorEnd, thirdPartyOnly))
+                substringCount++
+                continue
+            }
             val remainder = ruleBody.drop(2)
             val hostEnd = remainder.indexOfFirst { !(it.isLetterOrDigit() || it == '.' || it == '-') }.let { if (it < 0) remainder.length else it }
             val host = remainder.take(hostEnd).lowercase().removePrefix("www.").trimEnd('.')
@@ -356,8 +488,10 @@ internal object OrbitBrowserFilterEngine {
         blockIndex = blocks
         allowIndex = allows
         genericSelectors = generic.toList()
+        genericCss = generic.distinct().joinToString("\n") { "$it{display:none!important}" }.take(120_000)
         hostSelectors = perHost.mapValues { it.value.toList() }
-        ruleTotal = blockCount + allowCount + generic.size + perHost.values.sumOf { it.size }
+        substringIndex = substrings
+        ruleTotal = blockCount + allowCount + substringCount + generic.size + perHost.values.sumOf { it.size }
     }
 }
 
