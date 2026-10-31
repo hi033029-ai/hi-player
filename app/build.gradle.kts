@@ -32,8 +32,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 71
-    versionName = "1.0.70"
+    versionCode = 72
+    versionName = "1.0.71"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
