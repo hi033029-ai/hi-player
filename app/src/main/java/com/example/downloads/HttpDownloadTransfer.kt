@@ -43,23 +43,23 @@ internal class HttpDownloadTransfer {
             checkActive()
             activeCall.execute().use { response ->
                 if (response.code in setOf(301, 302, 303, 307, 308)) {
-                    if (++redirects > 10) throw DownloadHttpException("Too many redirects", false)
+                    if (++redirects > 10) throw DownloadHttpException("This link keeps redirecting. Reopen the website and try a fresh download link.", false)
                     val next = response.header("Location")?.let { current.resolve(it) }
-                        ?: throw DownloadHttpException("Invalid download redirect", false)
-                    if (current.isHttps && !next.isHttps) throw DownloadHttpException("Insecure download redirect blocked", false)
+                        ?: throw DownloadHttpException("This download link is unavailable. Reopen the website and try a fresh link.", false)
+                    if (current.isHttps && !next.isHttps) throw DownloadHttpException("This link isn't secure. Use a trusted secure download link.", false)
                     current = next
                 } else {
                     // A changed resource or a server ignoring Range must restart, never append.
                     if (response.code == 416 && offset > 0) {
                         RandomAccessFile(file, "rw").use { it.setLength(0) }
                         offset = 0
-                        if (++redirects > 10) throw DownloadHttpException("Invalid server range response", false)
+                        if (++redirects > 10) throw DownloadHttpException("This download couldn't resume. Cancel it and start again from the website.", false)
                     } else {
                         if (!response.isSuccessful) {
                             val message = when (response.code) {
                                 401, 403 -> "Access denied. Reopen the website to refresh the download link."
-                                404, 410 -> "The download link has expired or the file was removed."
-                                else -> "Server returned HTTP ${response.code}"
+                                404, 410 -> "This file is no longer available at this link. Reopen the website and try a fresh link."
+                                else -> "The download service is unavailable. Wait a moment and tap Retry."
                             }
                             throw DownloadHttpException(message, response.code == 408 || response.code == 429 || response.code >= 500)
                         }
@@ -67,8 +67,8 @@ internal class HttpDownloadTransfer {
                         var total = body.contentLength().coerceAtLeast(0)
                         if (response.code == 206) {
                             val range = parseContentRange(response.header("Content-Range"))
-                                ?: throw DownloadHttpException("Invalid partial response", false)
-                            if (range.first != offset) throw DownloadHttpException("Server returned the wrong file range", false)
+                                ?: throw DownloadHttpException("This download couldn't resume. Cancel it and start again from the website.", false)
+                            if (range.first != offset) throw DownloadHttpException("This download couldn't resume. Cancel it and start again from the website.", false)
                             val newTag = response.header("ETag")
                             if (offset > 0 && !etag.isNullOrBlank() && newTag != null && etag != newTag) {
                                 throw DownloadHttpException("The file changed. Cancel and download it again.", false)

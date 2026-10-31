@@ -198,7 +198,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material3.CircularProgressIndicator
 import java.util.concurrent.CopyOnWriteArrayList
 
 private data class OrbitBrowserTab(
@@ -1392,8 +1391,25 @@ fun HiBrowserScreen(
                                     if (!request.isForMainFrame) return
                                     redirectSources.remove(tabId)
                                     if (activeTabId == tabId) pendingFirstPaint = false
-                                    if (activeTabId == tabId && hiBrowserIsNetworkError(error.errorCode, error.description?.toString().orEmpty())) {
+                                    if (activeTabId == tabId) {
                                         pageError = HiBrowserPageError(tabId, request.url.toString(), offline = !networkOnline)
+                                        loadingProgress = 100
+                                    }
+                                }
+                                override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                                    if (request.isForMainFrame && activeTabId == tabId && response.statusCode >= 400) {
+                                        android.util.Log.w("HiBrowser", "Page request failed (${response.statusCode})")
+                                        pendingFirstPaint = false
+                                        pageError = HiBrowserPageError(tabId, request.url.toString(), offline = false)
+                                        loadingProgress = 100
+                                    }
+                                }
+                                override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                                    handler.cancel() // Never bypass certificate validation to make an error disappear.
+                                    // A broken third-party subresource must not replace an otherwise valid page.
+                                    if (activeTabId == tabId && error.url == view.url) {
+                                        pendingFirstPaint = false
+                                        pageError = HiBrowserPageError(tabId, view.url.orEmpty(), offline = false)
                                         loadingProgress = 100
                                     }
                                 }
@@ -1716,7 +1732,10 @@ fun HiBrowserScreen(
             ) },
             confirmButton = { TextButton(onClick = {
                 pendingSecureSite = null
-                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure { Toast.makeText(context, it.message, Toast.LENGTH_LONG).show() }
+                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure {
+                    Toast.makeText(context, com.example.ui.feedback.UserFacingErrors.report("website_sign_in", it,
+                        "Couldn't open secure sign-in. Try again or use your device browser."), Toast.LENGTH_LONG).show()
+                }
             }) { Text("Open secure tab") } },
             dismissButton = { TextButton(onClick = { pendingSecureSite = null }) { Text("Stay in Hi Browser") } },
         )
@@ -2336,13 +2355,6 @@ private fun HiBrowserLoadingPage(
 ) {
     val palette = LocalHiPalette.current
     val host = hiBrowserDisplayAddress(url).ifBlank { "page" }
-    val shimmer = rememberInfiniteTransition(label = "browser-loading")
-    val pulse by shimmer.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
-        label = "browser-loading-pulse",
-    )
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -2356,25 +2368,10 @@ private fun HiBrowserLoadingPage(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(24.dp))
-        CircularProgressIndicator(
-            color = palette.primary,
-            strokeWidth = 3.dp,
-            modifier = Modifier.size(44.dp),
-        )
+        LinearProgressIndicator(color = palette.primary, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
         Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(28.dp))
-        // Page-shaped placeholder so the screen does not look frozen.
-        listOf(1f, 0.92f, 0.75f, 0.85f, 0.6f).forEachIndexed { index, width ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(width)
-                    .height(if (index == 0) 120.dp else 14.dp)
-                    .clip(RoundedCornerShape(if (index == 0) 14.dp else 7.dp))
-                    .background(palette.surfaceBorder.copy(alpha = pulse * 0.6f)),
-            )
-            Spacer(Modifier.height(12.dp))
-        }
+        TextButton(onClick = onStop) { Text("Stop loading") }
         if (slow || offline) {
             Spacer(Modifier.height(16.dp))
             Text(
@@ -2392,7 +2389,7 @@ private fun HiBrowserLoadingPage(
     }
 }
 
-/** Replaces WebView's built-in error page when a page fails because of the network. */
+/** Clear recovery for network, HTTP and certificate failures; no raw WebView errors. */
 @Composable
 private fun HiBrowserErrorPage(
     url: String,
@@ -2433,7 +2430,7 @@ private fun HiBrowserErrorPage(
         Spacer(Modifier.height(8.dp))
         Text(
             if (offline) "Check Wi-Fi or mobile data. The page reloads by itself when you're back online."
-            else "${hiBrowserDisplayAddress(url)} took too long to respond or couldn't be found.",
+            else "This page is unavailable or couldn't be opened securely. Try again, check the address, or return Home.",
             color = palette.textSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,

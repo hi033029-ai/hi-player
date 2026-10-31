@@ -168,7 +168,6 @@ class MainActivity : FragmentActivity() {
                 var streamUrl by remember { mutableStateOf("") }
                 var streamUrlError by remember { mutableStateOf<String?>(null) }
                 var isResolvingStreamUrl by remember { mutableStateOf(false) }
-                var completeFirstLaunchAfterPermission by remember { mutableStateOf(false) }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val scope = rememberCoroutineScope()
@@ -265,28 +264,13 @@ class MainActivity : FragmentActivity() {
                             musicViewModel.loadAudioTracks()
                         },
                         onSkip = {
-                            libraryViewModel.setThemeMode(com.example.data.AppThemeMode.CYAN_NEON_DARK)
-                            libraryViewModel.setUiTextSize(14)
-                            completeFirstLaunchAfterPermission = true
+                            libraryViewModel.setFirstLaunchCompleted()
                             isShowingSplash = false
                             libraryViewModel.refreshVideos()
                             musicViewModel.loadAudioTracks()
                         }
                     )
                 } else {
-                    // Dynamic Permission Request on Launch (Only prompt dialog on first launch)
-                    RequestPermissionsOnLaunch(
-                        isFirstLaunch = settings.isFirstLaunch || completeFirstLaunchAfterPermission,
-                        onGranted = {
-                            if (completeFirstLaunchAfterPermission) {
-                                libraryViewModel.setFirstLaunchCompleted()
-                                completeFirstLaunchAfterPermission = false
-                            }
-                            libraryViewModel.refreshVideos()
-                            musicViewModel.loadAudioTracks()
-                        }
-                    )
-
                     // Handle system back press
                     androidx.activity.compose.BackHandler(enabled = currentScreen != AppScreen.Main && !isPip) {
                         if (currentScreen == AppScreen.Player) {
@@ -842,48 +826,5 @@ class MainActivity : FragmentActivity() {
         // activity, which triggers onStop() above and pauses playback there
         // if the user hasn't opted into background audio. Nothing further
         // needed here beyond keeping the mode flag in sync.
-    }
-}
-
-@Composable
-fun RequestPermissionsOnLaunch(
-    isFirstLaunch: Boolean = false,
-    onGranted: () -> Unit
-) {
-    val context = LocalContext.current
-
-    val permissionsToRequest = remember {
-        val list = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.READ_MEDIA_VIDEO)
-            if (Build.VERSION.SDK_INT >= 34) list.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-            list.add(Manifest.permission.READ_MEDIA_AUDIO)
-            list.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        list.toTypedArray()
-    }
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val anyGranted = permissions.values.any { it }
-        if (anyGranted) {
-            onGranted()
-        } else {
-            onGranted() // Proceed smoothly to main UI even if permissions rejected
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val hasPermissions = permissionsToRequest.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        if (!hasPermissions && isFirstLaunch) {
-            launcher.launch(permissionsToRequest)
-        } else {
-            onGranted()
-        }
     }
 }

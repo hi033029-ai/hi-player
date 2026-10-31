@@ -68,7 +68,9 @@ internal fun GoogleDriveBrowserSheet(onDismiss: () -> Unit, onPlay: (VideoItem) 
             state.message?.let { Text(it, color = palette.textSecondary, modifier = Modifier.padding(vertical = 8.dp)) }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = palette.primary)
             if (state.connected && !state.busy && state.files.isEmpty() && state.message == null) Text("No video or music files in this folder.", color = palette.textSecondary, modifier = Modifier.padding(vertical = 16.dp))
-            LazyColumn(Modifier.weight(1f)) {
+            if (state.busy && state.connected && state.files.isEmpty()) {
+                ContentSkeleton(label = "Loading Drive files…", modifier = Modifier.weight(1f), layout = SkeletonLayout.FILES)
+            } else LazyColumn(Modifier.weight(1f)) {
                 items(state.files, key = { it.id }) { file ->
                     val enabled = !state.busy && (file.isFolder || file.isPlayable && file.canDownload)
                     Row(Modifier.fillMaxWidth().clickable(enabled = enabled) {

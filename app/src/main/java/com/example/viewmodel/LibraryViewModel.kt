@@ -587,7 +587,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos(silent: Boolean = false) {
-        if (!silent && _allVideos.value.isEmpty()) _isLoading.value = true
+        if (!silent) _isLoading.value = true
         refreshCoordinator.request()
     }
 

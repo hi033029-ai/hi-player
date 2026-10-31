@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -151,7 +152,7 @@ private fun SourceDivider() {
 @Composable
 private fun JellyfinSetupDialog(
     onDismiss: () -> Unit,
-    onConnect: (String, String, String, (Result<Unit>) -> Unit) -> Unit
+    onConnect: (String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
     var url by remember { mutableStateOf("") }
@@ -159,9 +160,12 @@ private fun JellyfinSetupDialog(
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val cancelSetup = { connectionJob?.cancel(); onDismiss() }
+    DisposableEffect(Unit) { onDispose { connectionJob?.cancel() } }
     AlertDialog(
         modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-        onDismissRequest = { if (!busy) onDismiss() },
+        onDismissRequest = cancelSetup,
         containerColor = palette.surface,
         title = { Text("Connect Jellyfin", color = palette.textPrimary) },
         text = {
@@ -181,23 +185,23 @@ private fun JellyfinSetupDialog(
                 onClick = {
                     busy = true
                     error = null
-                    onConnect(url, username, password) { result ->
+                    connectionJob = onConnect(url, username, password) { result ->
                         busy = false
-                        result.onSuccess { onDismiss() }.onFailure { error = it.message ?: "Could not connect to Jellyfin." }
+                        result.onSuccess { onDismiss() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("jellyfin_connect", it, "Couldn't connect. Check the server address, username and password, then try again.") }
                     }
                 },
                 enabled = !busy && url.isNotBlank() && username.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) { Text(if (busy) "Connecting…" else "Connect") }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = palette.textSecondary) } }
+        dismissButton = { TextButton(onClick = cancelSetup) { Text("Cancel", color = palette.textSecondary) } }
     )
 }
 
 @Composable
 private fun WebDavSetupDialog(
     onDismiss: () -> Unit,
-    onConnect: (String, String, String, String, (Result<Unit>) -> Unit) -> Unit
+    onConnect: (String, String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
     var url by remember { mutableStateOf("") }
@@ -206,9 +210,12 @@ private fun WebDavSetupDialog(
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val cancelSetup = { connectionJob?.cancel(); onDismiss() }
+    DisposableEffect(Unit) { onDispose { connectionJob?.cancel() } }
     AlertDialog(
         modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-        onDismissRequest = { if (!busy) onDismiss() },
+        onDismissRequest = cancelSetup,
         containerColor = palette.surface,
         title = { Text("Connect WebDAV", color = palette.textPrimary) },
         text = {
@@ -230,16 +237,16 @@ private fun WebDavSetupDialog(
                 onClick = {
                     busy = true
                     error = null
-                    onConnect(url, username, password, name) { result ->
+                    connectionJob = onConnect(url, username, password, name) { result ->
                         busy = false
-                        result.onSuccess { onDismiss() }.onFailure { error = it.message ?: "Could not connect to WebDAV." }
+                        result.onSuccess { onDismiss() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("webdav_connect", it, "Couldn't connect. Check the folder address and sign-in details, then try again.") }
                     }
                 },
                 enabled = !busy && url.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) { Text(if (busy) "Connecting…" else "Connect") }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel", color = palette.textSecondary) } }
+        dismissButton = { TextButton(onClick = cancelSetup) { Text("Cancel", color = palette.textSecondary) } }
     )
 }
 

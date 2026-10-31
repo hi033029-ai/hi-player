@@ -174,6 +174,7 @@ fun FileManagerScreen(
     val totalStorage by fileManagerViewModel.storageTotalBytes.collectAsStateWithLifecycle()
     val searchQuery by fileManagerViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by fileManagerViewModel.isLoading.collectAsStateWithLifecycle()
+    val isRenaming by fileManagerViewModel.isRenaming.collectAsStateWithLifecycle()
 
     val selectedArchive by fileManagerViewModel.selectedArchive.collectAsStateWithLifecycle()
     val activeArchiveEntries by fileManagerViewModel.activeArchiveEntries.collectAsStateWithLifecycle()
@@ -576,6 +577,11 @@ fun FileManagerScreen(
             }
         }
 
+        if (isRenaming) {
+            Text("Renaming file…", color = palette.textSecondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = palette.primary)
+        }
+
         // Main Content Area
 
         Box(modifier = Modifier.weight(1f)) {
@@ -590,9 +596,9 @@ fun FileManagerScreen(
                     onDeletePermanently = { showPermanentDeleteConfirm = true }
                 )
             } else if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = palette.primary)
-                }
+                com.example.ui.components.ContentSkeleton(
+                    label = "Loading files…", layout = com.example.ui.components.SkeletonLayout.FILES,
+                )
             } else if (isInsideFolder) {
                 // WHEN INSIDE A FOLDER: HIDE ARCHIVES & DOCUMENTS LAYOUTS AND SHOW PURE FOLDER CONTENTS!
                 FoldersBrowserView(
@@ -818,6 +824,7 @@ fun FileManagerScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !isRenaming,
                     onClick = {
                         fileManagerViewModel.renameItem(item, renameText.text)
                         renameTargetItem = null

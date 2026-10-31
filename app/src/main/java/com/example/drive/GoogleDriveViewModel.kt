@@ -68,39 +68,39 @@ internal class GoogleDriveViewModel(application: Application) : AndroidViewModel
         GoogleDriveSession.requireOwner(account)
         connectedOwner = account; pendingOwner = null; _state.value = DriveBrowserState(connected = true); load()
     }
-    fun search(query: String) { _state.value = _state.value.copy(query = query, nextPage = null); load() }
+    fun search(query: String) { _state.value = _state.value.copy(query = query, nextPage = null, files = emptyList()); load() }
     fun open(folder: DriveMediaFile) {
         if (!folder.isFolder) return
-        _state.value = _state.value.copy(path = _state.value.path + DriveFolder(folder.id, folder.name), query = "", nextPage = null); load()
+        _state.value = _state.value.copy(path = _state.value.path + DriveFolder(folder.id, folder.name), query = "", nextPage = null, files = emptyList()); load()
     }
     fun back() {
         val old = _state.value
         if (old.query.isNotBlank()) search("")
-        else if (old.path.size > 1) { _state.value = old.copy(path = old.path.dropLast(1), nextPage = null); load() }
+        else if (old.path.size > 1) { _state.value = old.copy(path = old.path.dropLast(1), nextPage = null, files = emptyList()); load() }
     }
     fun load(more: Boolean = false) {
         val account = connectedOwner ?: return
         val previous = _state.value
         loadJob?.cancel()
+        _state.value = previous.copy(busy = true, message = null)
         loadJob = viewModelScope.launch {
-            _state.value = previous.copy(busy = true, message = null)
             try {
                 val page = withContext(Dispatchers.IO) { GoogleDriveApi.list(getApplication(), account, previous.path.last().id, previous.query, if (more) previous.nextPage else null) }
                 GoogleDriveSession.requireOwner(account)
                 _state.value = _state.value.copy(busy = false, files = (if (more) previous.files + page.files else page.files).distinctBy { it.id }, nextPage = page.nextPage)
             } catch (c: CancellationException) { throw c
-            } catch (e: java.io.IOException) { _state.value = _state.value.copy(busy = false, message = e.message ?: "Drive is unavailable. Retry or reconnect.")
+            } catch (e: java.io.IOException) { _state.value = _state.value.copy(busy = false, message = com.example.ui.feedback.UserFacingErrors.report("drive_list", e, "Couldn't load Drive files. Check your connection, then tap Refresh or Reconnect."))
             } catch (_: Exception) { _state.value = _state.value.copy(busy = false, message = "Could not read Drive files. Retry or reconnect.") }
         }
     }
     fun preparePlayback(file: DriveMediaFile, ready: (DriveMediaFile) -> Unit) {
         val account = connectedOwner ?: return
         if (!file.isPlayable || !file.canDownload || _state.value.busy) return
+        _state.value = _state.value.copy(busy = true, message = "Preparing playback…")
         viewModelScope.launch {
-            _state.value = _state.value.copy(busy = true, message = null)
             try {
                 withContext(Dispatchers.IO) { GoogleDriveSession.token(getApplication(), account) }
-                GoogleDriveSession.requireOwner(account); _state.value = _state.value.copy(busy = false); ready(file)
+                GoogleDriveSession.requireOwner(account); _state.value = _state.value.copy(busy = false, message = null); ready(file)
             } catch (c: CancellationException) { throw c
             } catch (_: Exception) { _state.value = _state.value.copy(busy = false, message = "Drive permission needs attention. Reconnect Drive, then retry playback.") }
         }

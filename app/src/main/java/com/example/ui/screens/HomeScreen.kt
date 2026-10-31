@@ -721,8 +721,9 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { libraryViewModel.refreshVideos() }, modifier = Modifier.testTag("refresh_videos_button")) {
-                        Icon(Icons.Default.Refresh, "Refresh", tint = palette.textPrimary)
+                    IconButton(enabled = !isLoading, onClick = { libraryViewModel.refreshVideos() }, modifier = Modifier.testTag("refresh_videos_button")) {
+                        if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = palette.primary)
+                        else Icon(Icons.Default.Refresh, "Refresh", tint = palette.textPrimary)
                     }
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
@@ -769,12 +770,13 @@ fun HomeScreen(
                 }
             }
             if (isLoading && allVideos.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = palette.primary)
-                }
+                com.example.ui.components.ContentSkeleton(
+                    label = "Loading your library…",
+                    layout = if (viewMode == LibraryViewMode.GRADLE_GRID)
+                        com.example.ui.components.SkeletonLayout.MEDIA_GRID
+                    else com.example.ui.components.SkeletonLayout.MEDIA_LIST,
+                    gridMinSize = gridMinSize.dp,
+                )
             } else if (
                 navMode == LibraryNavMode.FOLDERS &&
                     selectedFolder == null &&

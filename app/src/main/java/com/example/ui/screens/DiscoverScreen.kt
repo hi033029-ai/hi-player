@@ -40,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -113,14 +114,17 @@ fun DiscoverScreen(
             )
             state.errorMessage?.let { message ->
                 DiscoverMessage(message = message, isError = true)
+                TextButton(enabled = !state.isLoading && !state.isLoadingHome, onClick = {
+                    if (state.query.isBlank()) discoverViewModel.loadHome() else discoverViewModel.searchTitles()
+                }) { Text("Try again") }
             }
             if (state.isLoading || state.isLoadingHome || state.isBrowsingGoogleDrive) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = palette.primary)
-                }
+                com.example.ui.components.ContentSkeleton(
+                    label = if (state.isBrowsingGoogleDrive) "Loading Drive files…" else "Loading titles…",
+                    modifier = Modifier.weight(1f),
+                    layout = if (state.isBrowsingGoogleDrive) com.example.ui.components.SkeletonLayout.FILES
+                        else com.example.ui.components.SkeletonLayout.POSTERS,
+                )
             } else if (state.googleDriveFiles.isNotEmpty() || state.googleDriveMessage != null) {
                 GoogleDriveFilesContent(
                     files = state.googleDriveFiles,

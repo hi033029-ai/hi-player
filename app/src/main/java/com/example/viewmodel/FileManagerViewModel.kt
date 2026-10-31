@@ -107,6 +107,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
+    private val _isRenaming = MutableStateFlow(false)
+    val isRenaming = _isRenaming.asStateFlow()
 
     private val _activeArchiveEntries = MutableStateFlow<List<ArchiveEntryInfo>?>(null)
     val activeArchiveEntries = _activeArchiveEntries.asStateFlow()
@@ -573,6 +575,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun renameItem(item: FileItem, requestedName: String) {
+        if (_isRenaming.value) return
         val newName = requestedName.trim()
         if (newName.isBlank() || newName == "." || newName == ".." || newName.contains('/') || newName.contains('\\')) {
             _deleteResultMessage.value = "Enter a valid file name"
@@ -580,6 +583,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         }
         if (newName == item.name) return
 
+        _isRenaming.value = true
         viewModelScope.launch(Dispatchers.IO) {
             val extension = item.file.extension
             val finalName = if (extension.isNotBlank() && !newName.endsWith(".$extension", ignoreCase = true)) {
@@ -595,11 +599,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _deleteResultMessage.value = if (renamed) {
                     "Renamed to $finalName"
                 } else {
-                    "Couldn't rename ${item.name}"
+                    "Couldn't rename this file. Check its name and storage access, then try again."
                 }
                 if (renamed) refreshCurrentDirectory(silent = true)
             }
-        }
+        }.invokeOnCompletion { _isRenaming.value = false }
     }
 
     init {
