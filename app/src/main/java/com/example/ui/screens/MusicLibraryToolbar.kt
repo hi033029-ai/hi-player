@@ -39,10 +39,9 @@ internal fun MusicLibraryToolbar(
     LaunchedEffect(selected) {
         categoryState.animateScrollToItem(categories.indexOf(selected).coerceAtLeast(0))
     }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
-        .clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated)
-        .padding(horizontal = 4.dp, vertical = 4.dp)) {
-        LazyRow(Modifier.fillMaxWidth().testTag("music_library_categories"), state = categoryState,
+    com.example.ui.components.LibraryToolbarRow(
+        categories = { categoryModifier ->
+        LazyRow(categoryModifier.testTag("music_library_categories"), state = categoryState,
             horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             categories.forEach { category ->
                 item(key = category) {
@@ -59,8 +58,8 @@ internal fun MusicLibraryToolbar(
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically) {
+        },
+        actions = {
         Box {
             IconButton(onClick = { viewMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
                 Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
@@ -84,6 +83,6 @@ internal fun MusicLibraryToolbar(
                 }
             }
         }
-        }
-    }
+        },
+    )
 }

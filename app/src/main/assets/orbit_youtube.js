@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Hi Browser YouTube Ad Skipper
 // @namespace    hi.browser
-// @version      2.0
-// @description  Removes YouTube ads before they load, hides ad slots, skips any ad that still plays
+// @version      3.0
+// @description  Best-effort ad response cleanup and event-driven skipping of recognized YouTube ads
 // @match        *://*.youtube.com/*
 // @run-at       document-start
 // @grant        none
@@ -134,77 +134,137 @@
     } catch (e) {}
   });
 
-  // ---- 2. Hide ad slots / banners
-  function addStyle(css) {
+  // ---- 2. Hide feed/banner slots, NOT the player controls that contain Skip.
+  // document-start may run before documentElement exists; retry on discovery.
+  var styleInstalled = false;
+  function ensureStyle() {
+    if (styleInstalled || !(document.head || document.documentElement)) return;
     try {
-      var s = document.createElement('style');
-      s.textContent = css;
-      (document.head || document.documentElement).appendChild(s);
+      var style = document.createElement('style');
+      style.textContent = '#masthead-ad,#player-ads,.ytp-ad-overlay-container,.ytp-ad-overlay-slot,' +
+        'ytd-ad-slot-renderer,ytd-in-feed-ad-layout-renderer,ytd-banner-promo-renderer,' +
+        'ytd-promoted-sparkles-web-renderer,ytd-promoted-video-renderer,ytd-display-ad-renderer,' +
+        'ytd-companion-slot-renderer,ytm-promoted-sparkles-web-renderer,' +
+        'ytm-promoted-sparkles-text-search-renderer,ytm-promoted-video-renderer,' +
+        'ytm-companion-slot,ytm-companion-ad-renderer,ad-slot-renderer,ytm-ad-slot-renderer' +
+        '{display:none!important}';
+      (document.head || document.documentElement).appendChild(style);
+      styleInstalled = true;
     } catch (e) {}
   }
-  addStyle(
-    '#masthead-ad,#player-ads,.video-ads,.ytp-ad-module,.ytp-ad-overlay-container,.ytp-ad-overlay-slot,ytd-ad-slot-renderer,' +
-    'ytd-in-feed-ad-layout-renderer,ytd-banner-promo-renderer,ytd-promoted-sparkles-web-renderer,' +
-    'ytd-promoted-video-renderer,ytd-display-ad-renderer,ytd-companion-slot-renderer,ytd-player-legacy-desktop-watch-ads-renderer,' +
-    'ytd-statement-banner-renderer,ytd-primetime-promo-renderer,ytm-promoted-sparkles-web-renderer,ytm-promoted-sparkles-text-search-renderer,' +
-    'ytm-promoted-video-renderer,ytm-companion-slot,ytm-companion-ad-renderer,ad-slot-renderer,ytm-ad-slot-renderer,' +
-    'ytd-enforcement-message-view-model,tp-yt-iron-overlay-backdrop.opened{display:none!important}');
-  addStyle('ytd-rich-item-renderer:has(ytd-ad-slot-renderer),ytm-rich-item-renderer:has(ad-slot-renderer),' +
-    'ytm-item-section-renderer:has(ad-slot-renderer),ytm-item-section-renderer:has(ytm-ad-slot-renderer){display:none!important}');
 
-  // ---- 3. Skip any ad that still gets through. Only the player's own class
-  // list is observed (not the whole page), so the feed scrolls smoothly.
-  var skipSelector = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,' +
-    '.ytp-ad-skip-button-container button,button[class*="skip-ad"],button[class*="ad-skip"]';
+  // ---- 3. React to player/ad-control changes immediately; a timer is only a
+  // safety net. No 1-second wait for a new Skip button or SPA-replaced player.
+  var PLAYER = '.html5-video-player,#movie_player';
+  var SKIP = '.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,' +
+    '.ytp-ad-skip-button-container button,.ytm-ad-skip-button-container button,' +
+    'button[class*="skip-ad"],button[class*="ad-skip"]';
   var player = null;
-  var observed = null;
   var adState = null;
-  var observer = null;
-  try { observer = new MutationObserver(function () { check(); }); } catch (e) {}
+  var queued = false;
+  var timer = null;
+  var playerObserver = null;
+  var discoveryObserver = null;
+  var lastSkip = null;
+  var lastSkipAt = 0;
 
-  function watch(p) {
-    if (!observer || observed === p) return;
-    try {
-      observer.disconnect();
-      observer.observe(p, { attributes: true, attributeFilter: ['class'] });
-      observed = p;
-    } catch (e) {}
+  function visible(element) {
+    try { return element && !element.disabled && element.getAttribute('aria-disabled') !== 'true' &&
+      element.getClientRects().length > 0; } catch (e) { return false; }
   }
-
+  function visibleSkip(p) {
+    var buttons = p.querySelectorAll(SKIP);
+    for (var i = 0; i < buttons.length; i++) if (visible(buttons[i])) return buttons[i];
+    return null;
+  }
+  function restoreVideo() {
+    if (!adState) return;
+    var state = adState;
+    adState = null;
+    try { state.video.muted = state.muted; } catch (e) {}
+    try { state.video.playbackRate = state.rate; } catch (e) {}
+    lastSkip = null;
+    lastSkipAt = 0;
+  }
+  function queueCheck() {
+    if (queued) return;
+    queued = true;
+    setTimeout(function () { queued = false; check(); }, 0);
+  }
+  function watch(p) {
+    if (playerObserver) playerObserver.disconnect();
+    if (!p || !playerObserver) return;
+    try { playerObserver.observe(p, {
+      attributes: true, attributeFilter: ['class', 'disabled', 'aria-disabled'],
+      childList: true, subtree: true
+    }); } catch (e) {}
+  }
+  function scheduleFallback() {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(check, adState ? 120 : (document.hidden ? 2000 : 750));
+  }
   function check() {
+    ensureStyle();
     if (!player || !player.isConnected) {
-      player = document.querySelector('.html5-video-player');
-      if (!player) return;
+      restoreVideo();
+      player = document.querySelector(PLAYER);
       watch(player);
     }
+    if (!player) { scheduleFallback(); return; }
     var p = player;
-    var v = p.querySelector('video');
-    var showing = p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting');
-    if (showing && v) {
-      var skip = p.querySelector(skipSelector) || document.querySelector(skipSelector);
-      if (skip) { try { skip.click(); } catch (e) {} }
-      if (!adState) adState = { muted: v.muted, rate: v.playbackRate || 1 };
-      v.muted = true;
-      try { v.playbackRate = 16; } catch (e) {}
-      if (isFinite(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.3) {
-        try { v.currentTime = v.duration - 0.1; } catch (e) {}
-      }
-    } else if (adState && v) {
-      v.muted = adState.muted;
-      try { v.playbackRate = adState.rate; } catch (e) {}
-      adState = null;
+    var video = p.querySelector('video');
+    if (adState && adState.video !== video) restoreVideo();
+    var skip = visibleSkip(p);
+    var showing = p.classList.contains('ad-showing') ||
+      p.classList.contains('ad-interrupting') || !!skip;
+    if (!showing || !video) {
+      restoreVideo();
+      scheduleFallback();
+      return;
     }
-    var close = p.querySelector('.ytp-ad-overlay-close-button');
-    if (close) { try { close.click(); } catch (e) {} }
-    var warn = document.querySelector('ytd-enforcement-message-view-model');
-    if (warn) {
-      warn.remove();
-      document.querySelectorAll('tp-yt-iron-overlay-backdrop').forEach(function (b) { b.remove(); });
-      if (v && v.paused) { try { v.play(); } catch (e) {} }
+    if (!adState) adState = { video: video, muted: video.muted, rate: video.playbackRate || 1 };
+    // Try the real available control first. Disabled/countdown controls are not
+    // treated as skippable, and repeated mutations cannot spam the same button.
+    var now = Date.now();
+    if (skip && (skip !== lastSkip || now - lastSkipAt >= 300)) {
+      lastSkip = skip;
+      lastSkipAt = now;
+      try { skip.click(); } catch (e) {}
+      // A click can synchronously switch to content while the old ad class
+      // lingers. Never seek/mute in the same turn after invoking Skip.
+      if (!(p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting')) &&
+          !visibleSkip(p)) restoreVideo();
+      scheduleFallback();
+      return;
     }
+    try { if (!video.muted) video.muted = true; } catch (e) {}
+    try { if (video.playbackRate < 15.9) video.playbackRate = 16; } catch (e) {}
+    // Only a recognized ad with a finite duration is seeked. Unknown/live
+    // durations wait for a real control/metadata rather than skipping content.
+    if (isFinite(video.duration) && video.duration > 0 && video.currentTime < video.duration - 0.3) {
+      try { video.currentTime = Math.max(0, video.duration - 0.05); } catch (e) {}
+    }
+    scheduleFallback();
   }
 
-  document.addEventListener('loadedmetadata', check, true);
-  document.addEventListener('playing', check, true);
-  setInterval(check, 1000);
+  try {
+    playerObserver = new MutationObserver(queueCheck);
+    discoveryObserver = new MutationObserver(function () {
+      // Cheap connectivity check once attached: do not scan the whole feed on
+      // every mutation. The player observer handles controls below its root.
+      if (!player || !player.isConnected || !styleInstalled) queueCheck();
+    });
+    discoveryObserver.observe(document, { childList: true, subtree: true });
+  } catch (e) {}
+  ['loadedmetadata', 'durationchange', 'playing', 'emptied'].forEach(function (name) {
+    document.addEventListener(name, function (event) {
+      if (event.target && event.target.tagName === 'VIDEO') queueCheck();
+    }, true);
+  });
+  ['DOMContentLoaded', 'yt-navigate-finish', 'yt-page-data-updated', 'visibilitychange'].forEach(function (name) {
+    document.addEventListener(name, queueCheck, true);
+  });
+  // Do not remove enforcement dialogs or force playback/reload on refusal:
+  // that can hide a real site problem and strand the user on a blocked page.
+  check();
 })();

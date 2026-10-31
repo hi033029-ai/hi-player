@@ -111,9 +111,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
@@ -150,7 +150,8 @@ import com.example.auth.GoogleAccountViewModel
 import com.example.ui.components.GoogleAccountCard
 import com.example.ui.components.GoogleAccountDialog
 import com.example.ui.components.GoogleAccountStatusRow
-import com.example.ui.components.BrowserPageSkeleton
+import com.example.ui.components.BrowserSiteSkeleton
+import com.example.ui.components.BrowserLoadingBar
 import com.example.data.AppThemeMode
 import com.example.ui.theme.HiPlayerTheme
 import com.example.ui.theme.getPaletteForTheme
@@ -1199,8 +1200,7 @@ fun HiBrowserScreen(
         if (pendingFirstPaint) {
             delay(6_000L)
             slowLoad = true
-            // Time passing is not a successful paint. Keep the skeleton and
-            // Stop/Retry available until actual content, error or cancellation.
+            // Elapsed time never means success: expose recovery without a normal loading title.
         }
     }
     DisposableEffect(Unit) {
@@ -1493,6 +1493,8 @@ fun HiBrowserScreen(
                                     applyOrbitTextZoom(view, store.textZoom)
                                     if (!HiBrowserDocumentScripts.isSupported() && tabs.firstOrNull { it.id == tabId }?.desktop == true)
                                         injectOrbitAsset(view, viewContext, "orbit_desktop_viewport.js")
+                                    if (!HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url))
+                                        injectOrbitAsset(view, viewContext, "orbit_youtube.js")
                                     if (activeTabId == tabId) pendingFirstPaint = false
                                     injectCosmeticCss(view, url)
                                 }
@@ -1626,7 +1628,7 @@ fun HiBrowserScreen(
             )
         } else if (!showStartPage && pendingFirstPaint && !isInPictureInPicture && !rendererGone) {
             HiBrowserLoadingPage(
-                url = currentUrl,
+                layout = BrowserLoadingPolicy.placeholder(currentUrl, activeTab?.desktop == true),
                 slow = slowLoad,
                 offline = !networkOnline,
                 onStop = {
@@ -1690,11 +1692,9 @@ fun HiBrowserScreen(
                 }
                 // Fixed-height slot so the bar's height never changes while pages load.
                 Box(modifier = Modifier.padding(horizontal = 30.dp).fillMaxWidth().height(2.dp)) {
-                    if (onPage && loadingProgress in 1..99) {
-                        LinearProgressIndicator(
-                            progress = { loadingProgress / 100f }, color = palette.primary, trackColor = palette.surfaceBorder.copy(alpha = 0.6f),
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(1.dp)),
-                        )
+                    if (onPage && !useSecureWebsite && visibleError == null &&
+                        (pendingFirstPaint || loadingProgress in 1..99)) {
+                        BrowserLoadingBar(modifier = Modifier.fillMaxSize())
                     }
                 }
                 if (addressFocused && activeTab?.privateTab != true) {
@@ -2547,10 +2547,10 @@ private fun formatBytes(value: Long): String = when {
     else -> "%.2f GB".format(value / (1_024.0 * 1_024.0 * 1_024.0))
 }
 
-/** Neutral skeleton until real main-frame content paints; never a guessed site preview. */
+/** Only known route structures get placeholders; arbitrary pages retain their own rendering. */
 @Composable
 private fun HiBrowserLoadingPage(
-    url: String,
+    layout: BrowserPlaceholderLayout,
     slow: Boolean,
     offline: Boolean,
     onStop: () -> Unit,
@@ -2559,37 +2559,26 @@ private fun HiBrowserLoadingPage(
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val palette = LocalHiPalette.current
-    val host = hiBrowserDisplayAddress(url).ifBlank { "page" }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(palette.background)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            )
-            .padding(bottom = bottomInset),
-    ) {
-        // Real loading status plus generic content-shaped placeholders. No blank
-        // full-screen progress bar and no invented website content/percentages.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp,
-                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            TextButton(onClick = onStop) { Text("Stop loading") }
+    // No universal skeleton, fake site title, or full-screen click interceptor.
+    if (layout != BrowserPlaceholderLayout.NONE) {
+        Box(modifier.fillMaxSize().background(palette.background).padding(bottom = bottomInset)) {
+            BrowserSiteSkeleton(layout)
         }
-        if (slow || offline) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    if (offline) "You're offline. Check your connection and retry."
-                    else "This page is taking longer than usual.",
-                    color = palette.textPrimary,
-                )
-                TextButton(onClick = onRetry) { Text("Retry") }
+    }
+    // Exceptional recovery is separate from normal loading. Stop remains in the
+    // address bar at all times; this panel never covers the full web page.
+    if (slow || offline) {
+        Surface(modifier.fillMaxWidth().padding(16.dp), color = palette.surfaceElevated,
+            shape = RoundedCornerShape(12.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(if (offline) "You're offline. Check your connection and retry."
+                    else "This page is taking longer than usual.", color = palette.textPrimary)
+                Row {
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                    TextButton(onClick = onStop) { Text("Stop") }
+                }
             }
         }
-        BrowserPageSkeleton(label = "Page content is loading", modifier = Modifier.weight(1f))
     }
 }
 

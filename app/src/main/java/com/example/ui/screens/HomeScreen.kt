@@ -463,11 +463,12 @@ private fun VideoLibraryPage(
                     Triple(LibraryNavMode.TREE_FOLDERS, "Tree Folders (${folders.size})", Icons.Default.FolderOpen),
                     Triple(LibraryNavMode.FAVORITES, "Favorites ($favoriteCount)", Icons.Default.Star)
                 )
-                Column(Modifier.fillMaxWidth().background(palette.surface)) {
+                com.example.ui.components.LibraryToolbarRow(
+                    categories = { categoryModifier ->
                     LazyRow(
                         state = libraryModeRowState,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        modifier = categoryModifier,
+                        contentPadding = PaddingValues(end = 4.dp, top = 4.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         userScrollEnabled = true
@@ -493,14 +494,8 @@ private fun VideoLibraryPage(
                             }
                         }
                     }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(palette.surface)
-                            .padding(end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
+                    },
+                    actions = {
                         IconButton(onClick = { libraryViewModel.toggleViewMode() }, modifier = Modifier.size(48.dp)) {
                             Icon(if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList, "Toggle view", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
                         }
@@ -514,8 +509,8 @@ private fun VideoLibraryPage(
                                 }
                             }
                         }
-                    }
-                }
+                    },
+                )
             }
 
             if (selectedFolder != null || navMode != LibraryNavMode.FOLDERS || selectionMode) {
