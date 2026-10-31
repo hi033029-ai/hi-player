@@ -12,6 +12,7 @@
 - Use Google's official Credential Manager flow and Firebase Authentication validation, not a fake account picker or decoded JWT as proof of authentication.
 - Never collect Google passwords or copy tokens/cookies between app authentication and WebView/browser sessions.
 - Google website authentication uses a supported Custom Tab. Website sessions remain separate from the Hi Player account.
+- For a site explicitly sent to the device browser, retain its HTTPS-origin routing choice and supported browser provider, not its tokens/cookies or an assumed login result. Keep authenticated browsing there; do not silently fall back to a logged-out WebView. Private routing choices stay in memory. Script-only redirects must not auto-launch external browser activities.
 - Missing OAuth configuration must be shown as setup-required; never fabricate OAuth client identifiers or claim live sign-in is working before configured and tested.
 
 ## Themes

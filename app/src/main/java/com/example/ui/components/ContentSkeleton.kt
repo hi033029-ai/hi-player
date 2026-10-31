@@ -74,3 +74,45 @@ fun ContentSkeleton(
 private fun SkeletonBlock(modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(6.dp)).background(LocalHiPalette.current.surfaceBorder.copy(alpha = .55f)))
 }
+
+/** Neutral webpage placeholder, not a fabricated preview of a third-party site. */
+@Composable
+fun BrowserPageSkeleton(label: String, modifier: Modifier = Modifier) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize().clearAndSetSemantics {
+            contentDescription = label
+            liveRegion = LiveRegionMode.Polite
+        },
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        userScrollEnabled = false,
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                SkeletonBlock(Modifier.size(40.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SkeletonBlock(Modifier.fillMaxWidth(.6f).height(14.dp))
+                    SkeletonBlock(Modifier.fillMaxWidth(.35f).height(10.dp))
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SkeletonBlock(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                SkeletonBlock(Modifier.fillMaxWidth(.85f).height(16.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(.6f).height(12.dp))
+            }
+        }
+        items(5) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                SkeletonBlock(Modifier.size(88.dp, 52.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SkeletonBlock(Modifier.fillMaxWidth(.9f).height(14.dp))
+                    SkeletonBlock(Modifier.fillMaxWidth(.55f).height(10.dp))
+                }
+            }
+        }
+    }
+}

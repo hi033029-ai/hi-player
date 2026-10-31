@@ -12,8 +12,9 @@ This is a source update, not a claim that every screen has passed device QA.
   accessibility services instead of announcing decorative bars as real items.
 - Existing library content remains visible while refreshing. Its refresh action
   changes to a small busy indicator and rejects duplicate taps.
-- Websites have unknown layouts, so the browser retains truthful progress and
-  an always-visible Stop loading action, not an invented page layout.
+- Browser main-frame loading uses a neutral content-shaped skeleton until real
+  content paints, not a blank progress-only screen. It is explicitly a placeholder,
+  not a claim to know a third-party site's layout. Stop/Retry remain available.
 - Playback buffering, tiny action-level indicators and actual byte progress are
   not blindly replaced by skeletons.
 
@@ -175,3 +176,96 @@ client hints and viewport-sensitive sites, overlay hairline, and app account
 sign-in/cancel/sign-out/restart consistency across Settings/Browser/Player.
 Verify Google OAuth setup and real sign-in on an approved signed build, and
 confirm that a secure website tab remains a distinct session.
+
+
+## Header alignment follow-up after 1.0.72
+
+- Removed the automatic narrow/large-font two-row header. Logo, title, refresh,
+  optional search/cast/recycle-bin and account actions now share one vertically
+  centered row. The icon geometry is unchanged: its 48-unit artwork is already
+  centered in its square; this corrects its position in the header as a whole.
+- Fixed-size 48dp action targets stay visible; the decorative brand title takes
+  only remaining width and may ellipsize rather than push controls below it.
+  App/OS text scaling remains enabled and the row may grow in height.
+- Removed the extra in-content Back/Settings row per the annotated screenshot.
+  Settings retains its BackHandler and actual visited-tab history.
+- Source review only; no Gradle, compile, tests, APK or main merge for this
+  follow-up. Next approved device check: Settings and all header callers at
+  320/360/393/600dp, 12/14/24sp app text and large OS fonts, with/without Search,
+  account signed in/out, refresh busy, Files recycle-bin action, dark/light,
+  landscape, and system Back to the actual prior destination.
+
+
+## Webpage skeleton and website-account clarification
+
+- Replaced the browser's blank, progress-only loading overlay with static page
+  skeleton blocks: header placeholder, a large content placeholder, text bars
+  and thumbnail/text rows. There is no shimmer, fake loaded content, fabricated
+  percentage or pretend website preview. Theme-aware placeholders are one
+  non-interactive accessibility group; Stop/Retry are separate live controls.
+- Trigger the skeleton on ordinary main-frame navigation/reload as well as new
+  tabs. Clear it on real visible content, completion/error or explicit Stop.
+  Removed the timer that revealed a potentially blank WebView after 20 seconds;
+  slow-load status and Retry remain until a real outcome. Bottom-bar Stop also
+  clears the skeleton.
+- Website-sign-in requests now show the current Firebase name, email/photo and
+  an explicit 'Signed in to Hi Player' label. A signed-out app can open its
+  official app sign-in flow. The shorter prompt no longer implies that app
+  authorization signs in YouTube or another embedded website. Private-mode
+  handoff warnings and explicit Continue/Cancel remain.
+- This DOES NOT sign embedded YouTube in. Firebase app authentication cannot
+  create a Google website session. Google website sign-in remains in supported
+  Custom Tabs, whose account chooser/sessions are controlled by that browser.
+  No passwords, app tokens or browser cookies are imported/exported to make
+  the app appear signed in on a website; no Google client-ID/UA spoofing.
+- Source inspection only; no Gradle/compiler/tests/APK/main merge for this
+  follow-up. Next approved device review: fresh/link/reload/redirect/Back/tab
+  navigations, paint vs slow/offline/error/Stop/Retry, narrow/landscape and large
+  fonts, light/dark skeletons, auth popup/direct/menu routes, actual app profile
+  updates/sign-out, private-tab warning, provider absence and real browser
+  website sign-in. Embedded-vs-external session separation must remain visible.
+
+## Approved secure website session flow (1.0.73 / 74)
+
+- On explicit Continue, launch a normal non-ephemeral Custom Tab and retain the
+  selected supported browser provider for later visits. If that provider is no
+  longer available, a visible message warns that another browser may require
+  sign-in again. Opening a tab is not treated as authentication success.
+- Remember a website-browser routing preference for that exact HTTPS origin,
+  not a Google identity, token, cookie or authentication result. Scheme/host/
+  effective port define the origin; paths, query strings and fragments are not
+  persisted in this preference. No wildcard domain/subdomain permission.
+- A sign-in site's content and account chooser stay in its owning browser. When
+  returning to Hi Player, show a clear Continue website surface instead of the
+  old logged-out WebView. Later address/history/bookmark/external-link visits
+  to remembered origins route back to the same provider. A plain restore of the
+  Hi Player screen does not relaunch an external activity on its own.
+- Use Hi Browser instead removes this site's routing choice and opens a separate
+  embedded page, with an explicit warning that it may be signed out. Device-
+  browser filters, website accounts and media controls remain separate from
+  embedded Hi Browser features. Website login persistence is controlled by the
+  provider/site and may expire or be revoked; it is not guaranteed forever.
+- Private-site route choices remain in memory only and are discarded when no
+  private tabs remain. The explicit handoff warning says that the device browser
+  may use its saved accounts and is not Hi Browser private mode.
+- Clearing embedded cookies/site data also resets these routing preferences;
+  it does not clear another browser's sign-ins. Clear-data UI says so before
+  confirming, rather than promising to sign users out of external sites.
+- New SecureWebsitePolicyTest covers HTTPS origin normalization, dropping
+  paths/query/fragments, rejecting credential-bearing/unsafe URLs, exact host/
+  subdomain separation and non-default ports. These tests are included in the
+  approved build's targeted CI regression selection.
+
+Device test after installing: choose a website's Sign in with Google, Continue,
+choose/approve the actual Google account in the browser, verify the website's
+own signed-in UI, browse there, close/reopen through Hi Player and verify that
+browser session is reused. Also check cancellation/provider absence, switch
+back to embedded mode, private warnings, explicit sign-out/session expiry,
+clear data, and that no account-logged-in status is invented by Hi Player.
+
+Build preparation: Khan explicitly approved pushing/merging/building this update.
+Version is 1.0.73 (74); the committed debug signing key is unchanged. Local
+`:app:compileDebugKotlin -PHI_PLAYER_DRIVE_ENABLED=true` passed after fixing a
+missing OutlinedButton import and reviewing released-WebView callback guards.
+Full GitHub APK packaging and targeted regression outcomes are checked separately;
+local compilation does not establish successful real website sign-in or device UX.

@@ -110,3 +110,27 @@ internal fun GoogleAccountDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
 }
+
+/** App identity only: never implies the displayed website has authenticated. */
+@Composable
+internal fun GoogleAccountStatusRow(
+    profile: com.example.auth.GoogleAccountProfile?,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalHiPalette.current
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        val photo = profile?.photoUrl
+        if (photo != null) AsyncImage(photo, "Hi Player account photo", Modifier.size(40.dp).clip(CircleShape))
+        else Icon(Icons.Default.AccountCircle, null, Modifier.size(40.dp), tint = palette.textPrimary)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(if (profile != null) "Signed in to Hi Player" else "Hi Player account: not signed in",
+                color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
+            if (profile != null) {
+                if (profile.name.isNotBlank()) Text(profile.name, color = palette.textPrimary)
+                if (profile.email.isNotBlank()) Text(profile.email, color = palette.textPrimary,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}

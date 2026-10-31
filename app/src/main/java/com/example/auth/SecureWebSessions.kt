@@ -22,10 +22,40 @@ internal object SecureWebSessions {
     fun entryForGoogleAuth(sourcePage: String): String =
         sourcePage.takeIf { validPage(it) && !isGoogleAuthentication(it) } ?: GOOGLE_ACCOUNT
 
+    private fun preferences(context: Context) =
+        context.applicationContext.getSharedPreferences("secure_website_routing", Context.MODE_PRIVATE)
+
+    fun prefersBrowser(context: Context, url: String): Boolean {
+        val key = SecureWebsitePolicy.originKey(url) ?: return false
+        return key in preferences(context).getStringSet("origins", emptySet()).orEmpty()
+    }
+
+    fun rememberBrowser(context: Context, url: String) {
+        val key = SecureWebsitePolicy.originKey(url) ?: return
+        val prefs = preferences(context)
+        val sites = (prefs.getStringSet("origins", emptySet()).orEmpty().toList().filterNot { it == key } + key).takeLast(64).toSet()
+        prefs.edit().putStringSet("origins", sites).apply()
+    }
+
+    fun forgetBrowser(context: Context, url: String) {
+        val key = SecureWebsitePolicy.originKey(url) ?: return
+        val prefs = preferences(context)
+        prefs.edit().putStringSet("origins", prefs.getStringSet("origins", emptySet()).orEmpty() - key).apply()
+    }
+
+    // Only routing metadata is cleared here, never another browser's cookies.
+    fun clearRouting(context: Context) { preferences(context).edit().clear().apply() }
+
     fun open(context: Context, url: String, toolbarColor: Int): Result<Unit> = runCatching {
         require(validPage(url)) { "Secure sign-in needs an HTTPS website address." }
-        val browser = CustomTabsClient.getPackageName(context, listOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev"))
+        val prefs = preferences(context)
+        val previous = prefs.getString("provider", null)
+        val availablePrevious = previous?.let { CustomTabsClient.getPackageName(context, listOf(it), true) }
+        val browser = availablePrevious
+            ?: CustomTabsClient.getPackageName(context, listOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev"))
             ?: error("Install or update Chrome or another browser that supports secure Custom Tabs.")
+        if (previous != null && previous != browser) android.widget.Toast.makeText(context,
+            "The previous browser is unavailable. You may need to sign in again in this browser.", android.widget.Toast.LENGTH_LONG).show()
         // An explicit provider avoids routing back into Hi Player when it is the default browser.
         val tab = CustomTabsIntent.Builder().setShowTitle(true)
             .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
@@ -33,5 +63,6 @@ internal object SecureWebSessions {
             .build()
         tab.intent.setPackage(browser)
         tab.launchUrl(context, Uri.parse(url))
+        prefs.edit().putString("provider", browser).apply()
     }
 }

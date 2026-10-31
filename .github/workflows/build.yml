@@ -57,6 +57,7 @@ jobs:
           --tests 'com.example.ui.screens.BrowserAppearancePolicyTest'
           --tests 'com.example.ui.feedback.UserFacingErrorsTest'
           --tests 'com.example.ui.navigation.TabHistoryTest'
+          --tests 'com.example.auth.SecureWebsitePolicyTest'
 
       - name: Upload regression reports
         if: always()
@@ -82,5 +83,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Hi Player 1.0.72 (73), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
+          body: "Hi Player 1.0.73 (74), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk

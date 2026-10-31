@@ -278,7 +278,7 @@ internal fun BrowserClearDataDialog(
         text = {
             Column {
                 BrowserClearDataRow("Browsing history", "Pages you visited and back/forward lists", history) { history = it }
-                BrowserClearDataRow("Cookies and site data", "Signs you out of most sites", cookies) { cookies = it }
+                BrowserClearDataRow("Cookies and site data", "Clears embedded-site sessions and browser-routing choices. Device-browser sign-ins are unchanged.", cookies) { cookies = it }
                 BrowserClearDataRow("Cached images and files", "Pages may load slower next time", cache) { cache = it }
             }
         },
