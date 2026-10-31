@@ -126,7 +126,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
@@ -135,7 +134,6 @@ import androidx.webkit.WebViewFeature
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -191,6 +189,16 @@ import com.example.player.RemoteStreamHeadersRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.CircularProgressIndicator
 import java.util.concurrent.CopyOnWriteArrayList
 
 private data class OrbitBrowserTab(
@@ -206,12 +214,86 @@ private data class OrbitBrowserTab(
 
 private enum class OrbitEntryList { BOOKMARKS, HISTORY }
 
-private data class BrowserQuickLink(
-    val label: String,
-    val url: String?,
-    val icon: ImageVector,
-    val tint: Color,
+/**
+ * Browser state that outlives the browser screen. Leaving browser mode (for the
+ * player, library or settings) and coming back keeps every tab, and the active
+ * tab's page stays loaded instead of reloading from scratch.
+ */
+private object HiBrowserSession {
+    var tabs: List<OrbitBrowserTab>? = null
+    var activeTabId: Int = 1
+    var nextTabId: Int = 2
+    var recentTabIds: List<Int> = listOf(1)
+    val mediaSniffer = HiBrowserMediaSniffer()
+    private var owner: java.lang.ref.WeakReference<Activity>? = null
+
+    /** Set while the browser is on screen; called from WebView's JavaBridge thread. */
+    @Volatile var autoPlayHandler: ((tabId: Int, directUrl: String?) -> Boolean)? = null
+
+    /** WebViews made for an older (recreated) activity cannot be reattached; keep their tabs only. */
+    fun adopt(activity: Activity?) {
+        val previous = owner?.get()
+        if (previous != null && previous !== activity) releaseWebViews()
+        owner = activity?.let { java.lang.ref.WeakReference(it) }
+    }
+
+    fun releaseWebViews() {
+        tabs = tabs?.map { tab ->
+            val view = tab.webView ?: return@map tab
+            val history = if (tab.privateTab) null else captureOrbitHistory(view)
+            disposeOrbitWebView(view)
+            tab.copy(webView = null, historyState = history ?: tab.historyState)
+        }
+    }
+}
+
+private class HiBrowserInitialState(
+    val tabs: List<OrbitBrowserTab>,
+    val activeTabId: Int,
+    val nextTabId: Int,
+    val recentTabIds: List<Int>,
 )
+
+/** Live tabs from this app session, else the tabs saved last time, else one new tab. */
+private fun hiBrowserInitialState(store: OrbitBrowserStore): HiBrowserInitialState {
+    HiBrowserSession.tabs?.takeIf { it.isNotEmpty() }?.map { tab ->
+        if (tab.webView != null && !isOrbitWebViewUsable(tab.webView)) tab.copy(webView = null) else tab
+    }?.let { live ->
+        val ids = live.map { it.id }
+        val active = HiBrowserSession.activeTabId.takeIf { it in ids } ?: live.last().id
+        val next = maxOf(HiBrowserSession.nextTabId, (ids.maxOrNull() ?: 0) + 1)
+        val recent = HiBrowserSession.recentTabIds.filter { it in ids }.ifEmpty { listOf(active) }
+        return HiBrowserInitialState(live, active, next, recent)
+    }
+    val saved = store.savedTabs()
+    if (saved.isNotEmpty()) {
+        val ids = saved.map { it.id }.toSet()
+        val tabs = saved.map { tab ->
+            OrbitBrowserTab(
+                id = tab.id,
+                privateTab = false,
+                url = tab.url,
+                title = tab.title,
+                desktop = tab.desktop,
+                openerTabId = tab.openerTabId?.takeIf { it in ids },
+            )
+        }
+        val active = store.savedActiveTabId.takeIf { it in ids } ?: tabs.last().id
+        return HiBrowserInitialState(tabs, active, (ids.maxOrNull() ?: 0) + 1, listOf(active))
+    }
+    return HiBrowserInitialState(listOf(OrbitBrowserTab(id = 1, privateTab = false)), 1, 2, listOf(1))
+}
+
+/** A page that could not load because of the network (shown instead of WebView's error page). */
+private data class HiBrowserPageError(val tabId: Int, val url: String, val offline: Boolean)
+
+/** History writes parse and rewrite a JSON list, so they run off the main thread, in order. */
+private val hiBrowserHistoryExecutor = Executors.newSingleThreadExecutor { runnable ->
+    Thread(runnable, "hi-browser-history").apply {
+        isDaemon = true
+        priority = Thread.MIN_PRIORITY
+    }
+}
 
 private object HiBrowserDocumentScripts {
     private val handlers = WeakHashMap<WebView, MutableList<ScriptHandler>>()
@@ -222,6 +304,11 @@ private object HiBrowserDocumentScripts {
         remove(webView)
         if (!isSupported()) return
         val registered = mutableListOf<ScriptHandler>()
+        if (store.adBlock) {
+            readAsset(context, "orbit_adblock.js")?.let {
+                registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
+            }
+        }
         if (store.pageSkipper) {
             readAsset(context, "orbit_page_skipper.js")?.let {
                 registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
@@ -252,27 +339,6 @@ private object HiBrowserDocumentScripts {
     private fun readAsset(context: Context, name: String): String? =
         runCatching { context.assets.open(name).bufferedReader().use { it.readText().take(100_000) } }.getOrNull()
 }
-
-private val orbitBrowserTabsSaver = listSaver<List<OrbitBrowserTab>, Any>(
-    save = { tabs ->
-        listOf("tabs_v3") + tabs.flatMap { tab ->
-            listOf(tab.id, tab.privateTab, if (tab.privateTab) "" else tab.url,
-                if (tab.privateTab) "Private tab" else tab.title, tab.desktop,
-                tab.openerTabId ?: -1, if (tab.privateTab) android.os.Bundle() else tab.historyState ?: android.os.Bundle())
-        }
-    },
-    restore = { saved ->
-        val current = saved.firstOrNull() == "tabs_v3"
-        (if (current) saved.drop(1) else saved).chunked(if (current) 7 else 5).mapNotNull { values ->
-            val id = values.getOrNull(0) as? Int ?: return@mapNotNull null
-            OrbitBrowserTab(id, values.getOrNull(1) as? Boolean ?: false,
-                url = values.getOrNull(2) as? String ?: "", title = values.getOrNull(3) as? String ?: "New tab",
-                desktop = values.getOrNull(4) as? Boolean ?: false,
-                openerTabId = (values.getOrNull(5) as? Int)?.takeIf { it >= 0 },
-                historyState = (values.getOrNull(6) as? android.os.Bundle)?.takeUnless { it.isEmpty })
-        }
-    },
-)
 
 private fun captureOrbitHistory(view: WebView): android.os.Bundle? = runCatching {
     val state = android.os.Bundle()
@@ -311,24 +377,49 @@ fun HiBrowserScreen(
     var videoHandoffEnabled by remember { mutableStateOf(store.videoHandoff) }
     // Bumped to rebuild every tab's WebView (pages pick light/dark at creation).
     var webViewGeneration by remember { mutableIntStateOf(0) }
-    // While a page from the start page is loading, the start page stays on screen
-    // until the new page paints, instead of flashing an empty (dark) view.
+    // While a new page is loading, a loading page covers the WebView until the
+    // page paints, instead of flashing an empty (dark) or stale view.
     var pendingFirstPaint by remember { mutableStateOf(false) }
     // Reserve room for the floating address bar only on pages that cannot scroll.
     var reserveBarSpace by remember { mutableStateOf(false) }
     var barHeightPx by remember { mutableIntStateOf(0) }
-    val mediaSniffer = remember { HiBrowserMediaSniffer() }
+    val mediaSniffer = HiBrowserSession.mediaSniffer
+    val hostActivity = remember(context) { context.findHiActivity() }
+    remember(hostActivity) {
+        HiBrowserSession.adopt(hostActivity)
+        true
+    }
+    val initialState = remember { hiBrowserInitialState(store) }
     val adBlockFlag = remember { HiBrowserFlag(store.adBlock) }
     val fullscreen = remember { HiBrowserFullscreen() }
     val latestOnPlayBrowserVideo by rememberUpdatedState(onPlayBrowserVideo)
-    var tabs by rememberSaveable(stateSaver = orbitBrowserTabsSaver) { mutableStateOf(listOf(OrbitBrowserTab(id = 1, privateTab = false))) }
+    var tabs by remember { mutableStateOf(initialState.tabs) }
     val latestTabs by rememberUpdatedState(tabs)
     val latestOnPlayDirectMedia by rememberUpdatedState(onPlayDirectMedia)
-    var activeTabId by rememberSaveable { mutableIntStateOf(1) }
-    var nextTabId by rememberSaveable { mutableIntStateOf(2) }
-    var recentTabIds by rememberSaveable { mutableStateOf(listOf(1)) }
+    var activeTabId by remember { mutableIntStateOf(initialState.activeTabId) }
+    var nextTabId by remember { mutableIntStateOf(initialState.nextTabId) }
+    var recentTabIds by remember { mutableStateOf(initialState.recentTabIds) }
     val activeTab = tabs.firstOrNull { it.id == activeTabId }
     val webView = activeTab?.webView
+    androidx.compose.runtime.SideEffect {
+        HiBrowserSession.tabs = tabs
+        HiBrowserSession.activeTabId = activeTabId
+        HiBrowserSession.nextTabId = nextTabId
+        HiBrowserSession.recentTabIds = recentTabIds
+    }
+    // Regular tabs are saved (debounced) so they come back after the app is closed.
+    val persistedTabs = tabs.filterNot { it.privateTab }.map { OrbitSavedTab(it.id, it.url, it.title, it.desktop, it.openerTabId) }
+    LaunchedEffect(persistedTabs, activeTabId) {
+        delay(700L)
+        val ids = persistedTabs.map { it.id }.toSet()
+        val cleaned = persistedTabs.map { tab -> if (tab.openerTabId?.let { it in ids } == true) tab else tab.copy(openerTabId = null) }
+        withContext(Dispatchers.IO) { runCatching { store.saveTabs(cleaned, activeTabId) } }
+    }
+    var pageError by remember { mutableStateOf<HiBrowserPageError?>(null) }
+    var slowLoad by remember { mutableStateOf(false) }
+    var networkOnline by remember { mutableStateOf(true) }
+    var autoPlayEnabled by remember { mutableStateOf(store.autoPlayInPlayer) }
+    val mainHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     var address by remember { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }
     var showStartPage by remember { mutableStateOf(true) }
@@ -344,7 +435,8 @@ fun HiBrowserScreen(
     var entriesVersion by remember { mutableIntStateOf(0) }
     var addressFocused by remember { mutableStateOf(false) }
     val browserFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val recentEntries = remember(entriesVersion) { store.history() }
+    // History suggestions are only needed while the address bar is focused.
+    val recentEntries = remember(entriesVersion, addressFocused) { if (addressFocused) store.history() else emptyList() }
     val redirectSources = remember { mutableMapOf<Int, String>() }
     var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
     var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
@@ -394,6 +486,9 @@ fun HiBrowserScreen(
         findMatchLabel = ""
         browserBarHidden = false
         reserveBarSpace = false
+        if (pageError?.tabId != activeTabId) pageError = null
+        // A restored tab (app reopened, or its page was released) shows the loader until it paints.
+        if (restoredTab != null && restoredTab.url.isNotBlank() && !isOrbitWebViewUsable(restoredTab.webView)) pendingFirstPaint = true
         // Only the visible tab keeps playing media and running animations.
         tabs.forEach { tab ->
             val view = tab.webView ?: return@forEach
@@ -476,7 +571,9 @@ fun HiBrowserScreen(
         address = destination
         currentUrl = destination
         pageTitle = destination
-        if (showStartPage || activeTab?.webView == null) pendingFirstPaint = true
+        // Show the loading page until the new page paints (also when searching from a page).
+        pendingFirstPaint = true
+        pageError = null
         showStartPage = false
         rendererGone = false
         val tab = activeTab ?: return
@@ -496,6 +593,7 @@ fun HiBrowserScreen(
         activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
         showStartPage = true
         pendingFirstPaint = false
+        pageError = null
     }
 
     fun navigateBrowserBack() {
@@ -533,6 +631,40 @@ fun HiBrowserScreen(
         webViewGeneration++
     }
 
+    fun recordHistory(title: String, url: String, redirectedFrom: String? = null) {
+        hiBrowserHistoryExecutor.execute {
+            runCatching {
+                redirectedFrom?.let { old -> store.replaceRedirectedHistory(old, url) }
+                store.addHistory(OrbitBrowserEntry(title, url))
+            }
+            mainHandler.post { entriesVersion++ }
+        }
+    }
+
+    fun retryPage() {
+        val error = pageError ?: return
+        val view = tabs.firstOrNull { it.id == error.tabId }?.webView
+        pageError = null
+        if (error.tabId == activeTabId) {
+            pendingFirstPaint = true
+            loadingProgress = 1
+        }
+        if (view != null) view.loadUrl(error.url) else if (error.tabId == activeTabId) loadAddress(error.url)
+    }
+
+    fun applyNetworkCacheMode(online: Boolean) {
+        // Offline, pages already in the cache still open; private tabs never use the cache.
+        tabs.forEach { tab ->
+            val view = tab.webView ?: return@forEach
+            if (!tab.privateTab) view.settings.cacheMode = if (online) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
+        }
+    }
+
+    fun setAutoPlayEnabled(enabled: Boolean) {
+        store.autoPlayInPlayer = enabled
+        autoPlayEnabled = enabled
+    }
+
     fun setVideoHandoffEnabled(enabled: Boolean) {
         store.videoHandoff = enabled
         videoHandoffEnabled = enabled
@@ -558,7 +690,8 @@ fun HiBrowserScreen(
         store.adBlock = enabled
         adBlockEnabled = enabled
         adBlockFlag.enabled = enabled
-        webView?.reload()
+        // Re-registers the page ad shield and reloads the page.
+        refreshDocumentScripts()
     }
 
     fun injectCosmeticCss(view: WebView, url: String) {
@@ -620,7 +753,7 @@ fun HiBrowserScreen(
             requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab)
             return
         }
-        if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock)) {
+        if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock) || (store.adBlock && BrowserVideoPolicy.isAdUrl(url))) {
             showBrowserToast("Pop-up blocked")
             return
         }
@@ -867,8 +1000,87 @@ fun HiBrowserScreen(
         }
     }
 
+    // Leaving browser mode keeps the tabs, and the active page stays loaded (paused)
+    // so it is exactly where the user left it. Other tabs keep their history and
+    // reload when opened. Everything is released when the activity finishes.
     DisposableEffect(Unit) {
-        onDispose { latestTabs.mapNotNull { it.webView }.forEach(::disposeOrbitWebView) }
+        onDispose {
+            val leavingApp = hostActivity?.let { it.isFinishing || it.isChangingConfigurations } ?: true
+            val keepId = if (leavingApp) null else HiBrowserSession.activeTabId
+            HiBrowserSession.tabs = latestTabs.map { tab ->
+                val view = tab.webView ?: return@map tab
+                if (tab.id == keepId) {
+                    runCatching {
+                        view.evaluateJavascript(HI_BROWSER_PAUSE_MEDIA_SCRIPT, null)
+                        view.onPause()
+                    }
+                    tab
+                } else {
+                    val history = if (tab.privateTab) null else captureOrbitHistory(view)
+                    disposeOrbitWebView(view)
+                    tab.copy(webView = null, historyState = history ?: tab.historyState)
+                }
+            }
+        }
+    }
+
+    // Opens a video in Hi Player as soon as the user starts it on the page.
+    DisposableEffect(Unit) {
+        val handler: (Int, String?) -> Boolean = handler@{ tabId, directUrl ->
+            if (!store.autoPlayInPlayer || !store.videoHandoff) return@handler false
+            if (tabId != mediaSniffer.activeTabId) return@handler false
+            if (isOrbitYoutube(mediaSniffer.pageUrl(tabId))) return@handler false
+            val candidate = directUrl?.takeUnless { isOrbitYoutube(it) } ?: mediaSniffer.bestManifest(tabId) ?: return@handler false
+            if (BrowserVideoPolicy.isAdUrl(candidate)) return@handler false
+            val parsed = runCatching { Uri.parse(candidate) }.getOrNull() ?: return@handler false
+            if (OrbitBrowserFilterEngine.shouldBlock(parsed, adBlockFlag.enabled, mediaSniffer.pageHost(tabId), mainFrame = false)) return@handler false
+            if (!mediaSniffer.claimHandoff(tabId)) return@handler false
+            mainHandler.post { playBrowserVideo(tabId, candidate) }
+            true
+        }
+        HiBrowserSession.autoPlayHandler = handler
+        onDispose { if (HiBrowserSession.autoPlayHandler === handler) HiBrowserSession.autoPlayHandler = null }
+    }
+
+    // Retry a page that failed for lack of network as soon as the connection is back.
+    DisposableEffect(context) {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        fun online(): Boolean {
+            val manager = connectivity ?: return true
+            return runCatching {
+                manager.getNetworkCapabilities(manager.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            }.getOrDefault(true)
+        }
+        networkOnline = online()
+        applyNetworkCacheMode(networkOnline)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                mainHandler.post {
+                    if (!networkOnline) {
+                        networkOnline = true
+                        applyNetworkCacheMode(true)
+                    }
+                    if (pageError != null) retryPage()
+                }
+            }
+            override fun onLost(network: Network) {
+                mainHandler.postDelayed({
+                    val now = online()
+                    if (now != networkOnline) {
+                        networkOnline = now
+                        applyNetworkCacheMode(now)
+                    }
+                }, 400L)
+            }
+        }
+        val registered = runCatching { connectivity?.registerDefaultNetworkCallback(callback) }.isSuccess && connectivity != null
+        onDispose { if (registered) runCatching { connectivity?.unregisterNetworkCallback(callback) } }
+    }
+
+    // Start the WebView engine while the start page shows, so the first search opens faster.
+    LaunchedEffect(Unit) {
+        delay(300L)
+        runCatching { WebSettings.getDefaultUserAgent(context) }
     }
 
     LaunchedEffect(context) {
@@ -893,9 +1105,12 @@ fun HiBrowserScreen(
             }
         }
     }
-    LaunchedEffect(pendingFirstPaint) {
+    LaunchedEffect(pendingFirstPaint, activeTabId) {
+        slowLoad = false
         if (pendingFirstPaint) {
-            delay(9_000L)
+            delay(6_000L)
+            slowLoad = true
+            delay(14_000L)
             pendingFirstPaint = false
         }
     }
@@ -958,14 +1173,21 @@ fun HiBrowserScreen(
                             if (store.darkMode) android.R.style.Theme_DeviceDefault_NoActionBar
                             else android.R.style.Theme_DeviceDefault_Light_NoActionBar,
                         )
-                        val view = activeTab.webView ?: WebView(themedContext).apply {
+                        // A tab that is still loaded (e.g. after returning to browser mode) keeps
+                        // its WebView and page; only its callbacks are rebound to this screen.
+                        val existing = activeTab.webView?.takeIf { isOrbitWebViewUsable(it) }
+                        val view = existing ?: WebView(themedContext).apply {
                             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                             setBackgroundColor(if (store.darkMode) android.graphics.Color.rgb(18, 18, 18) else android.graphics.Color.WHITE)
                             settings.apply {
                                 javaScriptEnabled = true
                                 domStorageEnabled = true
                                 databaseEnabled = false
-                                cacheMode = if (activeTab.privateTab) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
+                                cacheMode = when {
+                                    activeTab.privateTab -> WebSettings.LOAD_NO_CACHE
+                                    !networkOnline -> WebSettings.LOAD_CACHE_ELSE_NETWORK
+                                    else -> WebSettings.LOAD_DEFAULT
+                                }
                                 allowFileAccess = false
                                 allowContentAccess = false
                                 setSupportMultipleWindows(true)
@@ -982,6 +1204,18 @@ fun HiBrowserScreen(
                             }
                             applyOrbitDarkMode(this, store.darkMode)
                             HiBrowserDocumentScripts.apply(this, viewContext, store)
+                            // The bridge only talks to session-level objects, so it stays valid
+                            // when this WebView is reattached to a later browser screen.
+                            addJavascriptInterface(
+                                HiBrowserVideoBridge(
+                                    onReport = { src -> if (store.videoHandoff) mediaSniffer.reportVideo(tabId, src) },
+                                    onAutoPlay = { direct -> HiBrowserSession.autoPlayHandler?.invoke(tabId, direct) ?: false },
+                                ),
+                                "HiBrowserNative",
+                            )
+                        }
+                        (view.parent as? ViewGroup)?.removeView(view)
+                        view.apply {
                             val browserWebView = this
                             var scrollTravel = 0
                             setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
@@ -998,12 +1232,6 @@ fun HiBrowserScreen(
                                 if (scrollTravel > 40 && scrollY > 120 && !browserBarHidden) browserBarHidden = true
                                 else if (scrollTravel < -30 && browserBarHidden) browserBarHidden = false
                             }
-                            addJavascriptInterface(
-                                HiBrowserVideoBridge(
-                                    onReport = { src -> if (store.videoHandoff) mediaSniffer.reportVideo(tabId, src) },
-                                ),
-                                "HiBrowserNative",
-                            )
                             CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                             webChromeClient = object : WebChromeClient() {
@@ -1024,6 +1252,9 @@ fun HiBrowserScreen(
                                     if (activity == null) callback.onCustomViewHidden()
                                     else fullscreen.enter(activity, customView, callback)
                                 }
+                                // Tapped links are user intent: only block destinations on the ad/tracker lists.
+                                fun isAdPopup(url: String): Boolean =
+                                    OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock, mediaSniffer.pageHost(tabId))
                                 override fun onCloseWindow(window: WebView) {
                                     tabs.firstOrNull { it.webView === window }?.let { closeTab(it.id) }
                                 }
@@ -1073,13 +1304,15 @@ fun HiBrowserScreen(
                                         }
                                         if (href != null) {
                                             if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
-                                            else if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(href), store.adBlock)) view.loadUrl(href)
+                                            else if (!isAdPopup(href)) view.loadUrl(href)
+                                            else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
                                             return false
                                         }
                                         val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                         linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
                                             if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
-                                            else if (!OrbitBrowserFilterEngine.shouldBlock(Uri.parse(linkUrl), store.adBlock)) view.loadUrl(linkUrl)
+                                            else if (!isAdPopup(linkUrl)) view.loadUrl(linkUrl)
+                                            else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
                                         }
                                         resultMsg.sendToTarget()
                                         return true
@@ -1108,7 +1341,9 @@ fun HiBrowserScreen(
                                                 // Preserve the current page. Script redirects and autoplay
                                                 // must never replace it with an ad in the native player.
                                                 if (BrowserVideoPolicy.offerNavigation(request.hasGesture(), request.isRedirect, false)) {
-                                                    pendingVideoNavigation = uri.toString()
+                                                    // A tapped link to a video file: play it now when auto-play is on.
+                                                    if (store.autoPlayInPlayer && activeTabId == tabId) playBrowserVideo(tabId, uri.toString())
+                                                    else pendingVideoNavigation = uri.toString()
                                                 }
                                                 return true
                                             }
@@ -1128,7 +1363,8 @@ fun HiBrowserScreen(
                                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
                                     mediaSniffer.setPage(tabId, url)
-                                    updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
+                                    updateTab(tabId) { it.copy(url = url) }
+                                    if (pageError?.tabId == tabId) pageError = null
                                     if (activeTabId == tabId) {
                                         currentUrl = url
                                         if (!addressFocused) address = url
@@ -1145,24 +1381,27 @@ fun HiBrowserScreen(
                                     if (!url.startsWith("http://") && !url.startsWith("https://")) return
                                     // Single-page sites change address without loading a new page.
                                     mediaSniffer.setPage(tabId, url)
-                                    updateTab(tabId) { it.copy(url = url, historyState = captureOrbitHistory(view)) }
-                                    if (!activeTab.privateTab && view.progress == 100) {
-                                        store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
-                                        entriesVersion++
-                                    }
+                                    if (tabs.firstOrNull { it.id == tabId }?.url != url) updateTab(tabId) { it.copy(url = url) }
+                                    if (!activeTab.privateTab && view.progress == 100) recordHistory(view.title ?: url, url)
                                     if (activeTabId == tabId) {
                                         currentUrl = url
                                         if (!addressFocused) address = url
                                     }
                                 }
                                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
-                                    if (request.isForMainFrame) redirectSources.remove(tabId)
-                                    if (request.isForMainFrame && activeTabId == tabId) pendingFirstPaint = false
+                                    if (!request.isForMainFrame) return
+                                    redirectSources.remove(tabId)
+                                    if (activeTabId == tabId) pendingFirstPaint = false
+                                    if (activeTabId == tabId && hiBrowserIsNetworkError(error.errorCode, error.description?.toString().orEmpty())) {
+                                        pageError = HiBrowserPageError(tabId, request.url.toString(), offline = !networkOnline)
+                                        loadingProgress = 100
+                                    }
                                 }
                                 override fun onPageFinished(view: WebView, url: String) {
-                                    updateTab(tabId) { it.copy(historyState = captureOrbitHistory(view)) }
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
-                                    updateTab(tabId) { it.copy(url = url, title = view.title ?: it.title) }
+                                    // One update per finished page: history snapshot, address and title.
+                                    val history = captureOrbitHistory(view)
+                                    updateTab(tabId) { it.copy(url = url, title = view.title ?: it.title, historyState = history ?: it.historyState) }
                                     view.title?.takeIf(String::isNotBlank)?.let { mediaSniffer.setTitle(tabId, it) }
                                     if (activeTabId == tabId) {
                                         currentUrl = url
@@ -1172,12 +1411,11 @@ fun HiBrowserScreen(
                                         pendingFirstPaint = false
                                     }
                                     if (!activeTab.privateTab && BrowserHistoryPolicy.isWebUrl(url)) {
-                                        redirectSources.remove(tabId)?.let { old -> store.replaceRedirectedHistory(old, url) }
-                                        store.addHistory(OrbitBrowserEntry(view.title ?: url, url))
-                                        entriesVersion++
+                                        recordHistory(view.title ?: url, url, redirectedFrom = redirectSources.remove(tabId))
                                     }
                                     injectCosmeticCss(view, url)
                                     if (!HiBrowserDocumentScripts.isSupported()) {
+                                        if (store.adBlock) injectOrbitAsset(view, viewContext, "orbit_adblock.js")
                                         if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
                                         if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
                                         if (!isOrbitYoutube(url)) view.evaluateJavascript(HI_BROWSER_VIDEO_HOOK_SCRIPT, null)
@@ -1185,7 +1423,7 @@ fun HiBrowserScreen(
                                 }
                                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                                     val pageHost = if (request.isForMainFrame) null else mediaSniffer.pageHost(tabId)
-                                    val filtered = OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost)
+                                    val filtered = OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost, mainFrame = request.isForMainFrame)
                                     if (filtered) return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                                     mediaSniffer.observeRequest(tabId, request.url)
                                     return null
@@ -1193,6 +1431,8 @@ fun HiBrowserScreen(
                                 override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
                                     disposeOrbitWebView(view)
                                     updateTab(tabId) { it.copy(webView = null) }
+                                    // Also when the browser screen is closed and this page was kept loaded.
+                                    HiBrowserSession.tabs = HiBrowserSession.tabs?.map { if (it.webView === view) it.copy(webView = null) else it }
                                     if (activeTabId == tabId) rendererGone = true
                                     return true
                                 }
@@ -1201,8 +1441,12 @@ fun HiBrowserScreen(
                                 val name = DownloadFileResolver.resolve(URLUtil.guessFileName(url, contentDisposition, mimeType), url, mimeType, contentDisposition).fileName
                                 pendingDownload = BrowserDownloadRequest(url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, name, size.coerceAtLeast(0), this.url.orEmpty())
                             })
-                            val restored = activeTab.historyState?.let { state -> runCatching { restoreState(state) }.getOrNull() }
-                            if (activeTab.url.isNotBlank() && (restored == null || restored.currentItem?.url != activeTab.url)) loadUrl(activeTab.url)
+                            if (existing == null) {
+                                val restored = activeTab.historyState?.let { state -> runCatching { restoreState(state) }.getOrNull() }
+                                if (activeTab.url.isNotBlank() && (restored == null || restored.currentItem?.url != activeTab.url)) loadUrl(activeTab.url)
+                            } else {
+                                onResume()
+                            }
                         }
                         updateTab(tabId) { it.copy(webView = view) }
                         view
@@ -1212,7 +1456,37 @@ fun HiBrowserScreen(
             }
         }
         }
-        if ((showStartPage || pendingFirstPaint) && !isInPictureInPicture && !rendererGone) {
+        val visibleError = pageError?.takeIf { it.tabId == activeTabId && !showStartPage }
+        if (visibleError != null && !isInPictureInPicture && !rendererGone) {
+            HiBrowserErrorPage(
+                url = visibleError.url,
+                offline = visibleError.offline || !networkOnline,
+                onRetry = { retryPage() },
+                onHome = { showBrowserHome() },
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                bottomInset = barHeightDp,
+            )
+        } else if (!showStartPage && pendingFirstPaint && !isInPictureInPicture && !rendererGone) {
+            HiBrowserLoadingPage(
+                url = currentUrl,
+                slow = slowLoad,
+                offline = !networkOnline,
+                onStop = {
+                    webView?.stopLoading()
+                    pendingFirstPaint = false
+                    loadingProgress = 100
+                },
+                onRetry = {
+                    pendingFirstPaint = true
+                    slowLoad = false
+                    val target = currentUrl
+                    if (webView != null && target.isNotBlank()) webView.loadUrl(target) else webView?.reload()
+                },
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                bottomInset = barHeightDp,
+            )
+        }
+        if (showStartPage && !isInPictureInPicture && !rendererGone) {
             HiBrowserHome(
                 isPrivate = activeTab?.privateTab == true,
                 shortcuts = shortcuts,
@@ -1267,7 +1541,7 @@ fun HiBrowserScreen(
                 }
                 if (addressFocused && activeTab?.privateTab != true) {
                     BrowserHistorySuggestions(
-                        entries = BrowserHistoryPolicy.suggestions(recentEntries, address),
+                        entries = remember(recentEntries, address) { BrowserHistoryPolicy.suggestions(recentEntries, address) },
                         onOpen = { browserFocusManager.clearFocus(); addressFocused = false; loadAddress(it) },
                     )
                 }
@@ -1318,6 +1592,8 @@ fun HiBrowserScreen(
             youtubeAdSkip = youtubeAdSkipEnabled,
             videoHandoff = videoHandoffEnabled,
             onVideoHandoffChange = { setVideoHandoffEnabled(it) },
+            autoPlayInPlayer = autoPlayEnabled,
+            onAutoPlayInPlayerChange = { setAutoPlayEnabled(it) },
             desktopSite = activeTab?.desktop == true,
             onDarkModeChange = { setDarkMode(it) },
             onAdBlockChange = { setAdBlockEnabled(it) },
@@ -1527,7 +1803,13 @@ fun HiBrowserScreen(
     }
 }
 
+/** WebViews already destroyed; a stale tab reference to one must never be reattached. */
+private val hiDestroyedWebViews: MutableSet<WebView> = java.util.Collections.newSetFromMap(WeakHashMap())
+
+private fun isOrbitWebViewUsable(webView: WebView?): Boolean = webView != null && webView !in hiDestroyedWebViews
+
 private fun disposeOrbitWebView(webView: WebView) {
+    if (!hiDestroyedWebViews.add(webView)) return
     HiBrowserDocumentScripts.remove(webView)
     runCatching {
         webView.removeJavascriptInterface("HiBrowserNative")
@@ -1535,6 +1817,18 @@ private fun disposeOrbitWebView(webView: WebView) {
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
     }
+}
+
+/** Main-frame failures caused by the connection (not by the site or a blocked request). */
+private fun hiBrowserIsNetworkError(code: Int, description: String): Boolean {
+    if (description.contains("ERR_ABORTED", ignoreCase = true) || description.contains("ERR_BLOCKED", ignoreCase = true)) return false
+    if (code == WebViewClient.ERROR_HOST_LOOKUP || code == WebViewClient.ERROR_CONNECT ||
+        code == WebViewClient.ERROR_IO || code == WebViewClient.ERROR_TIMEOUT
+    ) return true
+    return listOf(
+        "ERR_INTERNET_DISCONNECTED", "ERR_NAME_NOT_RESOLVED", "ERR_CONNECTION_", "ERR_TIMED_OUT",
+        "ERR_NETWORK_CHANGED", "ERR_ADDRESS_UNREACHABLE", "ERR_PROXY_CONNECTION_FAILED", "ERR_NETWORK_ACCESS_DENIED",
+    ).any { description.contains(it, ignoreCase = true) }
 }
 
 /** A flag read from WebView's network threads. */
@@ -1715,6 +2009,8 @@ private class HiBrowserFullscreen {
 
 internal class HiBrowserVideoBridge(
     private val onReport: (String) -> Unit,
+    /** Opens a user-started page video in Hi Player; returns true when it did. */
+    private val onAutoPlay: (String?) -> Boolean = { false },
 ) {
     /** The page has a video with this direct source (used by "Play in Hi Player"). */
     @JavascriptInterface
@@ -1723,38 +2019,86 @@ internal class HiBrowserVideoBridge(
         if (!BrowserVideoPolicy.isAdUrl(value)) runCatching { onReport(value) }
     }
 
-    /** Compatibility with older injected scripts: web content NEVER launches the player. */
+    /**
+     * A full-length video the user just started (tap or key press) began playing.
+     * [rawUrl] is empty for blob:/MSE players; the page's stream manifest is used then.
+     * Without a user gesture, or for ad sources, nothing is handed off.
+     */
     @Suppress("UNUSED_PARAMETER")
     @JavascriptInterface
-    fun videoStarted(rawUrl: String?, userGesture: Boolean, muted: Boolean): Boolean =
-        false
+    fun videoStarted(rawUrl: String?, userGesture: Boolean, muted: Boolean): Boolean {
+        if (!userGesture) return false
+        val direct = rawUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+        if (direct != null && BrowserVideoPolicy.isAdUrl(direct)) return false
+        direct?.let { runCatching { onReport(it) } }
+        return runCatching { onAutoPlay(direct) }.getOrDefault(false)
+    }
 }
 
 private const val HI_BROWSER_PAUSE_MEDIA_SCRIPT =
     "(function(){try{document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});}catch(e){}})()"
 
 /**
- * Detect only videos the user selects on the top-level page. Never launches
- * Hi Player, pauses media, or interprets unrelated page taps as playback consent.
+ * Finds the page's video for "Play in Hi Player" and, when the user starts a
+ * video themselves, offers it for auto-play in Hi Player. Runs in every frame
+ * (embedded players live in iframes). A video only counts when it was started
+ * within a few seconds of a trusted tap/key press, is large on screen, is not
+ * inside an ad container and is long (live, or at least MIN_DURATION seconds),
+ * so pre-roll and banner ads keep playing on the page. It never pauses media.
  */
 internal const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
 (function(){
-  try { if(window.top!==window) return; } catch(e) { return; }
   var host=(window.location.hostname||'').toLowerCase();
   if(host==='youtu.be'||/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
-  if(window.__hiVideoHookV3) return;
-  window.__hiVideoHookV3=true;
-  function report(v){
-    if(!v||v.tagName!=='VIDEO') return;
-    if(v.closest('[data-ad],[data-ad-slot],.ad,.ads,.advertisement,.video-ad,.vast-ad')) return;
-    var r=v.getBoundingClientRect();
-    if(r.width<160||r.height<90) return;
+  if(window.__hiVideoHookV4) return;
+  window.__hiVideoHookV4=true;
+  var GESTURE_MS=4000, MIN_DURATION=45, lastGesture=0, armedUntil=0;
+  var AD=/(^|[\s_-])(ad|ads|advert|advertisement|preroll|midroll|vast|vpaid|ima|sponsor|sponsored)([\s_-]|$)/i;
+  function gesture(e){ if(e.isTrusted) lastGesture=Date.now(); }
+  ['pointerdown','touchend','click','keydown'].forEach(function(t){ document.addEventListener(t,gesture,true); });
+  function inAd(v){
+    for(var n=v,d=0;n&&n.nodeType===1&&d<8;n=n.parentElement,d++){
+      if(n.hasAttribute('data-ad')||n.hasAttribute('data-ad-slot')||n.hasAttribute('data-vast')) return true;
+      var cls=typeof n.className==='string'?n.className:'';
+      if(AD.test(n.id||'')||AD.test(cls)) return true;
+    }
+    return false;
+  }
+  function big(v){ var r=v.getBoundingClientRect(); return r.width>=160&&r.height>=90; }
+  function source(v){
     var s=v.currentSrc||v.src||'';
-    if(!s){ var source=v.querySelector('source[src]'); if(source) s=source.src||''; }
+    if(!s){ var el=v.querySelector('source[src]'); if(el) s=el.src||''; }
+    return s;
+  }
+  function report(v){
+    if(!v||v.tagName!=='VIDEO'||inAd(v)||!big(v)) return;
+    var s=source(v);
     if(!/^https?:\/\//i.test(s)) return;
     try { if(window.HiBrowserNative) window.HiBrowserNative.reportVideo(s); } catch(e) {}
   }
-  // A click elsewhere on the page is not permission to hand off an ad video.
+  function userStarted(){ var now=Date.now(); return now-lastGesture<=GESTURE_MS||now<armedUntil; }
+  function consider(v){
+    if(v.__hiHanded||!v.__hiUserPlay||!window.HiBrowserNative) return;
+    if(!big(v)||inAd(v)) return;
+    var d=v.duration;
+    if(d!==Infinity&&!(d>0)) return;
+    if(d!==Infinity&&d<MIN_DURATION){
+      // A short clip right after the tap is usually a pre-roll: the real video
+      // that follows it (often in the same player) may still open in Hi Player.
+      armedUntil=Date.now()+90000;
+      return;
+    }
+    var s=source(v), direct=/^https?:\/\//i.test(s)?s:'';
+    try { if(window.HiBrowserNative.videoStarted(direct,true,!!v.muted)) v.__hiHanded=true; } catch(e) {}
+  }
+  ['play','playing','loadedmetadata','durationchange'].forEach(function(t){
+    document.addEventListener(t,function(e){
+      var v=e.target;
+      if(!v||v.tagName!=='VIDEO'||v.paused) return;
+      if((t==='play'||t==='playing')&&userStarted()) v.__hiUserPlay=true;
+      consider(v);
+    },true);
+  });
   document.addEventListener('click',function(e){ if(e.isTrusted) report(e.target); },true);
   document.addEventListener('keydown',function(e){ if(e.isTrusted&&(e.key===' '||e.key==='Enter')) report(e.target); },true);
 })()
@@ -1791,6 +2135,8 @@ private fun BrowserSettingsDialog(
     youtubeAdSkip: Boolean,
     videoHandoff: Boolean,
     onVideoHandoffChange: (Boolean) -> Unit,
+    autoPlayInPlayer: Boolean,
+    onAutoPlayInPlayerChange: (Boolean) -> Unit,
     desktopSite: Boolean,
     onDarkModeChange: (Boolean) -> Unit,
     onAdBlockChange: (Boolean) -> Unit,
@@ -1860,10 +2206,18 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Videos") {
                     BrowserSettingsSwitchRow(
                         "Detect website videos",
-                        "Use Play in Hi Player from the menu. Videos never open automatically",
+                        "Find the video on a page for Play in Hi Player in the menu",
                         videoHandoff,
                         onVideoHandoffChange,
                     )
+                    if (videoHandoff) {
+                        BrowserSettingsSwitchRow(
+                            "Auto-play in Hi Player",
+                            "When you start a video on a page, it opens in Hi Player. Ads and short clips stay on the page",
+                            autoPlayInPlayer,
+                            onAutoPlayInPlayerChange,
+                        )
+                    }
                 }
                 BrowserSettingsGroup("This tab") {
                     BrowserSettingsSwitchRow("Desktop site", "Ask sites for their desktop layout", desktopSite, onDesktopSiteChange)
@@ -1967,4 +2321,127 @@ private fun formatBytes(value: Long): String = when {
     value < 1_024L * 1_024L -> "%.1f KB".format(value / 1_024.0)
     value < 1_024L * 1_024L * 1_024L -> "%.1f MB".format(value / (1_024.0 * 1_024.0))
     else -> "%.2f GB".format(value / (1_024.0 * 1_024.0 * 1_024.0))
+}
+
+/** Shown while a page loads for the first time, instead of an empty or stale view. */
+@Composable
+private fun HiBrowserLoadingPage(
+    url: String,
+    slow: Boolean,
+    offline: Boolean,
+    onStop: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
+) {
+    val palette = LocalHiPalette.current
+    val host = hiBrowserDisplayAddress(url).ifBlank { "page" }
+    val shimmer = rememberInfiniteTransition(label = "browser-loading")
+    val pulse by shimmer.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
+        label = "browser-loading-pulse",
+    )
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
+            .padding(start = 24.dp, end = 24.dp, top = 48.dp, bottom = bottomInset + 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(24.dp))
+        CircularProgressIndicator(
+            color = palette.primary,
+            strokeWidth = 3.dp,
+            modifier = Modifier.size(44.dp),
+        )
+        Spacer(Modifier.height(16.dp))
+        Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(28.dp))
+        // Page-shaped placeholder so the screen does not look frozen.
+        listOf(1f, 0.92f, 0.75f, 0.85f, 0.6f).forEachIndexed { index, width ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(width)
+                    .height(if (index == 0) 120.dp else 14.dp)
+                    .clip(RoundedCornerShape(if (index == 0) 14.dp else 7.dp))
+                    .background(palette.surfaceBorder.copy(alpha = pulse * 0.6f)),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        if (slow || offline) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                if (offline) "You're offline. The page will load when the connection is back."
+                else "The network seems slow. Still trying…",
+                color = palette.textSecondary,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onStop) { Text("Stop") }
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+    }
+}
+
+/** Replaces WebView's built-in error page when a page fails because of the network. */
+@Composable
+private fun HiBrowserErrorPage(
+    url: String,
+    offline: Boolean,
+    onRetry: () -> Unit,
+    onHome: () -> Unit,
+    modifier: Modifier = Modifier,
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
+) {
+    val palette = LocalHiPalette.current
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
+            .padding(start = 32.dp, end = 32.dp, bottom = bottomInset + 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            if (offline) Icons.Default.WifiOff else Icons.Default.ErrorOutline,
+            contentDescription = null,
+            tint = palette.textSecondary,
+            modifier = Modifier.size(52.dp),
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (offline) "No internet connection" else "Can't reach this page",
+            color = palette.textPrimary,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (offline) "Check Wi-Fi or mobile data. The page reloads by itself when you're back online."
+            else "${hiBrowserDisplayAddress(url)} took too long to respond or couldn't be found.",
+            color = palette.textSecondary,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onHome) { Text("Home") }
+        }
+    }
 }

@@ -111,26 +111,8 @@ internal fun hiBrowserDisplayAddress(url: String): String {
     return host?.removePrefix("www.")?.takeIf { it.isNotBlank() } ?: url
 }
 
-private val hiLetterColors = listOf(
-    0xFF4285F4, 0xFFE53935, 0xFF43A047, 0xFFFB8C00, 0xFF8E24AA, 0xFF00897B, 0xFF3949AB, 0xFF6D4C41,
-)
-
-private fun hiLetterColor(seed: String): Color =
-    Color(hiLetterColors[(seed.lowercase().hashCode() and 0x7fffffff) % hiLetterColors.size])
-
 private fun hiHost(url: String): String =
     runCatching { Uri.parse(url).host.orEmpty() }.getOrDefault("").removePrefix("www.")
-
-@Composable
-private fun HiLetterIcon(label: String, size: Int, fontSize: Int) {
-    val color = hiLetterColor(label)
-    Box(
-        modifier = Modifier.size(size.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label.take(1).uppercase(), color = color, fontSize = fontSize.sp, fontWeight = FontWeight.Bold)
-    }
-}
 
 @Composable
 private fun HiTabCountBox(count: Int, color: Color) {

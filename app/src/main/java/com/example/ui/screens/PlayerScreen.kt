@@ -111,10 +111,15 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val hdrColorModeManager = remember(activity, playerViewModel.engine.getPlayer()) {
+    // Observe the engine's current ExoPlayer so the video surface, HDR manager and
+    // seek controller re-bind when the engine rebuilds the player (decoder fallback,
+    // HDR/codec switches). Holding a released player was a source of playback crashes.
+    val observedPlayer by playerViewModel.engine.playerInstance.collectAsState()
+    val activePlayer = observedPlayer ?: playerViewModel.engine.getPlayer()
+    val hdrColorModeManager = remember(activity, activePlayer) {
         activity?.let { HdrColorModeManager(it) }
     }
-    val smoothSeekController = rememberSmoothSeekController(playerViewModel.engine.getPlayer())
+    val smoothSeekController = rememberSmoothSeekController(activePlayer)
 
     // Immersive playback: hide the status bar (battery/network/notification
     // icons) and nav bar while the player is on screen so nothing but the
@@ -174,8 +179,8 @@ fun PlayerScreen(
 
     // Attach before the first selected HDR track reaches the surface so the
     // window is already in HDR output mode when MediaCodec renders frame one.
-    DisposableEffect(hdrColorModeManager, playerViewModel.engine.getPlayer()) {
-        hdrColorModeManager?.attach(playerViewModel.engine.getPlayer())
+    DisposableEffect(hdrColorModeManager, activePlayer) {
+        hdrColorModeManager?.attach(activePlayer)
         onDispose { hdrColorModeManager?.release() }
     }
 
@@ -216,8 +221,8 @@ fun PlayerScreen(
     var hdrColorIntensities by remember { mutableStateOf(emptyMap<HdrColor, Float>()) }
     var hdrInteractionTick by remember { mutableStateOf(0) }
 
-    DisposableEffect(playerViewModel.engine.getPlayer()) {
-        val player = playerViewModel.engine.getPlayer()
+    DisposableEffect(activePlayer) {
+        val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 videoWidth = videoSize.width
@@ -241,9 +246,9 @@ fun PlayerScreen(
 
     // Keep the native surface path, but mask the initial surface/HDR negotiation
     // until Media3 confirms that the first decoded frame is on screen.
-    DisposableEffect(playerViewModel.engine.getPlayer(), currentVideo?.uri) {
+    DisposableEffect(activePlayer, currentVideo?.uri) {
         firstFrameRendered = false
-        val player = playerViewModel.engine.getPlayer()
+        val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
                 firstFrameRendered = true
@@ -262,7 +267,7 @@ fun PlayerScreen(
     // callback after a surface hand-off. A growing file must not use this
     // timeout: lifting its mask without a decoded frame made a still-loading
     // Matroska stream look like a broken black player.
-    LaunchedEffect(currentVideo?.uri, currentVideo?.isPartialDownload, playerViewModel.engine.getPlayer()) {
+    LaunchedEffect(currentVideo?.uri, currentVideo?.isPartialDownload, activePlayer) {
         if (currentVideo?.isPartialDownload != true) {
             delay(850)
             if (!firstFrameRendered) firstFrameRendered = true
@@ -541,14 +546,14 @@ fun PlayerScreen(
                 GlVideoSurface(ctx).apply {
                     glSurfaceRef = this
                     configureGlSurface(this)
-                    setPlayer(playerViewModel.engine.getPlayer())
+                    setPlayer(activePlayer)
                     setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 }
             },
             update = { videoSurface ->
                 glSurfaceRef = videoSurface
                 configureGlSurface(videoSurface)
-                videoSurface.setPlayer(playerViewModel.engine.getPlayer())
+                videoSurface.setPlayer(activePlayer)
                 videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
                 videoSurface.invalidate()
             },

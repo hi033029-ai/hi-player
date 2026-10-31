@@ -507,17 +507,34 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
     fun setPlayer(next: ExoPlayer) {
         if (player === next) return
-        player?.let { oldPlayer ->
-            post { oldPlayer.clearVideoSurface() }
-        }
+        val oldPlayer = player
         player = next
+        renderer.surface?.let { surface ->
+            // Only detach the surface this view owns; a blanket clear could detach a
+            // surface another screen just attached and leave the decoder without output.
+            runCatching { oldPlayer?.clearVideoSurface(surface) }
+        }
         renderer.onSurfaceReady = { surface ->
             // Renderer callbacks arrive on GLSurfaceView's GLThread, while
             // ExoPlayer is owned by the app main thread.
-            post { next.setVideoSurface(surface) }
+            post {
+                if (player === next && renderer.surface === surface) {
+                    runCatching { next.setVideoSurface(surface) }
+                }
+            }
+        }
+        renderer.onRetireSurface = { retiredSurface, retiredTexture ->
+            // The GL context was recreated (app resumed, display change). Detach the
+            // stale surface from the player before releasing it so MediaCodec never
+            // renders into a released Surface (a native crash on many devices).
+            post {
+                player?.let { current -> runCatching { current.clearVideoSurface(retiredSurface) } }
+                runCatching { retiredSurface.release() }
+                runCatching { retiredTexture.release() }
+            }
         }
         renderer.surface?.let { surface ->
-            post { next.setVideoSurface(surface) }
+            runCatching { next.setVideoSurface(surface) }
         }
     }
 
@@ -536,12 +553,17 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         hudText = null
         hudBar = null
         hudIsVolume = null
-        player?.let { currentPlayer ->
-            post { currentPlayer.clearVideoSurface() }
+        // Detach synchronously: posting this left a window where the decoder kept
+        // rendering into a Surface that releaseSurface() had already destroyed.
+        // The player stays bound so a re-attached view gets its new surface back.
+        val currentPlayer = player
+        renderer.surface?.let { surface ->
+            runCatching { currentPlayer?.clearVideoSurface(surface) }
         }
-        player = null
-        renderer.releaseSurface()
+        // GLSurfaceView stops its render thread here; release the texture after it,
+        // so a frame being drawn never touches a released SurfaceTexture.
         super.onDetachedFromWindow()
+        renderer.releaseSurface()
     }
 
     private class VideoGlRenderer : Renderer, SurfaceTexture.OnFrameAvailableListener {
@@ -575,7 +597,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         var surface: Surface? = null
             private set
         private var surfaceTexture: SurfaceTexture? = null
-        var onSurfaceReady: ((Surface) -> Unit)? = null
+        @Volatile var onSurfaceReady: ((Surface) -> Unit)? = null
+        @Volatile var onRetireSurface: ((Surface, SurfaceTexture) -> Unit)? = null
         var requestRender: (() -> Unit)? = null
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -607,11 +630,24 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+            val previousSurface = surface
+            val previousTexture = surfaceTexture
             val texture = SurfaceTexture(textureId)
-            surfaceTexture = texture
             texture.setOnFrameAvailableListener(this)
-            surface = Surface(texture)
-            onSurfaceReady?.invoke(surface!!)
+            val nextSurface = Surface(texture)
+            surfaceTexture = texture
+            surface = nextSurface
+            onSurfaceReady?.invoke(nextSurface)
+            if (previousSurface != null && previousTexture != null) {
+                previousTexture.setOnFrameAvailableListener(null)
+                val retire = onRetireSurface
+                if (retire != null) {
+                    retire(previousSurface, previousTexture)
+                } else {
+                    runCatching { previousSurface.release() }
+                    runCatching { previousTexture.release() }
+                }
+            }
         }
 
         override fun onDrawFrame(gl: GL10?) {
@@ -664,10 +700,13 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         fun setPreset(next: ColorPreset) { preset = next }
 
         fun releaseSurface() {
-            surfaceTexture?.release()
+            val texture = surfaceTexture
+            val currentSurface = surface
             surfaceTexture = null
-            surface?.release()
             surface = null
+            texture?.setOnFrameAvailableListener(null)
+            runCatching { currentSurface?.release() }
+            runCatching { texture?.release() }
         }
 
         private fun linkProgram(vertex: String, fragment: String): Int {

@@ -1,6 +1,6 @@
 package com.example.ui.screens
 
-/** Web events never authorize native playback. A visible app control must do so. */
+/** Web redirects and unsolicited events never authorize native playback; only user-started videos and taps do. */
 internal object BrowserVideoPolicy {
     private val adDomains = setOf("doubleclick.net", "googlesyndication.com", "googleadservices.com", "imasdk.googleapis.com", "adnxs.com", "pubmatic.com", "rubiconproject.com", "adsrvr.org", "adform.net", "2mdn.net", "exoclick.com", "trafficjunky.net", "juicyads.com")
     fun isAdUrl(url: String): Boolean = runCatching {

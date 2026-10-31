@@ -32,6 +32,24 @@ class OrbitBrowserFeaturesTest {
     }
 
     @Test
+    fun genericUrlRulesOnlyApplyToSubresources() {
+        OrbitBrowserFilterEngine.load(ApplicationProvider.getApplicationContext())
+        val adScript = Uri.parse("https://cdn.example.org/adserver/loader.js")
+
+        assertTrue(OrbitBrowserFilterEngine.shouldBlock(adScript, enabled = true, pageHost = "example.org", mainFrame = false))
+        assertFalse(OrbitBrowserFilterEngine.shouldBlock(adScript, enabled = true, pageHost = "example.org", mainFrame = true))
+        assertFalse(OrbitBrowserFilterEngine.shouldBlock(adScript, enabled = false, pageHost = "example.org", mainFrame = false))
+        assertFalse(
+            OrbitBrowserFilterEngine.shouldBlock(
+                Uri.parse("https://cdn.example.org/assets/app.js"),
+                enabled = true,
+                pageHost = "example.org",
+                mainFrame = false,
+            ),
+        )
+    }
+
+    @Test
     fun cosmeticRulesAreValidSeparateCssRules() {
         OrbitBrowserFilterEngine.load(ApplicationProvider.getApplicationContext())
         val css = OrbitBrowserFilterEngine.cosmeticCss(host = null, enabled = true)

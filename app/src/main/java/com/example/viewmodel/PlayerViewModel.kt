@@ -115,7 +115,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var playRequestJob: Job? = null
 
     init {
-        HiMediaSessionService.sharedPlayer = engine.getPlayer()
+        HiMediaSessionService.updatePlayer(engine.getPlayer())
         startProgressSync()
 
         // The app-level HDR setting previously only changed DataStore. Observe
@@ -176,7 +176,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // applyConfiguration creates a fresh ExoPlayer, so reapply the
             // persisted picture mode to the replacement instance.
             engine.setHdrEnhanceActive(settings.enableHdrEnhance)
-            HiMediaSessionService.sharedPlayer = engine.getPlayer()
+            HiMediaSessionService.updatePlayer(engine.getPlayer())
 
             val record = recordDeferred.await()
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L

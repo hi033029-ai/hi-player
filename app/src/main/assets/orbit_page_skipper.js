@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Hi Browser Page Skipper
 // @namespace    hi.browser
-// @version      2.0
+// @version      3.0
 // @description  Speeds up countdown/wait pages, hides ads, banners and fake buttons
 // @match        *://*/*
 // @run-at       document-start
@@ -12,12 +12,16 @@
   if (window.top !== window || window.__orbitSkipper) return;
   window.__orbitSkipper = true;
 
-  var SPEED = 20; // countdown speed-up factor on wait pages
+  var SPEED = 30; // countdown speed-up factor on wait pages
   var SAFE = /(^|\.)(youtube|google|gstatic|github|gitlab|wikipedia|wikimedia|facebook|instagram|reddit|netflix|twitch|spotify|whatsapp|microsoft|live|office|apple|icloud|amazon|paypal|stripe|linkedin|stackoverflow|duckduckgo|bing|yahoo|x|twitter|tiktok|telegram|discord|anthropic|claude|openai|chatgpt)\./i;
   if (SAFE.test(location.hostname + '.')) return;
 
-  var _st = window.setTimeout, _si = window.setInterval, _open = window.open;
+  var _st = window.setTimeout, _si = window.setInterval, _ct = window.clearTimeout, _ci = window.clearInterval;
+  var _open = window.open;
+  var NativeDate = window.Date, _dateNow = NativeDate.now;
+  var _perf = (window.performance && performance.now) ? performance.now.bind(performance) : null;
   var allowOpen = 0;
+  function realNow() { return _dateNow.call(NativeDate); }
 
   // ---- Wait-page detection. Runs only from the throttled scan below (never
   // inside timers), skips big pages cheaply, and never treats pages with
@@ -39,32 +43,104 @@
     return txt.length < 6000 && WAIT.test(txt);
   }
 
-  // ---- 1. Skip the time: accelerate timers while on a wait page
-  // A countdown started by an inline script before the first scan triggers one
-  // early check, so its timer is already sped up.
+  // ---- 1. Skip the time.
+  // Every timer goes through a small registry so countdowns that started before
+  // the page was recognised (the usual case: the countdown script runs before
+  // its text is on screen) are re-scheduled at full speed the moment it is.
+  var timers = {};
+  var seq = 0x40000000;
+  function scaled(delay, repeat) {
+    if (!isWaitPage || typeof delay !== 'number' || !(delay > 0)) return delay;
+    var min = repeat ? 90 : 300;
+    if (delay < min || delay > 120000) return delay;
+    return Math.max(repeat ? 5 : 10, delay / SPEED);
+  }
+  function fire(t) {
+    try { t.fn.apply(window, t.args); } catch (e) { _st.call(window, function () { throw e; }, 0); }
+  }
+  function arm(t, delay) {
+    var d = scaled(delay, t.repeat);
+    t.fast = isWaitPage;
+    t.due = realNow() + (typeof d === 'number' ? d : 0);
+    if (t.repeat) t.real = _si.call(window, function () { fire(t); }, d);
+    else t.real = _st.call(window, function () { delete timers[t.id]; fire(t); }, d);
+  }
+  function register(fn, delay, args, repeat) {
+    var id = ++seq;
+    var t = timers[id] = { id: id, fn: fn, args: args, delay: Number(delay) || 0, repeat: repeat, real: 0, fast: false, due: 0 };
+    arm(t, t.delay);
+    return id;
+  }
+  function accelerateExisting() {
+    var now = realNow();
+    Object.keys(timers).forEach(function (key) {
+      var t = timers[key];
+      if (!t || t.fast) return;
+      if (t.repeat) { _ci.call(window, t.real); arm(t, t.delay); }
+      else { _ct.call(window, t.real); arm(t, Math.max(0, t.due - now)); }
+    });
+  }
   function decideEarly(d) {
-    if (!decided && document.body && typeof d === 'number' && d >= 900 && d <= 60000) {
-      try { scan(); } catch (e) {}
+    if (!decided && typeof d === 'number' && d >= 90 && d <= 120000) {
+      try { scanSoon(); } catch (e) {}
     }
   }
-  window.setTimeout = function (fn, d) {
+  function fastSetTimeout(fn, d) {
     decideEarly(d);
-    if (isWaitPage && typeof d === 'number' && d >= 900 && d <= 60000) {
-      var a = [].slice.call(arguments);
-      a[1] = Math.max(10, d / SPEED);
-      return _st.apply(window, a);
-    }
-    return _st.apply(window, arguments);
-  };
-  window.setInterval = function (fn, d) {
+    if (typeof fn !== 'function') return _st.apply(window, arguments);
+    return register(fn, d, [].slice.call(arguments, 2), false);
+  }
+  function fastSetInterval(fn, d) {
     decideEarly(d);
-    if (isWaitPage && typeof d === 'number' && d >= 500 && d <= 60000) {
-      var a = [].slice.call(arguments);
-      a[1] = Math.max(10, d / SPEED);
-      return _si.apply(window, a);
+    if (typeof fn !== 'function') return _si.apply(window, arguments);
+    return register(fn, d, [].slice.call(arguments, 2), true);
+  }
+  function clearAny(id) {
+    var t = timers[id];
+    if (t) {
+      delete timers[id];
+      if (t.repeat) _ci.call(window, t.real); else _ct.call(window, t.real);
+      return;
     }
-    return _si.apply(window, arguments);
-  };
+    _ct.call(window, id);
+  }
+  window.setTimeout = fastSetTimeout;
+  window.setInterval = fastSetInterval;
+  window.clearTimeout = clearAny;
+  window.clearInterval = clearAny;
+
+  // Countdowns that compute "seconds left" from the clock (Date.now(),
+  // new Date(), performance.now(), requestAnimationFrame) run fast too.
+  var warping = false, warpReal = 0, warpPerf = 0;
+  function warpedNow() { var r = realNow(); return warping ? warpReal + (r - warpReal) * SPEED : r; }
+  function startWarp() {
+    if (warping) return;
+    warpReal = realNow();
+    warpPerf = _perf ? _perf() : 0;
+    warping = true;
+    try {
+      NativeDate.now = warpedNow;
+      window.Date = new Proxy(NativeDate, {
+        construct: function (target, args, newTarget) {
+          return args.length ? Reflect.construct(target, args, newTarget) : Reflect.construct(target, [warpedNow()], newTarget);
+        },
+        apply: function () { return new NativeDate(warpedNow()).toString(); }
+      });
+    } catch (e) {}
+    if (_perf) {
+      try {
+        performance.now = function () { var p = _perf(); return warpPerf + (p - warpPerf) * SPEED; };
+        var _raf = window.requestAnimationFrame;
+        if (_raf) window.requestAnimationFrame = function (cb) {
+          return _raf.call(window, function () { cb(performance.now()); });
+        };
+      } catch (e) {}
+    }
+  }
+  function onWaitPageDetected() {
+    accelerateExisting();
+    startWarp();
+  }
 
   // Countdowns that pause when the tab loses focus keep running (wait pages only).
   try {
@@ -164,18 +240,29 @@
   var observer = null;
   var stopped = false;
   function stop() {
+    if (stopped) return;
     stopped = true;
     if (observer) { try { observer.disconnect(); } catch (e) {} }
+    // Not a wait page: new timers go straight to the browser again. Clearing
+    // stays wrapped so ids handed out earlier can still be cancelled.
+    if (!isWaitPage) {
+      if (window.setTimeout === fastSetTimeout) window.setTimeout = _st;
+      if (window.setInterval === fastSetInterval) window.setInterval = _si;
+    }
   }
 
   function scan() {
     if (stopped) return;
     checks++;
+    lastScan = realNow();
     if (document.body) decided = true;
-    isWaitPage = evaluateWait();
+    var wasWaitPage = isWaitPage;
+    // Once a page is recognised it stays a wait page (its text changes as it counts down).
+    isWaitPage = wasWaitPage || evaluateWait();
+    if (isWaitPage && !wasWaitPage) onWaitPageDetected();
     if (!isWaitPage) {
       // Big pages are never wait pages: stop watching them at once.
-      if (document.getElementsByTagName('*').length > 2500 || checks > 40) stop();
+      if (document.getElementsByTagName('*').length > 2500 || checks > 120) stop();
       return;
     }
     styleWaitPage();
@@ -185,15 +272,22 @@
   }
 
   var pending = 0;
+  var lastScan = 0;
   function schedule() {
     if (pending || stopped) return;
-    pending = _st.call(window, function () { pending = 0; try { scan(); } catch (e) {} }, 500);
+    pending = _st.call(window, function () { pending = 0; try { scan(); } catch (e) {} }, 150);
+  }
+  // Called from timer creation: scan right away when the page has text, at most every 150 ms.
+  function scanSoon() {
+    if (stopped || !document.body) { schedule(); return; }
+    if (realNow() - lastScan >= 150) scan(); else schedule();
   }
   try {
     observer = new MutationObserver(schedule);
     observer.observe(document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
   document.addEventListener('DOMContentLoaded', function () { try { scan(); } catch (e) {} });
+  document.addEventListener('readystatechange', function () { if (document.readyState === 'interactive') schedule(); });
   window.addEventListener('load', schedule);
   _st.call(window, stop, 60000);
 })();
