@@ -727,6 +727,8 @@ class MainActivity : FragmentActivity() {
 
         if (isSupportedExternalVideo(incoming, uri)) {
             pendingExternalVideoUri.value = uri
+        } else if (incoming.action == Intent.ACTION_VIEW && uri.scheme in setOf("http", "https")) {
+            pendingBrowserUrl.value = uri.toString()
         }
     }
 

@@ -224,3 +224,48 @@ confirm that a secure website tab remains a distinct session.
   fonts, light/dark skeletons, auth popup/direct/menu routes, actual app profile
   updates/sign-out, private-tab warning, provider absence and real browser
   website sign-in. Embedded-vs-external session separation must remain visible.
+
+## Approved secure website session flow (1.0.73 / 74)
+
+- On explicit Continue, launch a normal non-ephemeral Custom Tab and retain the
+  selected supported browser provider for later visits. If that provider is no
+  longer available, a visible message warns that another browser may require
+  sign-in again. Opening a tab is not treated as authentication success.
+- Remember a website-browser routing preference for that exact HTTPS origin,
+  not a Google identity, token, cookie or authentication result. Scheme/host/
+  effective port define the origin; paths, query strings and fragments are not
+  persisted in this preference. No wildcard domain/subdomain permission.
+- A sign-in site's content and account chooser stay in its owning browser. When
+  returning to Hi Player, show a clear Continue website surface instead of the
+  old logged-out WebView. Later address/history/bookmark/external-link visits
+  to remembered origins route back to the same provider. A plain restore of the
+  Hi Player screen does not relaunch an external activity on its own.
+- Use Hi Browser instead removes this site's routing choice and opens a separate
+  embedded page, with an explicit warning that it may be signed out. Device-
+  browser filters, website accounts and media controls remain separate from
+  embedded Hi Browser features. Website login persistence is controlled by the
+  provider/site and may expire or be revoked; it is not guaranteed forever.
+- Private-site route choices remain in memory only and are discarded when no
+  private tabs remain. The explicit handoff warning says that the device browser
+  may use its saved accounts and is not Hi Browser private mode.
+- Clearing embedded cookies/site data also resets these routing preferences;
+  it does not clear another browser's sign-ins. Clear-data UI says so before
+  confirming, rather than promising to sign users out of external sites.
+- New SecureWebsitePolicyTest covers HTTPS origin normalization, dropping
+  paths/query/fragments, rejecting credential-bearing/unsafe URLs, exact host/
+  subdomain separation and non-default ports. These tests are included in the
+  approved build's targeted CI regression selection.
+
+Device test after installing: choose a website's Sign in with Google, Continue,
+choose/approve the actual Google account in the browser, verify the website's
+own signed-in UI, browse there, close/reopen through Hi Player and verify that
+browser session is reused. Also check cancellation/provider absence, switch
+back to embedded mode, private warnings, explicit sign-out/session expiry,
+clear data, and that no account-logged-in status is invented by Hi Player.
+
+Build preparation: Khan explicitly approved pushing/merging/building this update.
+Version is 1.0.73 (74); the committed debug signing key is unchanged. Local
+`:app:compileDebugKotlin -PHI_PLAYER_DRIVE_ENABLED=true` passed after fixing a
+missing OutlinedButton import and reviewing released-WebView callback guards.
+Full GitHub APK packaging and targeted regression outcomes are checked separately;
+local compilation does not establish successful real website sign-in or device UX.
