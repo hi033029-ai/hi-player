@@ -55,7 +55,8 @@ fun HiPlayerHeader(
         extraActions?.invoke()
         onAccountClick?.let { GoogleAccountAvatar(onClick = it) }
     }
-    Surface(modifier.fillMaxWidth().statusBarsPadding().testTag(testTag), color = palette.surface) {
+    Surface(modifier.fillMaxWidth().statusBarsPadding()
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)).testTag(testTag), color = palette.surface) {
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = metrics.headerHeight)
                 .padding(horizontal = 12.dp, vertical = 8.dp),

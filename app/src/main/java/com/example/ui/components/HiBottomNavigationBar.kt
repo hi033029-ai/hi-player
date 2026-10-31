@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -97,7 +98,7 @@ fun HiBottomNavigationBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(82.dp)
+            .heightIn(min = 82.dp)
             .testTag("hi_bottom_navigation_bar"),
         contentAlignment = Alignment.Center
     ) {
@@ -105,7 +106,7 @@ fun HiBottomNavigationBar(
             modifier = Modifier
                 .padding(horizontal = 12.dp, vertical = 9.dp)
                 .fillMaxWidth()
-                .height(64.dp)
+                .heightIn(min = 64.dp)
                 .clip(pillShape)
                 .background(palette.surface)
                 .border(0.5.dp, palette.surfaceBorder, pillShape)
@@ -113,7 +114,7 @@ fun HiBottomNavigationBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .heightIn(min = 64.dp)
                     .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
@@ -124,7 +125,7 @@ fun HiBottomNavigationBar(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .height(56.dp)
+                            .heightIn(min = 56.dp)
                             .onGloballyPositioned { coordinates ->
                                 val centerPx = coordinates.positionInParent().x + coordinates.size.width / 2f
                                 val centerDp = with(density) { centerPx.toDp() } + 4.dp
@@ -143,7 +144,7 @@ fun HiBottomNavigationBar(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.offset(y = if (selected) (-3).dp else 0.dp)
+                            modifier = Modifier.padding(top = 6.dp, bottom = 12.dp)
                         ) {
                             Icon(
                                 imageVector = spec.icon,
@@ -156,7 +157,8 @@ fun HiBottomNavigationBar(
                                 color = if (selected) palette.primary else palette.textSecondary,
                                 fontSize = 10.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1,
+                                maxLines = 2,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }

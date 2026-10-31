@@ -110,6 +110,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +120,8 @@ fun MusicScreen(
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null,
-    libraryViewModel: LibraryViewModel? = null
+    libraryViewModel: LibraryViewModel? = null,
+    onMoveAudioToRecycleBin: (AudioItem) -> Unit = {},
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -138,18 +140,21 @@ fun MusicScreen(
         val enabled = !lyricsEnabled
         musicViewModel.setLyricsEnabled(enabled)
     }
-    var libraryMode by remember { mutableStateOf("All Music") }
+    val modes = remember { listOf("All Music", "Folders", "Playlists", "Albums", "Artists") }
+    val pager = androidx.compose.foundation.pager.rememberPagerState(pageCount = { modes.size })
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val libraryMode = modes[pager.settledPage]
+    var pendingDeleteTrack by remember { mutableStateOf<AudioItem?>(null) }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
     }
-    var compactAudioView by remember {
+    var compactAudioView by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(musicPreferences.getBoolean("horizontal_view", false))
     }
-    var audioGridMinSize by remember {
+    var audioGridMinSize by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
-    var audioSort by remember { mutableStateOf("Name") }
-    var selectedCollection by remember { mutableStateOf<String?>(null) }
+    var audioSort by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("Name") }
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
 
     val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
@@ -164,15 +169,15 @@ fun MusicScreen(
         enabled = compactAudioView
     )
 
-    val presentation by androidx.compose.runtime.produceState(
-        AudioLibraryPresentation(), audioList, searchQuery, audioSort, libraryMode, selectedCollection,
+    val presentations by androidx.compose.runtime.produceState<Map<String, AudioLibraryPresentation>>(
+        emptyMap(), audioList, searchQuery, audioSort,
     ) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            buildAudioLibraryPresentation(audioList, searchQuery, audioSort, libraryMode, selectedCollection)
+            modes.associateWith { mode ->
+                buildAudioLibraryPresentation(audioList, searchQuery, audioSort, mode, null)
+            }
         }
     }
-    val filteredList = presentation.tracks
-    val groupedAudio = presentation.groups
 
     Column(
         modifier = modifier
@@ -182,7 +187,7 @@ fun MusicScreen(
         val audioToolbar: @Composable () -> Unit = {
             MusicLibraryToolbar(
                 selected = libraryMode,
-                onCategory = { libraryMode = it; selectedCollection = null },
+                onCategory = { category -> scope.launch { pager.animateScrollToPage(modes.indexOf(category)) } },
                 grid = compactAudioView,
                 onGridChange = {
                     compactAudioView = it
@@ -191,11 +196,7 @@ fun MusicScreen(
                 sort = audioSort,
                 onSort = { audioSort = it },
             )
-            if (selectedCollection != null) {
-                TextButton(onClick = { selectedCollection = null }) {
-                    Text("‹ All $libraryMode", color = palette.textPrimary)
-                }
-            }
+
         }
 
         // Keep the toolbar outside the list so it remains available when a
@@ -204,8 +205,41 @@ fun MusicScreen(
         audioToolbar()
 
         // Track List
-        Box(modifier = Modifier.weight(1f)) {
-            if (filteredList.isEmpty()) {
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pager, key = { modes[it] }, beyondViewportPageCount = 1,
+            userScrollEnabled = pendingDeleteTrack == null,
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("music_library_pager"),
+        ) { page ->
+            val pageMode = modes[page]
+            var selectedCollection by androidx.compose.runtime.saveable.rememberSaveable(pageMode) {
+                mutableStateOf<String?>(null)
+            }
+            androidx.activity.compose.BackHandler(enabled = pager.settledPage == page && selectedCollection != null) {
+                selectedCollection = null
+            }
+            val basePresentation = presentations[pageMode]
+            // Root snapshots already contain sorted group members; opening a
+            // collection is a map lookup, not another scan/filter/loading pass.
+            val collection = selectedCollection
+            val presentation = if (collection == null) basePresentation else
+                basePresentation?.let { AudioLibraryPresentation(
+                    tracks = it.groups[collection].orEmpty(), groups = emptyMap()) }
+            val trackListState = androidx.compose.foundation.lazy.rememberLazyListState()
+            val trackGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val collectionGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val filteredList = presentation?.tracks.orEmpty()
+            val groupedAudio = presentation?.groups.orEmpty()
+            Column(Modifier.fillMaxSize()) {
+            if (selectedCollection != null) {
+                TextButton(onClick = { selectedCollection = null }) {
+                    Text("‹ All $pageMode", color = palette.textPrimary)
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (presentation == null) {
+                com.example.ui.components.ContentSkeleton(label = "Preparing music…",
+                    layout = com.example.ui.components.SkeletonLayout.MEDIA_LIST)
+            } else if (filteredList.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -219,7 +253,7 @@ fun MusicScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = when (libraryMode) {
+                            text = when (pageMode) {
                                 "Playlists" -> "No playlist tracks yet"
                                 "Folders" -> "No folder tracks found"
                                 "Albums" -> "No album tracks found"
@@ -231,7 +265,7 @@ fun MusicScreen(
                         )
                         androidx.compose.material3.TextButton(onClick = {
                             musicViewModel.setSearchQuery("")
-                            libraryMode = "All Music"
+                            scope.launch { pager.animateScrollToPage(0) }
                             selectedCollection = null
                             musicViewModel.loadAudioTracks()
                         }) { Text(if (audioList.isEmpty()) "Scan music" else "Show all music") }
@@ -243,6 +277,7 @@ fun MusicScreen(
                 // show only the tracks that belong to it.
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 148.dp),
+                    state = collectionGridState,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -260,7 +295,7 @@ fun MusicScreen(
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Icon(
-                                    imageVector = when (libraryMode) {
+                                    imageVector = when (pageMode) {
                                         "Artists" -> Icons.Default.Headphones
                                         "Albums" -> Icons.Default.Audiotrack
                                         else -> Icons.Default.MusicNote
@@ -292,6 +327,7 @@ fun MusicScreen(
                 if (compactAudioView) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = audioGridMinSize.dp),
+                        state = trackGridState,
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -316,7 +352,8 @@ fun MusicScreen(
                                         track = track,
                                         isSelected = isSelected,
                                         isPlaying = isSelected && isPlaying,
-                                        onClick = { musicViewModel.playTrack(track) },
+                                        onDelete = { pendingDeleteTrack = track },
+                                    onClick = { musicViewModel.playTrack(track) },
                                         modifier = Modifier.padding(4.dp),
                                     )
                                 }
@@ -328,6 +365,7 @@ fun MusicScreen(
                                     track = track,
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
+                                    onDelete = { pendingDeleteTrack = track },
                                     onClick = { musicViewModel.playTrack(track) },
                                     modifier = Modifier
                                         .padding(4.dp)
@@ -349,6 +387,7 @@ fun MusicScreen(
                     }
                 } else if (groupedAudio.isNotEmpty()) {
                     LazyColumn(
+                        state = trackListState,
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -370,6 +409,7 @@ fun MusicScreen(
                                     track = track,
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
+                                    onDelete = { pendingDeleteTrack = track },
                                     onClick = { musicViewModel.playTrack(track) }
                                 )
                             }
@@ -377,6 +417,7 @@ fun MusicScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = trackListState,
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -386,6 +427,7 @@ fun MusicScreen(
                                 track = track,
                                 isSelected = isSelected,
                                 isPlaying = isSelected && isPlaying,
+                                onDelete = { pendingDeleteTrack = track },
                                 onClick = { musicViewModel.playTrack(track) },
                                 modifier = Modifier.reorderableDrag(
                                     itemIndex = index,
@@ -404,12 +446,27 @@ fun MusicScreen(
                     }
                 }
             }
+            }
+            }
         }
 
         MusicPlaybackSurface(
             musicViewModel = musicViewModel,
             onOpenEq = { showEqDialog = true },
             toggleLyrics = toggleLyrics,
+        )
+    }
+
+    pendingDeleteTrack?.let { track ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteTrack = null },
+            title = { Text("Move audio to Recycle Bin?") },
+            text = { Text("This removes the track from your library. You can restore the file from Recycle Bin in Files.") },
+            confirmButton = { TextButton(onClick = {
+                onMoveAudioToRecycleBin(track)
+                pendingDeleteTrack = null
+            }) { Text("Move to Recycle Bin") } },
+            dismissButton = { TextButton(onClick = { pendingDeleteTrack = null }) { Text("Cancel") } },
         )
     }
 
@@ -433,9 +490,11 @@ fun AudioTrackCard(
     isSelected: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDelete: (() -> Unit)? = null,
 ) {
     val palette = LocalHiPalette.current
+    var menuExpanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
@@ -518,6 +577,18 @@ fun AudioTrackCard(
         }
 
         Spacer(modifier = Modifier.width(8.dp))
+
+        if (onDelete != null) Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(Icons.Default.MoreVert, "Audio options", tint = palette.textSecondary)
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(text = { Text("Move to Recycle Bin") }, onClick = {
+                    menuExpanded = false
+                    onDelete()
+                })
+            }
+        }
 
         Column(modifier = Modifier.widthIn(max = 80.dp), horizontalAlignment = Alignment.End) {
             Box(

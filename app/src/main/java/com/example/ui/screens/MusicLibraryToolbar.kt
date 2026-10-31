@@ -34,12 +34,17 @@ internal fun MusicLibraryToolbar(
     val palette = LocalHiPalette.current
     var viewMenu by remember { mutableStateOf(false) }
     var sortMenu by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+    val categories = remember { listOf("All Music", "Folders", "Playlists", "Albums", "Artists") }
+    val categoryState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(selected) {
+        categoryState.animateScrollToItem(categories.indexOf(selected).coerceAtLeast(0))
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
         .clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated)
-        .padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(Modifier.weight(1f).testTag("music_library_categories"),
+        .padding(horizontal = 4.dp, vertical = 4.dp)) {
+        LazyRow(Modifier.fillMaxWidth().testTag("music_library_categories"), state = categoryState,
             horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            listOf("All Music", "Folders", "Playlists", "Albums", "Artists").forEach { category ->
+            categories.forEach { category ->
                 item(key = category) {
                     val active = selected == category
                     Box(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
@@ -54,6 +59,8 @@ internal fun MusicLibraryToolbar(
                 }
             }
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically) {
         Box {
             IconButton(onClick = { viewMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
                 Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
@@ -76,6 +83,7 @@ internal fun MusicLibraryToolbar(
                         onClick = { onSort(option); sortMenu = false })
                 }
             }
+        }
         }
     }
 }
