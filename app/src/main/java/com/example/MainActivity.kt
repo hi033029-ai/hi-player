@@ -139,7 +139,6 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        com.example.ui.components.HiPlayerLogo.preload(this)
 
         handleIntent(intent)
 

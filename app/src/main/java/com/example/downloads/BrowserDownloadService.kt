@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import com.example.R
 import com.example.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -94,7 +95,7 @@ class BrowserDownloadService : Service() {
         val launch = Intent(this, MainActivity::class.java).setAction("com.example.OPEN_BROWSER_DOWNLOADS").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val content = PendingIntent.getActivity(this, 701, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setSmallIcon(R.drawable.hi_player_notification)
             .setContentTitle("Hi Browser downloads").setContentText(text).setContentIntent(content)
             .setOnlyAlertOnce(true).setOngoing(ongoing).setAutoCancel(!ongoing)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS).setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)

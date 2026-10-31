@@ -7,8 +7,10 @@ import android.content.Intent
 import android.os.Build
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.example.R
 import com.example.MainActivity
 
 @OptIn(UnstableApi::class)
@@ -52,6 +54,9 @@ class HiMediaSessionService : MediaSessionService() {
         super.onCreate()
         activeService = this
         createNotificationChannel()
+        val notificationProvider = DefaultMediaNotificationProvider(this)
+        notificationProvider.setSmallIcon(R.drawable.hi_player_notification)
+        setMediaNotificationProvider(notificationProvider)
         sharedPlayer?.let(::createSession)
     }
 
