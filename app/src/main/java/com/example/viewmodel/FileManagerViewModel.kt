@@ -23,6 +23,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.NonCancellable
+import com.example.data.RecycleBinVisibility
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,16 +90,22 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private val _folderFiles = MutableStateFlow<List<FileItem>>(emptyList())
-    val folderFiles = _folderFiles.asStateFlow()
+    val folderFiles = combine(_folderFiles, RecycleBinVisibility.hiddenPaths) { items, hidden ->
+        items.filterNot { RecycleBinVisibility.isHidden(it.path, hidden) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _newFolderPaths = MutableStateFlow<Set<String>>(emptySet())
     val newFolderPaths = _newFolderPaths.asStateFlow()
 
     private val _allArchives = MutableStateFlow<List<FileItem>>(emptyList())
-    val allArchives = _allArchives.asStateFlow()
+    val allArchives = combine(_allArchives, RecycleBinVisibility.hiddenPaths) { items, hidden ->
+        items.filterNot { RecycleBinVisibility.isHidden(it.path, hidden) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _allDocuments = MutableStateFlow<List<FileItem>>(emptyList())
-    val allDocuments = _allDocuments.asStateFlow()
+    val allDocuments = combine(_allDocuments, RecycleBinVisibility.hiddenPaths) { items, hidden ->
+        items.filterNot { RecycleBinVisibility.isHidden(it.path, hidden) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _storageUsedBytes = MutableStateFlow(0L)
     val storageUsedBytes = _storageUsedBytes.asStateFlow()
@@ -167,6 +178,7 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     // slower scan started before a deletion must never publish stale entries.
     private val directoryScanGeneration = AtomicLong(0L)
     private val libraryScanGeneration = AtomicLong(0L)
+    private val recycleBinScanGeneration = AtomicLong(0L)
 
     fun enterSelectionMode(item: FileItem) {
         _isSelectionMode.value = true
@@ -238,9 +250,13 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun refreshRecycleBin() {
+        val generation = recycleBinScanGeneration.incrementAndGet()
         viewModelScope.launch(Dispatchers.IO) {
             val items = readRecycleBinItems()
+            val removedPaths = items.filterNot { File(it.originalPath).exists() }.map { it.originalPath }.toSet()
             withContext(Dispatchers.Main) {
+                if (generation != recycleBinScanGeneration.get()) return@withContext
+                RecycleBinVisibility.loadCommitted(removedPaths)
                 _recycleBinItems.value = items
                 _selectedRecycleBinIds.value = _selectedRecycleBinIds.value.intersect(items.map { it.id }.toSet())
             }
@@ -276,103 +292,104 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         moveToRecycleBin(items)
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun moveToRecycleBin(items: List<FileItem>, onComplete: (Set<String>) -> Unit = {}) {
-        val safeItems = items
-            .filter { isSafeStorageItem(it.file) }
-            .distinctBy { it.file.canonicalPathOrAbsolute() }
-        if (safeItems.isEmpty()) {
-            onComplete(emptySet())
+        // Never cancel an already-started move to start another operation.
+        if (deleteJob?.isCompleted == false) {
+            _deleteResultMessage.value = "A move is already running. Please wait or cancel it first."
             return
         }
-        deleteJob?.cancel()
-        val totalBytes = safeItems.sumOf { item ->
-            if (item.isDirectory) 0L else item.file.length().coerceAtLeast(0L)
-        }
-        _deleteProgress.value = DeleteProgress(
-            total = safeItems.size,
-            completed = 0,
-            failed = 0,
-            currentItemName = safeItems.firstOrNull()?.name,
-            totalBytes = totalBytes,
-        )
-        deleteJob = viewModelScope.launch(Dispatchers.IO) {
-            recycleBinRoot.mkdirs()
+        val requestedItems = items.distinctBy { it.path }
+        if (requestedItems.isEmpty()) { onComplete(emptySet()); return }
+        val requestedPaths = requestedItems.map { it.path }.toSet()
+        RecycleBinVisibility.begin(requestedPaths)
+        clearSelection()
+        _deleteProgress.value = DeleteProgress(requestedItems.size, 0, 0)
+        deleteJob = viewModelScope.launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.ATOMIC) {
+            val movedPaths = mutableSetOf<String>()
             var completed = 0
             var failed = 0
-            var processedBytes = 0L
-            var lastProgressUpdateAt = 0L
-            val movedPaths = mutableSetOf<String>()
-            suspend fun publishProgress(currentName: String?, force: Boolean = false) {
-                val now = System.currentTimeMillis()
-                if (!force && now - lastProgressUpdateAt < 100L) return
-                lastProgressUpdateAt = now
-                withContext(Dispatchers.Main) {
-                    _deleteProgress.value = DeleteProgress(
-                        total = safeItems.size,
-                        completed = completed,
-                        failed = failed,
-                        currentItemName = currentName,
-                        totalBytes = totalBytes,
-                        processedBytes = processedBytes.coerceAtMost(totalBytes),
-                    )
+            var cancelled = false
+            try {
+                currentCoroutineContext().ensureActive()
+                recycleBinRoot.mkdirs()
+                File(recycleBinRoot, ".nomedia").createNewFile()
+                val totalBytes = requestedItems.sumOf { if (it.isDirectory) 0L else it.file.length().coerceAtLeast(0L) }
+                var processedBytes = 0L
+                var lastProgressUpdateAt = 0L
+                suspend fun publish(name: String?, force: Boolean = false) {
+                    val now = System.currentTimeMillis()
+                    if (!force && now - lastProgressUpdateAt < 100L) return
+                    lastProgressUpdateAt = now
+                    _deleteProgress.value = DeleteProgress(requestedItems.size, completed, failed, name,
+                        totalBytes, processedBytes.coerceAtMost(totalBytes))
                 }
-            }
-            safeItems.forEach { item ->
-                publishProgress(item.name, force = true)
-                val itemBytes = if (item.isDirectory) 0L else item.file.length().coerceAtLeast(0L)
-                var copiedBytesForItem = 0L
-                try {
-                    if (moveItemToRecycleBin(item) { copiedBytes ->
-                            copiedBytesForItem += copiedBytes
-                            processedBytes += copiedBytes
-                            publishProgress(item.name)
-                        }) {
-                        completed++
+                requestedItems.forEach { item ->
+                    currentCoroutineContext().ensureActive()
+                    publish(item.name, true)
+                    var itemCopied = 0L
+                    val bytes = if (item.isDirectory) 0L else item.file.length().coerceAtLeast(0L)
+                    val moved = try {
+                        isSafeStorageItem(item.file) && moveItemToRecycleBin(item) { copied ->
+                            itemCopied += copied
+                            processedBytes += copied
+                            publish(item.name)
+                        }
+                    } catch (error: CancellationException) { throw error
+                    } catch (_: Exception) { false }
+                    if (moved) {
                         movedPaths += item.path
-                        // Same-volume moves are instantaneous; count their complete
-                        // payload once so the bar reaches the next item immediately.
-                        processedBytes += (itemBytes - copiedBytesForItem).coerceAtLeast(0L)
-                    } else {
-                        failed++
-                        processedBytes += (itemBytes - copiedBytesForItem).coerceAtLeast(0L)
+                        completed++
+                        // Ask the media provider to reconcile the old location; never
+                        // call resolver.delete() as a substitute for a recoverable move.
+                        runCatching { android.media.MediaScannerConnection.scanFile(
+                            getApplication(), arrayOf(item.path), null, null
+                        ) }
+                    } else failed++
+                    processedBytes += (bytes - itemCopied).coerceAtLeast(0L)
+                    publish(item.name, true)
+                }
+            } catch (error: CancellationException) {
+                cancelled = true
+                throw error
+            } catch (_: Exception) {
+                failed = requestedItems.size - completed
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main) {
+                    // Confirmed moves remain hidden; every failed/unprocessed item
+                    // reappears from the untouched cached library without a rescan wait.
+                    RecycleBinVisibility.finish(requestedPaths, movedPaths)
+                    _deleteProgress.value = null
+                    _deleteResultMessage.value = when {
+                        cancelled -> "Move stopped. $completed moved to Recycle Bin; remaining items kept."
+                        failed == 0 -> "Moved $completed item${if (completed == 1) "" else "s"} to Recycle Bin"
+                        completed == 0 -> "Couldn't move items. Check file access in Settings and try again."
+                        else -> "Moved $completed to Recycle Bin; $failed couldn't be moved and were kept."
                     }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    failed++
-                    processedBytes += (itemBytes - copiedBytesForItem).coerceAtLeast(0L)
+                    refreshCurrentDirectory(silent = true)
+                    refreshRecycleBin()
+                    onComplete(movedPaths)
                 }
-                publishProgress(item.name, force = true)
-            }
-            withContext(Dispatchers.Main) {
-                _deleteProgress.value = null
-                _deleteResultMessage.value = when {
-                    failed == 0 -> "Moved $completed item${if (completed == 1) "" else "s"} to Recycle Bin"
-                    completed == 0 -> "Couldn't move items to Recycle Bin"
-                    else -> "Moved $completed to Recycle Bin, failed $failed"
-                }
-                // A completed delete closes selection rather than leaving an
-                // empty action bar behind. This also prevents a delete invoked
-                // from the Video library from surfacing selection controls in Files.
-                clearSelection()
-                refreshCurrentDirectory(silent = true)
-                refreshRecycleBin()
-                onComplete(movedPaths)
             }
         }
+    }
+
+    fun moveAudioToRecycleBin(track: com.example.model.AudioItem) {
+        val file = File(track.path)
+        moveToRecycleBin(listOf(FileItem(file = file, name = file.name, path = track.path,
+            isDirectory = false, fileType = FileType.AUDIO)))
     }
 
     fun moveVideosToRecycleBin(videos: Collection<com.example.model.VideoItem>, onComplete: (Set<String>) -> Unit = {}) {
         val items = videos.mapNotNull { video ->
             val file = video.path.takeIf { it.isNotBlank() }?.let(::File)
-            if (file == null || !file.exists() || !file.isFile) return@mapNotNull null
+            if (file == null) return@mapNotNull null
             FileItem(
                 file = file,
                 name = file.name,
                 path = file.path,
                 isDirectory = false,
-                sizeBytes = file.length(),
-                lastModified = file.lastModified(),
+                sizeBytes = video.sizeBytes,
                 fileType = com.example.model.FileType.VIDEO,
             )
         }
@@ -385,7 +402,13 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch(Dispatchers.IO) {
             var restored = 0
             ids.mapNotNull { id -> readRecycleBinItems().find { it.id == id } }.forEach { item ->
-                if (restoreRecycleBinItem(item)) restored++
+                if (restoreRecycleBinItem(item)) {
+                    RecycleBinVisibility.restored(item.originalPath)
+                    restored++
+                    runCatching { android.media.MediaScannerConnection.scanFile(
+                        getApplication(), arrayOf(item.originalPath), null, null
+                    ) }
+                }
             }
             withContext(Dispatchers.Main) {
                 _selectedRecycleBinIds.value = emptySet()
@@ -416,39 +439,26 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         val id = UUID.randomUUID().toString()
         val entryDir = File(recycleBinRoot, id)
         val payload = File(entryDir, "payload")
-        entryDir.mkdirs()
-        val moved = if (item.file.renameTo(payload)) {
-            true
-        } else {
-            try {
-                copyRecursivelyWithProgress(item.file, payload, onBytesCopied)
-                if (!item.file.deleteRecursively()) throw IllegalStateException("Original could not be removed")
-                true
-            } catch (cancelled: CancellationException) {
-                payload.deleteRecursively()
-                entryDir.deleteRecursively()
-                throw cancelled
-            } catch (_: Exception) {
-                payload.deleteRecursively()
-                false
-            }
-        }
-        if (!moved) {
-            entryDir.deleteRecursively()
-            return false
-        }
-        return try {
-            writeRecycleBinMetadata(entryDir, item, id)
-            true
-        } catch (_: Exception) {
-            payload.renameTo(item.file) || runCatching {
-                payload.copyRecursively(item.file, overwrite = false)
-                payload.deleteRecursively()
-                true
-            }.getOrDefault(false)
-            entryDir.deleteRecursively()
-            false
-        }
+        if (!entryDir.mkdirs()) return false
+        // Metadata must be durable BEFORE removing the source. If the process
+        // stops immediately after rename, the item is still discoverable/restorable.
+        try { writeRecycleBinMetadata(entryDir, item, id) }
+        catch (_: Exception) { entryDir.deleteRecursively(); return false }
+        if (item.file.renameTo(payload)) return true
+        // Recursive copy+delete may partially delete a folder on failure. Refuse
+        // that fallback rather than risking an incomplete recoverable copy.
+        if (item.isDirectory) { entryDir.deleteRecursively(); return false }
+        try {
+            val staging = File(entryDir, "copying")
+            copyRecursivelyWithProgress(item.file, staging, onBytesCopied)
+            currentCoroutineContext().ensureActive()
+            if (staging.renameTo(payload) && item.file.delete()) return true
+        } catch (error: CancellationException) {
+            entryDir.deleteRecursively() // Original is still intact.
+            throw error
+        } catch (_: Exception) { /* Original remains; remove incomplete copy only. */ }
+        entryDir.deleteRecursively()
+        return false
     }
 
     private suspend fun copyRecursivelyWithProgress(
@@ -493,13 +503,16 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             setProperty("isDirectory", item.isDirectory.toString())
             setProperty("deletedAt", System.currentTimeMillis().toString())
         }
-        FileOutputStream(File(entryDir, "metadata.properties")).use { props.store(it, "Hi Player Recycle Bin") }
+        FileOutputStream(File(entryDir, "metadata.properties")).use {
+            props.store(it, "Hi Player Recycle Bin")
+            it.fd.sync()
+        }
     }
 
     private fun readRecycleBinItems(): List<RecycleBinItem> = recycleBinRoots
         .asSequence()
         .flatMap { root -> root.listFiles()?.asSequence() ?: emptySequence() }
-        .filter { it.isDirectory }
+        .filter { it.isDirectory && File(it, "payload").exists() }
         .mapNotNull { entry ->
             val props = Properties()
             runCatching { FileInputStream(File(entry, "metadata.properties")).use { props.load(it) } }.getOrNull()
@@ -549,10 +562,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun cancelDelete() {
         deleteJob?.cancel()
-        deleteJob = null
-        _deleteProgress.value = null
-        _deleteResultMessage.value = "Deletion cancelled"
-        refreshCurrentDirectory(silent = true)
+        // The move's finally block reconciles actual successes and restores
+        // unprocessed rows. Keep busy until that reconciliation has finished.
+        _deleteResultMessage.value = "Stopping move…"
     }
 
     private fun isDirectChildOfCurrentDirectory(file: File): Boolean {

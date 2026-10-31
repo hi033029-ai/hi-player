@@ -25,6 +25,7 @@ import com.example.model.DiscoverTitle
 import com.example.model.PendingDownloadFormat
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -304,7 +305,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private val _allVideos = MutableStateFlow<List<VideoItem>>(emptyList())
-    val allVideos = _allVideos.asStateFlow()
+    val allVideos = combine(_allVideos, com.example.data.RecycleBinVisibility.hiddenPaths) { videos, hidden ->
+        videos.filterNot { com.example.data.RecycleBinVisibility.isHidden(it.path, hidden) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val _catalogMetadata = MutableStateFlow<Map<String, LibraryCatalogMetadata>>(emptyMap())
     val catalogMetadata = _catalogMetadata.asStateFlow()
     private val catalogMetadataRequests = mutableSetOf<String>()
@@ -363,7 +366,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     )
 
     val continueWatchingVideos = combine(
-        _allVideos,
+        allVideos,
         historyRecords,
         _hiddenContinueUris
     ) { allVideos, history, hiddenUris ->
@@ -428,10 +431,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         .map { true }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    private val filterCriteriaFlow = combine(_navMode, _searchQuery, _selectedFolder, _sortOption) { nav, query, folder, sort ->
-        FilterCriteria(nav, query, folder, sort)
-    }
-
     private data class FilterCriteria(
         val navMode: LibraryNavMode,
         val query: String,
@@ -443,9 +442,17 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         Pair(history, favorites)
     }
 
-    val filteredVideos = combine(
-        _allVideos,
-        filterCriteriaFlow,
+    private val modeVideos = mutableMapOf<LibraryNavMode, kotlinx.coroutines.flow.StateFlow<List<VideoItem>>>()
+
+    /** Each pager page observes its own precomputed snapshot; swiping never scans storage. */
+    fun videosForMode(mode: LibraryNavMode): kotlinx.coroutines.flow.StateFlow<List<VideoItem>> =
+        modeVideos.getOrPut(mode) { createModeVideos(mode) }
+
+    private fun createModeVideos(mode: LibraryNavMode) = combine(
+        allVideos,
+        combine(_searchQuery, _selectedFolder, _sortOption) { query, folder, sort ->
+            FilterCriteria(mode, query, if (mode == LibraryNavMode.FOLDERS) folder else null, sort)
+        },
         historyAndFavFlow
     ) { videos: List<VideoItem>, criteria: FilterCriteria, historyFav: Pair<List<VideoEntity>, List<VideoEntity>> ->
         val (nav, query, folder, sort) = criteria
@@ -476,11 +483,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             LibraryNavMode.RECENT -> {
-                if (folder != null) {
-                    list.filter { it.folderName.equals(folder, ignoreCase = true) }
-                } else {
-                    list
-                }
+                val historyUris = history.map { it.uriString }.toSet()
+                list.filter { it.uri.toString() in historyUris }
             }
             LibraryNavMode.FAVORITES -> {
                 val favSet = favorites.map { it.uriString }.toSet()
@@ -511,9 +515,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             )
         }
         applySavedVideoOrder(sorted)
-    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    val folders = _allVideos.map { videos ->
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val filteredVideos = _navMode.flatMapLatest { videosForMode(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val folders = allVideos.map { videos ->
         videos.groupBy { it.folderName }
             .map { (name, group) ->
                 VideoFolder(
@@ -622,7 +630,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _treeCurrentPath.value = null
     }
 
-    val treeRoot: kotlinx.coroutines.flow.StateFlow<TreeFolderNode?> = _allVideos
+    val treeRoot: kotlinx.coroutines.flow.StateFlow<TreeFolderNode?> = allVideos
         .map { videos -> buildFolderTree(videos) }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)

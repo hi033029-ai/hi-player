@@ -46,6 +46,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.content.ContextCompat
 import com.example.model.PendingDownloadFormat
 import com.example.model.PublicWebVideoResolver
@@ -132,6 +138,7 @@ class MainActivity : FragmentActivity() {
     // can switch to the Player only after its screen state exists.
     private val pendingExternalVideoUri = mutableStateOf<Uri?>(null)
     private var pipTransitionRequested = false
+    private var startupSettingsReady = false
     // True while Hi Browser (not the video player) owns the PiP window.
     private val _browserPipActive = mutableStateOf(false)
     // Web page opened from a home-screen shortcut created by Hi Browser.
@@ -140,7 +147,9 @@ class MainActivity : FragmentActivity() {
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        val startupSplash = installSplashScreen()
         super.onCreate(savedInstanceState)
+        startupSplash.setKeepOnScreenCondition { !startupSettingsReady }
         enableEdgeToEdge()
 
         handleIntent(intent)
@@ -148,6 +157,7 @@ class MainActivity : FragmentActivity() {
         setContent {
             val settings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
             val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsStateWithLifecycle()
+            androidx.compose.runtime.SideEffect { startupSettingsReady = settingsLoaded }
             var isShowingSplash by rememberSaveable { mutableStateOf(true) }
 
             HiPlayerTheme(
@@ -157,6 +167,17 @@ class MainActivity : FragmentActivity() {
             ) {
                 val palette = LocalHiPalette.current
                 val libraryRefreshing by libraryViewModel.isLoading.collectAsStateWithLifecycle()
+                val fileMoveProgress by fileManagerViewModel.deleteProgress.collectAsStateWithLifecycle()
+                val fileActionMessage by fileManagerViewModel.deleteResultMessage.collectAsStateWithLifecycle()
+                LaunchedEffect(fileActionMessage) {
+                    fileActionMessage?.let {
+                        android.widget.Toast.makeText(this@MainActivity, it, android.widget.Toast.LENGTH_LONG).show()
+                        fileManagerViewModel.dismissDeleteResult()
+                        libraryViewModel.refreshVideos(silent = true)
+                        musicViewModel.loadAudioTracks()
+                    }
+                }
+
                 var currentScreen by rememberSaveable(stateSaver = Saver<AppScreen, String>(
                     save = { if (it == AppScreen.Player) "player" else "main" },
                     restore = { if (it == "player" && playerViewModel.currentVideo.value != null) AppScreen.Player else AppScreen.Main },
@@ -254,6 +275,10 @@ class MainActivity : FragmentActivity() {
                 val isAudioPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
                 val isAudioFullScreenOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
 
+                LaunchedEffect(settingsLoaded, settings.isFirstLaunch) {
+                    if (settingsLoaded && !settings.isFirstLaunch) isShowingSplash = false
+                }
+
                 if (!settingsLoaded) {
                     // Hold on the bare logo/background until the real persisted
                     // isFirstLaunch value has loaded from disk, so we never briefly
@@ -261,9 +286,9 @@ class MainActivity : FragmentActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color(0xFFFFFFFF))
+                            .background(palette.background)
                     )
-                } else if (isShowingSplash) {
+                } else if (isShowingSplash && settings.isFirstLaunch) {
                     SplashScreen(
                         isFirstLaunch = settings.isFirstLaunch,
                         onFinish = { selectedTheme, textSizeSp ->
@@ -372,7 +397,25 @@ class MainActivity : FragmentActivity() {
                                         }
                                     },
                                     bottomBar = {
-                                        if (!browserPip) Column {
+                                        if (!browserPip && currentTab != NavTab.BROWSER) Column(
+                                            modifier = Modifier.windowInsetsPadding(
+                                                WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                                            )
+                                        ) {
+                                            fileMoveProgress?.let { progress ->
+                                                androidx.compose.foundation.layout.Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                                ) {
+                                                    androidx.compose.material3.Text(
+                                                        "Moving to Recycle Bin · ${progress.completed} of ${progress.total}",
+                                                        modifier = Modifier.weight(1f), color = palette.textSecondary,
+                                                    )
+                                                    androidx.compose.material3.TextButton(onClick = { fileManagerViewModel.cancelDelete() }) {
+                                                        androidx.compose.material3.Text("Cancel")
+                                                    }
+                                                }
+                                            }
                                             if (currentTab != com.example.ui.components.NavTab.MUSIC && currentTab != NavTab.BROWSER && currentAudioTrack != null && !isAudioFullScreenOpen) {
                                                 com.example.ui.components.AudioMiniPlayerHost(
                                                     musicViewModel = musicViewModel,
@@ -395,6 +438,7 @@ class MainActivity : FragmentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
+                                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                                             // Browser mode draws its own bottom bar above the keyboard / system bar.
                                             .padding(
                                                 top = paddingValues.calculateTopPadding(),
@@ -445,7 +489,8 @@ class MainActivity : FragmentActivity() {
                                                         }
                                                     },
                                                     includeHeader = false,
-                                                    libraryViewModel = libraryViewModel
+                                                    libraryViewModel = libraryViewModel,
+                                                    onMoveAudioToRecycleBin = { fileManagerViewModel.moveAudioToRecycleBin(it) }
                                                 )
                                             }
                                             NavTab.BROWSER -> {

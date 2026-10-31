@@ -191,7 +191,6 @@ fun FileManagerScreen(
     var menuTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var showSelectionProperties by remember { mutableStateOf(false) }
     val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsStateWithLifecycle()
-    val deleteResultMessage by fileManagerViewModel.deleteResultMessage.collectAsStateWithLifecycle()
     val deleteProgress by fileManagerViewModel.deleteProgress.collectAsStateWithLifecycle()
     val recycleBinItems by fileManagerViewModel.recycleBinItems.collectAsStateWithLifecycle()
     val selectedRecycleBinIds by fileManagerViewModel.selectedRecycleBinIds.collectAsStateWithLifecycle()
@@ -270,15 +269,8 @@ fun FileManagerScreen(
         }
     }
 
-    // Toast-style delete result feedback
-    LaunchedEffect(deleteResultMessage) {
-        val msg = deleteResultMessage
-        if (msg != null) {
-            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-            onFilesChanged()
-            fileManagerViewModel.dismissDeleteResult()
-        }
-    }
+    // File-action feedback is owned by MainActivity so it also appears when
+    // a move starts in Videos/Music or the user changes tabs during the move.
 
     val storageFraction = if (totalStorage > 0) (usedStorage.toFloat() / totalStorage.toFloat()).coerceIn(0f, 1f) else 0.38f
     val usedGb = usedStorage / (1024.0 * 1024.0 * 1024.0)

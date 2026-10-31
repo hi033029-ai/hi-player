@@ -20,6 +20,7 @@ import com.example.model.AudioItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
@@ -64,7 +65,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val _audioList = MutableStateFlow<List<AudioItem>>(emptyList())
-    val audioList = _audioList.asStateFlow()
+    val audioList = kotlinx.coroutines.flow.combine(
+        _audioList, com.example.data.RecycleBinVisibility.hiddenPaths
+    ) { tracks, hidden ->
+        tracks.filterNot { com.example.data.RecycleBinVisibility.isHidden(it.path, hidden) }
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, emptyList())
 
     private val _currentTrack = MutableStateFlow<AudioItem?>(null)
     val currentTrack = _currentTrack.asStateFlow()
@@ -358,8 +363,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             if (player.isPlaying) {
                 player.pause()
             } else {
-                if (_currentTrack.value == null && _audioList.value.isNotEmpty()) {
-                    playTrack(_audioList.value.first())
+                if (_currentTrack.value == null && audioList.value.isNotEmpty()) {
+                    playTrack(audioList.value.first())
                 } else {
                     player.play()
                 }
@@ -373,7 +378,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNext() {
-        val list = _audioList.value
+        val list = audioList.value
         val current = _currentTrack.value ?: return
         val currentIndex = list.indexOfFirst { it.id == current.id }
         if (currentIndex != -1 && list.isNotEmpty()) {
@@ -383,7 +388,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playPrevious() {
-        val list = _audioList.value
+        val list = audioList.value
         val current = _currentTrack.value ?: return
         val currentIndex = list.indexOfFirst { it.id == current.id }
         if (currentIndex > 0) {

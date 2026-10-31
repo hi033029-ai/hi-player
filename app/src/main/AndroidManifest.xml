@@ -67,7 +67,7 @@
             android:supportsPictureInPicture="true"
             android:colorMode="hdr"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|keyboard"
-            android:theme="@style/Theme.MyApplication">
+            android:theme="@style/Theme.MyApplication.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

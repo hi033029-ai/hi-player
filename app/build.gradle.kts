@@ -32,8 +32,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 74
-    versionName = "1.0.73"
+    versionCode = 75
+    versionName = "1.0.74"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
@@ -134,6 +134,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
+  implementation("androidx.core:core-splashscreen:1.0.1")
   implementation(libs.androidx.webkit)
   implementation(libs.play.services.code.scanner)
   implementation(libs.androidx.datastore.preferences)

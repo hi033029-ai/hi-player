@@ -136,6 +136,7 @@ import com.example.viewmodel.LibraryNavMode
 import com.example.viewmodel.LibraryViewMode
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.VideoSortOption
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
@@ -153,15 +154,67 @@ fun HomeScreen(
     includeHeader: Boolean = true,
     onSearchRequested: (() -> Unit)? = null
 ) {
+    val activeMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
+    val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
+    val treePath by libraryViewModel.treeCurrentPath.collectAsStateWithLifecycle()
+    val modes = remember { listOf(LibraryNavMode.FOLDERS, LibraryNavMode.ALL_VIDEOS,
+        LibraryNavMode.RECENT, LibraryNavMode.TREE_FOLDERS, LibraryNavMode.FAVORITES) }
+    val pager = androidx.compose.foundation.pager.rememberPagerState(
+        initialPage = modes.indexOf(activeMode).coerceAtLeast(0), pageCount = { modes.size })
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var selectionActive by remember { mutableStateOf(false) }
+    // Warm the lightweight filtered snapshots, not players/WebViews/storage scans.
+    remember(libraryViewModel) { modes.forEach { libraryViewModel.videosForMode(it) }; true }
+    LaunchedEffect(pager.settledPage) {
+        val mode = modes[pager.settledPage]
+        if (libraryViewModel.navMode.value != mode) libraryViewModel.setNavMode(mode)
+    }
+    androidx.compose.foundation.pager.HorizontalPager(
+        state = pager,
+        key = { modes[it].name },
+        beyondViewportPageCount = 1,
+        userScrollEnabled = !selectionActive && selectedFolder == null && treePath == null,
+        modifier = modifier.fillMaxSize().testTag("video_library_pager"),
+    ) { page ->
+        VideoLibraryPage(
+            libraryViewModel, onVideoSelected, onPlayFromStart, onOpenSettings,
+            onMoveVideosToRecycleBin, Modifier.fillMaxSize(), includeHeader, onSearchRequested,
+            pageMode = modes[page], isActive = pager.settledPage == page,
+            onModeSelected = { mode ->
+                scope.launch { pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0)) }
+            },
+            onSelectionChanged = { if (pager.settledPage == page) selectionActive = it },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoLibraryPage(
+    libraryViewModel: LibraryViewModel,
+    onVideoSelected: (VideoItem) -> Unit,
+    onPlayFromStart: (VideoItem) -> Unit,
+    onOpenSettings: () -> Unit,
+    onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
+    modifier: Modifier = Modifier,
+    includeHeader: Boolean = true,
+    onSearchRequested: (() -> Unit)? = null,
+    pageMode: LibraryNavMode,
+    isActive: Boolean,
+    onModeSelected: (LibraryNavMode) -> Unit,
+    onSelectionChanged: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
     val allVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
-    val filteredVideos by libraryViewModel.filteredVideos.collectAsStateWithLifecycle()
+    val pageVideos = remember(libraryViewModel, pageMode) { libraryViewModel.videosForMode(pageMode) }
+    val filteredVideos by pageVideos.collectAsStateWithLifecycle()
     val folders by libraryViewModel.folders.collectAsStateWithLifecycle()
-    val navMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
+    val navMode = pageMode
     val viewMode by libraryViewModel.viewMode.collectAsStateWithLifecycle()
     val gridMinSize by libraryViewModel.gridMinSize.collectAsStateWithLifecycle()
     val sortOption by libraryViewModel.sortOption.collectAsStateWithLifecycle()
-    val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
+    val sharedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
+    val selectedFolder = sharedFolder.takeIf { pageMode == LibraryNavMode.FOLDERS }
     val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
@@ -194,6 +247,7 @@ fun HomeScreen(
     var showSelectionProperties by remember { mutableStateOf(false) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     val selectionMode = isVideoSelectionMode
+    androidx.compose.runtime.SideEffect { if (isActive) onSelectionChanged(selectionMode || inspectVideo != null || renameTarget != null || pendingDeleteVideos != null || showSelectionProperties) }
     // Imported, SAF, and growing downloads can share a MediaStore ID of zero.
     // Use their path/URI as the key so Compose never reuses a visible row's
     // thumbnail or overflow state when the library list is scrolled.
@@ -249,8 +303,8 @@ fun HomeScreen(
     val treeListState = rememberLazyListState()
     val libraryModeRowState = rememberLazyListState()
     val searchFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(isSearchActive) {
-        if (isSearchActive) searchFocusRequester.requestFocus()
+    LaunchedEffect(isSearchActive, isActive) {
+        if (isSearchActive && isActive) searchFocusRequester.requestFocus()
     }
     LaunchedEffect(navMode) {
         val selectedModeIndex = when (navMode) {
@@ -294,23 +348,23 @@ fun HomeScreen(
     }
 
     // Back handler to navigate back to folder directory when inside a folder
-    BackHandler(enabled = selectedFolder != null) {
+    BackHandler(enabled = isActive && selectedFolder != null) {
         libraryViewModel.selectFolder(null)
     }
 
     // Back handler for Tree Folders: step up one directory level at a time
     // instead of exiting the tree entirely.
-    BackHandler(enabled = navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
+    BackHandler(enabled = isActive && navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
         libraryViewModel.navigateTreeUp()
     }
 
     // The last enabled handler wins: cancel selection before navigating a tree folder.
-    BackHandler(enabled = selectionMode) { exitVideoSelectionMode() }
+    BackHandler(enabled = isActive && selectionMode) { exitVideoSelectionMode() }
 
     val isVideoHome = selectedFolder == null &&
         (navMode != LibraryNavMode.TREE_FOLDERS || treeCurrentPath == null)
-    LaunchedEffect(isVideoHome) {
-        if (!isVideoHome) {
+    LaunchedEffect(isVideoHome, isActive) {
+        if (isActive && !isVideoHome) {
             isSearchActive = false
             libraryViewModel.setSearchQuery("")
         }
@@ -334,18 +388,16 @@ fun HomeScreen(
     val libraryControls: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (isVideoHome) {
-                LazyRow(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(palette.surface),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .background(palette.surface)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    item {
                         Card(
                             modifier = Modifier
-                                .widthIn(min = 250.dp, max = 360.dp)
-                                .height(48.dp)
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
                                 .clickable { isSearchActive = true }
                                 .testTag("search_video_card"),
                             shape = RoundedCornerShape(10.dp),
@@ -381,14 +433,15 @@ fun HomeScreen(
                                         unfocusedContainerColor = Color.Transparent
                                     ),
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
                                         .focusRequester(searchFocusRequester)
                                 )
                             } else {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 14.dp),
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
@@ -397,7 +450,6 @@ fun HomeScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
             // Keep these controls mounted while the media list scrolls. Removing
@@ -409,17 +461,12 @@ fun HomeScreen(
                     Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
                     Triple(LibraryNavMode.RECENT, "Recent (${continueWatchingVideos.size})", Icons.Default.Refresh),
                     Triple(LibraryNavMode.TREE_FOLDERS, "Tree Folders (${folders.size})", Icons.Default.FolderOpen),
-                    Triple(LibraryNavMode.FAVORITES, "Favorites (${filteredVideos.count { it.isFavorite }})", Icons.Default.Star)
+                    Triple(LibraryNavMode.FAVORITES, "Favorites ($favoriteCount)", Icons.Default.Star)
                 )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(palette.surface),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Column(Modifier.fillMaxWidth().background(palette.surface)) {
                     LazyRow(
                         state = libraryModeRowState,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -430,12 +477,12 @@ fun HomeScreen(
                             val selected = navMode == mode
                             Row(
                                 modifier = Modifier
-                                    .height(34.dp)
+                                    .heightIn(min = 48.dp)
                                     .clip(RoundedCornerShape(9.dp)).hiContainerBorder(RoundedCornerShape(9.dp))
                                     .background(if (selected) palette.primary else palette.surfaceElevated)
                                     .clickable {
                                         libraryViewModel.selectFolder(null)
-                                        libraryViewModel.setNavMode(mode)
+                                        onModeSelected(mode)
                                     }
                                     .padding(horizontal = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -448,15 +495,17 @@ fun HomeScreen(
                     }
                     Row(
                         modifier = Modifier
+                            .fillMaxWidth()
                             .background(palette.surface)
                             .padding(end = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        IconButton(onClick = { libraryViewModel.toggleViewMode() }, modifier = Modifier.size(34.dp)) {
+                        IconButton(onClick = { libraryViewModel.toggleViewMode() }, modifier = Modifier.size(48.dp)) {
                             Icon(if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList, "Toggle view", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
                         }
                         Box {
-                            IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(34.dp)) {
+                            IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(48.dp)) {
                                 Icon(Icons.Default.Sort, "Sort videos", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
                             }
                             DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(palette.surfaceElevated)) {
@@ -938,8 +987,8 @@ fun HomeScreen(
                                 )
                             }
                             items(node.directVideos, key = { videoKey(it) }, contentType = { "video" }) { video ->
-                                LaunchedEffect(videoKey(video)) {
-                                    libraryViewModel.requestCatalogMetadata(video)
+                                LaunchedEffect(videoKey(video), isActive) {
+                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
                                 }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
@@ -994,8 +1043,8 @@ fun HomeScreen(
                             contentType = { _, _ -> "video_grid_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoGridState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video)) {
-                                    libraryViewModel.requestCatalogMetadata(video)
+                                LaunchedEffect(videoKey(video), isActive) {
+                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
                                 }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
@@ -1070,8 +1119,8 @@ fun HomeScreen(
                             contentType = { _, _ -> "video_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoListState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video)) {
-                                    libraryViewModel.requestCatalogMetadata(video)
+                                LaunchedEffect(videoKey(video), isActive) {
+                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
                                 }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
@@ -1125,6 +1174,7 @@ fun HomeScreen(
             }
         }
 
+    if (isActive) {
     // Video Technical Telemetry Inspector Dialog
     inspectVideo?.let { video ->
         VideoInfoDialog(
@@ -1224,6 +1274,7 @@ fun HomeScreen(
             dismissButton = { TextButton(onClick = { pendingDeleteVideos = null }) { Text("Cancel") } }
         )
     }
+}
 }
 
 private fun formatVideoBytes(bytes: Long): String = when {
