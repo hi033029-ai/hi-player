@@ -175,3 +175,21 @@ client hints and viewport-sensitive sites, overlay hairline, and app account
 sign-in/cancel/sign-out/restart consistency across Settings/Browser/Player.
 Verify Google OAuth setup and real sign-in on an approved signed build, and
 confirm that a secure website tab remains a distinct session.
+
+
+## Header alignment follow-up after 1.0.72
+
+- Removed the automatic narrow/large-font two-row header. Logo, title, refresh,
+  optional search/cast/recycle-bin and account actions now share one vertically
+  centered row. The icon geometry is unchanged: its 48-unit artwork is already
+  centered in its square; this corrects its position in the header as a whole.
+- Fixed-size 48dp action targets stay visible; the decorative brand title takes
+  only remaining width and may ellipsize rather than push controls below it.
+  App/OS text scaling remains enabled and the row may grow in height.
+- Removed the extra in-content Back/Settings row per the annotated screenshot.
+  Settings retains its BackHandler and actual visited-tab history.
+- Source review only; no Gradle, compile, tests, APK or main merge for this
+  follow-up. Next approved device check: Settings and all header callers at
+  320/360/393/600dp, 12/14/24sp app text and large OS fonts, with/without Search,
+  account signed in/out, refresh busy, Files recycle-bin action, dark/light,
+  landscape, and system Back to the actual prior destination.

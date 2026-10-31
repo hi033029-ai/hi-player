@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -149,12 +148,6 @@ fun SettingsScreen(
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to previous screen", tint = palette.textPrimary) }
-                Text("Settings", modifier = Modifier.weight(1f), color = palette.textPrimary,
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
-            }
             SettingsCollapsibleSection(
                 title = "Google account & media sources",
                 subtitle = "Google account, My Drive, and personal media servers",
