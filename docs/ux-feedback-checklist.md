@@ -12,8 +12,9 @@ This is a source update, not a claim that every screen has passed device QA.
   accessibility services instead of announcing decorative bars as real items.
 - Existing library content remains visible while refreshing. Its refresh action
   changes to a small busy indicator and rejects duplicate taps.
-- Websites have unknown layouts, so the browser retains truthful progress and
-  an always-visible Stop loading action, not an invented page layout.
+- Browser main-frame loading uses a neutral content-shaped skeleton until real
+  content paints, not a blank progress-only screen. It is explicitly a placeholder,
+  not a claim to know a third-party site's layout. Stop/Retry remain available.
 - Playback buffering, tiny action-level indicators and actual byte progress are
   not blindly replaced by skeletons.
 
@@ -193,3 +194,33 @@ confirm that a secure website tab remains a distinct session.
   320/360/393/600dp, 12/14/24sp app text and large OS fonts, with/without Search,
   account signed in/out, refresh busy, Files recycle-bin action, dark/light,
   landscape, and system Back to the actual prior destination.
+
+
+## Webpage skeleton and website-account clarification
+
+- Replaced the browser's blank, progress-only loading overlay with static page
+  skeleton blocks: header placeholder, a large content placeholder, text bars
+  and thumbnail/text rows. There is no shimmer, fake loaded content, fabricated
+  percentage or pretend website preview. Theme-aware placeholders are one
+  non-interactive accessibility group; Stop/Retry are separate live controls.
+- Trigger the skeleton on ordinary main-frame navigation/reload as well as new
+  tabs. Clear it on real visible content, completion/error or explicit Stop.
+  Removed the timer that revealed a potentially blank WebView after 20 seconds;
+  slow-load status and Retry remain until a real outcome. Bottom-bar Stop also
+  clears the skeleton.
+- Website-sign-in requests now show the current Firebase name, email/photo and
+  an explicit 'Signed in to Hi Player' label. A signed-out app can open its
+  official app sign-in flow. The shorter prompt no longer implies that app
+  authorization signs in YouTube or another embedded website. Private-mode
+  handoff warnings and explicit Continue/Cancel remain.
+- This DOES NOT sign embedded YouTube in. Firebase app authentication cannot
+  create a Google website session. Google website sign-in remains in supported
+  Custom Tabs, whose account chooser/sessions are controlled by that browser.
+  No passwords, app tokens or browser cookies are imported/exported to make
+  the app appear signed in on a website; no Google client-ID/UA spoofing.
+- Source inspection only; no Gradle/compiler/tests/APK/main merge for this
+  follow-up. Next approved device review: fresh/link/reload/redirect/Back/tab
+  navigations, paint vs slow/offline/error/Stop/Retry, narrow/landscape and large
+  fonts, light/dark skeletons, auth popup/direct/menu routes, actual app profile
+  updates/sign-out, private-tab warning, provider absence and real browser
+  website sign-in. Embedded-vs-external session separation must remain visible.

@@ -147,6 +147,8 @@ import org.json.JSONTokener
 import com.example.auth.GoogleAccountViewModel
 import com.example.ui.components.GoogleAccountCard
 import com.example.ui.components.GoogleAccountDialog
+import com.example.ui.components.GoogleAccountStatusRow
+import com.example.ui.components.BrowserPageSkeleton
 import com.example.data.AppThemeMode
 import com.example.ui.theme.HiPlayerTheme
 import com.example.ui.theme.getPaletteForTheme
@@ -296,6 +298,8 @@ private fun hiBrowserInitialState(store: OrbitBrowserStore): HiBrowserInitialSta
 /** A page that could not load because of the network (shown instead of WebView's error page). */
 private data class HiBrowserPageError(val tabId: Int, val url: String, val offline: Boolean)
 
+private data class HiBrowserSecureRequest(val url: String, val fromPrivateTab: Boolean, val forSignIn: Boolean)
+
 /** History writes parse and rewrite a JSON list, so they run off the main thread, in order. */
 private val hiBrowserHistoryExecutor = Executors.newSingleThreadExecutor { runnable ->
     Thread(runnable, "hi-browser-history").apply {
@@ -391,13 +395,13 @@ fun HiBrowserScreen(
     var adBlockEnabled by remember { mutableStateOf(store.adBlock) }
     var pageSkipperEnabled by remember { mutableStateOf(store.pageSkipper) }
     var youtubeAdSkipEnabled by remember { mutableStateOf(store.youtubeAdSkip) }
-    var pendingSecureSite by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var pendingSecureSite by remember { mutableStateOf<HiBrowserSecureRequest?>(null) }
     var pendingVideoNavigation by remember { mutableStateOf<String?>(null) }
     var videoHandoffEnabled by remember { mutableStateOf(store.videoHandoff) }
     // Bumped to rebuild every tab's WebView (pages pick light/dark at creation).
     var webViewGeneration by remember { mutableIntStateOf(0) }
-    // While a new page is loading, a loading page covers the WebView until the
-    // page paints, instead of flashing an empty (dark) or stale view.
+    // Before main-frame content paints, a neutral skeleton covers the WebView
+    // rather than flashing a blank page. It never claims to be website content.
     var pendingFirstPaint by remember { mutableStateOf(false) }
     // Reserve room for the floating address bar only on pages that cannot scroll.
     var reserveBarSpace by remember { mutableStateOf(false) }
@@ -566,18 +570,18 @@ fun HiBrowserScreen(
         }
     }
 
-    fun requestSecureSite(url: String, fromPrivateTab: Boolean = activeTab?.privateTab == true) {
+    fun requestSecureSite(url: String, fromPrivateTab: Boolean = activeTab?.privateTab == true, forSignIn: Boolean = false) {
         if (!SecureWebSessions.validPage(url)) {
             Toast.makeText(context, "Secure browser sign-in needs an HTTPS page", Toast.LENGTH_SHORT).show()
             return
         }
-        pendingSecureSite = url to fromPrivateTab
+        pendingSecureSite = HiBrowserSecureRequest(url, fromPrivateTab, forSignIn)
     }
 
     fun loadAddress(raw: String) {
         val destination = normalizeBrowserInput(raw, searchProvider) ?: return
         if (SecureWebSessions.isGoogleAuthentication(destination)) {
-            requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT)
+            requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT, forSignIn = true)
             return
         }
         val stream = StreamUrlClassifier.classify(destination)
@@ -774,7 +778,7 @@ fun HiBrowserScreen(
     /** Opens a page-requested window (target=_blank link or window.open) as a new tab. */
     fun openUrlFromPage(url: String, source: WebView, privateTab: Boolean) {
         if (SecureWebSessions.isGoogleAuthentication(url)) {
-            requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab)
+            requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab, forSignIn = true)
             return
         }
         if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock) || (store.adBlock && BrowserVideoPolicy.isAdUrl(url))) {
@@ -1129,13 +1133,13 @@ fun HiBrowserScreen(
             }
         }
     }
-    LaunchedEffect(pendingFirstPaint, activeTabId) {
+    LaunchedEffect(pendingFirstPaint, activeTabId, currentUrl) {
         slowLoad = false
         if (pendingFirstPaint) {
             delay(6_000L)
             slowLoad = true
-            delay(14_000L)
-            pendingFirstPaint = false
+            // Time passing is not a successful paint. Keep the skeleton and
+            // Stop/Retry available until actual content, error or cancellation.
         }
     }
     DisposableEffect(Unit) {
@@ -1310,7 +1314,7 @@ fun HiBrowserScreen(
                                         if (!tappedLink && isUserGesture) {
                                             val authTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                             authTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), forSignIn = true)
                                                 else Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
                                             }
                                             resultMsg.sendToTarget()
@@ -1325,14 +1329,14 @@ fun HiBrowserScreen(
                                                 (it.startsWith("http://") || it.startsWith("https://"))
                                         }
                                         if (href != null) {
-                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), forSignIn = true)
                                             else if (!isAdPopup(href)) view.loadUrl(href)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
                                             return false
                                         }
                                         val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                         linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), forSignIn = true)
                                             else if (!isAdPopup(linkUrl)) view.loadUrl(linkUrl)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
                                         }
@@ -1351,7 +1355,7 @@ fun HiBrowserScreen(
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val uri = request.url
                                     if (request.isForMainFrame && SecureWebSessions.isGoogleAuthentication(uri.toString())) {
-                                        requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()))
+                                        requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), forSignIn = true)
                                         return true
                                     }
                                     if (request.isForMainFrame && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
@@ -1391,6 +1395,7 @@ fun HiBrowserScreen(
                                         currentUrl = url
                                         if (!addressFocused) address = url
                                         loadingProgress = 1
+                                        pendingFirstPaint = true
                                         browserBarHidden = false
                                     }
                                 }
@@ -1617,6 +1622,7 @@ fun HiBrowserScreen(
                         if (loadingProgress in 1..99) {
                             webView?.stopLoading()
                             loadingProgress = 100
+                            pendingFirstPaint = false
                         } else {
                             webView?.reload()
                         }
@@ -1757,25 +1763,39 @@ fun HiBrowserScreen(
         )
     }
 
-    pendingSecureSite?.let { (url, fromPrivateTab) ->
+    pendingSecureSite?.let { request ->
+        val host = Uri.parse(request.url).host.orEmpty()
         AlertDialog(
-            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingSecureSite = null },
-            title = { Text("Continue in secure browser?") },
-            text = { Text(
-                (if (fromPrivateTab) "This leaves private browsing and may use your browser's signed-in accounts.\n\n" else "") +
-                "Google requires a supported browser for website sign-in. The website opens in a secure tab with its own saved sessions; it will not sign the embedded page in.\n\n" +
-                "If you were signing in to another website, start its Google sign-in again inside the secure tab. Hi Browser's filters and media controls do not apply there.\n\n" +
-                "Website: " + Uri.parse(url).host.orEmpty()
-            ) },
+            title = { Text(if (request.forSignIn) "Website sign-in" else "Open website in browser") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (request.forSignIn) {
+                        // Real Firebase profile, clearly labelled as app identity, not a website cookie session.
+                        GoogleAccountStatusRow(profile = accountProfile)
+                        Text("$host needs its own website sign-in. Continue in your device browser, then use the website's Sign in button.", color = palette.textPrimary)
+                        Text("Signing in there will not sign in the embedded page in Hi Browser.", color = palette.textPrimary)
+                        if (accountProfile == null) TextButton(onClick = {
+                            pendingSecureSite = null
+                            showAccount = true
+                        }) { Text("Sign in to Hi Player instead") }
+                    } else {
+                        Text("Open $host using your device browser's saved website sessions.", color = palette.textPrimary)
+                    }
+                    if (request.fromPrivateTab) Text(
+                        "This leaves private browsing. Your device browser may use its saved accounts.",
+                        color = palette.textPrimary,
+                    )
+                }
+            },
             confirmButton = { TextButton(onClick = {
                 pendingSecureSite = null
-                SecureWebSessions.open(context, url, palette.surface.toArgb()).onFailure {
+                SecureWebSessions.open(context, request.url, palette.surface.toArgb()).onFailure {
                     Toast.makeText(context, com.example.ui.feedback.UserFacingErrors.report("website_sign_in", it,
-                        "Couldn't open secure sign-in. Try again or use your device browser."), Toast.LENGTH_LONG).show()
+                        "Couldn't open website sign-in. Try again or use your device browser."), Toast.LENGTH_LONG).show()
                 }
-            }) { Text("Open secure tab") } },
-            dismissButton = { TextButton(onClick = { pendingSecureSite = null }) { Text("Stay in Hi Browser") } },
+            }) { Text("Continue in browser") } },
+            dismissButton = { TextButton(onClick = { pendingSecureSite = null }) { Text("Cancel") } },
         )
     }
 
@@ -1837,7 +1857,7 @@ fun HiBrowserScreen(
             rows = listOf(
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { openNewTab(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { showBrowserSettings = true },
-                HiMenuAction("Google website sign-in", Icons.Default.Language) { requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT) },
+                HiMenuAction("Google website sign-in", Icons.Default.Language) { requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT, forSignIn = true) },
                 HiMenuAction("Close this tab", Icons.Default.Close) { closeTab(activeTabId) },
             ),
             bottomRow = listOf(
@@ -2419,7 +2439,7 @@ private fun formatBytes(value: Long): String = when {
     else -> "%.2f GB".format(value / (1_024.0 * 1_024.0 * 1_024.0))
 }
 
-/** Shown while a page loads for the first time, instead of an empty or stale view. */
+/** Neutral skeleton until real main-frame content paints; never a guessed site preview. */
 @Composable
 private fun HiBrowserLoadingPage(
     url: String,
@@ -2441,28 +2461,27 @@ private fun HiBrowserLoadingPage(
                 indication = null,
                 onClick = {},
             )
-            .padding(start = 24.dp, end = 24.dp, top = 48.dp, bottom = bottomInset + 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(bottom = bottomInset),
     ) {
-        Spacer(Modifier.height(24.dp))
-        LinearProgressIndicator(color = palette.primary, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(16.dp))
-        Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        TextButton(onClick = onStop) { Text("Stop loading") }
+        // Real loading status plus generic content-shaped placeholders. No blank
+        // full-screen progress bar and no invented website content/percentages.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Loading $host…", color = palette.textPrimary, fontSize = 16.sp,
+                modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TextButton(onClick = onStop) { Text("Stop loading") }
+        }
         if (slow || offline) {
-            Spacer(Modifier.height(16.dp))
-            Text(
-                if (offline) "You're offline. The page will load when the connection is back."
-                else "The network seems slow. Still trying…",
-                color = palette.textSecondary,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onStop) { Text("Stop") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (offline) "You're offline. Check your connection and retry."
+                    else "This page is taking longer than usual.",
+                    color = palette.textPrimary,
+                )
                 TextButton(onClick = onRetry) { Text("Retry") }
             }
         }
+        BrowserPageSkeleton(label = "Page content is loading", modifier = Modifier.weight(1f))
     }
 }
 
