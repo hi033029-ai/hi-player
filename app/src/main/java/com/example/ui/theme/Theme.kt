@@ -78,12 +78,13 @@ fun HiPlayerTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     uiTextScale: Float = 1f,
     customPalette: HiThemePalette? = null,
+    systemDarkOverride: Boolean? = null,
     content: @Composable () -> Unit
 ) {
     val palette = if (themeMode == AppThemeMode.CUSTOM) {
         customPalette ?: IceBluePalette
     } else {
-        getPaletteForTheme(themeMode, isSystemInDarkTheme())
+        getPaletteForTheme(themeMode, systemDarkOverride ?: isSystemInDarkTheme())
     }
     val colorScheme = remember(palette) { createColorScheme(palette) }
     val baseDensity = LocalDensity.current
@@ -118,7 +119,8 @@ fun MyApplicationTheme(
     content: @Composable () -> Unit
 ) {
     HiPlayerTheme(
-        themeMode = if (darkTheme) AppThemeMode.CYAN_NEON_DARK else AppThemeMode.WARM_SUNSET_LIGHT,
+        themeMode = AppThemeMode.SYSTEM,
+        systemDarkOverride = darkTheme,
         content = content
     )
 }

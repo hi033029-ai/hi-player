@@ -105,8 +105,6 @@ val IceBluePalette = HiThemePalette(
 fun getPaletteForTheme(mode: AppThemeMode, systemDark: Boolean = false): HiThemePalette {
     return when (mode) {
         AppThemeMode.SYSTEM -> if (systemDark) MonochromeDarkPalette else MonochromeLightPalette
-        AppThemeMode.CYAN_NEON_DARK -> MonochromeDarkPalette
-        AppThemeMode.WARM_SUNSET_LIGHT -> MonochromeLightPalette
         AppThemeMode.HI_PLAYER_BLUE -> IceBluePalette
         AppThemeMode.CUSTOM -> IceBluePalette
     }

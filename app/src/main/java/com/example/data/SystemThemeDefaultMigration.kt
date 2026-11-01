@@ -5,9 +5,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 
-/** User-requested one-time reset to System for upgrades as well as fresh installations. */
+/** User-requested one-time repair of old saved appearance overrides. Later explicit choices remain independent. */
 internal object SystemThemeDefaultMigration : DataMigration<Preferences> {
-    private val applied = booleanPreferencesKey("system_theme_default_v1")
+    private val applied = booleanPreferencesKey("system_theme_default_v2")
     private val theme = stringPreferencesKey("theme_mode")
 
     override suspend fun shouldMigrate(currentData: Preferences): Boolean = currentData[applied] != true

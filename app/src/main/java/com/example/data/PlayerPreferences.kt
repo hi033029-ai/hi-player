@@ -19,17 +19,16 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
     SYSTEM("SYSTEM", "System", "Follow device light or dark appearance"),
-    CYAN_NEON_DARK("CYAN_NEON_DARK", "Monochrome Dark", "Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF"),
-    WARM_SUNSET_LIGHT("WARM_SUNSET_LIGHT", "Monochrome Light", "Background: #FFFFFF | Accent: #000000 | Text: #000000"),
     HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Ice Blue", "Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate"),
     CUSTOM("CUSTOM", "Custom", "Your colors and opacity");
 
     companion object {
         fun fromId(id: String?): AppThemeMode {
             return when (id) {
-                "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT", "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE" -> WARM_SUNSET_LIGHT
-                // Retain a safe fallback for installations that previously stored the removed theme.
-                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CYAN_NEON_DARK
+                // Removed duplicate fixed monochrome modes now follow the phone.
+                "CYAN_NEON_DARK", "MONOCHROME_DARK", "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT",
+                "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE",
+                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> SYSTEM
                 "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
                 "CUSTOM" -> CUSTOM
                 else -> entries.find { it.id == id } ?: SYSTEM

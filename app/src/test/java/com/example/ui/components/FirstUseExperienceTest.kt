@@ -39,6 +39,31 @@ class FirstUseExperienceTest {
         compose.waitForIdle()
         onView(isRoot()).captureRoboImage(file.absolutePath)
     }
+    @Test fun systemThemeTracksConfigurationChangesWithoutReselecting() {
+        val dark = mutableStateOf(true)
+        compose.setContent {
+            val configuration = android.content.res.Configuration(androidx.compose.ui.platform.LocalConfiguration.current).apply {
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    if (dark.value) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO
+            }
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalConfiguration provides configuration) {
+                HiPlayerTheme(themeMode = com.example.data.AppThemeMode.SYSTEM) {
+                    androidx.compose.material3.Text(if (com.example.ui.theme.LocalHiPalette.current.isDark) "Dark appearance" else "Light appearance")
+                }
+            }
+        }
+        compose.onNodeWithText("Dark appearance").assertIsDisplayed()
+        compose.runOnIdle { dark.value = false }
+        compose.onNodeWithText("Light appearance").assertIsDisplayed()
+    }
+    @Test fun themePickerContainsNoDuplicateMonochromeChoices() {
+        compose.setContent { HiPlayerTheme {
+            HorizontalThemeSelector(com.example.data.AppThemeMode.SYSTEM, {})
+        } }
+        compose.onNodeWithTag("theme_card_SYSTEM").assertExists()
+        compose.onNodeWithTag("theme_card_CYAN_NEON_DARK").assertDoesNotExist()
+        compose.onNodeWithTag("theme_card_WARM_SUNSET_LIGHT").assertDoesNotExist()
+    }
     @Test fun permissionRecoveryOnlyOpensSettingsWhenTapped() {
         var calls = 0
         compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {

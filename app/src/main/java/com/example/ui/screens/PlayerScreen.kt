@@ -112,7 +112,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
     onPlayAsAudio: () -> Unit = {},
-    currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.CYAN_NEON_DARK,
+    currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.SYSTEM,
     onThemeSelected: (com.example.data.AppThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {

@@ -403,8 +403,8 @@ fun HiBrowserScreen(
     var blockerUpdating by remember { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
-    val browserTheme = if (darkModeEnabled) AppThemeMode.CYAN_NEON_DARK else AppThemeMode.WARM_SUNSET_LIGHT
-    val palette = getPaletteForTheme(browserTheme)
+    val browserTheme = AppThemeMode.SYSTEM
+    val palette = getPaletteForTheme(browserTheme, darkModeEnabled)
     val accountModel: GoogleAccountViewModel = viewModel()
     val accountProfile by accountModel.profile.collectAsStateWithLifecycle()
     var showAccount by remember { mutableStateOf(false) }
@@ -1293,7 +1293,7 @@ fun HiBrowserScreen(
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
     // Inherit the already-scaled app density; do not multiply the app text size twice.
-    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f) {
+    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f, systemDarkOverride = darkModeEnabled) {
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,

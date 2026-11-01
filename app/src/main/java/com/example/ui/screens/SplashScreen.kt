@@ -132,75 +132,77 @@ fun SplashScreen(
         if (isFirstLaunch) currentStep = OnboardingStep.WELCOME_NOTE else finishOnce()
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFFFFFFF),
-                        Color(0xFFF8FAFC)
+    com.example.ui.theme.HiPlayerTheme(themeMode = selectedTheme) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            com.example.ui.theme.LocalHiPalette.current.background,
+                            com.example.ui.theme.LocalHiPalette.current.background
+                        )
                     )
                 )
-            )
-            .safeDrawingPadding(),
-        contentAlignment = Alignment.Center
-    ) {
-        AnimatedContent(
-            targetState = currentStep,
-            transitionSpec = {
-                fadeIn() togetherWith fadeOut()
-            },
-            label = "onboarding_step"
-        ) { step ->
-            when (step) {
-                OnboardingStep.SPLASH_LOGO -> {
-                    SplashLogoView(
-                        scale = 1f,
-                        alpha = 1f
-                    )
-                }
+                .safeDrawingPadding(),
+            contentAlignment = Alignment.Center
+        ) {
+            AnimatedContent(
+                targetState = currentStep,
+                transitionSpec = {
+                    fadeIn() togetherWith fadeOut()
+                },
+                label = "onboarding_step"
+            ) { step ->
+                when (step) {
+                    OnboardingStep.SPLASH_LOGO -> {
+                        SplashLogoView(
+                            scale = 1f,
+                            alpha = 1f
+                        )
+                    }
 
-                OnboardingStep.WELCOME_NOTE -> {
-                    WelcomeNoteView(
-                        onContinue = {
-                            currentStep = OnboardingStep.CHOOSE_THEME
-                        },
-                        onSkip = {
-                            if (!finishing) { finishing = true; onSkip() }
-                        }
-                    )
-                }
+                    OnboardingStep.WELCOME_NOTE -> {
+                        WelcomeNoteView(
+                            onContinue = {
+                                currentStep = OnboardingStep.CHOOSE_THEME
+                            },
+                            onSkip = {
+                                if (!finishing) { finishing = true; onSkip() }
+                            }
+                        )
+                    }
 
-                OnboardingStep.CHOOSE_THEME -> {
-                    ChooseThemeView(
-                        selectedTheme = selectedTheme,
-                        onThemeSelected = { selectedTheme = it },
-                        onBack = { currentStep = OnboardingStep.WELCOME_NOTE },
-                        onProceed = {
-                            currentStep = OnboardingStep.PERMISSIONS
-                        }
-                    )
-                }
+                    OnboardingStep.CHOOSE_THEME -> {
+                        ChooseThemeView(
+                            selectedTheme = selectedTheme,
+                            onThemeSelected = { selectedTheme = it },
+                            onBack = { currentStep = OnboardingStep.WELCOME_NOTE },
+                            onProceed = {
+                                currentStep = OnboardingStep.PERMISSIONS
+                            }
+                        )
+                    }
 
-                OnboardingStep.PERMISSIONS -> {
-                    PermissionsSetupView(
-                        selectedTheme = selectedTheme,
-                        onComplete = {
-                            currentStep = OnboardingStep.TEXT_SIZE
-                        },
-                        onSkip = { finishOnce() },
-                    )
-                }
+                    OnboardingStep.PERMISSIONS -> {
+                        PermissionsSetupView(
+                            selectedTheme = selectedTheme,
+                            onComplete = {
+                                currentStep = OnboardingStep.TEXT_SIZE
+                            },
+                            onSkip = { finishOnce() },
+                        )
+                    }
 
-                OnboardingStep.TEXT_SIZE -> {
-                    TextSizeSetupView(
-                        selectedTheme = selectedTheme,
-                        textSizeSp = textSizeSp,
-                        onTextSizeChanged = { textSizeSp = it },
-                        onBack = { currentStep = OnboardingStep.PERMISSIONS },
-                        onComplete = { finishOnce() }
-                    )
+                    OnboardingStep.TEXT_SIZE -> {
+                        TextSizeSetupView(
+                            selectedTheme = selectedTheme,
+                            textSizeSp = textSizeSp,
+                            onTextSizeChanged = { textSizeSp = it },
+                            onBack = { currentStep = OnboardingStep.PERMISSIONS },
+                            onComplete = { finishOnce() }
+                        )
+                    }
                 }
             }
         }
@@ -229,25 +231,25 @@ private fun TextSizeSetupView(
         ) {
             com.example.ui.components.HiPlayerLogoBadge(size = 58.dp)
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Choose Text Size", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0C2133))
+            Text("Choose Text Size", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = com.example.ui.theme.LocalHiPalette.current.textPrimary)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 "Set the size used throughout Hi Player. You can change it later in Settings.",
                 fontSize = 13.sp,
-                color = Color(0xFF2C4A60),
+                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(18.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surface),
                 border = BorderStroke(1.dp, accent.copy(alpha = 0.25f)),
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Hi Player preview", fontSize = textSizeSp.sp, fontWeight = FontWeight.Bold, color = accent)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = Color(0xFF2C4A60))
+                    Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = com.example.ui.theme.LocalHiPalette.current.textSecondary)
                     Slider(
                         value = textSizeSp.toFloat(),
                         onValueChange = { onTextSizeChanged(it.roundToInt()) },
@@ -256,9 +258,9 @@ private fun TextSizeSetupView(
                         modifier = Modifier.fillMaxWidth().testTag("onboarding_text_size_slider")
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Small", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                        Text("Small", fontSize = 11.sp, color = com.example.ui.theme.LocalHiPalette.current.textSecondary)
                         Text("${textSizeSp}sp", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accent)
-                        Text("Large", fontSize = 11.sp, color = Color(0xFF2C4A60))
+                        Text("Large", fontSize = 11.sp, color = com.example.ui.theme.LocalHiPalette.current.textSecondary)
                     }
                 }
             }
@@ -308,7 +310,7 @@ private fun SplashLogoView(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFF0056B3).copy(alpha = 0.25f),
+                                com.example.ui.theme.LocalHiPalette.current.primary.copy(alpha = 0.25f),
                                 Color.Transparent
                             )
                         )
@@ -327,7 +329,7 @@ private fun SplashLogoView(
             text = "Hi Player",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF0C2133),
+            color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
             letterSpacing = 0.5.sp
         )
 
@@ -336,7 +338,7 @@ private fun SplashLogoView(
         Text(
             text = "4K UHD Blu-ray & Hi-Fi Audio",
             fontSize = 12.sp,
-            color = Color(0xFF0056B3),
+            color = com.example.ui.theme.LocalHiPalette.current.primary,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 0.3.sp
         )
@@ -389,7 +391,7 @@ private fun WelcomeNoteView(
                 text = "Welcome to Hi Player",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF0C2133),
+                color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -398,7 +400,7 @@ private fun WelcomeNoteView(
             Text(
                 text = "Your videos, music, browser and files — together, with controls that make them yours.",
                 fontSize = 14.sp,
-                color = Color(0xFF2C4A60),
+                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
@@ -428,7 +430,7 @@ private fun WelcomeNoteView(
         }
         OnboardingActions(
             onHeightChanged = { footerHeight = it },
-            primaryLabel = "Continue", onPrimary = onContinue, accent = Color(0xFF0056B3),
+            primaryLabel = "Continue", onPrimary = onContinue, accent = com.example.ui.theme.LocalHiPalette.current.primary,
             secondaryLabel = "Skip setup", onSecondary = onSkip, primaryTag = "welcome_continue_button",
             secondaryTag = "welcome_skip_button",
         )
@@ -443,7 +445,7 @@ private fun FeatureRow(
 ) {
     Card(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
+        colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
         border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp),
         modifier = Modifier.fillMaxWidth()
@@ -456,13 +458,13 @@ private fun FeatureRow(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0056B3).copy(alpha = 0.15f)),
+                    .background(com.example.ui.theme.LocalHiPalette.current.primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = Color(0xFF0056B3),
+                    tint = com.example.ui.theme.LocalHiPalette.current.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -474,13 +476,13 @@ private fun FeatureRow(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
-                    color = Color(0xFF0C2133)
+                    color = com.example.ui.theme.LocalHiPalette.current.textPrimary
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
                     fontSize = 14.sp,
-                    color = Color(0xFF2C4A60),
+                    color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                     lineHeight = 20.sp
                 )
             }
@@ -533,7 +535,7 @@ private fun ChooseThemeView(
                 text = "Choose Your Theme",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF0C2133),
+                color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -542,7 +544,7 @@ private fun ChooseThemeView(
             Text(
                 text = "Select your preferred theme. Set it as default for the whole app.",
                 fontSize = 10.sp,
-                color = Color(0xFF2C4A60),
+                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                 textAlign = TextAlign.Center
             )
 
@@ -562,7 +564,7 @@ private fun ChooseThemeView(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
+                colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
                 border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
@@ -590,12 +592,12 @@ private fun ChooseThemeView(
                             text = selectedTheme.displayName,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.5.sp,
-                            color = Color(0xFF0C2133)
+                            color = com.example.ui.theme.LocalHiPalette.current.textPrimary
                         )
                         Text(
                             text = selectedTheme.description,
                             fontSize = 10.sp,
-                            color = Color(0xFF2C4A60)
+                            color = com.example.ui.theme.LocalHiPalette.current.textSecondary
                         )
                     }
                 }
@@ -630,7 +632,7 @@ private fun ThemeOptionCard(
             .testTag("theme_card_${theme.id}"),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0xFFD6ECF7) else Color(0xFFC7E3F2)
+            containerColor = if (isSelected) com.example.ui.theme.LocalHiPalette.current.surface else com.example.ui.theme.LocalHiPalette.current.surfaceElevated
         ),
         border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
@@ -666,13 +668,13 @@ private fun ThemeOptionCard(
                         text = title,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 11.5.sp,
-                        color = Color(0xFF0C2133)
+                        color = com.example.ui.theme.LocalHiPalette.current.textPrimary
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
                         fontSize = 10.sp,
-                        color = Color(0xFF2C4A60)
+                        color = com.example.ui.theme.LocalHiPalette.current.textSecondary
                     )
                 }
             }
@@ -681,7 +683,7 @@ private fun ThemeOptionCard(
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
                     contentDescription = "Selected",
-                    tint = Color(0xFF0056B3),
+                    tint = com.example.ui.theme.LocalHiPalette.current.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -757,7 +759,7 @@ private fun PermissionsSetupView(
                 text = "Optional permissions",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF0C2133),
+                color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
                 textAlign = TextAlign.Center
             )
 
@@ -766,7 +768,7 @@ private fun PermissionsSetupView(
             Text(
                 text = "Allow media access to scan your library and notifications for playback controls. You can choose Not now and grant access later.",
                 fontSize = 14.sp,
-                color = Color(0xFF2C4A60),
+                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
@@ -825,7 +827,7 @@ private fun PermissionCard(
 ) {
     Card(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFC7E3F2)),
+        colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
         border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp),
         modifier = Modifier.fillMaxWidth()
@@ -856,13 +858,13 @@ private fun PermissionCard(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
-                    color = Color(0xFF0C2133)
+                    color = com.example.ui.theme.LocalHiPalette.current.textPrimary
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
                     fontSize = 14.sp,
-                    color = Color(0xFF2C4A60),
+                    color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
                     lineHeight = 20.sp
                 )
             }
@@ -882,7 +884,7 @@ private fun BoxScope.OnboardingActions(
     secondaryTag: String = "onboarding_secondary_button",
     primaryEnabled: Boolean = true,
     secondaryEnabled: Boolean = true,
-    contentColor: Color = Color.White,
+    contentColor: Color? = null,
     message: String? = null,
     onHeightChanged: (Dp) -> Unit = {},
 ) {
@@ -890,18 +892,18 @@ private fun BoxScope.OnboardingActions(
     Column(
         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
             .onSizeChanged { with(density) { onHeightChanged(it.height.toDp()) } }
-            .background(Color(0xFFF8FAFC)).padding(horizontal = 20.dp, vertical = 20.dp),
+            .background(com.example.ui.theme.LocalHiPalette.current.background).padding(horizontal = 20.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        message?.let { Text(it, color = Color(0xFF2C4A60), fontSize = 14.sp) }
+        message?.let { Text(it, color = com.example.ui.theme.LocalHiPalette.current.textSecondary, fontSize = 14.sp) }
         TextButton(onClick = onSecondary, enabled = secondaryEnabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(secondaryTag)) {
-            Text(secondaryLabel, color = Color(0xFF0056B3), fontSize = 14.sp)
+            Text(secondaryLabel, color = com.example.ui.theme.LocalHiPalette.current.primary, fontSize = 14.sp)
         }
         Button(onClick = onPrimary, enabled = primaryEnabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(primaryTag),
             shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = contentColor)) {
+            colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = contentColor ?: com.example.ui.theme.contrastContentColor(accent, com.example.ui.theme.LocalHiPalette.current.surface))) {
             Text(primaryLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
