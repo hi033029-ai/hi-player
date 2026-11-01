@@ -171,8 +171,6 @@ fun LibraryAccessExplanation(audio: Boolean) {
     val scope = com.example.data.LibraryAccessPolicy.scope(context, audio)
     val message = when {
         scope == com.example.data.LibraryAccessPolicy.Scope.SELECTED -> "Showing only the videos you selected in Android."
-        scope == com.example.data.LibraryAccessPolicy.Scope.FULL && Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager() ->
-            "All files access is enabled in Android settings."
         else -> return
     }
     Text(message, color = LocalHiPalette.current.textSecondary, fontSize = 14.sp,

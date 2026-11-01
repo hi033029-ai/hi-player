@@ -46,9 +46,10 @@ internal fun MusicLibraryToolbar(
             categories.forEach { category ->
                 item(key = category) {
                     val active = selected == category
-                    Box(Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
+                    Box(Modifier.heightIn(min = 48.dp).clickable { onCategory(category) }
+                        .padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
                         .background(if (active) palette.primary else Color.Transparent)
-                        .clickable { onCategory(category) }.padding(horizontal = 10.dp)
+                        .padding(horizontal = 8.dp)
                         .testTag("music_library_category_$category"), contentAlignment = Alignment.Center) {
                         Text(if (category == "All Music") "Songs" else category,
                             color = if (active) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary,
@@ -63,7 +64,7 @@ internal fun MusicLibraryToolbar(
         Box {
             IconButton(onClick = { viewMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
                 Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                    if (grid) "Grid view; change layout" else "List view; change layout", tint = palette.textPrimary, modifier = Modifier.size(20.dp))
+                    if (grid) "Grid view; change layout" else "List view; change layout", tint = palette.textPrimary, modifier = Modifier.size(18.dp))
             }
             DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
                 listOf("List" to false, "Grid" to true).forEach { (name, value) ->
@@ -74,7 +75,7 @@ internal fun MusicLibraryToolbar(
         }
         Box {
             IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_sort_button")) {
-                Icon(Icons.AutoMirrored.Filled.Sort, "Sort music: $sort", tint = palette.textPrimary, modifier = Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Filled.Sort, "Sort music: $sort", tint = palette.textPrimary, modifier = Modifier.size(18.dp))
             }
             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                 listOf("Custom", "Name", "Artist", "Duration", "Newest").forEach { option ->

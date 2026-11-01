@@ -47,15 +47,15 @@ fun FolderItemRow(
             .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp)
+            .padding(horizontal = 10.dp, vertical = 7.dp)
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Plain folder icon; selection is communicated through theme-colored text.
         Box(
             modifier = Modifier
-                .width(48.dp)
-                .height(40.dp),
+                .width(36.dp)
+                .height(36.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -64,11 +64,11 @@ fun FolderItemRow(
                 tint = if (isSelected) palette.primary
                 else if (palette.isDark) Color(0xFF94A3B8)
                 else Color(0xFF94A3B8),
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(18.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // Folder Name and Video Count
         Column(
@@ -76,14 +76,15 @@ fun FolderItemRow(
         ) {
             Text(
                 text = folder.name,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Normal,
                 color = if (folder.name.equals("Download", ignoreCase = true) || isSelected) {
                     palette.primary
                 } else {
                     palette.textPrimary
                 },
-                maxLines = 1
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(2.dp))
@@ -92,7 +93,7 @@ fun FolderItemRow(
                 val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
                 Text(
                     text = countText,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     color = palette.textSecondary,
                     fontWeight = FontWeight.Normal
                 )
@@ -159,7 +160,8 @@ fun FolderGridCard(
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = if (isSelected) palette.primary else palette.textPrimary,
-            maxLines = 1
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
 
         Spacer(modifier = Modifier.height(2.dp))

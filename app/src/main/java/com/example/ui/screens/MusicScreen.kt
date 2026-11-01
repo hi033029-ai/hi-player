@@ -128,7 +128,8 @@ fun MusicScreen(
     val palette = LocalHiPalette.current
     val availableAudio by musicViewModel.audioList.collectAsStateWithLifecycle()
     val scanStatus by musicViewModel.scanStatus.collectAsStateWithLifecycle()
-    val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = true) { musicViewModel.loadAudioTracks() }
+    val showScanFeedback by musicViewModel.showScanFeedback.collectAsStateWithLifecycle()
+    val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = true) { musicViewModel.loadAudioTracks(showFeedback = true) }
     val audioList = if (mediaAccess.granted) availableAudio else emptyList()
     val swipeTip = com.example.ui.components.rememberFirstUseTip("music_library_swipe_v1")
     val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
@@ -194,7 +195,8 @@ fun MusicScreen(
         val audioToolbar: @Composable () -> Unit = {
             MusicLibraryToolbar(
                 selected = libraryMode,
-                onCategory = { category -> scope.launch { pager.animateScrollToPage(modes.indexOf(category)) } },
+                onCategory = { category -> scope.launch { pager.animateScrollToPage(modes.indexOf(category),
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) } },
                 grid = compactAudioView,
                 onGridChange = {
                     compactAudioView = it
@@ -214,13 +216,14 @@ fun MusicScreen(
             com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your music",
                 "Swipe left or right across the library to move between Songs, Folders, Playlists, Albums and Artists. Tap a tab to jump straight there.",
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp))
-            if (audioList.isNotEmpty() || scanStatus != com.example.ui.components.LibraryScanStatus.SCANNING)
-                com.example.ui.components.LibraryScanFeedback(scanStatus, audioList.size, audio = true)
+            // Background refreshes must not add a banner above the current library.
         }
 
         // Track List
         androidx.compose.foundation.pager.HorizontalPager(
-            state = pager, key = { modes[it] }, beyondViewportPageCount = 1,
+            state = pager, key = { modes[it] }, beyondViewportPageCount = 2,
+            flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(pager,
+                snapAnimationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
             userScrollEnabled = pendingDeleteTrack == null,
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("music_library_pager"),
         ) { page ->
@@ -253,7 +256,7 @@ fun MusicScreen(
             Box(Modifier.weight(1f).fillMaxWidth()) {
             if (!mediaAccess.granted) {
                 com.example.ui.components.LibraryPermissionPanel(audio = true, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
-            } else if (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && audioList.isEmpty()) {
+            } else if (showScanFeedback && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && audioList.isEmpty()) {
                 com.example.ui.components.LibraryScanFeedback(scanStatus, 0, audio = true, centered = true)
             } else if (presentation == null) {
                 com.example.ui.components.ContentSkeleton(label = "Preparing music…",
@@ -286,7 +289,7 @@ fun MusicScreen(
                             musicViewModel.setSearchQuery("")
                             scope.launch { pager.animateScrollToPage(0) }
                             selectedCollection = null
-                            musicViewModel.loadAudioTracks()
+                            musicViewModel.loadAudioTracks(showFeedback = true)
                         }) { Text(if (audioList.isEmpty()) "Scan music" else "Show all music") }
                     }
                 }

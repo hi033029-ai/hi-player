@@ -174,7 +174,9 @@ fun HomeScreen(
     androidx.compose.foundation.pager.HorizontalPager(
         state = pager,
         key = { modes[it].name },
-        beyondViewportPageCount = 1,
+        beyondViewportPageCount = 2,
+        flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(pager,
+            snapAnimationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
         userScrollEnabled = !selectionActive && selectedFolder == null && treePath == null,
         modifier = modifier.fillMaxSize().testTag("video_library_pager"),
     ) { page ->
@@ -183,7 +185,8 @@ fun HomeScreen(
             onMoveVideosToRecycleBin, Modifier.fillMaxSize(), includeHeader, onSearchRequested,
             pageMode = modes[page], isActive = pager.settledPage == page,
             onModeSelected = { mode ->
-                scope.launch { pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0)) }
+                scope.launch { pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0),
+                    animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
             },
             onSelectionChanged = { if (pager.settledPage == page) selectionActive = it },
             onPlaybackQueueSelected = onPlaybackQueueSelected,
@@ -224,6 +227,7 @@ private fun VideoLibraryPage(
     val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
     val scanStatus by libraryViewModel.scanStatus.collectAsStateWithLifecycle()
+    val showScanFeedback by libraryViewModel.showScanFeedback.collectAsStateWithLifecycle()
     val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = false) { libraryViewModel.refreshVideos() }
     val canShowLibrary = mediaAccess.granted && !(mediaAccess.limited && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING)
     val allVideos = if (canShowLibrary) availableVideos else emptyList()
@@ -483,8 +487,8 @@ private fun VideoLibraryPage(
             // and was the source of the visible jump in the recording.
             if (isVideoHome && searchQuery.isBlank()) {
                 val navOptions = listOf(
-                    Triple(LibraryNavMode.FOLDERS, "All Folders (${folders.size})", Icons.Default.Folder),
-                    Triple(LibraryNavMode.ALL_VIDEOS, "All Videos (${allVideos.size})", Icons.Default.VideoLibrary),
+                    Triple(LibraryNavMode.FOLDERS, "Folders (${folders.size})", Icons.Default.Folder),
+                    Triple(LibraryNavMode.ALL_VIDEOS, "Videos (${allVideos.size})", Icons.Default.VideoLibrary),
                     Triple(LibraryNavMode.RECENT, "Recent (${continueWatchingVideos.size})", Icons.Default.Refresh),
                     Triple(LibraryNavMode.TREE_FOLDERS, "Tree Folders (${folders.size})", Icons.Default.FolderOpen),
                     Triple(LibraryNavMode.FAVORITES, "Favorites ($favoriteCount)", Icons.Default.Star)
@@ -495,7 +499,7 @@ private fun VideoLibraryPage(
                         state = libraryModeRowState,
                         modifier = categoryModifier,
                         contentPadding = PaddingValues(end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         userScrollEnabled = true
                     ) {
@@ -505,17 +509,18 @@ private fun VideoLibraryPage(
                             Row(
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
-                                    .clip(RoundedCornerShape(9.dp)).hiContainerBorder(RoundedCornerShape(9.dp))
-                                    .background(if (selected) palette.primary else palette.surfaceElevated)
                                     .clickable {
                                         libraryViewModel.selectFolder(null)
                                         onModeSelected(mode)
                                     }
-                                    .padding(horizontal = 10.dp),
+                                    .padding(vertical = 6.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) palette.primary else palette.surfaceElevated)
+                                    .padding(horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(icon, contentDescription = label, tint = if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary, modifier = Modifier.size(15.dp))
+                                Icon(icon, contentDescription = label, tint = if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textSecondary, modifier = Modifier.size(14.dp))
                                 Text(label, color = if (selected) com.example.ui.theme.contrastContentColor(palette.primary, palette.surface) else palette.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
@@ -523,11 +528,11 @@ private fun VideoLibraryPage(
                     },
                     actions = {
                         IconButton(onClick = { libraryViewModel.toggleViewMode() }, modifier = Modifier.size(48.dp)) {
-                            Icon(if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList, "Toggle view", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
+                            Icon(if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList, "Toggle view", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
                         }
                         Box {
                             IconButton(onClick = { sortMenuExpanded = true }, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.Sort, "Sort videos", tint = palette.textSecondary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Sort, "Sort videos", tint = palette.textSecondary, modifier = Modifier.size(18.dp))
                             }
                             DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(palette.surfaceElevated)) {
                                 VideoSortOption.entries.forEach { option ->
@@ -845,15 +850,14 @@ private fun VideoLibraryPage(
                 if (isActive) com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your videos",
                     "Swipe left or right across the library to move between Folders, All Videos, Recent, Tree Folders and Favourites. You can also tap the tabs.",
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
-                if (allVideos.isNotEmpty() || scanStatus != com.example.ui.components.LibraryScanStatus.SCANNING)
-                    com.example.ui.components.LibraryScanFeedback(scanStatus, allVideos.size, audio = false)
+                // Cached-content and periodic refreshes remain silent.
             }
-            if (!mediaAccess.granted || (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty())) {
+            if (!mediaAccess.granted || (showScanFeedback && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty())) {
                 libraryControls()
             }
             if (!mediaAccess.granted) {
                 com.example.ui.components.LibraryPermissionPanel(audio = false, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
-            } else if (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty()) {
+            } else if (showScanFeedback && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty()) {
                 com.example.ui.components.LibraryScanFeedback(scanStatus, 0, audio = false, centered = true)
             } else if (
                 navMode == LibraryNavMode.FOLDERS &&
