@@ -97,6 +97,10 @@ fun DiscoverSourceSettings(
         }
     }
 
+    SavedMediaSources(discoverViewModel,
+        addJellyfin = { dialog = SourceDialog.JELLYFIN },
+        addWebDav = { dialog = SourceDialog.WEBDAV })
+
     when (dialog) {
         SourceDialog.JELLYFIN -> JellyfinSetupDialog(
             draft = drafts.jellyfin,

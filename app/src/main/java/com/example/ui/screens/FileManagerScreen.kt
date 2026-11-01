@@ -189,6 +189,8 @@ fun FileManagerScreen(
     val selectedPaths by fileManagerViewModel.selectedPaths.collectAsStateWithLifecycle()
     val detailsItem by fileManagerViewModel.detailsItem.collectAsStateWithLifecycle()
     var menuTargetItem by remember { mutableStateOf<FileItem?>(null) }
+    var showFileToolsMenu by remember { mutableStateOf(false) }
+    var showAdvancedFileTools by remember { mutableStateOf(false) }
     var showSelectionProperties by remember { mutableStateOf(false) }
     val deleteConfirmItems by fileManagerViewModel.deleteConfirmItems.collectAsStateWithLifecycle()
     val deleteProgress by fileManagerViewModel.deleteProgress.collectAsStateWithLifecycle()
@@ -315,8 +317,15 @@ fun FileManagerScreen(
                 else if (selectedItems.isNotEmpty()) showSelectionProperties = true
             },
             onDelete = { fileManagerViewModel.requestDelete(selectedItems) },
+            onOrganize = { showAdvancedFileTools = true },
         )
     }
+    if (showAdvancedFileTools) com.example.ui.components.AdvancedFileTools(
+        directory = currentDir,
+        selected = selectedItems.map { it.file },
+        onDismiss = { showAdvancedFileTools = false },
+        onChanged = { fileManagerViewModel.clearSelection(); fileManagerViewModel.refreshCurrentDirectory(silent = true); onFilesChanged() },
+    )
     val storageOverview: @Composable () -> Unit = {
         if (!isInsideFolder && showQuickPanels) {
             Card(
@@ -513,19 +522,18 @@ fun FileManagerScreen(
                         Icon(Icons.Default.Visibility, contentDescription = "Show storage and quick sections", tint = palette.textPrimary)
                     }
                 }
-                IconButton(
-                    onClick = {
-                        showQuickPanels = true
-                        fileManagerViewModel.refreshAll()
-                    },
-                    modifier = Modifier.testTag("refresh_files_button")
-                ) {
-
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
-                        tint = palette.textPrimary
-                    )
+                Box {
+                    IconButton(onClick = { showFileToolsMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "File tools", tint = palette.textPrimary)
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = showFileToolsMenu, onDismissRequest = { showFileToolsMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("Refresh") }, onClick = {
+                            showFileToolsMenu = false; showQuickPanels = true; fileManagerViewModel.refreshAll()
+                        })
+                        androidx.compose.material3.DropdownMenuItem(text = { Text("File organization") }, onClick = {
+                            showFileToolsMenu = false; showAdvancedFileTools = true
+                        })
+                    }
                 }
                 IconButton(onClick = { showRecycleBin = true }) {
                     Icon(Icons.Default.Delete, contentDescription = "Recycle Bin", tint = palette.textPrimary)

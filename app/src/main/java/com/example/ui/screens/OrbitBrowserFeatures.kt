@@ -24,6 +24,7 @@ internal class OrbitBrowserStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE)
 
     init {
+        BrowserAdvancedRules.initialize(context)
         // One-time switch: every protection and helper starts on (v1.0.60).
         if (!prefs.getBoolean("defaults_v2_applied", false)) {
             prefs.edit()
@@ -273,6 +274,7 @@ internal object OrbitBrowserFilterEngine {
     fun shouldBlock(uri: Uri, enabled: Boolean, pageHost: String? = null, mainFrame: Boolean = true): Boolean {
         if (!enabled) return false
         val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
+        BrowserAdvancedRules.decision(host, pageHost)?.let { return it }
         val blocks = blockIndex
         var path: String? = null
         var thirdParty: Boolean? = null

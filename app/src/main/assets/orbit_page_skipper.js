@@ -12,13 +12,15 @@
   if (window.top !== window || window.__orbitSkipper) return;
   window.__orbitSkipper = true;
 
-  var SPEED = 30; // countdown speed-up factor on wait pages
+  var OPTIONS = window.__hiSkipOptions || {};
+  var SPEED = [1, 10, 30, 60].indexOf(OPTIONS.speed) >= 0 ? OPTIONS.speed : 30; // countdown speed-up factor on wait pages
   var SAFE = /(^|\.)(youtube|google|gstatic|github|gitlab|wikipedia|wikimedia|facebook|instagram|reddit|netflix|twitch|spotify|whatsapp|microsoft|live|office|apple|icloud|amazon|paypal|stripe|linkedin|stackoverflow|duckduckgo|bing|yahoo|x|twitter|tiktok|telegram|discord|anthropic|claude|openai|chatgpt)\./i;
   if (SAFE.test(location.hostname + '.')) return;
 
   var _st = window.setTimeout, _si = window.setInterval, _ct = window.clearTimeout, _ci = window.clearInterval;
   var _open = window.open;
   var NativeDate = window.Date, _dateNow = NativeDate.now;
+  var _raf = window.requestAnimationFrame;
   var _perf = (window.performance && performance.now) ? performance.now.bind(performance) : null;
   var allowOpen = 0;
   function realNow() { return _dateNow.call(NativeDate); }
@@ -26,7 +28,7 @@
   // ---- Wait-page detection. Runs only from the throttled scan below (never
   // inside timers), skips big pages cheaply, and never treats pages with
   // forms (sign-in, codes, checkout) as wait pages.
-  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?) (left|remaining)|count ?down|generating (your |the )?link|get (the |your )?link|link is (being )?generat|skip (ad|in)\b|verify you are human)/i;
+  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?) (left|remaining)|count ?down|generating (your |the )?link|get (the |your )?link|link is (being )?generat|skip (ad|in)\b)/i;
   var isWaitPage = false;
   var decided = false;
   var checks = 0;
@@ -38,7 +40,8 @@
     var b = document.body;
     if (!b) return false;
     if (document.getElementsByTagName('*').length > 2500) return false;
-    if (hasUserForm()) return false;
+    if (hasUserForm() || document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]')) return false;
+    if (/verify (you are|you're) human|security check|checking your browser|consent|checkout|sign in|log in/i.test(b.innerText || '')) return false;
     var txt = b.innerText || '';
     return txt.length < 6000 && WAIT.test(txt);
   }
@@ -130,12 +133,26 @@
     if (_perf) {
       try {
         performance.now = function () { var p = _perf(); return warpPerf + (p - warpPerf) * SPEED; };
-        var _raf = window.requestAnimationFrame;
         if (_raf) window.requestAnimationFrame = function (cb) {
           return _raf.call(window, function () { cb(performance.now()); });
         };
       } catch (e) {}
     }
+  }
+  function restoreTiming() {
+    var now = realNow();
+    isWaitPage = false;
+    warping = false;
+    NativeDate.now = _dateNow;
+    window.Date = NativeDate;
+    if (_perf) { try { performance.now = _perf; } catch (e) {} }
+    if (_raf) window.requestAnimationFrame = _raf;
+    Object.keys(timers).forEach(function (key) {
+      var t = timers[key];
+      if (!t) return;
+      if (t.repeat) { _ci.call(window, t.real); arm(t, t.delay); }
+      else { _ct.call(window, t.real); arm(t, Math.max(0, t.due - now) * (t.fast ? SPEED : 1)); }
+    });
   }
   function onWaitPageDetected() {
     accelerateExisting();
@@ -220,6 +237,7 @@
     try { return new URL(h, location.href).hostname === location.hostname; } catch (e) { return false; }
   }
   function handleButtons() {
+    if (OPTIONS.autoContinue === false || hasUserForm()) return;
     var els = document.querySelectorAll('a,button,input[type=button],input[type=submit],div[role=button]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i], txt = (el.innerText || el.value || '').trim();
@@ -256,6 +274,12 @@
     checks++;
     lastScan = realNow();
     if (document.body) decided = true;
+    if (hasUserForm() || document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]') ||
+        /verify (you are|you're) human|security check|checking your browser|consent|checkout|sign in|log in/i.test((document.body && document.body.innerText) || '')) {
+      restoreTiming();
+      stop();
+      return;
+    }
     var wasWaitPage = isWaitPage;
     // Once a page is recognised it stays a wait page (its text changes as it counts down).
     isWaitPage = wasWaitPage || evaluateWait();

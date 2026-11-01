@@ -325,17 +325,20 @@ private object HiBrowserDocumentScripts {
             registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
         }
         if (store.adBlock) {
-            readAsset(context, "orbit_adblock.js")?.let {
+            readAsset(context, "orbit_adblock.js")?.let { raw ->
+                val it = BrowserAdvancedRules.wrap("orbit_adblock.js", raw)
                 registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
             }
         }
         if (store.pageSkipper) {
-            readAsset(context, "orbit_page_skipper.js")?.let {
+            readAsset(context, "orbit_page_skipper.js")?.let { raw ->
+                val it = BrowserAdvancedRules.wrap("orbit_page_skipper.js", raw)
                 registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
             }
         }
         if (store.youtubeAdSkip) {
-            readAsset(context, "orbit_youtube.js")?.let {
+            readAsset(context, "orbit_youtube.js")?.let { raw ->
+                val it = BrowserAdvancedRules.wrap("orbit_youtube.js", raw)
                 registered += WebViewCompat.addDocumentStartJavaScript(
                     webView, it, setOf(
                         "https://*.youtube.com", "https://youtube.com",
@@ -789,6 +792,7 @@ fun HiBrowserScreen(
     }
 
     fun injectCosmeticCss(view: WebView, url: String) {
+        if (BrowserAdvancedRules.paused(Uri.parse(url).host)) return
         val css = OrbitBrowserFilterEngine.cosmeticCss(runCatching { Uri.parse(url).host }.getOrNull(), adBlockFlag.enabled)
         if (css.isNotBlank()) view.evaluateJavascript(
             "(function(){var s=document.getElementById('__orbit_filter_css');if(!s){s=document.createElement('style');s.id='__orbit_filter_css';(document.head||document.documentElement).appendChild(s);}s.textContent=" + JSONObject.quote(css) + ";})();",
@@ -1806,6 +1810,8 @@ fun HiBrowserScreen(
 
     if (showBrowserSettings) {
         BrowserSettingsDialog(
+            currentHost = Uri.parse(currentUrl).host,
+            onAdvancedRulesSaved = { tabs.forEach { tab -> tab.webView?.let { HiBrowserDocumentScripts.apply(it, context, store, tab.desktop) } } },
             accountModel = accountModel,
             onPlayAccountMedia = onPlayAccountMedia,
             appTextSizeSp = appTextSizeSp,
@@ -2358,7 +2364,8 @@ internal const val HI_BROWSER_VIDEO_HOOK_SCRIPT = """
 @SuppressLint("SetJavaScriptEnabled")
 private fun injectOrbitAsset(webView: WebView, context: Context, name: String) {
     HiBrowserDocumentScripts.readAsset(context, name)?.let { script ->
-        webView.post { webView.evaluateJavascript(script, null) }
+        val configured = BrowserAdvancedRules.wrap(name, script)
+        webView.post { webView.evaluateJavascript(configured, null) }
     }
 }
 
@@ -2420,6 +2427,8 @@ private fun applyOrbitDesktopMode(view: WebView, desktop: Boolean) {
 
 @Composable
 private fun BrowserSettingsDialog(
+    currentHost: String?,
+    onAdvancedRulesSaved: () -> Unit,
     accountModel: GoogleAccountViewModel,
     onPlayAccountMedia: (com.example.model.VideoItem) -> Unit,
     appTextSizeSp: Int,
@@ -2492,6 +2501,9 @@ private fun BrowserSettingsDialog(
                     BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
                     BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
                     BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
+                }
+                BrowserSettingsGroup("Advanced protection & page skipper") {
+                    BrowserAdvancedTools(currentHost, onAdvancedRulesSaved)
                 }
                 BrowserSettingsGroup("Videos") {
                     BrowserSettingsSwitchRow(
