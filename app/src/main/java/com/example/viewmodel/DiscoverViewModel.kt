@@ -37,6 +37,58 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
 
     val sourceSettings = mediaSources.settings
 
+    val savedSourceProfiles = mediaSources.savedProfiles
+    // Main-thread generation prevents a slow verification from reconnecting a
+    // source after Disconnect or a newer connection request.
+    private var sourceGeneration = 0L
+    private fun requireSourceGeneration(generation: Long) {
+        if (generation != sourceGeneration) throw kotlinx.coroutines.CancellationException("Superseded connection")
+    }
+    private suspend fun commitJellyfin(generation: Long, connection: JellyfinConnection) =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            currentCoroutineContext().ensureActive(); requireSourceGeneration(generation)
+            sourceSettings.value.jellyfin?.baseUrl?.let(RemoteStreamHeadersRegistry::clear)
+            mediaSources.saveJellyfin(connection)
+            RemoteStreamHeadersRegistry.register(connection.baseUrl, JellyfinMediaSourceClient.requestHeaders(connection))
+        }
+    private suspend fun commitWebDav(generation: Long, connection: WebDavConnection) =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            currentCoroutineContext().ensureActive(); requireSourceGeneration(generation)
+            sourceSettings.value.webDav?.folderUrl?.let(RemoteStreamHeadersRegistry::clear)
+            mediaSources.saveWebDav(connection)
+            RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
+        }
+
+    internal fun beginJellyfinAuthorization(): Long = ++sourceGeneration
+    internal suspend fun completeJellyfinAuthorization(generation: Long, connection: JellyfinConnection) {
+        commitJellyfin(generation, connection)
+    }
+
+    suspend fun saveSourceProfile(name: String, kind: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        mediaSources.saveCurrentProfile(name, kind)
+    }
+    suspend fun deleteSourceProfile(id: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        currentCoroutineContext().ensureActive()
+        mediaSources.deleteSavedProfile(id)
+    }
+    suspend fun activateSourceProfile(id: String) {
+        val generation = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { ++sourceGeneration }
+        val source = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mediaSources.savedCredentials(id) }
+        source.jellyfin?.let { saved ->
+            // Verify the existing device token. Revoked sessions require a fresh
+            // Quick Connect/password login, not a retained account password.
+            val verified = JellyfinMediaSourceClient.verifySession(saved)
+            currentCoroutineContext().ensureActive()
+            commitJellyfin(generation, verified)
+        }
+        source.webDav?.let { saved ->
+            WebDavMediaSourceClient.verify(saved)
+            currentCoroutineContext().ensureActive()
+            commitWebDav(generation, saved)
+        }
+    }
+
     private val _uiState = MutableStateFlow(DiscoverUiState())
     val uiState = _uiState.asStateFlow()
 
@@ -245,13 +297,14 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun connectJellyfin(baseUrl: String, username: String, password: String, onResult: (Result<Unit>) -> Unit): Job = viewModelScope.launch {
-        val result = JellyfinMediaSourceClient.authenticate(baseUrl, username, password)
-            .map { connection ->
-                currentCoroutineContext().ensureActive()
-                mediaSources.saveJellyfin(connection)
-                RemoteStreamHeadersRegistry.register(connection.baseUrl, JellyfinMediaSourceClient.requestHeaders(connection))
-            }
+        val generation = ++sourceGeneration
+        val result = runCatching {
+            val connection = JellyfinMediaSourceClient.authenticate(baseUrl, username, password).getOrThrow()
+            currentCoroutineContext().ensureActive()
+            commitJellyfin(generation, connection)
+        }
         currentCoroutineContext().ensureActive()
+        requireSourceGeneration(generation)
         onResult(result)
     }
 
@@ -288,9 +341,10 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveWebDav(folderUrl: String, username: String, password: String, displayName: String, onResult: (Result<Unit>) -> Unit): Job = viewModelScope.launch {
+        val generation = ++sourceGeneration
         val result = runCatching {
             val connection = WebDavConnection(
-                folderUrl = folderUrl.trim(),
+                folderUrl = WebDavMediaSourceClient.normalizeFolderUrl(folderUrl),
                 username = username.trim(),
                 password = password,
                 displayName = displayName.trim().ifBlank { "WebDAV" }
@@ -300,19 +354,21 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             // media crawl during setup.
             WebDavMediaSourceClient.verify(connection)
             currentCoroutineContext().ensureActive()
-            mediaSources.saveWebDav(connection)
-            RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
+            commitWebDav(generation, connection)
         }
         currentCoroutineContext().ensureActive()
+        requireSourceGeneration(generation)
         onResult(result)
     }
 
     fun removeJellyfin() {
+        sourceGeneration++
         sourceSettings.value.jellyfin?.baseUrl?.let(RemoteStreamHeadersRegistry::clear)
         mediaSources.clearJellyfin()
     }
 
     fun removeWebDav() {
+        sourceGeneration++
         sourceSettings.value.webDav?.folderUrl?.let(RemoteStreamHeadersRegistry::clear)
         mediaSources.clearWebDav()
     }

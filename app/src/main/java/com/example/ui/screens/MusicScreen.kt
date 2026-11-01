@@ -5,6 +5,7 @@ import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -133,6 +134,8 @@ fun MusicScreen(
         ?: flowOf(emptyList<LibraryViewModel.ContinueWatchingItem>()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val equalizerPreset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
+    val equalizerBands by musicViewModel.equalizerBands.collectAsStateWithLifecycle()
+    val equalizerStatus by musicViewModel.equalizerStatus.collectAsStateWithLifecycle()
     val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
 
     var showEqDialog by remember { mutableStateOf(false) }
@@ -474,9 +477,11 @@ fun MusicScreen(
     if (showEqDialog) {
         EqualizerPresetDialog(
             currentPreset = equalizerPreset,
+            bands = equalizerBands,
+            status = equalizerStatus,
+            onBandChange = musicViewModel::setEqualizerBand,
             onPresetSelected = {
                 musicViewModel.setEqualizerPreset(it)
-                showEqDialog = false
             },
             onDismiss = { showEqDialog = false }
         )
@@ -874,11 +879,14 @@ fun WavyNowPlayingBottomSheet(
 @Composable
 fun EqualizerPresetDialog(
     currentPreset: String,
+    bands: List<Float>,
+    status: String,
+    onBandChange: (Int, Float) -> Unit,
     onPresetSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val palette = LocalHiPalette.current
-    val presets = listOf("Cinema 3D", "Bass Boost 200%", "Vocal Clarity", "Rock & Metal", "Electronic / EDM", "Audiophile Flat")
+    val presets = com.example.audio.MusicEqualizer.presets.keys.toList()
 
     AlertDialog(
 
@@ -892,9 +900,14 @@ fun EqualizerPresetDialog(
             }
         },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                bands.forEachIndexed { index, gain ->
+                    Text("${listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")[index]} · ${"%.1f".format(gain)} dB")
+                    androidx.compose.material3.Slider(value = gain, valueRange = -12f..12f,
+                        onValueChange = { onBandChange(index, it) })
+                }
                 Text(
-                    text = "Select hardware-tuned acoustic profile:",
+                    text = status,
                     color = palette.textSecondary,
                     fontSize = 12.sp
                 )

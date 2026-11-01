@@ -100,6 +100,8 @@ data class AppPlayerSettings(
     val openSubtitlesPassword: String = ""
 )
 
+data class NamedSettingsProfile(val id: String, val name: String, val kind: String)
+
 class PlayerPreferencesRepository(private val context: Context) {
     private object Keys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
@@ -206,6 +208,90 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     suspend fun setThemeMode(mode: AppThemeMode) {
         context.dataStore.edit { it[Keys.THEME_MODE] = mode.id }
+    }
+
+    // Only this explicit allowlist enters profiles. Account, server, subtitle-service
+    // credentials, device volume/brightness and permission consent are never copied.
+    private val profileFields get() = mapOf(
+        "playback" to listOf(
+            Keys.SEEK_STEP, Keys.ASPECT_RATIO, Keys.PLAYBACK_SPEED, Keys.EQUALIZER_PRESET,
+            Keys.EQUALIZER_BAND_0, Keys.EQUALIZER_BAND_1, Keys.EQUALIZER_BAND_2,
+            Keys.EQUALIZER_BAND_3, Keys.EQUALIZER_BAND_4, Keys.AUDIO_DELAY_MS,
+            Keys.SUBTITLE_OFFSET_MS, Keys.SUBTITLE_SIZE, Keys.SUBTITLE_FONT_FAMILY,
+            Keys.SUBTITLE_COLOR_ARGB, Keys.SUBTITLE_COLOR, Keys.SUBTITLE_BACKGROUND_OPACITY,
+            Keys.SUBTITLE_VERTICAL_OFFSET, Keys.HDR_ENHANCE, Keys.WIDE_COLOR_GAMUT, Keys.NIGHT_AUDIO,
+        ).map { it.name }.toSet(),
+        "theme" to listOf(
+            Keys.THEME_MODE, Keys.CUSTOM_TEXT, Keys.CUSTOM_BACKGROUND, Keys.CUSTOM_PRIMARY,
+            Keys.CUSTOM_SURFACE, Keys.CUSTOM_TEXT_OPACITY, Keys.CUSTOM_BACKGROUND_OPACITY,
+            Keys.CUSTOM_PRIMARY_OPACITY, Keys.CUSTOM_SURFACE_OPACITY,
+        ).map { it.name }.toSet(),
+    )
+    private fun profileType(key: String): String = when (key) {
+        Keys.AUDIO_DELAY_MS.name, Keys.SUBTITLE_OFFSET_MS.name, Keys.SUBTITLE_COLOR_ARGB.name -> "l"
+        Keys.HDR_ENHANCE.name, Keys.WIDE_COLOR_GAMUT.name, Keys.NIGHT_AUDIO.name -> "b"
+        Keys.ASPECT_RATIO.name, Keys.EQUALIZER_PRESET.name, Keys.SUBTITLE_FONT_FAMILY.name,
+        Keys.SUBTITLE_COLOR.name, Keys.THEME_MODE.name, Keys.CUSTOM_TEXT.name,
+        Keys.CUSTOM_BACKGROUND.name, Keys.CUSTOM_PRIMARY.name, Keys.CUSTOM_SURFACE.name -> "s"
+        else -> "i"
+    }
+    private val profilesKey = stringPreferencesKey("named_profiles_v1")
+    val profilesFlow: Flow<List<NamedSettingsProfile>> = context.dataStore.data.map { prefs ->
+        readProfiles(prefs[profilesKey]).map { NamedSettingsProfile(it.getString("id"), it.getString("name"), it.getString("kind")) }
+    }
+
+    private fun readProfiles(raw: String?): List<org.json.JSONObject> = runCatching {
+        val array = org.json.JSONArray(raw ?: "[]")
+        (0 until minOf(array.length(), 24)).mapNotNull { array.optJSONObject(it) }
+            .filter { it.optString("kind") in profileFields && it.optString("id").isNotBlank() && it.optString("name").isNotBlank() && it.optJSONObject("values") != null }
+    }.getOrDefault(emptyList())
+
+    suspend fun saveProfile(name: String, kind: String) {
+        val fields = requireNotNull(profileFields[kind])
+        val cleanName = name.trim().take(40)
+        require(cleanName.isNotBlank())
+        context.dataStore.edit { prefs ->
+            val profiles = readProfiles(prefs[profilesKey]).toMutableList()
+            require(profiles.size < 24) { "Profile limit reached" }
+            val values = org.json.JSONObject()
+            prefs.asMap().filterKeys { it.name in fields }.forEach { (key, value) ->
+                val type = when (value) { is Int -> "i"; is Long -> "l"; is Boolean -> "b"; is String -> "s"; else -> null }
+                if (type != null) values.put(key.name, org.json.JSONObject().put("type", type).put("value", value))
+            }
+            profiles += org.json.JSONObject().put("id", java.util.UUID.randomUUID().toString())
+                .put("name", cleanName).put("kind", kind).put("values", values)
+            prefs[profilesKey] = org.json.JSONArray(profiles).toString()
+        }
+    }
+
+    suspend fun applyProfile(id: String) {
+        context.dataStore.edit { prefs ->
+            val profile = readProfiles(prefs[profilesKey]).firstOrNull { it.getString("id") == id }
+                ?: error("Profile no longer available")
+            val fields = requireNotNull(profileFields[profile.getString("kind")])
+            val values = profile.getJSONObject("values")
+            // A single transaction: absent values return to their normal defaults.
+            prefs.asMap().keys.filter { it.name in fields }.forEach { prefs.remove(it) }
+            values.keys().forEach { key ->
+                if (key in fields) {
+                    val entry = values.getJSONObject(key)
+                    require(entry.getString("type") == profileType(key))
+                    when (entry.getString("type")) {
+                        "i" -> prefs[intPreferencesKey(key)] = entry.getInt("value")
+                        "l" -> prefs[longPreferencesKey(key)] = entry.getLong("value")
+                        "b" -> prefs[booleanPreferencesKey(key)] = entry.getBoolean("value")
+                        "s" -> prefs[stringPreferencesKey(key)] = entry.getString("value")
+                        else -> error("Unsupported profile")
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun deleteProfile(id: String) {
+        context.dataStore.edit { prefs ->
+            prefs[profilesKey] = org.json.JSONArray(readProfiles(prefs[profilesKey]).filterNot { it.getString("id") == id }).toString()
+        }
     }
 
     suspend fun setFirstLaunchCompleted() {

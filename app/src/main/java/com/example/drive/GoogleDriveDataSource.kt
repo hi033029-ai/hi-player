@@ -95,7 +95,13 @@ internal class AccountAwareHttpDataSource(private val context: Context, private 
     private val listeners = mutableListOf<androidx.media3.datasource.TransferListener>()
     override fun addTransferListener(listener: androidx.media3.datasource.TransferListener) { listeners += listener; active?.addTransferListener(listener) }
     override fun open(dataSpec: DataSpec): Long {
-        val source = if (GoogleDrivePolicy.isMediaUrl(dataSpec.uri.toString())) GoogleDriveDataSource(context) else fallback.createDataSource()
+        val source = when {
+            dataSpec.uri.scheme == "hiplayer-cloud" -> com.example.connections.CloudMediaDataSource()
+            dataSpec.uri.scheme == "hiplayer-smb" -> com.example.connections.SmbMediaDataSource()
+            GoogleDrivePolicy.isMediaUrl(dataSpec.uri.toString()) -> GoogleDriveDataSource(context)
+            com.example.player.RemoteStreamHeadersRegistry.headersFor(dataSpec.uri).isNotEmpty() -> com.example.player.ServerMediaDataSource()
+            else -> fallback.createDataSource()
+        }
         active = source; listeners.forEach(source::addTransferListener); return source.open(dataSpec)
     }
     override fun read(buffer: ByteArray, offset: Int, length: Int) = checkNotNull(active).read(buffer, offset, length)

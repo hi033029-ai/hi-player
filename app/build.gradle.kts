@@ -25,6 +25,12 @@ val googleDriveEnabled = providers.gradleProperty("HI_PLAYER_DRIVE_ENABLED")
   .orElse(providers.environmentVariable("HI_PLAYER_DRIVE_ENABLED"))
   .map { it.equals("true", ignoreCase = true) }.getOrElse(false)
 
+// Public native OAuth app identifiers only. Never embed provider client secrets.
+val oneDriveClientId = providers.gradleProperty("HI_PLAYER_ONEDRIVE_CLIENT_ID")
+  .orElse(providers.environmentVariable("HI_PLAYER_ONEDRIVE_CLIENT_ID")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
+val dropboxAppKey = providers.gradleProperty("HI_PLAYER_DROPBOX_APP_KEY")
+  .orElse(providers.environmentVariable("HI_PLAYER_DROPBOX_APP_KEY")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -32,11 +38,13 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 77
-    versionName = "1.0.76"
+    versionCode = 79
+    versionName = "1.0.78"
 
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
+    buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$oneDriveClientId\"")
+    buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -105,6 +113,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  implementation("com.hierynomus:smbj:0.13.0")
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.androidx.credentials)

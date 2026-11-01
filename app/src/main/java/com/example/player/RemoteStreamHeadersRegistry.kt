@@ -18,6 +18,8 @@ object RemoteStreamHeadersRegistry {
     fun register(baseUrl: String, headers: Map<String, String>) {
         if (headers.isEmpty()) return
         val baseUri = runCatching { Uri.parse(baseUrl.trimEnd('/')) }.getOrNull() ?: return
+        if (baseUri.scheme?.lowercase() !in setOf("http", "https") || baseUri.host.isNullOrBlank() || baseUri.userInfo != null) return
+        if (baseUri.path.orEmpty().split('/').any { it == "." || it == ".." } || '\\' in baseUri.path.orEmpty()) return
         scopes.removeAll { it.baseUri.toString() == baseUri.toString() }
         scopes += HeaderScope(baseUri, headers.toMap())
     }
@@ -29,10 +31,14 @@ object RemoteStreamHeadersRegistry {
         .orEmpty()
 
     fun clear(baseUrl: String) {
-        scopes.removeAll { it.baseUri.toString() == baseUrl.trimEnd('/') }
+        val root = runCatching { Uri.parse(baseUrl.trimEnd('/')) }.getOrNull() ?: return
+        // Also revoke legacy per-file scopes underneath this server/folder.
+        val revoked = HeaderScope(root, emptyMap())
+        scopes.removeAll { revoked.matches(it.baseUri) }
     }
 
     private fun HeaderScope.matches(target: Uri): Boolean {
+        if (target.userInfo != null || target.path.orEmpty().split('/').any { it == "." || it == ".." } || '\\' in target.path.orEmpty()) return false
         if (!baseUri.scheme.equals(target.scheme, ignoreCase = true)) return false
         if (!baseUri.host.equals(target.host, ignoreCase = true)) return false
         if (effectivePort(baseUri) != effectivePort(target)) return false

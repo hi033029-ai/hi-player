@@ -26,10 +26,35 @@ object WebDavMediaSourceClient {
     private const val MAX_ENTRIES = 500
     private const val MAX_FOLDERS = 40
     private val client = OkHttpClient.Builder()
+        .followRedirects(false).followSslRedirects(false)
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
     private val videoExtensions = setOf("mp4", "m4v", "mkv", "webm", "mov", "avi", "ts", "m2ts", "3gp", "flv", "wmv", "vob")
+
+    suspend fun browse(connection: WebDavConnection, folderUrl: String = connection.folderUrl): com.example.model.NetworkMediaPage = withContext(Dispatchers.IO) {
+        val root = normalizeFolderUrl(connection.folderUrl)
+        val target = normalizeFolderUrl(folderUrl)
+        require(connection.isConfigured && NetworkMediaPolicy.within(root, target))
+        val listing = propfind(target, requestHeaders(connection))
+        val entries = listing.asSequence().filter { it.url.trimEnd('/') != target.trimEnd('/') && NetworkMediaPolicy.within(root, it.url) }.take(1000).map { entry ->
+            val name = cleanFileName(entry.url.trimEnd('/'))
+            val extension = extensionOf(entry.url)
+            val audio = extension in setOf("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav")
+            val video = extension in videoExtensions
+            val media = if (!entry.isCollection && (audio || video)) RemoteMediaMatch(
+                id = "webdav:${entry.url}", sourceName = connection.displayName, title = name,
+                streamUri = Uri.parse(entry.url), streamMimeType = if (audio) when (extension) {
+                    "mp3" -> "audio/mpeg"; "flac" -> "audio/flac"; "m4a" -> "audio/mp4"; "aac" -> "audio/aac";
+                    "ogg", "opus" -> "audio/ogg"; "wav" -> "audio/wav"; else -> "audio/*"
+                } else mimeTypeFor(extension), requestHeaders = requestHeaders(connection), sizeBytes = entry.sizeBytes,
+                codec = "WebDAV direct play",
+            ) else null
+            com.example.model.NetworkMediaEntry(entry.url, name, entry.isCollection, entry.url, media,
+                if (entry.isCollection) "Folder" else if (audio) "Audio" else if (video) "Video" else "Not playable in Hi Player")
+        }.sortedWith(compareByDescending<com.example.model.NetworkMediaEntry> { it.folder }.thenBy { it.title.lowercase() }).toList()
+        com.example.model.NetworkMediaPage(entries, note = if (listing.size >= 1001) "Folder listing limited to 1,000 items. Use smaller folders to see more." else null)
+    }
 
     suspend fun search(connection: WebDavConnection, query: String): List<RemoteMediaMatch> = withContext(Dispatchers.IO) {
         if (!connection.isConfigured || query.isBlank()) return@withContext emptyList()
@@ -114,7 +139,8 @@ object WebDavMediaSourceClient {
         while (queue.isNotEmpty() && files.size < MAX_ENTRIES && visited.size < MAX_FOLDERS) {
             val (url, depth) = queue.removeFirst()
             if (!visited.add(url)) continue
-            val entries = propfind(url, headers)
+            if (!NetworkMediaPolicy.within(rootUrl, url)) continue
+            val entries = propfind(url, headers).filter { NetworkMediaPolicy.within(rootUrl, it.url) }
             for (entry in entries) {
                 if (entry.url.trimEnd('/') == url.trimEnd('/')) continue
                 if (entry.isCollection && depth < MAX_DEPTH) {
@@ -138,18 +164,28 @@ object WebDavMediaSourceClient {
             .build()
         client.newCall(request).execute().use { response ->
             if (response.code !in 200..299) {
-                throw IllegalStateException("WebDAV returned HTTP ${response.code}.")
+                throw IllegalStateException("WebDAV request unavailable. Check the direct folder address and access.")
             }
-            return parseMultiStatus(url, response.body?.byteStream() ?: return emptyList())
+            val body = response.body ?: error("Empty folder response")
+            val output = java.io.ByteArrayOutputStream()
+            body.byteStream().use { input ->
+                val buffer = ByteArray(8192)
+                while (true) { val count = input.read(buffer); if (count < 0) break
+                    check(output.size() + count <= 4 * 1024 * 1024); output.write(buffer, 0, count) }
+            }
+            return parseMultiStatus(url, java.io.ByteArrayInputStream(output.toByteArray()))
         }
     }
 
     private fun parseMultiStatus(requestUrl: String, input: java.io.InputStream): List<DavEntry> {
-        val parser = Xml.newPullParser().apply { setInput(input, "UTF-8") }
+        val parser = Xml.newPullParser().apply {
+            setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+            setInput(input, "UTF-8")
+        }
         val entries = mutableListOf<DavEntry>()
         var current: MutableDavEntry? = null
         var text = ""
-        while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+        while (parser.eventType != XmlPullParser.END_DOCUMENT && entries.size < 1001) {
             when (parser.eventType) {
                 XmlPullParser.START_TAG -> when (parser.name.substringAfter(':')) {
                     "response" -> current = MutableDavEntry()
@@ -185,11 +221,7 @@ object WebDavMediaSourceClient {
         URI(requestUrl).resolve(href).toString()
     }.getOrDefault(href)
 
-    private fun normalizeFolderUrl(raw: String): String {
-        val value = raw.trim()
-        require(value.startsWith("http://") || value.startsWith("https://")) { "Use a full WebDAV folder URL starting with http:// or https://." }
-        return value.trimEnd('/') + "/"
-    }
+    internal fun normalizeFolderUrl(raw: String) = NetworkMediaPolicy.folder(raw)
 
     private fun cleanFileName(url: String): String = url.substringAfterLast('/').let { encoded ->
         runCatching { URLDecoder.decode(encoded, Charsets.UTF_8.name()) }.getOrDefault(encoded)

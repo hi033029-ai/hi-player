@@ -59,6 +59,7 @@ data class JellyfinConnection(
     val accessToken: String,
     val userId: String,
     val serverName: String = "Jellyfin",
+    val deviceId: String = "",
 ) {
     val isConfigured: Boolean
         get() = baseUrl.isNotBlank() && accessToken.isNotBlank() && userId.isNotBlank()

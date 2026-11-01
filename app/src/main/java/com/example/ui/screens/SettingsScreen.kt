@@ -117,9 +117,11 @@ fun SettingsScreen(
     var showCustomTheme by rememberSaveable { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
     var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
     var showAccountSources by rememberSaveable { mutableStateOf(true) }
+    var showConnections by rememberSaveable { mutableStateOf(false) }
     var showThemes by rememberSaveable { mutableStateOf(false) }
     var showTextSize by rememberSaveable { mutableStateOf(false) }
     var showDecoder by rememberSaveable { mutableStateOf(false) }
+    var showProfiles by rememberSaveable { mutableStateOf(false) }
     var showPlayback by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(onBack = onBack)
@@ -149,17 +151,32 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             SettingsCollapsibleSection(
-                title = "Google account & media sources",
-                subtitle = "Google account, My Drive, and personal media servers",
+                title = "Google account",
+                subtitle = "Your Hi Player profile and sign-in",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
             ) {
-                com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia)
+                com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia, includeDriveConnection = false)
+            }
+            SettingsCollapsibleSection(
+                title = "Connections",
+                subtitle = "Cloud drives, network folders and media servers",
+                expanded = showConnections,
+                onToggle = { showConnections = !showConnections }
+            ) {
                 DiscoverSourceSettings(
                     discoverViewModel = discoverViewModel,
+                    onPlayMedia = onPlayDriveMedia,
                     modifier = Modifier.padding(horizontal = 0.dp)
                 )
             }
+
+            SettingsCollapsibleSection(
+                title = "Saved playback & theme profiles",
+                subtitle = "Named configurations, applied together",
+                expanded = showProfiles,
+                onToggle = { showProfiles = !showProfiles }
+            ) { com.example.ui.components.AdvancedProfiles() }
 
             // 1. Theme & Appearance (Horizontal Form)
             SettingsCollapsibleSection(

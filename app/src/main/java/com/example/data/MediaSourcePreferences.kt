@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * on this device. Sensitive server credentials are encrypted with the Android
  * Keystore-backed [EncryptedSharedPreferences] store and never enter a URL.
  */
+data class SavedMediaSource(val id: String, val name: String, val kind: String)
+internal data class SavedSourceCredentials(val metadata: SavedMediaSource, val jellyfin: JellyfinConnection? = null, val webDav: WebDavConnection? = null)
+
 class MediaSourcePreferences(context: Context) {
     private val appContext = context.applicationContext
     private val preferences by lazy {
@@ -30,14 +33,76 @@ class MediaSourcePreferences(context: Context) {
         )
     }
 
+    init {
+        val array = profileArray()
+        (0 until array.length()).forEach { index -> array.optJSONObject(index)?.takeIf { it.optString("kind") == "jellyfin" }?.remove("password") }
+        preferences.edit().remove(KEY_JELLYFIN_PASSWORD).putString("saved_source_profiles_v1", array.toString()).apply()
+    }
+
     private val _settings = MutableStateFlow(readSettings())
     val settings = _settings.asStateFlow()
+
+    private val _savedProfiles = MutableStateFlow(readSavedMetadata())
+    val savedProfiles = _savedProfiles.asStateFlow()
+
+    private fun profileArray(): org.json.JSONArray = runCatching {
+        org.json.JSONArray(preferences.getString("saved_source_profiles_v1", "[]"))
+    }.getOrDefault(org.json.JSONArray())
+
+    private fun readSavedMetadata(): List<SavedMediaSource> {
+        val array = profileArray()
+        return (0 until minOf(array.length(), 12)).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val kind = item.optString("kind").takeIf { it in listOf("jellyfin", "webdav") } ?: return@mapNotNull null
+            SavedMediaSource(item.optString("id"), item.optString("name"), kind)
+        }
+    }
+
+    @Synchronized fun saveCurrentProfile(name: String, kind: String) {
+        val label = name.trim().take(40)
+        require(label.isNotBlank())
+        val item = org.json.JSONObject().put("id", java.util.UUID.randomUUID().toString()).put("name", label).put("kind", kind)
+        when (kind) {
+            "jellyfin" -> {
+                val source = requireNotNull(_settings.value.jellyfin?.takeIf { it.isConfigured })
+                item.put("url", source.baseUrl).put("username", source.username)
+                    .put("token", source.accessToken).put("userId", source.userId).put("serverName", source.serverName).put("deviceId", source.deviceId)
+            }
+            "webdav" -> {
+                val source = requireNotNull(_settings.value.webDav?.takeIf { it.isConfigured })
+                item.put("url", source.folderUrl).put("username", source.username).put("password", source.password).put("displayName", source.displayName)
+            }
+            else -> error("Unsupported source")
+        }
+        val array = profileArray()
+        require(array.length() < 12)
+        array.put(item)
+        check(preferences.edit().putString("saved_source_profiles_v1", array.toString()).commit())
+        _savedProfiles.value = readSavedMetadata()
+    }
+
+    @Synchronized internal fun savedCredentials(id: String): SavedSourceCredentials {
+        val array = profileArray()
+        val item = (0 until array.length()).mapNotNull { array.optJSONObject(it) }.first { it.optString("id") == id }
+        val metadata = SavedMediaSource(id, item.getString("name"), item.getString("kind"))
+        return if (metadata.kind == "jellyfin") SavedSourceCredentials(metadata, jellyfin = JellyfinConnection(
+            item.getString("url"), item.getString("username"), "", item.getString("token"), item.getString("userId"), item.getString("serverName"), item.optString("deviceId")))
+        else SavedSourceCredentials(metadata, webDav = WebDavConnection(item.getString("url"), item.getString("username"), item.getString("password"), item.getString("displayName")))
+    }
+
+    @Synchronized fun deleteSavedProfile(id: String) {
+        val array = profileArray()
+        val kept = (0 until array.length()).mapNotNull { array.optJSONObject(it) }.filterNot { it.optString("id") == id }
+        check(preferences.edit().putString("saved_source_profiles_v1", org.json.JSONArray(kept).toString()).commit())
+        _savedProfiles.value = readSavedMetadata()
+    }
 
     fun saveJellyfin(connection: JellyfinConnection) {
         preferences.edit()
             .putString(KEY_JELLYFIN_BASE_URL, connection.baseUrl.trimEnd('/'))
             .putString(KEY_JELLYFIN_USERNAME, connection.username)
-            .putString(KEY_JELLYFIN_PASSWORD, connection.password)
+            .remove(KEY_JELLYFIN_PASSWORD)
+            .putString("jellyfin_device_id", connection.deviceId)
             .putString(KEY_JELLYFIN_TOKEN, connection.accessToken)
             .putString(KEY_JELLYFIN_USER_ID, connection.userId)
             .putString(KEY_JELLYFIN_SERVER_NAME, connection.serverName)
@@ -48,6 +113,7 @@ class MediaSourcePreferences(context: Context) {
     fun clearJellyfin() {
         preferences.edit()
             .remove(KEY_JELLYFIN_BASE_URL)
+            .remove("jellyfin_device_id")
             .remove(KEY_JELLYFIN_USERNAME)
             .remove(KEY_JELLYFIN_PASSWORD)
             .remove(KEY_JELLYFIN_TOKEN)
@@ -107,10 +173,11 @@ class MediaSourcePreferences(context: Context) {
             JellyfinConnection(
                 baseUrl = jellyfinBase,
                 username = preferences.getString(KEY_JELLYFIN_USERNAME, "").orEmpty(),
-                password = preferences.getString(KEY_JELLYFIN_PASSWORD, "").orEmpty(),
+                password = "",
                 accessToken = preferences.getString(KEY_JELLYFIN_TOKEN, "").orEmpty(),
                 userId = preferences.getString(KEY_JELLYFIN_USER_ID, "").orEmpty(),
-                serverName = preferences.getString(KEY_JELLYFIN_SERVER_NAME, "Jellyfin").orEmpty()
+                serverName = preferences.getString(KEY_JELLYFIN_SERVER_NAME, "Jellyfin").orEmpty(),
+                deviceId = preferences.getString("jellyfin_device_id", "").orEmpty()
             )
         }
         val webDavFolder = preferences.getString(KEY_WEBDAV_FOLDER_URL, "").orEmpty()
