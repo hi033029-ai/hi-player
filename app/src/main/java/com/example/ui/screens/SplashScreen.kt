@@ -355,9 +355,9 @@ private fun WelcomeNoteView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(bottom = footerHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = footerHeight + 16.dp),
+                .padding(horizontal = 20.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {

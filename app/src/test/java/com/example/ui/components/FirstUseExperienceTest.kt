@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
+import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -33,9 +35,9 @@ class FirstUseExperienceTest {
     private fun screenshot(name: String) {
         val directory = System.getProperty("hi.player.qa.dir") ?: return
         val file = java.io.File(directory, "$name.png").apply { parentFile?.mkdirs() }
-        compose.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
-            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-        }
+        compose.mainClock.advanceTimeBy(300)
+        compose.waitForIdle()
+        onView(isRoot()).captureRoboImage(file.absolutePath)
     }
     @Test fun permissionRecoveryOnlyOpensSettingsWhenTapped() {
         var calls = 0

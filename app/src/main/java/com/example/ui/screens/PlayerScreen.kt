@@ -221,6 +221,10 @@ fun PlayerScreen(
     var showAccount by remember { mutableStateOf(false) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = showHdrPresetMenu || showHdrCustomizer) {
+        showHdrPresetMenu = false
+        showHdrCustomizer = false
+    }
     var equalizerInteractionTick by remember { mutableStateOf(0) }
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
@@ -373,7 +377,8 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrInteractionTick) {
-        if (showHdrPresetMenu || showHdrCustomizer) {
+        // Customisation and its first-use guide stay open until explicitly closed.
+        if (showHdrPresetMenu && !showHdrCustomizer) {
             delay(3_000)
             showHdrPresetMenu = false
             showHdrCustomizer = false
@@ -506,8 +511,8 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls after 3 seconds of inactivity during playback
-    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning, playerTip.visible) {
-        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning && !playerTip.visible) {
+    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning, playerTip.visible, showHdrPresetMenu, showHdrCustomizer) {
+        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning && !playerTip.visible && !showHdrPresetMenu && !showHdrCustomizer) {
             delay(3000)
             if (!isRatioTransitioning) areControlsVisible = false
         }
@@ -630,6 +635,7 @@ fun PlayerScreen(
         )
 
         HdrPresetMenu(
+            onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
             customPreset = customHdrPreset,

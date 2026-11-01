@@ -121,7 +121,7 @@ fun LibraryScanFeedback(status: LibraryScanStatus, count: Int, audio: Boolean,
     if (centered) {
         Column(modifier.fillMaxSize().wrapContentSize(Alignment.Center).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (scanning) CircularProgressIndicator(modifier = Modifier.size(56.dp).testTag("library_scan_circle"), color = palette.primary)
+            if (scanning) CircularProgressIndicator(modifier = Modifier.size(56.dp).testTag("library_scan_circle"), color = palette.primary, trackColor = palette.primary.copy(alpha = 0.15f))
             else Icon(Icons.Default.CheckCircle, null, tint = palette.primary)
             Text(message, color = palette.textPrimary, textAlign = TextAlign.Center)
             if (scanning) Text("You can switch tabs while the library updates.", color = palette.textSecondary, textAlign = TextAlign.Center)
@@ -129,7 +129,7 @@ fun LibraryScanFeedback(status: LibraryScanStatus, count: Int, audio: Boolean,
     } else {
         Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (scanning) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = palette.primary)
+            if (scanning) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = palette.primary, trackColor = palette.primary.copy(alpha = 0.15f))
             else if (status == LibraryScanStatus.COMPLETE) Icon(Icons.Default.CheckCircle, null, tint = palette.primary, modifier = Modifier.size(20.dp))
             Text(message, color = palette.textSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
         }

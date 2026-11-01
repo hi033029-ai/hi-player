@@ -8,3 +8,7 @@
 - First-use swipe guidance is inside each library, double-tap/brightness/volume/HDR guidance is inside an opened video player, and colour-adjustment guidance is inside the HDR customiser. Each has Got it and remembers dismissal. Player controls stay visible while the player guide is pending. Tips are not part of setup.
 
 Validation must cover a fresh install (or cleared app data), skip/deny/grant/revoke/selected-only permission, returning from Settings, narrow/landscape/larger-font layouts, scan failure and background scanning, and first-use guidance dismissal. Existing installations do not repeat the welcome setup just because the copy changed.
+
+## Automated validation
+
+The 1.0.79 (80) debug APK was assembled locally. Six first-use Robolectric/Compose checks cover access-action gating, scanning/completion display, remembered tip dismissal, contextual HDR help, permission skipping and welcome skipping. The broader targeted regression run contains 35 passing tests. Component screenshots cover the welcome and scrolled features, access recovery, scan feedback and HDR guide at 360 × 640; physical-device lifecycle/permission and larger-font checks remain pending.

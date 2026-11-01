@@ -364,7 +364,7 @@ fun MusicScreen(
                                     )
                                 }
                                 gridItems(tracks, key = { track -> "audio_grid_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
-                                    val isSelected = currentTrack?.id == track.id
+                                    val isSelected = currentTrack?.uri == track.uri
                                     AudioTrackCard(
                                         track = track,
                                         isSelected = isSelected,
@@ -377,7 +377,7 @@ fun MusicScreen(
                             }
                         } else {
                             gridItemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
-                                val isSelected = currentTrack?.id == track.id
+                                val isSelected = currentTrack?.uri == track.uri
                                 AudioTrackCard(
                                     track = track,
                                     isSelected = isSelected,
@@ -421,7 +421,7 @@ fun MusicScreen(
                                 )
                             }
                             items(tracks, key = { track -> "audio_${groupName}_${audioLibraryKey(track)}" }, contentType = { "audio_track" }) { track ->
-                                val isSelected = currentTrack?.id == track.id
+                                val isSelected = currentTrack?.uri == track.uri
                                 AudioTrackCard(
                                     track = track,
                                     isSelected = isSelected,
@@ -439,7 +439,7 @@ fun MusicScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         itemsIndexed(filteredList, key = { _, track -> audioLibraryKey(track) }, contentType = { _, _ -> "audio_track" }) { index, track ->
-                            val isSelected = currentTrack?.id == track.id
+                            val isSelected = currentTrack?.uri == track.uri
                             AudioTrackCard(
                                 track = track,
                                 isSelected = isSelected,
