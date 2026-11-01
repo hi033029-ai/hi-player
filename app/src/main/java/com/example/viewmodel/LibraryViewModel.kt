@@ -175,6 +175,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+    private val _scanStatus = MutableStateFlow(com.example.ui.components.LibraryScanStatus.IDLE)
+    val scanStatus = _scanStatus.asStateFlow()
 
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) { performRefresh() }
@@ -456,6 +458,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun performRefresh() {
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
         try {
             val snapshot = MediaScanner.scanLocalVideos(getApplication())
@@ -469,11 +472,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 })
             }
             _allVideos.value = resolvedVideos
+            _scanStatus.value = if (snapshot.complete) com.example.ui.components.LibraryScanStatus.COMPLETE
+                else com.example.ui.components.LibraryScanStatus.INCOMPLETE
             if (snapshot.complete) withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveVideos(getApplication(), resolvedVideos) }
             // coroutine/network lookup for every file in a large library.
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Video refresh unavailable; keeping last successful library", error)
         } finally { _isLoading.value = false }
     }
