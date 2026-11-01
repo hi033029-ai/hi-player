@@ -53,6 +53,7 @@ fun PlayerGestureCoach(state: FirstUseTipState, hdrBounds: Rect?, rootOrigin: Of
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.76f))
         .pointerInput(Unit) { detectTapGestures {} }.testTag("player_gesture_coach")) {
+        val viewportHeight = maxHeight
         val target = hdrBounds?.translate(-rootOrigin.x, -rootOrigin.y)
         if (step == 3 && target != null && target.width > 0 && target.height > 0) {
             Canvas(Modifier.fillMaxSize()) {
@@ -72,7 +73,7 @@ fun PlayerGestureCoach(state: FirstUseTipState, hdrBounds: Rect?, rootOrigin: Of
             horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(color = Color(0xF21B252D), shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth().weight(1f, fill = false)
-                    .heightIn(max = if (step == 3) maxHeight * 0.5f else maxHeight * 0.6f)
+                    .heightIn(max = if (step == 3) viewportHeight * 0.5f else viewportHeight * 0.6f)
                     .verticalScroll(rememberScrollState())) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${step + 1} of 4 · Player guide", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp)

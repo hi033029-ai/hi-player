@@ -86,6 +86,7 @@ class FirstUseExperienceTest {
         compose.runOnIdle { status.value = LibraryScanStatus.COMPLETE }
         compose.onNodeWithTag("library_scan_circle").assertDoesNotExist()
         compose.onNodeWithText("Scan complete · 12 audio tracks available").assertDoesNotExist()
+        screenshot("scan-complete-hidden")
     }
     @Test fun visualPlayerGuidePointsToHdrAndOpensRealControls() {
         val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_test")
@@ -94,12 +95,32 @@ class FirstUseExperienceTest {
             PlayerGestureCoach(state, androidx.compose.ui.geometry.Rect(100f, 400f, 148f, 448f),
                 androidx.compose.ui.geometry.Offset.Zero) { opened++ }
         } } }
+        screenshot("visual-player-guide-swipe")
         repeat(3) { compose.onNodeWithText("Next").performClick() }
         compose.onNodeWithText("Here is HDR").assertIsDisplayed()
         compose.onNodeWithContentDescription("HDR button is highlighted").assertExists()
+        screenshot("visual-player-guide-hdr")
         compose.onNodeWithText("Open HDR").performClick()
         assertEquals(1, opened)
         assertFalse(state.visible)
+    }
+    @Test
+    @Config(sdk = [34], qualifiers = "w640dp-h360dp-land")
+    fun playerGuideActionsRemainVisibleInLandscape() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_landscape_test")
+        compose.setContent { HiPlayerTheme {
+            PlayerGestureCoach(state, null, androidx.compose.ui.geometry.Offset.Zero) {}
+        } }
+        compose.onNodeWithText("Next").assertIsDisplayed()
+        compose.onNodeWithText("Skip guide").assertIsDisplayed()
+        screenshot("visual-player-guide-landscape")
+    }
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-night")
+    fun welcomeRespectsSystemDarkAppearance() {
+        compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> }) } }
+        compose.onNodeWithTag("welcome_continue_button").assertIsDisplayed()
+        screenshot("welcome-system-dark")
     }
     @Test fun visualPlayerGuideCanBeSkippedWithoutOpeningHdr() {
         val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_skip_test")

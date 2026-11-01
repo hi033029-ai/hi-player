@@ -13,6 +13,6 @@
 
 ## Validation status
 
-Source review and whitespace checks only. Regression fixtures added for access scopes/cache eligibility, home-history reset, browser Back versus Close, scan completion removal, visual guide dismissal and opening HDR. These have not been compiled or executed. No APK, main push, version bump or device validation was performed for this follow-up. Fresh build/validation approval is required.
+Approved release validation for 1.0.80 (81): debug APK assembled successfully; 73 targeted regressions passed across privacy, navigation, guide, themes, playback preferences, queue, recycle bin and blocker tests. Native Robolectric snapshots were inspected for the portrait HDR target, landscape guide and dark welcome screen. Scan-completion feedback removal is covered by a Compose regression. The guide layout scope compilation error found on the first attempt was fixed before the successful build. This is not physical-device or end-to-end media validation.
 
-Physical-device checks must include revoked/denied/full/selected/all-files grants; app upgrade cache invalidation; Settings return; empty library with no synthetic rows; scan disappearance; browser Home/new-tab Back; video portrait/landscape, font scaling and actual HDR-marker placement. Animated guide screenshots remain to be inspected on the approved build.
+Physical-device checks must include revoked/denied/full/selected/all-files grants; app upgrade cache invalidation; Settings return; empty library with no synthetic rows; scan disappearance; browser Home/new-tab Back; video portrait/landscape, font scaling and actual HDR-marker placement. Actual over-video HDR marker placement and system animation settings still need physical-device checking.

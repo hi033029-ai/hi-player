@@ -58,6 +58,11 @@ jobs:
           --tests 'com.example.ui.components.FirstUseExperienceTest'
           --tests 'com.example.audio.MusicEqualizerTest'
           --tests 'com.example.data.NamedSettingsProfilesTest'
+          --tests 'com.example.data.LibraryAccessPolicyTest'
+          --tests 'com.example.ui.screens.BrowserTabBackPolicyTest'
+          --tests 'com.example.data.LastUsedPlaybackPreferencesTest'
+          --tests 'com.example.data.SystemThemeDefaultMigrationTest'
+          --tests 'com.example.ui.theme.SystemThemeContrastTest'
           --tests 'com.example.data.NetworkMediaPolicyTest'
           --tests 'com.example.connections.StoragePolicyTest'
           --tests 'com.example.player.RemoteStreamHeadersRegistryTest'
@@ -110,5 +115,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Hi Player 1.0.79 (80), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
+          body: "Hi Player 1.0.80 (81), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk
