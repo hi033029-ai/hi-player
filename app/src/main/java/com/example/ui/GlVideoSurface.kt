@@ -25,6 +25,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.SeekParameters
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
+import com.example.player.SelectiveColourBand
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -761,36 +762,46 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     vec4 tex = texture2D(uTexture, vTexCoord);
                     vec3 color = tex.rgb * uBrightness;
                     color = (color - 0.5) * uContrast + 0.5;
-                    float maxChannel = max(color.r, max(color.g, color.b));
-                    float minChannel = min(color.r, min(color.g, color.b));
+                    // Classify the ORIGINAL pixel, not globally graded/previously adjusted colour.
+                    vec3 sourceColor = tex.rgb;
+                    float maxChannel = max(sourceColor.r, max(sourceColor.g, sourceColor.b));
+                    float minChannel = min(sourceColor.r, min(sourceColor.g, sourceColor.b));
                     float chroma = maxChannel - minChannel;
                     float hue = 0.0;
                     if (chroma > 0.001) {
-                        if (maxChannel == color.r) hue = mod((color.g - color.b) / chroma, 6.0);
-                        else if (maxChannel == color.g) hue = ((color.b - color.r) / chroma) + 2.0;
-                        else hue = ((color.r - color.g) / chroma) + 4.0;
+                        if (maxChannel == sourceColor.r) hue = mod((sourceColor.g - sourceColor.b) / chroma, 6.0);
+                        else if (maxChannel == sourceColor.g) hue = ((sourceColor.b - sourceColor.r) / chroma) + 2.0;
+                        else hue = ((sourceColor.r - sourceColor.g) / chroma) + 4.0;
                         hue /= 6.0;
                         if (hue < 0.0) hue += 1.0;
                     }
+                    float sourceSaturation = chroma / max(maxChannel, 0.001);
+                    float colourProtection = smoothstep(${SelectiveColourBand.SATURATION_ZERO}, ${SelectiveColourBand.SATURATION_FULL}, sourceSaturation)
+                        * smoothstep(${SelectiveColourBand.VALUE_ZERO}, ${SelectiveColourBand.VALUE_FULL}, maxChannel);
                     if (uTargetCount > 0) {
+                        vec3 adjustmentSum = vec3(0.0);
+                        float maskSum = 0.0;
                         for (int i = 0; i < 8; i++) {
                             if (i >= uTargetCount) break;
                             float hueDistance = abs(hue - uTargetHues[i]);
                             hueDistance = min(hueDistance, 1.0 - hueDistance);
-                            float hueMask = (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
+                            float hueMask = (1.0 - smoothstep(${SelectiveColourBand.HUE_FULL}, ${SelectiveColourBand.HUE_ZERO}, hueDistance)) * colourProtection;
                             vec3 adjustedColor = color;
                             adjustedColor.r *= uTargetReds[i];
                             adjustedColor.g *= uTargetGreens[i];
                             adjustedColor.b *= uTargetBlues[i];
-                            color = mix(color, adjustedColor, hueMask);
+                            adjustmentSum += (adjustedColor - color) * hueMask;
+                            maskSum += hueMask;
                         }
+                        // Overlapping neighbouring bands do not multiply or compound changes.
+                        color += adjustmentSum / max(1.0, maskSum);
                     } else {
                         vec3 originalColor = color;
                         vec3 adjustedColor = color;
                         adjustedColor.r *= uRed; adjustedColor.g *= uGreen; adjustedColor.b *= uBlue;
                         float hueDistance = abs(hue - uTargetHue);
                         hueDistance = min(hueDistance, 1.0 - hueDistance);
-                        float hueMask = uTargetHue < 0.0 ? 1.0 : (1.0 - smoothstep(0.02, 0.20, hueDistance)) * smoothstep(0.01, 0.08, chroma);
+                        float hueMask = uTargetHue < 0.0 ? 1.0 : (1.0 - smoothstep(${SelectiveColourBand.HUE_FULL}, ${SelectiveColourBand.HUE_ZERO}, hueDistance)) * colourProtection;
                         color = mix(originalColor, adjustedColor, hueMask);
                     }
                     float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));

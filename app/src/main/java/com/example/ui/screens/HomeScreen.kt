@@ -152,7 +152,9 @@ fun HomeScreen(
     onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
-    onSearchRequested: (() -> Unit)? = null
+    onSearchRequested: (() -> Unit)? = null,
+    onPlaybackQueueSelected: (List<VideoItem>) -> Unit = {},
+    onPlayAsAudio: (VideoItem) -> Unit = {},
 ) {
     val activeMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
     val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
@@ -184,6 +186,8 @@ fun HomeScreen(
                 scope.launch { pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0)) }
             },
             onSelectionChanged = { if (pager.settledPage == page) selectionActive = it },
+            onPlaybackQueueSelected = onPlaybackQueueSelected,
+            onPlayAsAudio = onPlayAsAudio,
         )
     }
 }
@@ -192,8 +196,8 @@ fun HomeScreen(
 @Composable
 private fun VideoLibraryPage(
     libraryViewModel: LibraryViewModel,
-    onVideoSelected: (VideoItem) -> Unit,
-    onPlayFromStart: (VideoItem) -> Unit,
+    onOpenVideo: (VideoItem) -> Unit,
+    onOpenFromStart: (VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -203,6 +207,8 @@ private fun VideoLibraryPage(
     isActive: Boolean,
     onModeSelected: (LibraryNavMode) -> Unit,
     onSelectionChanged: (Boolean) -> Unit,
+    onPlaybackQueueSelected: (List<VideoItem>) -> Unit,
+    onPlayAsAudio: (VideoItem) -> Unit,
 ) {
     val context = LocalContext.current
     val allVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
@@ -260,6 +266,20 @@ private fun VideoLibraryPage(
     // Filtering, sorting and saved-order application already completed off-main.
     val orderedFilteredVideos = filteredVideos
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
+    val displayedQueue = if (navMode == LibraryNavMode.TREE_FOLDERS)
+        currentTreeNode?.directVideos.orEmpty() else orderedFilteredVideos
+    val onVideoSelected: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onOpenVideo(video)
+    }
+    val onPlayFromStart: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onOpenFromStart(video)
+    }
+    val onAudioSelected: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onPlayAsAudio(video)
+    }
     var hasFullDownloadAccess by remember { mutableStateOf(StoragePermission.isGranted()) }
     val allFilesAccessLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -843,7 +863,10 @@ private fun VideoLibraryPage(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -875,7 +898,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -914,7 +940,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -994,7 +1023,7 @@ private fun VideoLibraryPage(
                                     onFavoriteToggle = { isFav ->
                                         libraryViewModel.toggleFavorite(video, isFav)
                                     },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video }
                                 )
@@ -1021,7 +1050,10 @@ private fun VideoLibraryPage(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -1044,7 +1076,7 @@ private fun VideoLibraryPage(
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video },
                                     onRename = {
@@ -1092,7 +1124,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -1116,7 +1151,7 @@ private fun VideoLibraryPage(
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video },
                                     onRename = {

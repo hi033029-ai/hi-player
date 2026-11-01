@@ -278,6 +278,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onAudioSessionIdChanged(audioSessionId: Int) {
                     applyMusicEqualizer(audioSessionId)
                 }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val track = playbackQueue.getOrNull(currentMediaItemIndex) ?: return
+                    _currentTrack.value = track
+                    _currentPositionMs.value = 0L
+                    _durationMs.value = track.durationMs
+                    clearLyrics()
+                    if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
+                }
+
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.value = playing
                     if (playing) {
@@ -290,8 +299,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
                         _durationMs.value = duration.coerceAtLeast(0L)
-                    } else if (playbackState == Player.STATE_ENDED) {
-                        playNext()
                     }
                 }
             })
@@ -351,19 +358,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun playTrack(track: AudioItem) {
+    private var playbackQueue: List<AudioItem> = emptyList()
+
+    fun playTrack(track: AudioItem, queue: List<AudioItem> = audioList.value) {
+        playbackQueue = com.example.player.PlaybackQueue.snapshot(queue) { it.uri.toString() }
+            .takeIf { items -> items.any { it.uri == track.uri } } ?: listOf(track)
         _currentTrack.value = track
-        clearLyrics()
         _isFullScreenPlayerOpen.value = true
-        // Respect the user's Lyrics choice across Next/Previous; don't request lyrics while off.
-        if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
+        clearLyrics()
         exoPlayer?.let { player ->
             player.stop()
-            player.clearMediaItems()
-            val mediaItem = MediaItem.fromUri(track.uri)
-            player.setMediaItem(mediaItem)
+            val items = playbackQueue.map { item ->
+                MediaItem.Builder().setUri(item.uri).setMediaId(item.uri.toString())
+                    .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album).build()).build()
+            }
+            player.setMediaItems(items, playbackQueue.indexOfFirst { it.uri == track.uri }, 0L)
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            player.shuffleModeEnabled = false
             player.prepare()
             player.play()
+            com.example.player.HiMediaSessionService.startPlayback(getApplication(), player)
         }
     }
 
@@ -387,24 +402,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNext() {
-        val list = audioList.value
-        val current = _currentTrack.value ?: return
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex != -1 && list.isNotEmpty()) {
-            val nextIndex = (currentIndex + 1) % list.size
-            playTrack(list[nextIndex])
-        }
+        exoPlayer?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
     }
 
     fun playPrevious() {
-        val list = audioList.value
-        val current = _currentTrack.value ?: return
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex > 0) {
-            playTrack(list[currentIndex - 1])
-        } else if (list.isNotEmpty()) {
-            playTrack(list.last())
-        }
+        exoPlayer?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
     }
 
     fun setSearchQuery(query: String) {
@@ -477,6 +479,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().contentResolver.unregisterContentObserver(audioObserver)
         progressJob?.cancel()
         musicEqualizer.close()
+        com.example.player.HiMediaSessionService.detachPlayer(exoPlayer)
         exoPlayer?.release()
         exoPlayer = null
     }

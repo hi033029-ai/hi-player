@@ -37,7 +37,7 @@ fun HdrPresetMenu(
     onCustomize: () -> Unit = {},
     onCustomPresetChange: (ColorPreset) -> Unit = {},
     selectedColor: HdrColor = HdrColor.RED,
-    colorIntensity: Float = 1f,
+    colorIntensity: Float = 0.5f,
     onColorSelected: (HdrColor) -> Unit = {},
     onColorIntensityChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -54,6 +54,7 @@ fun HdrPresetMenu(
                 .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
             Text("Customize HDR", color = Color.White, fontSize = 10.sp)
+            Text("Whole picture", color = Color.White, fontSize = 9.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
@@ -71,7 +72,7 @@ fun HdrPresetMenu(
                 }
             }
             Text(
-                text = "Color intensity • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                text = "Selected colour only • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
                 color = selectedColor.color,
                 fontSize = 9.sp,
             )
@@ -107,6 +108,7 @@ fun HdrPresetMenu(
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Light", color = Color.White, fontSize = 8.sp)
+                Text("Original", color = Color.White, fontSize = 8.sp)
                 Text("Dark", color = Color.White, fontSize = 8.sp)
             }
         }

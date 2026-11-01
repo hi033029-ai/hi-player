@@ -105,6 +105,7 @@ fun PlayerScreen(
     videoQueue: List<VideoItem> = emptyList(),
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
+    onPlayAsAudio: () -> Unit = {},
     currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.CYAN_NEON_DARK,
     onThemeSelected: (com.example.data.AppThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
@@ -275,18 +276,7 @@ fun PlayerScreen(
         }
     }
 
-    // Preserve the library's displayed/saved ordering, but never leave this exact folder.
-    fun playAdjacentVideo(step: Int) {
-        val current = currentVideo ?: return
-        val next = com.example.player.FolderPlaybackQueue.adjacent(current, videoQueue, step) ?: return
-        playerViewModel.playVideo(next)
-    }
-
-    val onEnded by rememberUpdatedState(newValue = { playAdjacentVideo(1) })
-    DisposableEffect(playerViewModel.engine) {
-        playerViewModel.engine.onVideoEnded = { onEnded() }
-        onDispose { playerViewModel.engine.onVideoEnded = null }
-    }
+    fun playAdjacentVideo(step: Int) = playerViewModel.playAdjacentVideo(step)
 
     // File picker for opening a local video.
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -646,22 +636,12 @@ fun PlayerScreen(
                 val savedIntensity = hdrColorIntensities[it] ?: 0.5f
                 hdrColorIntensity = savedIntensity
                 hdrInteractionTick++
-                val nextPreset = customHdrPreset.copy(
-                    name = ColorPresets.CUSTOM.name,
-                    targetHue = -1f,
-                    red = 1f,
-                    green = 1f,
-                    blue = 1f,
-                    targetAdjustments = hdrColorTargetAdjustments(hdrColorIntensities),
-                )
-                customHdrPreset = nextPreset
-                playerViewModel.engine.setHdrColorPreset(nextPreset)
-                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                // Selecting a swatch only selects its controls. It must not tint the
+                // picture, reset global controls or enable HDR by itself.
             },
             onColorIntensityChange = { intensity ->
                 hdrInteractionTick++
                 hdrColorIntensity = intensity
-                hdrColorIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 hdrColorIntensities = updatedIntensities
                 val nextPreset = customHdrPreset.copy(
@@ -782,7 +762,7 @@ fun PlayerScreen(
             onZoomIn = { playerViewModel.zoomIn() },
             onZoomOut = { playerViewModel.zoomOut() },
             onEnterPip = onEnterPip,
-            onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
+            onToggleBgPlay = { playerViewModel.playAsAudio(); onPlayAsAudio() },
             isMuted = isMuted,
             onToggleMute = {
                 isMuted = !isMuted
@@ -1098,13 +1078,8 @@ private fun computeVideoRatioScale(
 private fun hdrColorTargetAdjustments(
     intensities: Map<HdrColor, Float>
 ): List<ColorTargetAdjustment> {
-    return intensities.map { (color, intensity) ->
-        ColorTargetAdjustment(
-            hue = hdrColorHue(color.color),
-            red = (1f + (color.color.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-            green = (1f + (color.color.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-            blue = (1f + (color.color.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-        )
+    return intensities.mapNotNull { (color, intensity) ->
+        com.example.player.selectiveExposureAdjustment(hdrColorHue(color.color), intensity)
     }
 }
 

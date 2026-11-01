@@ -232,6 +232,7 @@ fun MusicScreen(
             val collectionGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
             val filteredList = presentation?.tracks.orEmpty()
             val groupedAudio = presentation?.groups.orEmpty()
+            val playbackQueue = if (groupedAudio.isNotEmpty()) groupedAudio.values.flatten() else filteredList
             Column(Modifier.fillMaxSize()) {
             if (selectedCollection != null) {
                 TextButton(onClick = { selectedCollection = null }) {
@@ -356,7 +357,7 @@ fun MusicScreen(
                                         isSelected = isSelected,
                                         isPlaying = isSelected && isPlaying,
                                         onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track) },
+                                    onClick = { musicViewModel.playTrack(track, playbackQueue) },
                                         modifier = Modifier.padding(4.dp),
                                     )
                                 }
@@ -369,7 +370,7 @@ fun MusicScreen(
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
                                     onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track) },
+                                    onClick = { musicViewModel.playTrack(track, playbackQueue) },
                                     modifier = Modifier
                                         .padding(4.dp)
                                         .reorderableDrag(
@@ -413,7 +414,7 @@ fun MusicScreen(
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
                                     onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track) }
+                                    onClick = { musicViewModel.playTrack(track, playbackQueue) }
                                 )
                             }
                         }
@@ -431,7 +432,7 @@ fun MusicScreen(
                                 isSelected = isSelected,
                                 isPlaying = isSelected && isPlaying,
                                 onDelete = { pendingDeleteTrack = track },
-                                onClick = { musicViewModel.playTrack(track) },
+                                onClick = { musicViewModel.playTrack(track, playbackQueue) },
                                 modifier = Modifier.reorderableDrag(
                                     itemIndex = index,
                                     itemCount = filteredList.size,
