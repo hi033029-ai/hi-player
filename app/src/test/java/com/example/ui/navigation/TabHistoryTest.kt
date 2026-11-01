@@ -16,6 +16,16 @@ class TabHistoryTest {
         val history = listOf("VIDEOS", "SETTINGS")
         assertEquals(history, TabHistory.open(history, "SETTINGS"))
     }
+    @Test fun returningHomeDropsOldTabBranch() {
+        var history = TabHistory.open(listOf("VIDEOS"), "MUSIC")
+        history = TabHistory.open(history, "VIDEOS")
+        history = TabHistory.open(history, "SETTINGS")
+        assertEquals(listOf("VIDEOS"), TabHistory.back(history))
+    }
+    @Test fun selectingVisitedOriginUnwindsItsChildren() {
+        assertEquals(listOf("VIDEOS", "FILE_MANAGER"),
+            TabHistory.open(listOf("VIDEOS", "FILE_MANAGER", "BROWSER"), "FILE_MANAGER"))
+    }
     @Test fun rootBackDoesNotInventAnUnvisitedDestination() {
         assertEquals(listOf("VIDEOS"), TabHistory.back(listOf("VIDEOS")))
     }

@@ -43,6 +43,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -110,7 +112,7 @@ fun PlayerScreen(
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
     onPlayAsAudio: () -> Unit = {},
-    currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.CYAN_NEON_DARK,
+    currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.SYSTEM,
     onThemeSelected: (com.example.data.AppThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -201,8 +203,10 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
-    val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_gestures_v1")
-    var isMuted by remember { mutableStateOf(false) }
+    var guideHdrBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var guideRootOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_visual_guide_v2")
+    val isMuted by playerViewModel.isMuted.collectAsState()
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
     var videoWidth by remember { mutableStateOf(0) }
@@ -530,7 +534,8 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
             .clipToBounds()
-            .onSizeChanged { containerSize = it },
+            .onSizeChanged { containerSize = it }
+            .onGloballyPositioned { guideRootOrigin = it.positionInWindow() },
         contentAlignment = Alignment.Center,
     ) {
         // 1. GLSL video surface layer with the selected HDR color preset.
@@ -775,10 +780,7 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.playAsAudio(); onPlayAsAudio() },
             isMuted = isMuted,
-            onToggleMute = {
-                isMuted = !isMuted
-                playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
-            },
+            onToggleMute = { playerViewModel.toggleMute() },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
@@ -794,6 +796,7 @@ fun PlayerScreen(
                 }
                 hdrInteractionTick++
             },
+            onHdrBounds = { guideHdrBounds = it },
             onLongPressHdrEnhance = {},
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
@@ -836,10 +839,11 @@ fun PlayerScreen(
         )
 
         if (firstFrameRendered && !isScreenLocked && areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer && activeSheet == ActiveSheet.NONE) {
-            com.example.ui.components.FirstUseTip(playerTip, "Your video controls",
-                "Double-tap the left or right side to seek 10 seconds; double-tap the centre to play or pause. Swipe up/down on the left for brightness or right for volume. Tap HDR for picture presets, then Customize for whole-picture and selected-colour controls.",
-                Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 68.dp)
-                    .widthIn(max = 460.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState()), overVideo = true)
+            com.example.ui.components.PlayerGestureCoach(playerTip, guideHdrBounds, guideRootOrigin) {
+                showHdrPresetMenu = true
+                showHdrCustomizer = false
+                areControlsVisible = true
+            }
         }
 
         // Network streams can pause while the next media segment arrives. Keep

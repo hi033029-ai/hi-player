@@ -57,7 +57,7 @@ fun VideoSettingsBottomSheet(
     onAspectRatioSelected: (AspectRatioMode) -> Unit,
     sleepTimerMinutes: Int?,
     onSetSleepTimer: (Int?) -> Unit,
-    currentThemeMode: AppThemeMode = AppThemeMode.CYAN_NEON_DARK,
+    currentThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     onThemeSelected: (AppThemeMode) -> Unit = {},
     onDismiss: () -> Unit
 ) {

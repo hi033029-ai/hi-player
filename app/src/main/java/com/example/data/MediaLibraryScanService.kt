@@ -18,6 +18,10 @@ class MediaLibraryScanService : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         jobs[params.jobId] = scope.launch {
             try {
+                if (LibraryAccessPolicy.scope(applicationContext, false) != LibraryAccessPolicy.Scope.FULL)
+                    MediaLibraryCache.clear(applicationContext, false)
+                if (LibraryAccessPolicy.scope(applicationContext, true) == LibraryAccessPolicy.Scope.NONE)
+                    MediaLibraryCache.clear(applicationContext, true)
                 val video = MediaScanner.scanLocalVideos(applicationContext)
                 if (video.complete) MediaLibraryCache.saveVideos(applicationContext, video.videos)
                 ensureActive()
@@ -42,6 +46,12 @@ class MediaLibraryScanService : JobService() {
         internal const val CHANGES = 4302
         fun schedule(context: Context) {
             val scheduler = context.getSystemService(JobScheduler::class.java)
+            if (LibraryAccessPolicy.scope(context, false) == LibraryAccessPolicy.Scope.NONE &&
+                LibraryAccessPolicy.scope(context, true) == LibraryAccessPolicy.Scope.NONE) {
+                scheduler.cancel(PERIODIC)
+                scheduler.cancel(CHANGES)
+                return
+            }
             if (scheduler.getPendingJob(PERIODIC) == null) scheduler.schedule(JobInfo.Builder(PERIODIC, ComponentName(context, MediaLibraryScanService::class.java))
                 .setPeriodic(15 * 60_000L).setPersisted(true).build())
             if (scheduler.getPendingJob(CHANGES) == null) scheduleChanges(context)

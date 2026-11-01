@@ -43,14 +43,9 @@ fun rememberLibraryMediaAccess(audio: Boolean, onGranted: () -> Unit): LibraryMe
     val owner = LocalLifecycleOwner.current
     val refresh by rememberUpdatedState(onGranted)
     fun readAccess(): Pair<Boolean, Boolean> {
-        val permission = if (Build.VERSION.SDK_INT >= 33) {
-            if (audio) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_MEDIA_VIDEO
-        } else Manifest.permission.READ_EXTERNAL_STORAGE
-        val full = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED ||
-            (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager())
-        val limited = !audio && !full && Build.VERSION.SDK_INT >= 34 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
-        return (full || limited) to limited
+        val scope = com.example.data.LibraryAccessPolicy.scope(context, audio)
+        return (scope != com.example.data.LibraryAccessPolicy.Scope.NONE) to
+            (scope == com.example.data.LibraryAccessPolicy.Scope.SELECTED)
     }
     var access by remember(audio) { mutableStateOf(readAccess()) }
     var opening by remember { mutableStateOf(false) }
@@ -64,7 +59,7 @@ fun rememberLibraryMediaAccess(audio: Boolean, onGranted: () -> Unit): LibraryMe
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val now = readAccess()
-                if (now != access && now.first) refresh()
+                if (now != access || now.second) refresh()
                 access = now
                 opening = false
             }
@@ -109,7 +104,7 @@ fun LibraryPermissionPanel(audio: Boolean, onOpenSettings: () -> Unit, modifier:
 @Composable
 fun LibraryScanFeedback(status: LibraryScanStatus, count: Int, audio: Boolean,
                         centered: Boolean = false, modifier: Modifier = Modifier) {
-    if (status == LibraryScanStatus.IDLE) return
+    if (status != LibraryScanStatus.SCANNING) return // Completion belongs to the resulting list, not a persistent app-wide banner.
     val palette = LocalHiPalette.current
     val scanning = status == LibraryScanStatus.SCANNING
     val media = if (audio) "audio tracks" else "videos"
@@ -167,4 +162,19 @@ fun FirstUseTip(state: FirstUseTipState, title: String, message: String,
             }
         }
     }
+}
+
+/** Explain special OS grants rather than implying denied media was scanned secretly. */
+@Composable
+fun LibraryAccessExplanation(audio: Boolean) {
+    val context = LocalContext.current
+    val scope = com.example.data.LibraryAccessPolicy.scope(context, audio)
+    val message = when {
+        scope == com.example.data.LibraryAccessPolicy.Scope.SELECTED -> "Showing only the videos you selected in Android."
+        scope == com.example.data.LibraryAccessPolicy.Scope.FULL && Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager() ->
+            "All files access is enabled in Android settings."
+        else -> return
+    }
+    Text(message, color = LocalHiPalette.current.textSecondary, fontSize = 14.sp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp))
 }

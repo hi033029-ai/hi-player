@@ -403,8 +403,8 @@ fun HiBrowserScreen(
     var blockerUpdating by remember { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
-    val browserTheme = if (darkModeEnabled) AppThemeMode.CYAN_NEON_DARK else AppThemeMode.WARM_SUNSET_LIGHT
-    val palette = getPaletteForTheme(browserTheme)
+    val browserTheme = AppThemeMode.SYSTEM
+    val palette = getPaletteForTheme(browserTheme, darkModeEnabled)
     val accountModel: GoogleAccountViewModel = viewModel()
     val accountProfile by accountModel.profile.collectAsStateWithLifecycle()
     var showAccount by remember { mutableStateOf(false) }
@@ -672,23 +672,25 @@ fun HiBrowserScreen(
         pageTitle = if (activeTab?.privateTab == true) "Private tab" else "Hi Browser"
         loadingProgress = 0
         rendererGone = false
-        activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
+        // Home is a fresh root, not a hidden WebView history entry.
+        activeTab?.let { tab ->
+            tab.webView?.let(::disposeOrbitWebView)
+            updateTab(tab.id) { it.copy(url = "", title = "New tab", webView = null, historyState = null, openerTabId = null) }
+        }
         showStartPage = true
         pendingFirstPaint = false
         pageError = null
     }
 
     fun navigateBrowserBack() {
-        if (!showStartPage && webView?.canGoBack() == true) {
-            pixelComet.restart()
-            webView?.goBack()
-            return
+        when (BrowserTabBackPolicy.backAction(showStartPage, webView?.canGoBack() == true)) {
+            BrowserTabBackPolicy.BackAction.PAGE_HISTORY -> {
+                pixelComet.restart()
+                webView?.goBack()
+            }
+            BrowserTabBackPolicy.BackAction.HOME -> showBrowserHome()
+            BrowserTabBackPolicy.BackAction.EXIT_BROWSER -> onBack()
         }
-        val target = BrowserTabBackPolicy.target(activeTabId, activeTab?.openerTabId, tabs.map { it.id }, recentTabIds)
-        if (target != null) {
-            // Unwind this tab instead of cycling endlessly between two root tabs.
-            closeTab(activeTabId)
-        } else if (!showStartPage) showBrowserHome() else onBack()
     }
 
     fun toggleDesktopSite() {
@@ -1291,7 +1293,7 @@ fun HiBrowserScreen(
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
     // Inherit the already-scaled app density; do not multiply the app text size twice.
-    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f) {
+    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f, systemDarkOverride = darkModeEnabled) {
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,

@@ -749,6 +749,18 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val handled = super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_UP && event.keyCode in listOf(
+                android.view.KeyEvent.KEYCODE_VOLUME_UP, android.view.KeyEvent.KEYCODE_VOLUME_DOWN,
+                android.view.KeyEvent.KEYCODE_VOLUME_MUTE) &&
+            (playerViewModel.currentVideo.value != null || musicViewModel.currentTrack.value != null)) {
+            // Let Android handle the button and its safety limits first, then remember the actual level.
+            window.decorView.postDelayed({ com.example.data.PlaybackLoudness.capture(applicationContext) }, 150L)
+        }
+        return handled
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

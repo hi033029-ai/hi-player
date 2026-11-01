@@ -39,6 +39,31 @@ class FirstUseExperienceTest {
         compose.waitForIdle()
         onView(isRoot()).captureRoboImage(file.absolutePath)
     }
+    @Test fun systemThemeTracksConfigurationChangesWithoutReselecting() {
+        val dark = mutableStateOf(true)
+        compose.setContent {
+            val configuration = android.content.res.Configuration(androidx.compose.ui.platform.LocalConfiguration.current).apply {
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    if (dark.value) android.content.res.Configuration.UI_MODE_NIGHT_YES else android.content.res.Configuration.UI_MODE_NIGHT_NO
+            }
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalConfiguration provides configuration) {
+                HiPlayerTheme(themeMode = com.example.data.AppThemeMode.SYSTEM) {
+                    androidx.compose.material3.Text(if (com.example.ui.theme.LocalHiPalette.current.isDark) "Dark appearance" else "Light appearance")
+                }
+            }
+        }
+        compose.onNodeWithText("Dark appearance").assertIsDisplayed()
+        compose.runOnIdle { dark.value = false }
+        compose.onNodeWithText("Light appearance").assertIsDisplayed()
+    }
+    @Test fun themePickerContainsNoDuplicateMonochromeChoices() {
+        compose.setContent { HiPlayerTheme {
+            HorizontalThemeSelector(com.example.data.AppThemeMode.SYSTEM, {})
+        } }
+        compose.onNodeWithTag("theme_card_SYSTEM").assertExists()
+        compose.onNodeWithTag("theme_card_CYAN_NEON_DARK").assertDoesNotExist()
+        compose.onNodeWithTag("theme_card_WARM_SUNSET_LIGHT").assertDoesNotExist()
+    }
     @Test fun permissionRecoveryOnlyOpensSettingsWhenTapped() {
         var calls = 0
         compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
@@ -50,7 +75,7 @@ class FirstUseExperienceTest {
         compose.onNodeWithTag("library_allow_access").performClick()
         assertEquals(1, calls)
     }
-    @Test fun scanningShowsCircleAndOnlyActualCompletionShowsComplete() {
+    @Test fun scanFeedbackDisappearsImmediatelyAfterCompletion() {
         val status = mutableStateOf(LibraryScanStatus.SCANNING)
         compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
             LibraryScanFeedback(status.value, 12, audio = true, centered = true)
@@ -60,7 +85,52 @@ class FirstUseExperienceTest {
         screenshot("scanning")
         compose.runOnIdle { status.value = LibraryScanStatus.COMPLETE }
         compose.onNodeWithTag("library_scan_circle").assertDoesNotExist()
-        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertExists()
+        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertDoesNotExist()
+        screenshot("scan-complete-hidden")
+    }
+    @Test fun visualPlayerGuidePointsToHdrAndOpensRealControls() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_test")
+        var opened = 0
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            PlayerGestureCoach(state, androidx.compose.ui.geometry.Rect(100f, 400f, 148f, 448f),
+                androidx.compose.ui.geometry.Offset.Zero) { opened++ }
+        } } }
+        screenshot("visual-player-guide-swipe")
+        repeat(3) { compose.onNodeWithText("Next").performClick() }
+        compose.onNodeWithText("Here is HDR").assertIsDisplayed()
+        compose.onNodeWithContentDescription("HDR button is highlighted").assertExists()
+        screenshot("visual-player-guide-hdr")
+        compose.onNodeWithText("Open HDR").performClick()
+        assertEquals(1, opened)
+        assertFalse(state.visible)
+    }
+    @Test
+    @Config(sdk = [34], qualifiers = "w640dp-h360dp-land")
+    fun playerGuideActionsRemainVisibleInLandscape() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_landscape_test")
+        compose.setContent { HiPlayerTheme {
+            PlayerGestureCoach(state, null, androidx.compose.ui.geometry.Offset.Zero) {}
+        } }
+        compose.onNodeWithText("Next").assertIsDisplayed()
+        compose.onNodeWithText("Skip guide").assertIsDisplayed()
+        screenshot("visual-player-guide-landscape")
+    }
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-night")
+    fun welcomeRespectsSystemDarkAppearance() {
+        compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> }) } }
+        compose.onNodeWithTag("welcome_continue_button").assertIsDisplayed()
+        screenshot("welcome-system-dark")
+    }
+    @Test fun visualPlayerGuideCanBeSkippedWithoutOpeningHdr() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_skip_test")
+        var opened = false
+        compose.setContent { HiPlayerTheme {
+            PlayerGestureCoach(state, null, androidx.compose.ui.geometry.Offset.Zero) { opened = true }
+        } }
+        compose.onNodeWithText("Skip guide").performClick()
+        compose.onNodeWithTag("player_gesture_coach").assertDoesNotExist()
+        assertFalse(opened)
     }
     @Test fun contextualTipIsDismissibleAndRemembered() {
         val context = ApplicationProvider.getApplicationContext<Context>()

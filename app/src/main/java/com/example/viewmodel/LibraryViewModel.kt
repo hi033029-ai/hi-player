@@ -453,18 +453,40 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos(silent: Boolean = false) {
+        // Clear revoked / narrowed access synchronously, before a coalesced scan waits.
+        val access = com.example.data.LibraryAccessPolicy.scope(getApplication(), false)
+        if (access != com.example.data.LibraryAccessPolicy.Scope.FULL) {
+            _allVideos.value = emptyList()
+            _scanStatus.value = if (access == com.example.data.LibraryAccessPolicy.Scope.NONE)
+                com.example.ui.components.LibraryScanStatus.IDLE else com.example.ui.components.LibraryScanStatus.SCANNING
+        }
         if (!silent) _isLoading.value = true
         refreshCoordinator.request()
     }
 
     private suspend fun performRefresh() {
-        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
+        val access = com.example.data.LibraryAccessPolicy.scope(getApplication(), audio = false)
+        if (access == com.example.data.LibraryAccessPolicy.Scope.NONE) {
+            _allVideos.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+            _isLoading.value = false
+            withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), false) }
+            return
+        }
+        if (access == com.example.data.LibraryAccessPolicy.Scope.SELECTED) _allVideos.value = emptyList()
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         try {
             val snapshot = MediaScanner.scanLocalVideos(getApplication())
+            if (com.example.data.LibraryAccessPolicy.scope(getApplication(), false) != access) {
+                _allVideos.value = emptyList()
+                _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+                withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), false) }
+                return
+            }
             val resolvedVideos = withContext(Dispatchers.Default) {
                 // Provider failures are not proof that existing files disappeared.
-                val scanned = if (snapshot.complete) snapshot.videos else
+                val scanned = if (snapshot.complete || access != com.example.data.LibraryAccessPolicy.Scope.FULL) snapshot.videos else
                     (snapshot.videos + _allVideos.value.filterNot { it.isPartialDownload }).distinctBy { it.path.ifBlank { it.uri.toString() } }
                 val seen = libraryPrefs.getStringSet("seen_video_new_paths", emptySet()).orEmpty()
                 applySavedVideoOrder(scanned.map { video ->

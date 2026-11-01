@@ -62,6 +62,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -122,6 +124,7 @@ fun ControlsOverlay(
     isHdrEnhanceActive: Boolean = false,
     onToggleHdrEnhance: () -> Unit = {},
     onLongPressHdrEnhance: () -> Unit = {},
+    onHdrBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
     onToggleSubtitles: () -> Unit,
     onOpenAudioSettings: () -> Unit,
     onOpenEqualizer: () -> Unit,
@@ -265,7 +268,7 @@ fun ControlsOverlay(
                                 isSwitching = isHdrSwitching,
                                 onClick = onToggleHdrEnhance,
                                 onLongClick = onLongPressHdrEnhance,
-                                modifier = Modifier.size(48.dp),
+                                modifier = Modifier.size(48.dp).onGloballyPositioned { onHdrBounds(it.boundsInWindow()) },
                             )
                             Text(
                                 text = "HDR",

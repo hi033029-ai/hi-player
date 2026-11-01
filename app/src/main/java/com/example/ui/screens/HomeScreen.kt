@@ -211,10 +211,10 @@ private fun VideoLibraryPage(
     onPlayAsAudio: (VideoItem) -> Unit,
 ) {
     val context = LocalContext.current
-    val allVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
+    val availableVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
     val pageVideos = remember(libraryViewModel, pageMode) { libraryViewModel.videosForMode(pageMode) }
     val filteredVideos by pageVideos.collectAsStateWithLifecycle()
-    val folders by libraryViewModel.folders.collectAsStateWithLifecycle()
+    val availableFolders by libraryViewModel.folders.collectAsStateWithLifecycle()
     val navMode = pageMode
     val viewMode by libraryViewModel.viewMode.collectAsStateWithLifecycle()
     val gridMinSize by libraryViewModel.gridMinSize.collectAsStateWithLifecycle()
@@ -225,9 +225,13 @@ private fun VideoLibraryPage(
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
     val scanStatus by libraryViewModel.scanStatus.collectAsStateWithLifecycle()
     val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = false) { libraryViewModel.refreshVideos() }
+    val canShowLibrary = mediaAccess.granted && !(mediaAccess.limited && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING)
+    val allVideos = if (canShowLibrary) availableVideos else emptyList()
+    val folders = if (canShowLibrary) availableFolders else emptyList()
     val swipeTip = com.example.ui.components.rememberFirstUseTip("video_library_swipe_v1")
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
-    val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
+    val availableContinueWatching by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
+    val continueWatchingVideos = if (canShowLibrary) availableContinueWatching else emptyList()
     val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
     val deleteProgress by libraryViewModel.deleteProgress.collectAsStateWithLifecycle()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
@@ -837,6 +841,7 @@ private fun VideoLibraryPage(
                 }
             }
             if (mediaAccess.granted) {
+                com.example.ui.components.LibraryAccessExplanation(audio = false)
                 if (isActive) com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your videos",
                     "Swipe left or right across the library to move between Folders, All Videos, Recent, Tree Folders and Favourites. You can also tap the tabs.",
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))

@@ -115,6 +115,10 @@ class HiPlayerEngine(
     private val _playerInstance = MutableStateFlow<ExoPlayer?>(null)
     val playerInstance = _playerInstance.asStateFlow()
     private var trackSelector: DefaultTrackSelector? = null
+    private var rememberedAudioLanguage: String? = null
+    private var rememberedSubtitleLanguage: String? = null
+    private var rememberedSubtitlesEnabled = true
+    private var rememberedMuted = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
     private var progressJob: Job? = null
@@ -545,6 +549,8 @@ class HiPlayerEngine(
             )
         }
 
+        applyRememberedTrackPreferences(clearOverrides = false)
+
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -594,6 +600,7 @@ class HiPlayerEngine(
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_OFF
+                volume = if (rememberedMuted) 0f else 1f
                 // Keep scaling in the native video pipeline for UHD surfaces.
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
@@ -765,6 +772,8 @@ class HiPlayerEngine(
         mediaTitle: String? = null,
     ) {
         _playerError.value = null
+        // Never carry a file-local group/index override into a different film.
+        if (exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) applyRememberedTrackPreferences(clearOverrides = true)
         if (uri != activeGrowingUri) {
             growingRetryJob?.cancel()
             growingRetryJob = null
@@ -1164,8 +1173,35 @@ class HiPlayerEngine(
         return true
     }
 
+    fun setMuted(muted: Boolean) {
+        rememberedMuted = muted
+        exoPlayer?.volume = if (muted) 0f else 1f
+    }
+
+    fun setRememberedTrackPreferences(audioLanguage: String?, subtitleLanguage: String?, subtitlesEnabled: Boolean) {
+        rememberedAudioLanguage = audioLanguage
+        rememberedSubtitleLanguage = subtitleLanguage
+        rememberedSubtitlesEnabled = subtitlesEnabled
+        applyRememberedTrackPreferences(clearOverrides = false)
+    }
+
+    private fun applyRememberedTrackPreferences(clearOverrides: Boolean) {
+        val selector = trackSelector ?: return
+        val builder = selector.parameters.buildUpon()
+            .setPreferredAudioLanguage(rememberedAudioLanguage)
+            .setPreferredTextLanguage(rememberedSubtitleLanguage)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !rememberedSubtitlesEnabled)
+            .setTrackTypeDisabled(C.TRACK_TYPE_IMAGE, !rememberedSubtitlesEnabled)
+        if (clearOverrides) {
+            builder.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT).clearOverridesOfType(C.TRACK_TYPE_IMAGE)
+        }
+        selector.parameters = builder.build()
+    }
+
     fun selectAudioTrack(track: VideoTrackInfo) {
         if (!track.isSupported) return
+        rememberedAudioLanguage = com.example.data.normalizeTrackLanguage(track.language)
         val selector = trackSelector ?: return
         val currentTracks = exoPlayer?.currentTracks ?: return
 
@@ -1192,6 +1228,8 @@ class HiPlayerEngine(
     }
 
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
+        rememberedSubtitlesEnabled = track != null
+        if (track != null) rememberedSubtitleLanguage = com.example.data.normalizeTrackLanguage(track.language)
         val selector = trackSelector ?: return
         val player = exoPlayer ?: return
         val builder = selector.parameters.buildUpon()

@@ -126,9 +126,10 @@ fun MusicScreen(
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
-    val audioList by musicViewModel.audioList.collectAsStateWithLifecycle()
+    val availableAudio by musicViewModel.audioList.collectAsStateWithLifecycle()
     val scanStatus by musicViewModel.scanStatus.collectAsStateWithLifecycle()
     val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = true) { musicViewModel.loadAudioTracks() }
+    val audioList = if (mediaAccess.granted) availableAudio else emptyList()
     val swipeTip = com.example.ui.components.rememberFirstUseTip("music_library_swipe_v1")
     val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
@@ -209,6 +210,7 @@ fun MusicScreen(
         // library mode has no matching tracks (for example an empty playlist).
         audioToolbar()
         if (mediaAccess.granted) {
+                com.example.ui.components.LibraryAccessExplanation(audio = true)
             com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your music",
                 "Swipe left or right across the library to move between Songs, Folders, Playlists, Albums and Artists. Tap a tab to jump straight there.",
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp))

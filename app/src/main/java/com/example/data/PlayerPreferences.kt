@@ -19,17 +19,16 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
     SYSTEM("SYSTEM", "System", "Follow device light or dark appearance"),
-    CYAN_NEON_DARK("CYAN_NEON_DARK", "Monochrome Dark", "Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF"),
-    WARM_SUNSET_LIGHT("WARM_SUNSET_LIGHT", "Monochrome Light", "Background: #FFFFFF | Accent: #000000 | Text: #000000"),
     HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Ice Blue", "Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate"),
     CUSTOM("CUSTOM", "Custom", "Your colors and opacity");
 
     companion object {
         fun fromId(id: String?): AppThemeMode {
             return when (id) {
-                "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT", "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE" -> WARM_SUNSET_LIGHT
-                // Retain a safe fallback for installations that previously stored the removed theme.
-                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> CYAN_NEON_DARK
+                // Removed duplicate fixed monochrome modes now follow the phone.
+                "CYAN_NEON_DARK", "MONOCHROME_DARK", "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT",
+                "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE",
+                "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> SYSTEM
                 "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
                 "CUSTOM" -> CUSTOM
                 else -> entries.find { it.id == id } ?: SYSTEM
@@ -80,6 +79,10 @@ data class AppPlayerSettings(
     /** -1 means preserve the device's current media volume for now. */
     val playerVolumePercent: Int = -1,
     val volumeBoostPercent: Int = 0,
+    val playerMuted: Boolean = false,
+    val preferredAudioLanguage: String? = null,
+    val preferredSubtitleLanguage: String? = null,
+    val subtitlesEnabled: Boolean = true,
     val playbackSpeedPercent: Int = 100,
     val equalizerPreset: String = "Flat",
     val equalizerBandsDb: List<Float> = List(5) { 0f },
@@ -125,6 +128,10 @@ class PlayerPreferencesRepository(private val context: Context) {
         val SUBTITLE_VERTICAL_OFFSET = intPreferencesKey("subtitle_vertical_offset_dp")
         val PLAYER_BRIGHTNESS = intPreferencesKey("player_brightness_percent")
         val PLAYER_VOLUME = intPreferencesKey("player_volume_percent")
+        val PLAYER_MUTED = booleanPreferencesKey("player_muted")
+        val AUDIO_LANGUAGE = stringPreferencesKey("preferred_audio_language")
+        val SUBTITLE_LANGUAGE = stringPreferencesKey("preferred_subtitle_language")
+        val SUBTITLES_ENABLED = booleanPreferencesKey("subtitles_enabled")
         val VOLUME_BOOST = intPreferencesKey("volume_boost_percent")
         val PLAYBACK_SPEED = intPreferencesKey("playback_speed_percent")
         val EQUALIZER_PRESET = stringPreferencesKey("equalizer_preset")
@@ -184,6 +191,10 @@ class PlayerPreferencesRepository(private val context: Context) {
             subtitleVerticalOffsetDp = (prefs[Keys.SUBTITLE_VERTICAL_OFFSET] ?: 24).coerceIn(0, 240),
             playerBrightnessPercent = (prefs[Keys.PLAYER_BRIGHTNESS] ?: -1).coerceIn(-1, 100),
             playerVolumePercent = (prefs[Keys.PLAYER_VOLUME] ?: -1).coerceIn(-1, 100),
+            playerMuted = prefs[Keys.PLAYER_MUTED] ?: false,
+            preferredAudioLanguage = normalizeTrackLanguage(prefs[Keys.AUDIO_LANGUAGE]),
+            preferredSubtitleLanguage = normalizeTrackLanguage(prefs[Keys.SUBTITLE_LANGUAGE]),
+            subtitlesEnabled = prefs[Keys.SUBTITLES_ENABLED] ?: true,
             volumeBoostPercent = (prefs[Keys.VOLUME_BOOST] ?: 0).coerceIn(0, 100),
             playbackSpeedPercent = (prefs[Keys.PLAYBACK_SPEED] ?: 100).coerceIn(25, 400),
             equalizerPreset = prefs[Keys.EQUALIZER_PRESET] ?: "Flat",
@@ -369,6 +380,27 @@ class PlayerPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun setPlayerMuted(muted: Boolean) {
+        context.dataStore.edit { it[Keys.PLAYER_MUTED] = muted }
+    }
+
+    suspend fun setPreferredAudioLanguage(language: String?) {
+        context.dataStore.edit {
+            val value = normalizeTrackLanguage(language)
+            if (value == null) it.remove(Keys.AUDIO_LANGUAGE) else it[Keys.AUDIO_LANGUAGE] = value
+        }
+    }
+
+    suspend fun setPreferredSubtitleTrack(language: String?, enabled: Boolean) {
+        context.dataStore.edit {
+            it[Keys.SUBTITLES_ENABLED] = enabled
+            if (enabled) {
+                val value = normalizeTrackLanguage(language)
+                if (value == null) it.remove(Keys.SUBTITLE_LANGUAGE) else it[Keys.SUBTITLE_LANGUAGE] = value
+            }
+        }
+    }
+
     suspend fun setPlayerBrightnessPercent(percent: Int) {
         context.dataStore.edit { it[Keys.PLAYER_BRIGHTNESS] = percent.coerceIn(1, 100) }
     }
@@ -444,3 +476,7 @@ class PlayerPreferencesRepository(private val context: Context) {
         }
     }
 }
+
+/** Track-group/index IDs are file-local; only meaningful language tags travel between files. */
+internal fun normalizeTrackLanguage(language: String?): String? = language?.trim()?.lowercase(java.util.Locale.ROOT)
+    ?.replace('_', '-')?.takeIf { it != "und" && it != "zxx" && it.matches(Regex("[a-z]{2,3}(-[a-z0-9]{2,8})*")) }

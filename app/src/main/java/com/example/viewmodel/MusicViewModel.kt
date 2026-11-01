@@ -110,7 +110,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val lyricsRepository = com.example.lyrics.LyricsRepository(application)
     private val _lyricsText = MutableStateFlow<String?>(null)
     val lyricsText = _lyricsText.asStateFlow()
-    private val _lyricsEnabled = MutableStateFlow(false)
+    private val _lyricsEnabled = MutableStateFlow(musicPrefs.getBoolean("lyrics_enabled_v1", false))
     val lyricsEnabled = _lyricsEnabled.asStateFlow()
     private val _currentLyricLineIndex = MutableStateFlow(-1)
     val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
@@ -122,6 +122,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val lyricsRetryable = _lyricsRetryable.asStateFlow()
 
     fun setLyricsEnabled(enabled: Boolean) {
+        musicPrefs.edit().putBoolean("lyrics_enabled_v1", enabled).apply()
         _lyricsEnabled.value = enabled
         if (!enabled) {
             lyricsGeneration++
@@ -219,14 +220,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val scanStatus = _scanStatus.asStateFlow()
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) {
-        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
+        val access = com.example.data.LibraryAccessPolicy.scope(getApplication(), audio = true)
+        if (access == com.example.data.LibraryAccessPolicy.Scope.NONE) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+            withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), true) }
+            return@CoalescingRefresh
+        }
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         val result = try {
             withContext(Dispatchers.IO) { com.example.data.AudioMediaScanner.scan(getApplication()) }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (error: Exception) {
             _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Audio refresh unavailable; keeping library", error)
+            return@CoalescingRefresh
+        }
+        if (com.example.data.LibraryAccessPolicy.scope(getApplication(), true) != access) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+            withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), true) }
             return@CoalescingRefresh
         }
         _scanStatus.value = if (result.complete) com.example.ui.components.LibraryScanStatus.COMPLETE
@@ -241,7 +255,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val audioObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) { loadAudioTracks() }
     }
-    fun loadAudioTracks() { refreshCoordinator.request() }
+    fun loadAudioTracks() {
+        if (com.example.data.LibraryAccessPolicy.scope(getApplication(), true) == com.example.data.LibraryAccessPolicy.Scope.NONE) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+        }
+        refreshCoordinator.request()
+    }
 
     init {
         initPlayer()
@@ -379,6 +399,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
                         .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album).build()).build()
             }
+            com.example.data.PlaybackLoudness.restoreForPlayback(getApplication())
             player.setMediaItems(items, playbackQueue.indexOfFirst { it.uri == track.uri }, 0L)
             player.repeatMode = Player.REPEAT_MODE_OFF
             player.shuffleModeEnabled = false
@@ -471,6 +492,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         progressJob = viewModelScope.launch {
             while (isActive) {
                 exoPlayer?.let { player ->
+                    if (player.isPlaying) com.example.data.PlaybackLoudness.capture(getApplication())
                     _currentPositionMs.value = player.currentPosition.coerceAtLeast(0L)
                     _durationMs.value = player.duration.coerceAtLeast(0L)
                 }

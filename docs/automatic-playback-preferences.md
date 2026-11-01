@@ -1,0 +1,11 @@
+# Automatic last-used playback controls
+
+Named playback/theme profiles were optional manually named snapshots, not the user's account and not automatic memory. Their Settings card is removed; normal playback controls and appearance settings remain. Existing saved profile data is not destructively erased.
+
+- Audio language and subtitle language/Off are stored as preferences. New files clear file-local track-group overrides and let Media3 choose supported matching language tracks, falling back to normal selection if absent. Unknown language metadata cannot identify the same language in another file. Decoder rebuilds reapply remembered preferences.
+- Music lyric on/off is saved and restored. New-song transitions still clear the previous song's lyric text and request lyrics only when the saved option is enabled. Lyrics availability is not guaranteed.
+- Brightness updates remain immediate, with pending values protected from older DataStore emissions. Playback waits for pending control writes before restoring settings. Brightness remains a player-window override and the original window value is restored on exit.
+- Last-used media volume is shared between video and music and retained independently of named profiles. Gesture changes are remembered immediately; hardware-key releases and active-playback polling capture actual system levels. Restoration runs only at playback start, retaining Android's output/safe-volume restrictions, not on application/library launch. This does not promise exact equivalence between different output devices.
+- Player mute is stored with its actual UI state. New-file aspect ratio uses the last-used default where no file-specific ratio exists; cycling aspect ratio now saves it like direct selection. Existing speed, equalizer, subtitle style/timing and HDR settings remain separate controls, not dependent on profiles.
+
+Approved release validation for 1.0.80 (81): APK assembled and preference persistence/normalization tests passed within the 73-test targeted suite. Pending physical-device validation: process restart, rapid gestures and immediate next-file selection, hardware/headset volume, music/video ownership, paused playback, device safe-volume caps, caption Off, missing-language fallback, decoder rebuild, lyrics toggles and offline/empty lyrics. Physical-device behavior is not yet verified.

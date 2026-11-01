@@ -81,6 +81,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val _subtitleStyle = MutableStateFlow(SubtitleStyleConfig())
     val subtitleStyle = _subtitleStyle.asStateFlow()
 
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted = _isMuted.asStateFlow()
+    private var muteSaveJob: Job? = null
     private val _playerBrightness = MutableStateFlow<Float?>(null)
     val playerBrightness = _playerBrightness.asStateFlow()
 
@@ -108,6 +111,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var sleepTimerJob: Job? = null
     private var progressSyncJob: Job? = null
     private var hudDismissJob: Job? = null
+    private var pendingBrightnessPercent: Int? = null
+    private var languageSaveJob: Job? = null
+    private var captionSaveJob: Job? = null
     private var brightnessSaveJob: Job? = null
     private var volumeSaveJob: Job? = null
     // Settings and resume reads are asynchronous. Keep the job so navigation
@@ -139,9 +145,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
                     verticalOffsetDp = settings.subtitleVerticalOffsetDp,
                 )
-                _playerBrightness.value = settings.playerBrightnessPercent
-                    .takeIf { it >= 1 }
-                    ?.div(100f)
+                applyRememberedBrightness(settings.playerBrightnessPercent)
                 engine.setVolumeBoost(settings.volumeBoostPercent)
                 engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
                 engine.setAudioDelay(settings.audioDelayMs)
@@ -166,6 +170,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun playVideo(video: VideoItem, startPositionOverride: Long? = null,
                   asAudio: Boolean = false, continueQueue: Boolean = false) {
         saveCurrentProgress()
+        if (_currentVideo.value != null) com.example.data.PlaybackLoudness.capture(getApplication())
         engine.pause()
         if (!continueQueue) {
             playbackQueue = pendingPlaybackQueue?.takeIf { items -> items.any { it.uri == video.uri } }
@@ -180,6 +185,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playRequestJob = viewModelScope.launch {
             // These are independent local reads. Fetch them together so player
             // preparation is not delayed by settings I/O followed by DAO I/O.
+            brightnessSaveJob?.join()
+            volumeSaveJob?.join()
+            languageSaveJob?.join()
+            captionSaveJob?.join()
+            muteSaveJob?.join()
             val settingsDeferred = async { preferencesRepo.settingsFlow.first() }
             val recordDeferred = async { videoDao.getVideoRecord(video.uri.toString()) }
             val settings = settingsDeferred.await()
@@ -202,7 +212,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // be overwritten by the Continue Watching restore callback.
             val savedAspect = record?.customAspectRatio?.let {
                 runCatching { AspectRatioMode.valueOf(it) }.getOrNull()
-            } ?: AspectRatioMode.FIT
+            } ?: runCatching { AspectRatioMode.valueOf(settings.defaultAspectRatio) }.getOrDefault(AspectRatioMode.FIT)
             engine.setAspectRatioMode(savedAspect)
 
             engine.prepareMedia(
@@ -405,6 +415,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setAspectRatio(mode: AspectRatioMode) {
         engine.setAspectRatioMode(mode)
+        viewModelScope.launch { preferencesRepo.setDefaultAspectRatio(mode.name) }
         // Aspect-ratio selection is a screen-fit operation. Do not carry a
         // previous manual zoom into Fill, otherwise the surface can remain
         // oversized while the transport row stays correctly anchored.
@@ -422,7 +433,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun cycleAspectRatio() {
-        engine.cycleAspectRatio()
+        val modes = AspectRatioMode.entries
+        setAspectRatio(modes[(engine.aspectRatioMode.value.ordinal + 1) % modes.size])
+    }
+
+    fun toggleMute() {
+        val muted = !_isMuted.value
+        _isMuted.value = muted
+        engine.setMuted(muted)
+        muteSaveJob?.cancel()
+        muteSaveJob = viewModelScope.launch { preferencesRepo.setPlayerMuted(muted) }
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -456,11 +476,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectAudioTrack(track: VideoTrackInfo) {
+        if (!track.isSupported) return
         engine.selectAudioTrack(track)
+        languageSaveJob?.cancel()
+        languageSaveJob = viewModelScope.launch { preferencesRepo.setPreferredAudioLanguage(track.language) }
     }
 
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
+        if (track != null && !track.isSupported) return
         engine.selectSubtitleTrack(track)
+        captionSaveJob?.cancel()
+        captionSaveJob = viewModelScope.launch { preferencesRepo.setPreferredSubtitleTrack(track?.language, track != null) }
     }
 
     fun refreshCaptionTracks() {
@@ -583,6 +609,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun persistPlayerBrightness(level: Float) {
         _playerBrightness.value = level
+        pendingBrightnessPercent = (level * 100f).roundToInt().coerceIn(1, 100)
         brightnessSaveJob?.cancel()
         brightnessSaveJob = viewModelScope.launch {
             preferencesRepo.setPlayerBrightnessPercent((level * 100f).roundToInt())
@@ -592,6 +619,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun persistPlayerVolume(volume: Int, maxVolume: Int) {
         if (maxVolume <= 0) return
         val percent = (volume.toFloat() / maxVolume * 100f).roundToInt()
+        com.example.data.PlaybackLoudness.remember(getApplication(), percent)
         volumeSaveJob?.cancel()
         volumeSaveJob = viewModelScope.launch {
             preferencesRepo.setPlayerVolumePercent(percent)
@@ -653,6 +681,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun applyRememberedBrightness(savedPercent: Int) {
+        val pending = pendingBrightnessPercent
+        if (pending != null && savedPercent != pending) return
+        if (pending == savedPercent) pendingBrightnessPercent = null
+        _playerBrightness.value = savedPercent.takeIf { it >= 1 }?.div(100f)
+    }
+
     private fun restorePlayerControls(settings: com.example.data.AppPlayerSettings) {
         _subtitleStyle.value = SubtitleStyleConfig(
             fontSizeSp = settings.subtitleTextSizeSp,
@@ -661,9 +696,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
             verticalOffsetDp = settings.subtitleVerticalOffsetDp,
         )
-        _playerBrightness.value = settings.playerBrightnessPercent
-            .takeIf { it >= 1 }
-            ?.div(100f)
+        applyRememberedBrightness(settings.playerBrightnessPercent)
+        engine.setRememberedTrackPreferences(settings.preferredAudioLanguage, settings.preferredSubtitleLanguage, settings.subtitlesEnabled)
+        _isMuted.value = settings.playerMuted
+        engine.setMuted(settings.playerMuted)
 
         engine.setVolumeBoost(settings.volumeBoostPercent)
         engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
@@ -678,23 +714,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         // This is deliberately scoped to playback start. The app never adjusts
         // the device's media volume merely because a user opens Hi Player.
-        val savedVolume = settings.playerVolumePercent
-        if (savedVolume >= 0) {
-            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            if (maxVolume > 0) {
-                val target = (savedVolume / 100f * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
-            }
-        }
+        com.example.data.PlaybackLoudness.restoreForPlayback(getApplication(), settings.playerVolumePercent)
     }
 
+    private var lastProgressWriteMs = 0L
     private fun startProgressSync() {
         progressSyncJob?.cancel()
         progressSyncJob = viewModelScope.launch {
             while (isActive) {
-                delay(5000)
+                delay(500)
                 if (engine.isPlaying.value) {
-                    saveCurrentProgress()
+                    com.example.data.PlaybackLoudness.capture(getApplication())
+                    if (System.currentTimeMillis() - lastProgressWriteMs >= 5_000L) {
+                        lastProgressWriteMs = System.currentTimeMillis()
+                        saveCurrentProgress()
+                    }
                 }
             }
         }

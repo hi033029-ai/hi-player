@@ -14,7 +14,7 @@ internal object MediaLibraryCache {
     private fun file(context: Context, kind: String) = AtomicFile(File(context.noBackupFilesDir, "library_$kind.json"))
     @Synchronized private fun read(context: Context, kind: String): JSONArray? = runCatching {
         val root = JSONObject(file(context, kind).openRead().bufferedReader().use { it.readText() })
-        require(root.getInt("version") == 1)
+        require(root.getInt("version") == 2)
         root.getJSONArray("items")
     }.getOrNull()
     @Synchronized private fun write(context: Context, kind: String, items: JSONArray) {
@@ -22,15 +22,17 @@ internal object MediaLibraryCache {
         var stream: java.io.FileOutputStream? = null
         try {
             stream = target.startWrite()
-            stream.write(JSONObject().put("version", 1).put("items", items).toString().toByteArray(Charsets.UTF_8))
+            stream.write(JSONObject().put("version", 2).put("items", items).toString().toByteArray(Charsets.UTF_8))
             target.finishWrite(stream)
         } catch (e: Exception) {
             target.failWrite(stream)
             android.util.Log.w("HiLibrary", "Could not persist $kind snapshot", e)
         }
     }
+    @Synchronized fun clear(context: Context, audio: Boolean) { file(context, if (audio) "audio" else "videos").delete() }
     private fun local(uri: Uri) = uri.scheme == "content" || uri.scheme == "file"
     fun saveVideos(context: Context, items: List<VideoItem>) {
+        if (!LibraryAccessPolicy.canRestoreCache(LibraryAccessPolicy.scope(context, audio = false))) { clear(context, false); return }
         val array = JSONArray()
         items.filter { local(it.uri) && !it.isPartialDownload }.forEach { item ->
             array.put(JSONObject()
@@ -57,6 +59,7 @@ internal object MediaLibraryCache {
         write(context, "videos", array)
     }
     fun readVideos(context: Context): List<VideoItem>? = runCatching {
+        if (!LibraryAccessPolicy.canRestoreCache(LibraryAccessPolicy.scope(context, audio = false))) { clear(context, false); return null }
         val array = read(context, "videos") ?: return null
         List(array.length()) { index ->
             val o = array.getJSONObject(index)
@@ -83,6 +86,7 @@ internal object MediaLibraryCache {
         }
     }.getOrNull()
     fun saveAudio(context: Context, items: List<AudioItem>) {
+        if (!LibraryAccessPolicy.canRestoreCache(LibraryAccessPolicy.scope(context, audio = true))) { clear(context, true); return }
         val array = JSONArray()
         items.filter { local(it.uri) }.forEach { item ->
             array.put(JSONObject()
@@ -103,6 +107,7 @@ internal object MediaLibraryCache {
         write(context, "audio", array)
     }
     fun readAudio(context: Context): List<AudioItem>? = runCatching {
+        if (!LibraryAccessPolicy.canRestoreCache(LibraryAccessPolicy.scope(context, audio = true))) { clear(context, true); return null }
         val array = read(context, "audio") ?: return null
         List(array.length()) { index ->
             val o = array.getJSONObject(index)

@@ -20,8 +20,15 @@ class SystemThemeDefaultMigrationTest {
         assertFalse(SystemThemeDefaultMigration.shouldMigrate(after))
     }
     @Test fun laterExplicitThemeChoiceIsNotResetOnEveryLaunch() = runTest {
-        val after = preferencesOf(theme to "CYAN_NEON_DARK", booleanPreferencesKey("system_theme_default_v1") to true)
+        val after = preferencesOf(theme to "HI_PLAYER_BLUE", booleanPreferencesKey("system_theme_default_v2") to true)
         assertFalse(SystemThemeDefaultMigration.shouldMigrate(after))
-        assertEquals("CYAN_NEON_DARK", after[theme])
+        assertEquals("HI_PLAYER_BLUE", after[theme])
+    }    @Test fun previousMigrationDoesNotLeaveAnOldBlueOverrideActive() = runTest {
+        val before = preferencesOf(theme to "HI_PLAYER_BLUE", booleanPreferencesKey("system_theme_default_v1") to true)
+        assertTrue(SystemThemeDefaultMigration.shouldMigrate(before))
+        val after = SystemThemeDefaultMigration.migrate(before)
+        assertEquals("SYSTEM", after[theme])
+        assertFalse(SystemThemeDefaultMigration.shouldMigrate(after))
     }
+
 }
