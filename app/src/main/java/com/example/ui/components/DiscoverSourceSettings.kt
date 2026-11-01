@@ -2,9 +2,12 @@ package com.example.ui.components
 
 import com.example.ui.theme.hiContainerBorder
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,9 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -30,7 +31,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -41,114 +41,108 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.DiscoverViewModel
 
-/** Source setup for the free Discover feature. The catalog works without an
- * account; playback searches only media sources the user has connected. */
+/** Optional user-owned network libraries, separate from the Hi Player account. */
 @Composable
 fun DiscoverSourceSettings(
     discoverViewModel: DiscoverViewModel,
     modifier: Modifier = Modifier,
     drafts: com.example.ui.feedback.SessionDraftsViewModel = viewModel(),
+    onPlayMedia: (com.example.model.VideoItem) -> Unit = {},
 ) {
     val sources by discoverViewModel.sourceSettings.collectAsState()
     val palette = LocalHiPalette.current
-    var dialog by rememberSaveable { mutableStateOf<SourceDialog?>(null) }
-
-    Column(modifier = modifier) {
-        Card(
-            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-            elevation = CardDefaults.cardElevation(0.dp)
-        ) {
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                SourceRow(
-                    icon = Icons.Default.CloudDone,
-                    title = "Jellyfin server",
-                    subtitle = sources.jellyfin?.let { "Connected: ${it.serverName}" }
-                        ?: "Connect your free Jellyfin server and its own library",
-                    action = if (sources.jellyfin?.isConfigured == true) "Remove" else "Connect",
-                    destructive = sources.jellyfin?.isConfigured == true,
-                    onAction = {
-                        if (sources.jellyfin?.isConfigured == true) discoverViewModel.removeJellyfin()
-                        else dialog = SourceDialog.JELLYFIN
-                    }
-                )
+    var dialog by remember { mutableStateOf<SourceDialog?>(null) }
+    var browserKind by remember { mutableStateOf<String?>(null) }
+    var manage by remember { mutableStateOf(false) }
+    var disconnect by remember { mutableStateOf<String?>(null) }
+    fun setup(which: SourceDialog) { manage = false; browserKind = null; dialog = which }
+    fun connected(kind: String) {
+        if (kind == "jellyfin") drafts.jellyfin.clear() else drafts.webDav.clear()
+        dialog = null; browserKind = kind
+    }
+    Column(modifier) {
+        Text("Optional connections to media you already own. No server? You can skip this section.",
+            color = palette.textSecondary, modifier = Modifier.padding(14.dp))
+        Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)) {
+            Column {
+                SourceRow(Icons.Default.CloudDone, "Jellyfin",
+                    sources.jellyfin?.let { "${it.serverName} · Browse library" } ?: "Your personal media server · Connect",
+                    onAction = { if (sources.jellyfin?.isConfigured == true) browserKind = "jellyfin" else setup(SourceDialog.JELLYFIN) })
                 SourceDivider()
-                SourceRow(
-                    icon = Icons.Default.Storage,
-                    title = "WebDAV folder",
-                    subtitle = sources.webDav?.let { "Connected: ${it.displayName}" }
-                        ?: "Connect a folder you control for direct playback",
-                    action = if (sources.webDav?.isConfigured == true) "Remove" else "Connect",
-                    destructive = sources.webDav?.isConfigured == true,
-                    onAction = {
-                        if (sources.webDav?.isConfigured == true) discoverViewModel.removeWebDav()
-                        else dialog = SourceDialog.WEBDAV
+                SourceRow(Icons.Default.Storage, "WebDAV",
+                    sources.webDav?.let { "${it.displayName} · Browse folders" } ?: "Your online storage folder · Connect",
+                    onAction = { if (sources.webDav?.isConfigured == true) browserKind = "webdav" else setup(SourceDialog.WEBDAV) })
+            }
+        }
+        TextButton(onClick = { manage = true }) { Text("Manage connections") }
+    }
+    browserKind?.let { kind ->
+        NetworkMediaBrowser(kind, discoverViewModel, onDismiss = { browserKind = null },
+            onManage = { browserKind = null; manage = true }, onPlay = onPlayMedia)
+    }
+    if (manage) androidx.compose.ui.window.Dialog(onDismissRequest = { manage = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = palette.background) {
+            Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { manage = false }) { Text("Back") }
+                    Text("Network connections", style = androidx.compose.material3.MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    if (sources.jellyfin?.isConfigured == true) {
+                        TextButton(onClick = { manage = false; browserKind = "jellyfin" }) { Text("Browse Jellyfin library") }
+                        TextButton(onClick = { disconnect = "jellyfin" }) { Text("Disconnect active Jellyfin") }
                     }
-                )
+                    if (sources.webDav?.isConfigured == true) {
+                        TextButton(onClick = { manage = false; browserKind = "webdav" }) { Text("Browse WebDAV folders") }
+                        TextButton(onClick = { disconnect = "webdav" }) { Text("Disconnect active WebDAV") }
+                    }
+                    SavedMediaSources(discoverViewModel, addJellyfin = { setup(SourceDialog.JELLYFIN) }, addWebDav = { setup(SourceDialog.WEBDAV) })
+                }
             }
         }
     }
-
-    SavedMediaSources(discoverViewModel,
-        addJellyfin = { dialog = SourceDialog.JELLYFIN },
-        addWebDav = { dialog = SourceDialog.WEBDAV })
-
+    disconnect?.let { kind ->
+        AlertDialog(onDismissRequest = { disconnect = null }, title = { Text("Disconnect active server?") },
+            text = { Text("Stops access from this device. Your server files are not deleted. Saved connection copies remain until you forget them in Manage connections.") },
+            confirmButton = { TextButton(onClick = {
+                disconnect = null
+                if (kind == "jellyfin") discoverViewModel.removeJellyfin() else discoverViewModel.removeWebDav()
+            }) { Text("Disconnect") } }, dismissButton = { TextButton(onClick = { disconnect = null }) { Text("Cancel") } })
+    }
     when (dialog) {
-        SourceDialog.JELLYFIN -> JellyfinSetupDialog(
-            draft = drafts.jellyfin,
-            onDismiss = { drafts.jellyfin.clear(); dialog = null },
-            onConnect = { baseUrl, username, password, onComplete ->
-                discoverViewModel.connectJellyfin(baseUrl, username, password, onComplete)
-            }
-        )
-        SourceDialog.WEBDAV -> WebDavSetupDialog(
-            draft = drafts.webDav,
-            onDismiss = { drafts.webDav.clear(); dialog = null },
-            onConnect = { url, username, password, name, onComplete ->
-                discoverViewModel.saveWebDav(url, username, password, name, onComplete)
-            }
-        )
+        SourceDialog.JELLYFIN -> JellyfinQuickConnectDialog(drafts.jellyfin, discoverViewModel,
+            onDismiss = { drafts.jellyfin.clear(); dialog = null }, onPassword = { dialog = SourceDialog.JELLYFIN_PASSWORD }, onConnected = { connected("jellyfin") })
+        SourceDialog.JELLYFIN_PASSWORD -> JellyfinSetupDialog(drafts.jellyfin,
+            onDismiss = { drafts.jellyfin.clear(); dialog = null }, onConnected = { connected("jellyfin") },
+            onConnect = { url, user, password, complete -> discoverViewModel.connectJellyfin(url, user, password, complete) })
+        SourceDialog.WEBDAV -> WebDavSetupDialog(drafts.webDav,
+            onDismiss = { drafts.webDav.clear(); dialog = null }, onConnected = { connected("webdav") },
+            onConnect = { url, user, password, name, complete -> discoverViewModel.saveWebDav(url, user, password, name, complete) })
         null -> Unit
     }
 }
 
-private enum class SourceDialog { JELLYFIN, WEBDAV }
+private enum class SourceDialog { JELLYFIN, JELLYFIN_PASSWORD, WEBDAV }
 
 @Composable
-private fun SourceRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    action: String,
-    destructive: Boolean = false,
-    onAction: () -> Unit
-) {
+private fun SourceRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String,
+    subtitle: String, onAction: () -> Unit) {
     val palette = LocalHiPalette.current
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text(subtitle, color = palette.textSecondary, fontSize = 10.5.sp)
+    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onAction).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = palette.primary, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+            Text(subtitle, color = palette.textSecondary, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
         }
-        Text(
-            text = action,
-            color = if (destructive) Color(0xFFD14343) else palette.primary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            modifier = Modifier.clickable(onClick = onAction).padding(7.dp)
-        )
     }
 }
 
@@ -162,6 +156,7 @@ private fun SourceDivider() {
 private fun JellyfinSetupDialog(
     draft: com.example.ui.feedback.SourceSetupDraft,
     onDismiss: () -> Unit,
+    onConnected: () -> Unit,
     onConnect: (String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
@@ -169,6 +164,7 @@ private fun JellyfinSetupDialog(
     var username by draft.username
     var password by draft.password
     var busy by remember { mutableStateOf(false) }
+    var allowHttp by remember(url) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val cancelSetup = { connectionJob?.cancel(); onDismiss() }
@@ -179,14 +175,21 @@ private fun JellyfinSetupDialog(
         containerColor = palette.surface,
         title = { Text("Connect Jellyfin", color = palette.textPrimary) },
         text = {
-            Column {
-                Text("Use your own free Jellyfin server. Login creates a device session stored encrypted on this device.", color = palette.textSecondary, fontSize = 12.sp)
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Use your own free Jellyfin server. Sign-in creates an encrypted device session. Your password is not retained. Quick Connect is also available from the previous screen.", color = palette.textSecondary, fontSize = 12.sp)
                 Spacer(Modifier.height(8.dp))
-                SourceTextField(url, { url = it }, "Server URL", "https://jellyfin.example.com")
+                SourceTextField(url, { url = it }, "Server URL", "https://jellyfin.example.com", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
-                SourceTextField(username, { username = it }, "Username")
+                SourceTextField(username, { username = it }, "Username", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
-                SourceTextField(password, { password = it }, "Password (if required)", password = true)
+                SourceTextField(password, { password = it }, "Password (if required)", password = true, enabled = !busy)
+                if (url.trim().startsWith("http://", true)) {
+                    Text("HTTP is not encrypted. Prefer HTTPS. Only continue on a trusted network and server.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(allowHttp, { allowHttp = it }, enabled = !busy)
+                        Text("Allow this unencrypted connection", Modifier.weight(1f))
+                    }
+                }
                 error?.let { Text(it, color = Color(0xFFD14343), fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
@@ -197,10 +200,10 @@ private fun JellyfinSetupDialog(
                     error = null
                     connectionJob = onConnect(url, username, password) { result ->
                         busy = false
-                        result.onSuccess { onDismiss() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("jellyfin_connect", it, "Couldn't connect. Check the server address, username and password, then try again.") }
+                        result.onSuccess { onConnected() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("jellyfin_connect", it, "Couldn't connect. Check the server address, username and password, then try again.") }
                     }
                 },
-                enabled = !busy && url.isNotBlank() && username.isNotBlank(),
+                enabled = !busy && url.isNotBlank() && username.isNotBlank() && (!url.trim().startsWith("http://", true) || allowHttp),
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) { Text(if (busy) "Connecting…" else "Connect") }
         },
@@ -212,6 +215,7 @@ private fun JellyfinSetupDialog(
 private fun WebDavSetupDialog(
     draft: com.example.ui.feedback.SourceSetupDraft,
     onDismiss: () -> Unit,
+    onConnected: () -> Unit,
     onConnect: (String, String, String, String, (Result<Unit>) -> Unit) -> kotlinx.coroutines.Job
 ) {
     val palette = LocalHiPalette.current
@@ -220,6 +224,7 @@ private fun WebDavSetupDialog(
     var username by draft.username
     var password by draft.password
     var busy by remember { mutableStateOf(false) }
+    var allowHttp by remember(url) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var connectionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val cancelSetup = { connectionJob?.cancel(); onDismiss() }
@@ -230,16 +235,23 @@ private fun WebDavSetupDialog(
         containerColor = palette.surface,
         title = { Text("Connect WebDAV", color = palette.textPrimary) },
         text = {
-            Column {
-                Text("Enter a folder URL you control. Hi Player lists only that folder and its nearby subfolders for direct playback.", color = palette.textSecondary, fontSize = 12.sp)
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Enter the WebDAV folder address from your storage provider, not its website sign-in URL. Use a provider app password if required. Hi Player browses that folder for direct playback.", color = palette.textSecondary, fontSize = 12.sp)
                 Spacer(Modifier.height(8.dp))
-                SourceTextField(url, { url = it }, "Folder URL", "https://cloud.example.com/remote.php/dav/files/me/Videos/")
+                SourceTextField(url, { url = it }, "Folder URL", "https://cloud.example.com/remote.php/dav/files/me/Videos/", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
-                SourceTextField(name, { name = it }, "Source name")
+                SourceTextField(name, { name = it }, "Source name", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
-                SourceTextField(username, { username = it }, "Username")
+                SourceTextField(username, { username = it }, "Username", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
-                SourceTextField(password, { password = it }, "Password", password = true)
+                SourceTextField(password, { password = it }, "Password", password = true, enabled = !busy)
+                if (url.trim().startsWith("http://", true)) {
+                    Text("HTTP is not encrypted. Prefer HTTPS. Only continue on a trusted network and server.")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(allowHttp, { allowHttp = it }, enabled = !busy)
+                        Text("Allow this unencrypted connection", Modifier.weight(1f))
+                    }
+                }
                 error?.let { Text(it, color = Color(0xFFD14343), fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
@@ -250,10 +262,10 @@ private fun WebDavSetupDialog(
                     error = null
                     connectionJob = onConnect(url, username, password, name) { result ->
                         busy = false
-                        result.onSuccess { onDismiss() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("webdav_connect", it, "Couldn't connect. Check the folder address and sign-in details, then try again.") }
+                        result.onSuccess { onConnected() }.onFailure { error = com.example.ui.feedback.UserFacingErrors.report("webdav_connect", it, "Couldn't connect. Check the folder address and sign-in details, then try again.") }
                     }
                 },
-                enabled = !busy && url.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                enabled = !busy && url.isNotBlank() && username.isNotBlank() && password.isNotBlank() && (!url.trim().startsWith("http://", true) || allowHttp),
                 colors = ButtonDefaults.buttonColors(containerColor = palette.primary)
             ) { Text(if (busy) "Connecting…" else "Connect") }
         },
@@ -267,10 +279,12 @@ private fun SourceTextField(
     onValueChange: (String) -> Unit,
     label: String,
     placeholder: String = "",
-    password: Boolean = false
+    password: Boolean = false,
+    enabled: Boolean = true
 ) {
     val palette = LocalHiPalette.current
     OutlinedTextField(
+        enabled = enabled,
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },

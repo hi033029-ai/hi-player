@@ -117,6 +117,7 @@ fun SettingsScreen(
     var showCustomTheme by rememberSaveable { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
     var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
     var showAccountSources by rememberSaveable { mutableStateOf(true) }
+    var showNetworkSources by rememberSaveable { mutableStateOf(false) }
     var showThemes by rememberSaveable { mutableStateOf(false) }
     var showTextSize by rememberSaveable { mutableStateOf(false) }
     var showDecoder by rememberSaveable { mutableStateOf(false) }
@@ -150,14 +151,22 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             SettingsCollapsibleSection(
-                title = "Google account & media sources",
-                subtitle = "Google account, My Drive, and personal media servers",
+                title = "Google account & My Drive",
+                subtitle = "Your Hi Player profile and Google Drive",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
             ) {
                 com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia)
+            }
+            SettingsCollapsibleSection(
+                title = "Network media (optional)",
+                subtitle = "Jellyfin libraries and WebDAV storage you already use",
+                expanded = showNetworkSources,
+                onToggle = { showNetworkSources = !showNetworkSources }
+            ) {
                 DiscoverSourceSettings(
                     discoverViewModel = discoverViewModel,
+                    onPlayMedia = onPlayDriveMedia,
                     modifier = Modifier.padding(horizontal = 0.dp)
                 )
             }

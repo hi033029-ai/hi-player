@@ -55,6 +55,8 @@ jobs:
           gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
           --tests 'com.example.audio.MusicEqualizerTest'
           --tests 'com.example.data.NamedSettingsProfilesTest'
+          --tests 'com.example.data.NetworkMediaPolicyTest'
+          --tests 'com.example.player.RemoteStreamHeadersRegistryTest'
           --tests 'com.example.ui.screens.BrowserAdvancedRulesTest'
 
       - name: Build APK with user-approved Drive testing

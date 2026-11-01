@@ -39,11 +39,11 @@ object JellyfinMediaSourceClient {
                 val token = root.optString("AccessToken")
                 val user = root.optJSONObject("User")
                 val userId = user?.optString("Id").orEmpty()
-                require(token.isNotBlank() && userId.isNotBlank()) { "Jellyfin did not return a usable user session." }
+                require(token.isNotBlank() && userId.matches(Regex("[A-Fa-f0-9-]{1,36}"))) { "Jellyfin did not return a usable user session." }
                 JellyfinConnection(
                     baseUrl = normalizedBase,
                     username = username.trim(),
-                    password = password,
+                    password = "", // The server token is sufficient; do not retain the password.
                     accessToken = token,
                     userId = userId,
                     serverName = user?.optString("ServerName")?.ifBlank { "Jellyfin" } ?: "Jellyfin"
@@ -51,9 +51,67 @@ object JellyfinMediaSourceClient {
             }
         }
 
+    internal suspend fun beginQuickConnect(rawUrl: String): com.example.model.JellyfinQuickSession = withContext(Dispatchers.IO) {
+        val base = normalizeBaseUrl(rawUrl)
+        val device = UUID.randomUUID().toString()
+        val enabled = requestText("$base/QuickConnect/Enabled", "GET", deviceId = device).trim()
+        check(enabled == "true") { "Quick Connect unavailable" }
+        val response = requestJson("$base/QuickConnect/Initiate", "POST", body = "{}", deviceId = device)
+        val code = response.getString("Code")
+        val secret = response.getString("Secret")
+        require(code.matches(Regex("[A-Za-z0-9]{6}")) && secret.length in 16..512)
+        com.example.model.JellyfinQuickSession(base, device, code, secret)
+    }
+
+    internal suspend fun pollQuickConnect(session: com.example.model.JellyfinQuickSession): JellyfinConnection? = withContext(Dispatchers.IO) {
+        val url = Uri.parse("${session.baseUrl}/QuickConnect/Connect").buildUpon().appendQueryParameter("secret", session.secret).build().toString()
+        val status = requestJson(url, "GET", deviceId = session.deviceId)
+        if (!status.optBoolean("Authenticated")) return@withContext null
+        val result = requestJson("${session.baseUrl}/Users/AuthenticateWithQuickConnect", "POST",
+            body = JSONObject().put("Secret", session.secret).toString(), deviceId = session.deviceId)
+        val user = result.getJSONObject("User")
+        val connection = JellyfinConnection(session.baseUrl, user.optString("Name"), "", result.getString("AccessToken"),
+            user.getString("Id"), "Jellyfin", session.deviceId)
+        require(connection.isConfigured && connection.userId.matches(Regex("[A-Fa-f0-9-]{1,36}")))
+        connection
+    }
+
+    suspend fun verifySession(connection: JellyfinConnection): JellyfinConnection = withContext(Dispatchers.IO) {
+        require(connection.isConfigured && connection.userId.matches(Regex("[A-Fa-f0-9-]{1,36}")))
+        val user = requestJson("${normalizeBaseUrl(connection.baseUrl)}/Users/Me", "GET",
+            accessToken = connection.accessToken, deviceId = deviceId(connection))
+        require(user.getString("Id").replace("-", "").equals(connection.userId.replace("-", ""), true))
+        connection.copy(username = user.optString("Name", connection.username), password = "")
+    }
+
+    suspend fun browse(connection: JellyfinConnection, parentId: String? = null, offset: Int = 0): com.example.model.NetworkMediaPage = withContext(Dispatchers.IO) {
+        require(connection.isConfigured && connection.userId.matches(Regex("[A-Fa-f0-9-]{1,36}")) && offset >= 0)
+        require(parentId == null || parentId.matches(Regex("[A-Fa-f0-9-]{1,36}")))
+        val base = normalizeBaseUrl(connection.baseUrl)
+        val endpoint = if (parentId == null) "$base/Users/${connection.userId}/Views" else "$base/Users/${connection.userId}/Items"
+        val builder = Uri.parse(endpoint).buildUpon()
+            .appendQueryParameter("Fields", "MediaSources,MediaStreams")
+            .appendQueryParameter("SortBy", "SortName").appendQueryParameter("SortOrder", "Ascending")
+        if (parentId != null) builder.appendQueryParameter("ParentId", parentId).appendQueryParameter("Recursive", "false")
+            .appendQueryParameter("StartIndex", offset.toString()).appendQueryParameter("Limit", "60")
+        val result = requestJson(builder.build().toString(), "GET", accessToken = connection.accessToken, deviceId = deviceId(connection))
+        val items = result.optJSONArray("Items") ?: JSONArray()
+        val entries = (0 until items.length()).mapNotNull { index ->
+            val item = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("Id").takeIf { it.matches(Regex("[A-Fa-f0-9-]{1,36}")) } ?: return@mapNotNull null
+            val folder = parentId == null || item.optBoolean("IsFolder") || item.optString("Type") in setOf("Series", "Season", "MusicAlbum", "MusicArtist", "CollectionFolder", "BoxSet", "Playlist")
+            val type = item.optString("MediaType")
+            val playable = if (!folder && (type in setOf("Video", "Audio") || item.optString("Type") in setOf("Movie", "Episode", "Video", "Audio", "MusicVideo"))) parseItem(connection, item) else null
+            if (!folder && playable == null) return@mapNotNull null
+            com.example.model.NetworkMediaEntry(id, item.optString("Name", "Media"), folder, id, playable, if (folder) "Library / folder" else if (type == "Audio") "Audio" else "Video")
+        }
+        val total = result.optInt("TotalRecordCount", offset + items.length())
+        com.example.model.NetworkMediaPage(entries, if (parentId != null && items.length() > 0 && offset + items.length() < total) offset + items.length() else null)
+    }
+
     suspend fun search(connection: JellyfinConnection, query: String): List<RemoteMediaMatch> =
         withContext(Dispatchers.IO) {
-            if (!connection.isConfigured || query.isBlank()) return@withContext emptyList()
+            if (!connection.isConfigured || !connection.userId.matches(Regex("[A-Fa-f0-9-]{1,36}")) || query.isBlank()) return@withContext emptyList()
             val url = Uri.parse("${connection.baseUrl}/Users/${connection.userId}/Items").buildUpon()
                 .appendQueryParameter("SearchTerm", query.trim())
                 .appendQueryParameter("IncludeItemTypes", "Movie,Episode,Video")
@@ -85,7 +143,7 @@ object JellyfinMediaSourceClient {
     )
 
     private fun parseItem(connection: JellyfinConnection, item: JSONObject): RemoteMediaMatch? {
-        val id = item.optString("Id").takeIf { it.isNotBlank() } ?: return null
+        val id = item.optString("Id").takeIf { it.matches(Regex("[A-Fa-f0-9-]{1,36}")) } ?: return null
         val mediaSources = item.optJSONArray("MediaSources")
         val source = mediaSources?.optJSONObject(0)
         val streams = source?.optJSONArray("MediaStreams") ?: item.optJSONArray("MediaStreams") ?: JSONArray()
@@ -123,14 +181,15 @@ object JellyfinMediaSourceClient {
             val episode = item.optInt("IndexNumber", 0)
             if (season > 0 && episode > 0) append("S%02dE%02d".format(season, episode))
         }.trim().takeIf { it.isNotBlank() }
-        val directUrl = "${connection.baseUrl}/Videos/$id/stream?static=true"
+        val audio = item.optString("MediaType") == "Audio" || item.optString("Type") == "Audio"
+        val directUrl = "${connection.baseUrl}/${if (audio) "Audio" else "Videos"}/$id/stream?static=true"
         return RemoteMediaMatch(
             id = "jellyfin:$id",
             sourceName = connection.serverName.ifBlank { "Jellyfin" },
             title = name,
             subtitle = subtitle,
             streamUri = Uri.parse(directUrl),
-            streamMimeType = mimeTypeFor(container),
+            streamMimeType = if (audio) when (container) { "mp3" -> "audio/mpeg"; "flac" -> "audio/flac"; "m4a", "mp4" -> "audio/mp4"; "ogg", "opus" -> "audio/ogg"; "wav" -> "audio/wav"; else -> "audio/*" } else mimeTypeFor(container),
             requestHeaders = requestHeaders(connection),
             width = width,
             height = height,
@@ -144,45 +203,39 @@ object JellyfinMediaSourceClient {
         )
     }
 
-    private fun requestJson(
-        url: String,
-        method: String,
-        body: String? = null,
-        accessToken: String? = null,
-        deviceId: String
-    ): JSONObject {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 12_000
-            readTimeout = 12_000
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("X-Emby-Authorization", authorizationValue(deviceId))
-            accessToken?.takeIf(String::isNotBlank)?.let { setRequestProperty("X-Emby-Token", it) }
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                outputStream.bufferedWriter().use { it.write(body) }
-            }
-        }
+    private fun requestJson(url: String, method: String, body: String? = null, accessToken: String? = null, deviceId: String): JSONObject =
+        JSONObject(requestText(url, method, body, accessToken, deviceId))
+
+    // No implicit redirects: credentials and Quick Connect secrets never travel
+    // to a different endpoint. Server aliases must be configured explicitly.
+    private fun requestText(url: String, method: String, body: String? = null, accessToken: String? = null, deviceId: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection)
         return try {
-            if (connection.responseCode !in 200..299) {
-                val error = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IllegalStateException("Jellyfin returned HTTP ${connection.responseCode}${if (error.isBlank()) "" else ": $error"}")
+            connection.instanceFollowRedirects = false
+            connection.requestMethod = method
+            connection.connectTimeout = 12_000; connection.readTimeout = 12_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("X-Emby-Authorization", authorizationValue(deviceId))
+            accessToken?.takeIf(String::isNotBlank)?.let { connection.setRequestProperty("X-Emby-Token", it) }
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
             }
-            connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
-        } finally {
-            connection.disconnect()
-        }
+            check(connection.responseCode in 200..299) { "Jellyfin request unavailable" }
+            connection.inputStream.use { input ->
+                val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                while (true) { val count = input.read(buffer); if (count < 0) break
+                    check(out.size() + count <= 4 * 1024 * 1024) { "Server response too large" }; out.write(buffer, 0, count) }
+                out.toString("UTF-8")
+            }
+        } finally { connection.disconnect() }
     }
 
-    private fun normalizeBaseUrl(raw: String): String {
-        val value = raw.trim().trimEnd('/')
-        require(value.startsWith("http://") || value.startsWith("https://")) { "Use a full Jellyfin URL starting with http:// or https://." }
-        return value
-    }
+    internal fun normalizeBaseUrl(raw: String) = NetworkMediaPolicy.server(raw)
 
     private fun deviceId(connection: JellyfinConnection): String =
-        UUID.nameUUIDFromBytes("${connection.baseUrl}:${connection.username}".toByteArray()).toString()
+        connection.deviceId.ifBlank { UUID.nameUUIDFromBytes("${connection.baseUrl}:${connection.username}".toByteArray()).toString() }
 
     private fun authorizationValue(deviceId: String): String =
         "MediaBrowser Client=\"$APP_NAME\", Device=\"Android\", DeviceId=\"$deviceId\", Version=\"$APP_VERSION\""

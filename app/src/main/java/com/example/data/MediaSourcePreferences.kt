@@ -33,6 +33,12 @@ class MediaSourcePreferences(context: Context) {
         )
     }
 
+    init {
+        val array = profileArray()
+        (0 until array.length()).forEach { index -> array.optJSONObject(index)?.takeIf { it.optString("kind") == "jellyfin" }?.remove("password") }
+        preferences.edit().remove(KEY_JELLYFIN_PASSWORD).putString("saved_source_profiles_v1", array.toString()).apply()
+    }
+
     private val _settings = MutableStateFlow(readSettings())
     val settings = _settings.asStateFlow()
 
@@ -59,8 +65,8 @@ class MediaSourcePreferences(context: Context) {
         when (kind) {
             "jellyfin" -> {
                 val source = requireNotNull(_settings.value.jellyfin?.takeIf { it.isConfigured })
-                item.put("url", source.baseUrl).put("username", source.username).put("password", source.password)
-                    .put("token", source.accessToken).put("userId", source.userId).put("serverName", source.serverName)
+                item.put("url", source.baseUrl).put("username", source.username)
+                    .put("token", source.accessToken).put("userId", source.userId).put("serverName", source.serverName).put("deviceId", source.deviceId)
             }
             "webdav" -> {
                 val source = requireNotNull(_settings.value.webDav?.takeIf { it.isConfigured })
@@ -80,7 +86,7 @@ class MediaSourcePreferences(context: Context) {
         val item = (0 until array.length()).mapNotNull { array.optJSONObject(it) }.first { it.optString("id") == id }
         val metadata = SavedMediaSource(id, item.getString("name"), item.getString("kind"))
         return if (metadata.kind == "jellyfin") SavedSourceCredentials(metadata, jellyfin = JellyfinConnection(
-            item.getString("url"), item.getString("username"), item.getString("password"), item.getString("token"), item.getString("userId"), item.getString("serverName")))
+            item.getString("url"), item.getString("username"), "", item.getString("token"), item.getString("userId"), item.getString("serverName"), item.optString("deviceId")))
         else SavedSourceCredentials(metadata, webDav = WebDavConnection(item.getString("url"), item.getString("username"), item.getString("password"), item.getString("displayName")))
     }
 
@@ -95,7 +101,8 @@ class MediaSourcePreferences(context: Context) {
         preferences.edit()
             .putString(KEY_JELLYFIN_BASE_URL, connection.baseUrl.trimEnd('/'))
             .putString(KEY_JELLYFIN_USERNAME, connection.username)
-            .putString(KEY_JELLYFIN_PASSWORD, connection.password)
+            .remove(KEY_JELLYFIN_PASSWORD)
+            .putString("jellyfin_device_id", connection.deviceId)
             .putString(KEY_JELLYFIN_TOKEN, connection.accessToken)
             .putString(KEY_JELLYFIN_USER_ID, connection.userId)
             .putString(KEY_JELLYFIN_SERVER_NAME, connection.serverName)
@@ -106,6 +113,7 @@ class MediaSourcePreferences(context: Context) {
     fun clearJellyfin() {
         preferences.edit()
             .remove(KEY_JELLYFIN_BASE_URL)
+            .remove("jellyfin_device_id")
             .remove(KEY_JELLYFIN_USERNAME)
             .remove(KEY_JELLYFIN_PASSWORD)
             .remove(KEY_JELLYFIN_TOKEN)
@@ -165,10 +173,11 @@ class MediaSourcePreferences(context: Context) {
             JellyfinConnection(
                 baseUrl = jellyfinBase,
                 username = preferences.getString(KEY_JELLYFIN_USERNAME, "").orEmpty(),
-                password = preferences.getString(KEY_JELLYFIN_PASSWORD, "").orEmpty(),
+                password = "",
                 accessToken = preferences.getString(KEY_JELLYFIN_TOKEN, "").orEmpty(),
                 userId = preferences.getString(KEY_JELLYFIN_USER_ID, "").orEmpty(),
-                serverName = preferences.getString(KEY_JELLYFIN_SERVER_NAME, "Jellyfin").orEmpty()
+                serverName = preferences.getString(KEY_JELLYFIN_SERVER_NAME, "Jellyfin").orEmpty(),
+                deviceId = preferences.getString("jellyfin_device_id", "").orEmpty()
             )
         }
         val webDavFolder = preferences.getString(KEY_WEBDAV_FOLDER_URL, "").orEmpty()

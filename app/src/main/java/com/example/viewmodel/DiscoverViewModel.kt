@@ -59,6 +59,11 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
             RemoteStreamHeadersRegistry.register(connection.folderUrl, WebDavMediaSourceClient.requestHeaders(connection))
         }
 
+    internal fun beginJellyfinAuthorization(): Long = ++sourceGeneration
+    internal suspend fun completeJellyfinAuthorization(generation: Long, connection: JellyfinConnection) {
+        commitJellyfin(generation, connection)
+    }
+
     suspend fun saveSourceProfile(name: String, kind: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         mediaSources.saveCurrentProfile(name, kind)
@@ -71,8 +76,9 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         val generation = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { ++sourceGeneration }
         val source = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { mediaSources.savedCredentials(id) }
         source.jellyfin?.let { saved ->
-            // Re-authenticate: a stale stored token is never treated as live authorization.
-            val verified = JellyfinMediaSourceClient.authenticate(saved.baseUrl, saved.username, saved.password).getOrThrow()
+            // Verify the existing device token. Revoked sessions require a fresh
+            // Quick Connect/password login, not a retained account password.
+            val verified = JellyfinMediaSourceClient.verifySession(saved)
             currentCoroutineContext().ensureActive()
             commitJellyfin(generation, verified)
         }
@@ -338,7 +344,7 @@ class DiscoverViewModel(application: Application) : AndroidViewModel(application
         val generation = ++sourceGeneration
         val result = runCatching {
             val connection = WebDavConnection(
-                folderUrl = folderUrl.trim(),
+                folderUrl = WebDavMediaSourceClient.normalizeFolderUrl(folderUrl),
                 username = username.trim(),
                 password = password,
                 displayName = displayName.trim().ifBlank { "WebDAV" }
