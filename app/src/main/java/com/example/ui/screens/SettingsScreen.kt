@@ -160,7 +160,7 @@ fun SettingsScreen(
             }
             SettingsCollapsibleSection(
                 title = "Connections",
-                subtitle = "Google Drive, Jellyfin and WebDAV",
+                subtitle = "Cloud drives, network folders and media servers",
                 expanded = showConnections,
                 onToggle = { showConnections = !showConnections }
             ) {

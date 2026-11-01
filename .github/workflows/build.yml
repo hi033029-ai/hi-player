@@ -56,6 +56,7 @@ jobs:
           --tests 'com.example.audio.MusicEqualizerTest'
           --tests 'com.example.data.NamedSettingsProfilesTest'
           --tests 'com.example.data.NetworkMediaPolicyTest'
+          --tests 'com.example.connections.StoragePolicyTest'
           --tests 'com.example.player.RemoteStreamHeadersRegistryTest'
           --tests 'com.example.ui.screens.BrowserAdvancedRulesTest'
 

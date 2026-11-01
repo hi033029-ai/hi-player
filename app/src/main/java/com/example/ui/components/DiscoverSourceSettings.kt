@@ -60,6 +60,7 @@ fun DiscoverSourceSettings(
     val palette = LocalHiPalette.current
     val account: com.example.auth.GoogleAccountViewModel = viewModel()
     val profile by account.profile.collectAsState()
+    var personalStorage by remember { mutableStateOf<String?>(null) }
     var showDrive by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(profile?.uid) {
@@ -84,17 +85,24 @@ fun DiscoverSourceSettings(
                     if (profile != null) "Browse videos & music · Authorize Drive when opening" else "Your cloud files · Sign in to connect",
                     onAction = { if (profile == null) showAccount = true else showDrive = true })
                 SourceDivider()
+                SourceRow(Icons.Default.Cloud, "OneDrive", "Personal Microsoft cloud storage · Read-only", onAction = { personalStorage = "onedrive" })
+                SourceDivider()
+                SourceRow(Icons.Default.Cloud, "Dropbox", "Your Dropbox files · Read-only", onAction = { personalStorage = "dropbox" })
+                SourceDivider()
+                SourceRow(Icons.Default.Storage, "Network folders (SMB)", "Shared folders on your NAS or computer", onAction = { personalStorage = "smb" })
+                SourceDivider()
                 SourceRow(Icons.Default.CloudDone, "Jellyfin",
                     sources.jellyfin?.let { "${it.serverName} · Browse library" } ?: "Your personal media server · Connect",
                     onAction = { if (sources.jellyfin?.isConfigured == true) browserKind = "jellyfin" else setup(SourceDialog.JELLYFIN) })
                 SourceDivider()
-                SourceRow(Icons.Default.Storage, "WebDAV",
+                SourceRow(Icons.Default.Storage, "WebDAV · Nextcloud / ownCloud",
                     sources.webDav?.let { "${it.displayName} · Browse folders" } ?: "Your online storage folder · Connect",
                     onAction = { if (sources.webDav?.isConfigured == true) browserKind = "webdav" else setup(SourceDialog.WEBDAV) })
             }
         }
         TextButton(onClick = { manage = true }) { Text("Manage Jellyfin & WebDAV") }
     }
+    personalStorage?.let { PersonalStorageBrowser(it, onDismiss = { personalStorage = null }, onPlay = onPlayMedia) }
     if (showAccount) GoogleAccountDialog(onDismiss = { showAccount = false }, onPlayDriveMedia = onPlayMedia, model = account)
     if (showDrive && profile != null) GoogleDriveBrowserSheet(onDismiss = { showDrive = false }, onPlay = onPlayMedia)
     browserKind?.let { kind ->
@@ -253,6 +261,10 @@ private fun WebDavSetupDialog(
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text("Enter the WebDAV folder address from your storage provider, not its website sign-in URL. Use a provider app password if required. Hi Player browses that folder for direct playback.", color = palette.textSecondary, fontSize = 12.sp)
                 Spacer(Modifier.height(8.dp))
+                Text("Provider setup", color = palette.textPrimary)
+                TextButton(enabled = !busy, onClick = { name = "Nextcloud" }) { Text("Nextcloud") }
+                TextButton(enabled = !busy, onClick = { name = "ownCloud" }) { Text("ownCloud") }
+                if (name == "Nextcloud" || name == "ownCloud") Text("In your $name web interface, open Files → Settings and copy the WebDAV address. Paste that full address below; it may include a server subfolder and your user ID. Use an app password when your provider requires one.", color = palette.textSecondary)
                 SourceTextField(url, { url = it }, "Folder URL", "https://cloud.example.com/remote.php/dav/files/me/Videos/", enabled = !busy)
                 Spacer(Modifier.height(6.dp))
                 SourceTextField(name, { name = it }, "Source name", enabled = !busy)
