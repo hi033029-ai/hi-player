@@ -121,7 +121,6 @@ fun SettingsScreen(
     var showThemes by rememberSaveable { mutableStateOf(false) }
     var showTextSize by rememberSaveable { mutableStateOf(false) }
     var showDecoder by rememberSaveable { mutableStateOf(false) }
-    var showProfiles by rememberSaveable { mutableStateOf(false) }
     var showPlayback by rememberSaveable { mutableStateOf(false) }
 
     BackHandler(onBack = onBack)
@@ -170,13 +169,6 @@ fun SettingsScreen(
                     modifier = Modifier.padding(horizontal = 0.dp)
                 )
             }
-
-            SettingsCollapsibleSection(
-                title = "Saved playback & theme profiles",
-                subtitle = "Named configurations, applied together",
-                expanded = showProfiles,
-                onToggle = { showProfiles = !showProfiles }
-            ) { com.example.ui.components.AdvancedProfiles() }
 
             // 1. Theme & Appearance (Horizontal Form)
             SettingsCollapsibleSection(

@@ -206,7 +206,7 @@ fun PlayerScreen(
     var guideHdrBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var guideRootOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_visual_guide_v2")
-    var isMuted by remember { mutableStateOf(false) }
+    val isMuted by playerViewModel.isMuted.collectAsState()
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
     var videoWidth by remember { mutableStateOf(0) }
@@ -780,10 +780,7 @@ fun PlayerScreen(
             onEnterPip = onEnterPip,
             onToggleBgPlay = { playerViewModel.playAsAudio(); onPlayAsAudio() },
             isMuted = isMuted,
-            onToggleMute = {
-                isMuted = !isMuted
-                playerViewModel.engine.getPlayer().volume = if (isMuted) 0f else 1f
-            },
+            onToggleMute = { playerViewModel.toggleMute() },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,

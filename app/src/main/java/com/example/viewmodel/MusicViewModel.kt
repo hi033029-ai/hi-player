@@ -110,7 +110,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val lyricsRepository = com.example.lyrics.LyricsRepository(application)
     private val _lyricsText = MutableStateFlow<String?>(null)
     val lyricsText = _lyricsText.asStateFlow()
-    private val _lyricsEnabled = MutableStateFlow(false)
+    private val _lyricsEnabled = MutableStateFlow(musicPrefs.getBoolean("lyrics_enabled_v1", false))
     val lyricsEnabled = _lyricsEnabled.asStateFlow()
     private val _currentLyricLineIndex = MutableStateFlow(-1)
     val currentLyricLineIndex = _currentLyricLineIndex.asStateFlow()
@@ -122,6 +122,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val lyricsRetryable = _lyricsRetryable.asStateFlow()
 
     fun setLyricsEnabled(enabled: Boolean) {
+        musicPrefs.edit().putBoolean("lyrics_enabled_v1", enabled).apply()
         _lyricsEnabled.value = enabled
         if (!enabled) {
             lyricsGeneration++
@@ -398,6 +399,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
                         .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album).build()).build()
             }
+            com.example.data.PlaybackLoudness.restoreForPlayback(getApplication())
             player.setMediaItems(items, playbackQueue.indexOfFirst { it.uri == track.uri }, 0L)
             player.repeatMode = Player.REPEAT_MODE_OFF
             player.shuffleModeEnabled = false
@@ -490,6 +492,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         progressJob = viewModelScope.launch {
             while (isActive) {
                 exoPlayer?.let { player ->
+                    if (player.isPlaying) com.example.data.PlaybackLoudness.capture(getApplication())
                     _currentPositionMs.value = player.currentPosition.coerceAtLeast(0L)
                     _durationMs.value = player.duration.coerceAtLeast(0L)
                 }
