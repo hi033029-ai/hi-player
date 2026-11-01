@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
@@ -57,6 +58,14 @@ fun DiscoverSourceSettings(
 ) {
     val sources by discoverViewModel.sourceSettings.collectAsState()
     val palette = LocalHiPalette.current
+    val account: com.example.auth.GoogleAccountViewModel = viewModel()
+    val profile by account.profile.collectAsState()
+    var showDrive by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(profile?.uid) {
+        showDrive = false
+        if (profile != null && showAccount) { showAccount = false; showDrive = true }
+    }
     var dialog by remember { mutableStateOf<SourceDialog?>(null) }
     var browserKind by remember { mutableStateOf<String?>(null) }
     var manage by remember { mutableStateOf(false) }
@@ -67,10 +76,14 @@ fun DiscoverSourceSettings(
         dialog = null; browserKind = kind
     }
     Column(modifier) {
-        Text("Optional connections to media you already own. No server? You can skip this section.",
+        Text("Connect your cloud storage or personal media server. These connections are optional.",
             color = palette.textSecondary, modifier = Modifier.padding(14.dp))
         Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)) {
             Column {
+                SourceRow(Icons.Default.Cloud, "Google Drive",
+                    if (profile != null) "Browse videos & music · Authorize Drive when opening" else "Your cloud files · Sign in to connect",
+                    onAction = { if (profile == null) showAccount = true else showDrive = true })
+                SourceDivider()
                 SourceRow(Icons.Default.CloudDone, "Jellyfin",
                     sources.jellyfin?.let { "${it.serverName} · Browse library" } ?: "Your personal media server · Connect",
                     onAction = { if (sources.jellyfin?.isConfigured == true) browserKind = "jellyfin" else setup(SourceDialog.JELLYFIN) })
@@ -80,8 +93,10 @@ fun DiscoverSourceSettings(
                     onAction = { if (sources.webDav?.isConfigured == true) browserKind = "webdav" else setup(SourceDialog.WEBDAV) })
             }
         }
-        TextButton(onClick = { manage = true }) { Text("Manage connections") }
+        TextButton(onClick = { manage = true }) { Text("Manage Jellyfin & WebDAV") }
     }
+    if (showAccount) GoogleAccountDialog(onDismiss = { showAccount = false }, onPlayDriveMedia = onPlayMedia, model = account)
+    if (showDrive && profile != null) GoogleDriveBrowserSheet(onDismiss = { showDrive = false }, onPlay = onPlayMedia)
     browserKind?.let { kind ->
         NetworkMediaBrowser(kind, discoverViewModel, onDismiss = { browserKind = null },
             onManage = { browserKind = null; manage = true }, onPlay = onPlayMedia)

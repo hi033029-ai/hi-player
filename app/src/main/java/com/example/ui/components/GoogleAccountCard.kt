@@ -33,7 +33,8 @@ private tailrec fun Context.accountActivity(): Activity? = when (this) {
 }
 
 @Composable
-internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {}, model: GoogleAccountViewModel = viewModel()) {
+internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {}, model: GoogleAccountViewModel = viewModel(),
+    includeDriveConnection: Boolean = true) {
     val palette = LocalHiPalette.current
     val context = LocalContext.current
     var showDrive by remember { mutableStateOf(false) }
@@ -71,7 +72,7 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
             }
             message?.let { Text(it, color = palette.textSecondary) }
             Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions remain browser-managed.", color = palette.textSecondary)
-            if (profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
+            if (includeDriveConnection && profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
 
         }
     }

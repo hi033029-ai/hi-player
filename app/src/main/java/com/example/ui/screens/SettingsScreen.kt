@@ -117,7 +117,7 @@ fun SettingsScreen(
     var showCustomTheme by rememberSaveable { mutableStateOf(settings.themeMode == AppThemeMode.CUSTOM) }
     var pendingPlaybackPermission by remember { mutableStateOf<String?>(null) }
     var showAccountSources by rememberSaveable { mutableStateOf(true) }
-    var showNetworkSources by rememberSaveable { mutableStateOf(false) }
+    var showConnections by rememberSaveable { mutableStateOf(false) }
     var showThemes by rememberSaveable { mutableStateOf(false) }
     var showTextSize by rememberSaveable { mutableStateOf(false) }
     var showDecoder by rememberSaveable { mutableStateOf(false) }
@@ -151,18 +151,18 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             SettingsCollapsibleSection(
-                title = "Google account & My Drive",
-                subtitle = "Your Hi Player profile and Google Drive",
+                title = "Google account",
+                subtitle = "Your Hi Player profile and sign-in",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
             ) {
-                com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia)
+                com.example.ui.components.GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia, includeDriveConnection = false)
             }
             SettingsCollapsibleSection(
-                title = "Network media (optional)",
-                subtitle = "Jellyfin libraries and WebDAV storage you already use",
-                expanded = showNetworkSources,
-                onToggle = { showNetworkSources = !showNetworkSources }
+                title = "Connections",
+                subtitle = "Google Drive, Jellyfin and WebDAV",
+                expanded = showConnections,
+                onToggle = { showConnections = !showConnections }
             ) {
                 DiscoverSourceSettings(
                     discoverViewModel = discoverViewModel,

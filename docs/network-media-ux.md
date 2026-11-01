@@ -4,7 +4,7 @@ Status: uncompiled. Tests authored, not executed. No device screenshots, live se
 
 ## Experience
 
-Settings keeps Google account / My Drive separate from a collapsed **Network media (optional)** section. Jellyfin and WebDAV are full-row, name-first entry points. No server or storage account is needed to use local playback.
+Settings has a separate Google account/profile section and one collapsed **Connections** card containing Google Drive, Jellyfin and WebDAV. All three are full-row, name-first entry points. Google Drive opens the existing account-verified Drive browser and requests its own authorization; Google sign-in alone is not presented as Drive access. Jellyfin/WebDAV profile management is available underneath. No server or storage account is needed to use local playback.
 
 - Tap an unconnected Jellyfin row: enter your server address → request a Quick Connect code → approve in an already signed-in Jellyfin app or web interface → open your native library in Hi Player. A user-triggered Custom Tab opens the server's web interface for approval; no WebView cookie/token scraping. Disabled/unsupported Quick Connect can use username/password instead.
 - Quick Connect polls every five seconds with a two-minute coroutine timeout. A blocking network request can take until its socket timeout to unwind; cancellation is checked before saving. Dismiss/Back cancels the setup job; approval already performed remotely is not undone.
