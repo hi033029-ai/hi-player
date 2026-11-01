@@ -215,16 +215,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
 
+    private val _scanStatus = MutableStateFlow(com.example.ui.components.LibraryScanStatus.IDLE)
+    val scanStatus = _scanStatus.asStateFlow()
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) {
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
         val result = try {
             withContext(Dispatchers.IO) { com.example.data.AudioMediaScanner.scan(getApplication()) }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (error: Exception) {
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Audio refresh unavailable; keeping library", error)
             return@CoalescingRefresh
         }
+        _scanStatus.value = if (result.complete) com.example.ui.components.LibraryScanStatus.COMPLETE
+            else com.example.ui.components.LibraryScanStatus.INCOMPLETE
         if (result.complete) {
             _audioList.value = withContext(Dispatchers.Default) { applySavedTrackOrder(result.tracks) }
             withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveAudio(getApplication(), result.tracks) }

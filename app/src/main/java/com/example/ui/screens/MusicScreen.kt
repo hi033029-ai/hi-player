@@ -127,6 +127,9 @@ fun MusicScreen(
     val context = LocalContext.current
     val palette = LocalHiPalette.current
     val audioList by musicViewModel.audioList.collectAsStateWithLifecycle()
+    val scanStatus by musicViewModel.scanStatus.collectAsStateWithLifecycle()
+    val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = true) { musicViewModel.loadAudioTracks() }
+    val swipeTip = com.example.ui.components.rememberFirstUseTip("music_library_swipe_v1")
     val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
     val searchQuery by musicViewModel.searchQuery.collectAsStateWithLifecycle()
@@ -204,8 +207,14 @@ fun MusicScreen(
 
         // Keep the toolbar outside the list so it remains available when a
         // library mode has no matching tracks (for example an empty playlist).
-        MusicLibraryAccess(onRefresh = { musicViewModel.loadAudioTracks() })
         audioToolbar()
+        if (mediaAccess.granted) {
+            com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your music",
+                "Swipe left or right across the library to move between Songs, Folders, Playlists, Albums and Artists. Tap a tab to jump straight there.",
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp))
+            if (audioList.isNotEmpty() || scanStatus != com.example.ui.components.LibraryScanStatus.SCANNING)
+                com.example.ui.components.LibraryScanFeedback(scanStatus, audioList.size, audio = true)
+        }
 
         // Track List
         androidx.compose.foundation.pager.HorizontalPager(
@@ -240,7 +249,11 @@ fun MusicScreen(
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (presentation == null) {
+            if (!mediaAccess.granted) {
+                com.example.ui.components.LibraryPermissionPanel(audio = true, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
+            } else if (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && audioList.isEmpty()) {
+                com.example.ui.components.LibraryScanFeedback(scanStatus, 0, audio = true, centered = true)
+            } else if (presentation == null) {
                 com.example.ui.components.ContentSkeleton(label = "Preparing music…",
                     layout = com.example.ui.components.SkeletonLayout.MEDIA_LIST)
             } else if (filteredList.isEmpty()) {

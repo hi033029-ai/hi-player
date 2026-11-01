@@ -1,0 +1,103 @@
+package com.example.ui.components
+
+import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.example.ui.screens.SplashScreen
+import com.example.ui.theme.HiPlayerTheme
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "w360dp-h640dp")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class FirstUseExperienceTest {
+    @get:Rule val compose = createComposeRule()
+    @Before fun clearTips() {
+        ApplicationProvider.getApplicationContext<Context>()
+            .getSharedPreferences("first_use_tips", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+    private fun screenshot(name: String) {
+        val directory = System.getProperty("hi.player.qa.dir") ?: return
+        val file = java.io.File(directory, "$name.png").apply { parentFile?.mkdirs() }
+        compose.onRoot().captureToImage().asAndroidBitmap().let { bitmap ->
+            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+    @Test fun permissionRecoveryOnlyOpensSettingsWhenTapped() {
+        var calls = 0
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            LibraryPermissionPanel(audio = false, onOpenSettings = { calls++ })
+        } } }
+        assertEquals(0, calls)
+        compose.onNodeWithTag("library_allow_access").assertIsDisplayed()
+        screenshot("permission-recovery")
+        compose.onNodeWithTag("library_allow_access").performClick()
+        assertEquals(1, calls)
+    }
+    @Test fun scanningShowsCircleAndOnlyActualCompletionShowsComplete() {
+        val status = mutableStateOf(LibraryScanStatus.SCANNING)
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            LibraryScanFeedback(status.value, 12, audio = true, centered = true)
+        } } }
+        compose.onNodeWithTag("library_scan_circle").assertExists()
+        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertDoesNotExist()
+        screenshot("scanning")
+        compose.runOnIdle { status.value = LibraryScanStatus.COMPLETE }
+        compose.onNodeWithTag("library_scan_circle").assertDoesNotExist()
+        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertExists()
+    }
+    @Test fun contextualTipIsDismissibleAndRemembered() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val state = FirstUseTipState(context, "test_player")
+        compose.setContent { HiPlayerTheme { FirstUseTip(state, "Video controls", "Double-tap left or right to seek.") } }
+        compose.onNodeWithText("Got it").performClick()
+        compose.onNodeWithTag("first_use_tip").assertDoesNotExist()
+        assertFalse(FirstUseTipState(context, "test_player").visible)
+    }
+    @Test fun hdrHelpOnlyAppearsWhenCustomisationIsOpened() {
+        val opened = mutableStateOf(false)
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            com.example.ui.HdrPresetMenu(visible = opened.value, selected = com.example.player.ColorPresets.CUSTOM,
+                onSelect = {}, customizing = true)
+        } } }
+        compose.onNodeWithText("Adjust only what you choose").assertDoesNotExist()
+        compose.runOnIdle { opened.value = true }
+        compose.onNodeWithText("Adjust only what you choose").assertIsDisplayed()
+        screenshot("hdr-customisation-help")
+        compose.onNodeWithText("Got it").performClick()
+        compose.onNodeWithText("Whole picture").assertIsDisplayed()
+    }
+    @Test fun skippingPermissionsFinishesSetupWithoutAnotherSetupPage() {
+        var finished = 0
+        compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> finished++ }) } }
+        compose.onNodeWithTag("welcome_continue_button").performClick()
+        compose.onNodeWithTag("theme_proceed_button").performClick()
+        compose.onNodeWithText("Not now").performClick()
+        assertEquals(1, finished)
+        compose.onNodeWithTag("onboarding_text_size_slider").assertDoesNotExist()
+    }
+    @Test fun welcomeSkipEntersAppWithoutRequestingPermissions() {
+        var skipped = 0
+        compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> }, onSkip = { skipped++ }) } }
+        compose.onNodeWithTag("welcome_skip_button").assertIsDisplayed()
+        screenshot("welcome")
+        compose.onNodeWithText("Make it yours").performScrollTo().assertIsDisplayed()
+        screenshot("welcome-features")
+        compose.onNodeWithTag("welcome_skip_button").performClick()
+        assertEquals(1, skipped)
+    }
+}

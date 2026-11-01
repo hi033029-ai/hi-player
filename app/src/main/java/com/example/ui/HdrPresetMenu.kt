@@ -3,12 +3,14 @@ package com.example.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,9 +52,16 @@ fun HdrPresetMenu(
             modifier = modifier
                 .fillMaxWidth(0.76f)
                 .widthIn(max = 320.dp)
+                .heightIn(max = 420.dp)
+                .verticalScroll(rememberScrollState())
                 .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
+            com.example.ui.components.FirstUseTip(
+                com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
+                "Adjust only what you choose",
+                "Whole-picture sliders affect the frame. Choose a colour below, then move its Light–Dark slider to adjust matching pixels only. The middle keeps the original colour.",
+                overVideo = true)
             Text("Customize HDR", color = Color.White, fontSize = 10.sp)
             Text("Whole picture", color = Color.White, fontSize = 9.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {

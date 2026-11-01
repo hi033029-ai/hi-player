@@ -10,6 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.core.animateFloatAsState
@@ -197,6 +201,7 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+    val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_gestures_v1")
     var isMuted by remember { mutableStateOf(false) }
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
@@ -501,8 +506,8 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls after 3 seconds of inactivity during playback
-    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning) {
-        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning) {
+    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning, playerTip.visible) {
+        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning && !playerTip.visible) {
             delay(3000)
             if (!isRatioTransitioning) areControlsVisible = false
         }
@@ -823,6 +828,13 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
+
+        if (firstFrameRendered && !isScreenLocked && areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer && activeSheet == ActiveSheet.NONE) {
+            com.example.ui.components.FirstUseTip(playerTip, "Your video controls",
+                "Double-tap the left or right side to seek 10 seconds; double-tap the centre to play or pause. Swipe up/down on the left for brightness or right for volume. Tap HDR for picture presets, then Customize for whole-picture and selected-colour controls.",
+                Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 68.dp)
+                    .widthIn(max = 460.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState()), overVideo = true)
+        }
 
         // Network streams can pause while the next media segment arrives. Keep
         // the feedback compact, centred, and strictly transient: it is visible

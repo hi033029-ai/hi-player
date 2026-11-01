@@ -223,6 +223,9 @@ private fun VideoLibraryPage(
     val selectedFolder = sharedFolder.takeIf { pageMode == LibraryNavMode.FOLDERS }
     val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
+    val scanStatus by libraryViewModel.scanStatus.collectAsStateWithLifecycle()
+    val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = false) { libraryViewModel.refreshVideos() }
+    val swipeTip = com.example.ui.components.rememberFirstUseTip("video_library_swipe_v1")
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
     val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
@@ -810,7 +813,7 @@ private fun VideoLibraryPage(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess && allVideos.any { it.isPartialDownload }) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -833,14 +836,20 @@ private fun VideoLibraryPage(
                     }
                 }
             }
-            if (isLoading && allVideos.isEmpty()) {
-                com.example.ui.components.ContentSkeleton(
-                    label = "Loading your library…",
-                    layout = if (viewMode == LibraryViewMode.GRADLE_GRID)
-                        com.example.ui.components.SkeletonLayout.MEDIA_GRID
-                    else com.example.ui.components.SkeletonLayout.MEDIA_LIST,
-                    gridMinSize = gridMinSize.dp,
-                )
+            if (mediaAccess.granted) {
+                if (isActive) com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your videos",
+                    "Swipe left or right across the library to move between Folders, All Videos, Recent, Tree Folders and Favourites. You can also tap the tabs.",
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
+                if (allVideos.isNotEmpty() || scanStatus != com.example.ui.components.LibraryScanStatus.SCANNING)
+                    com.example.ui.components.LibraryScanFeedback(scanStatus, allVideos.size, audio = false)
+            }
+            if (!mediaAccess.granted || (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty())) {
+                libraryControls()
+            }
+            if (!mediaAccess.granted) {
+                com.example.ui.components.LibraryPermissionPanel(audio = false, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
+            } else if (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty()) {
+                com.example.ui.components.LibraryScanFeedback(scanStatus, 0, audio = false, centered = true)
             } else if (
                 navMode == LibraryNavMode.FOLDERS &&
                     selectedFolder == null &&
@@ -864,7 +873,7 @@ private fun VideoLibraryPage(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = { video ->
-                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
                                         onOpenVideo(video)
                                     },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
@@ -899,7 +908,7 @@ private fun VideoLibraryPage(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = { video ->
-                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
                                         onOpenVideo(video)
                                     },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
@@ -941,7 +950,7 @@ private fun VideoLibraryPage(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = { video ->
-                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
                                         onOpenVideo(video)
                                     },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
@@ -1051,7 +1060,7 @@ private fun VideoLibraryPage(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = { video ->
-                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
                                         onOpenVideo(video)
                                     },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
@@ -1125,7 +1134,7 @@ private fun VideoLibraryPage(
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
                                     onVideoSelected = { video ->
-                                        onPlaybackQueueSelected(continueWatchingVideos)
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
                                         onOpenVideo(video)
                                     },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
