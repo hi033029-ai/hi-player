@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="48" android:viewportHeight="48">
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M18,6 Q19.5,5.7 21,6.7 L42,19.8 Q47,22.8 42,26 L21,40.9 Q19.5,42 18,41 V38 H16 V35 H18 V32 H16 V29 H18 V26 H16 V23 H18 V20 H16 V17 H18 V14 H16 V11 H18 Z M25,17 L35,23.5 L25,30 Z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M5,20h3v3h-3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,17h3v3h-3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,23h3v3h-3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M6,29h3v3h-3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M12,29h3v3h-3z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M9,35h3v3h-3z" />
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp" android:viewportWidth="48" android:viewportHeight="48">
+    <group android:scaleX="1" android:scaleY="1" android:translateX="-0.5625" android:translateY="0.0">
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M14,10 C14,6.5 17.5,5 20.5,6.8 L41,19.8 C44.5,21.8 44.5,26.2 41,28.2 L20.5,41.2 C17.5,43 14,41.5 14,38 V33 H17 V27 H14 V19 H17 V16 H14 Z M21,18 C21,16.6 21.8,16.2 23,17 L32.3,22.8 Q34,24 32.3,25.2 L23,31 C21.8,31.8 21,31.4 21,30 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M10.5,12.5h3v3h-3z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M5.5,15.5h3v3h-3z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M8.5,18.5h4v4h-4z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M10.5,27.5h3.5v3.5h-3.5z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M7.5,31h3v3h-3z" />
+    </group>
 </vector>
