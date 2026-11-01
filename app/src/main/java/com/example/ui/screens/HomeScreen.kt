@@ -219,7 +219,6 @@ private fun VideoLibraryPage(
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
-    val catalogMetadata by libraryViewModel.catalogMetadata.collectAsStateWithLifecycle()
     val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
     val deleteProgress by libraryViewModel.deleteProgress.collectAsStateWithLifecycle()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
@@ -982,9 +981,6 @@ private fun VideoLibraryPage(
                                 )
                             }
                             items(node.directVideos, key = { videoKey(it) }, contentType = { "video" }) { video ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -992,7 +988,6 @@ private fun VideoLibraryPage(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
@@ -1038,9 +1033,6 @@ private fun VideoLibraryPage(
                             contentType = { _, _ -> "video_grid_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoGridState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1048,7 +1040,6 @@ private fun VideoLibraryPage(
                                 VideoGridCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
@@ -1114,9 +1105,6 @@ private fun VideoLibraryPage(
                             contentType = { _, _ -> "video_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoListState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1124,7 +1112,6 @@ private fun VideoLibraryPage(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },

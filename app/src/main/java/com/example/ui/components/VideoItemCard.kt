@@ -60,7 +60,6 @@ import coil.request.ImageRequest
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
 import com.example.ui.theme.LocalHiPalette
-import com.example.viewmodel.LibraryCatalogMetadata
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -76,7 +75,6 @@ fun VideoItemCard(
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
-    catalogMetadata: LibraryCatalogMetadata? = null,
     modifier: Modifier = Modifier,
     reorderHandle: (@Composable () -> Unit)? = null,
 ) {
@@ -242,19 +240,6 @@ fun VideoItemCard(
                         )
                     }
 
-                    // Reserve one compact line before the asynchronous metadata
-                    // result arrives, so a card does not grow under the user's
-                    // finger and shift the Lazy list while they are scrolling.
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = catalogMetadata?.primaryLabel().orEmpty(),
-                        fontSize = 10.5.sp,
-                        color = palette.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        minLines = 1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
 
                     Spacer(modifier = Modifier.height(3.dp))
                     Row(
@@ -423,7 +408,6 @@ fun VideoGridCard(
     onRename: () -> Unit = {},
     onDelete: () -> Unit = {},
     progressFraction: Float = 0f,
-    catalogMetadata: LibraryCatalogMetadata? = null,
     modifier: Modifier = Modifier,
     reorderHandle: (@Composable () -> Unit)? = null,
 ) {
@@ -654,15 +638,6 @@ fun VideoGridCard(
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = catalogMetadata?.primaryLabel().orEmpty(),
-                        fontSize = 10.sp,
-                        color = palette.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        minLines = 1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
 
                     Spacer(modifier = Modifier.height(3.dp))
                     Row(
@@ -689,6 +664,3 @@ fun VideoGridCard(
         }
     }
 }
-
-private fun LibraryCatalogMetadata.primaryLabel(): String =
-    rating?.let { score -> "TMDB ★ %.1f".format(score) }.orEmpty()

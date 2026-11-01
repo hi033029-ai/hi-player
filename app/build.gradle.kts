@@ -1,10 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
-val tmdbReadAccessToken = System.getenv("TMDB_READ_ACCESS_TOKEN")
-  .orEmpty()
-  .replace("\\", "\\\\")
-  .replace("\"", "\\\"")
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -70,10 +65,6 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
-      // The current TMDB Developer Plan is personal-use only. Do not ship its
-      // credential in a public release APK. A public/commercial release needs
-      // TMDB's appropriate agreement and a controlled backend.
-      buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"\"")
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -81,8 +72,6 @@ android {
       // WebView glue without ART's optimizations or baseline profiles, which is
       // what made scrolling stutter, so the installable build is non-debuggable.
       isDebuggable = false
-      // Supplied by the secure task connector at build time; never committed.
-      buildConfigField("String", "TMDB_READ_ACCESS_TOKEN", "\"$tmdbReadAccessToken\"")
     }
   }
   compileOptions {
