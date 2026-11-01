@@ -188,7 +188,8 @@ fun SplashScreen(
                         selectedTheme = selectedTheme,
                         onComplete = {
                             currentStep = OnboardingStep.TEXT_SIZE
-                        }
+                        },
+                        onSkip = { finishOnce() },
                     )
                 }
 
@@ -354,9 +355,9 @@ private fun WelcomeNoteView(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(bottom = footerHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 28.dp)
-                .padding(bottom = footerHeight + 16.dp),
+                .padding(horizontal = 20.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -395,11 +396,11 @@ private fun WelcomeNoteView(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "Designed for high-bitrate 4K HDR playback, lossless audio, and clean file management.",
-                fontSize = 10.sp,
+                text = "Your videos, music, browser and files — together, with controls that make them yours.",
+                fontSize = 14.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center,
-                lineHeight = 13.sp
+                lineHeight = 20.sp
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -409,41 +410,18 @@ private fun WelcomeNoteView(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                FeatureRow(
-                    icon = Icons.Default.Tv,
-                    title = "Optimized 4K HDR & Wide Color",
-                    description = "True-to-life colors with hardware direct rendering (BT.2020 / HDR10)."
-                )
-
-                FeatureRow(
-                    icon = Icons.Default.Memory,
-                    title = "HW+, HW & SW Acceleration",
-                    description = "Flexible multi-mode decoders for stutter-free 60fps video playback."
-                )
-
-                FeatureRow(
-                    icon = Icons.Default.Headphones,
-                    title = "Hi-Fi Audio & Night Mode",
-                    description = "Background listening, dialogue booster, and equalizer support."
-                )
-
-                FeatureRow(
-                    icon = Icons.Default.Folder,
-                    title = "Universal File Explorer",
-                    description = "Clean media browser with instant subfolder navigation."
-                )
-
-                FeatureRow(
-                    icon = Icons.Default.Security,
-                    title = "Archives, APKs & Stream URLs",
-                    description = "Choose archive destinations, install APKs directly, and play valid video URLs."
-                )
-
-                FeatureRow(
-                    icon = Icons.Default.CheckCircle,
-                    title = "Continue Watching & Favorites",
-                    description = "Resume progress and keep library modes, views, sorting, and preferences between launches."
-                )
+                FeatureRow(Icons.Default.Tv, "Video, HDR & picture controls",
+                    "Play local videos and streams, resume watching, choose subtitles and adjust picture presets. Format and HDR support depend on your device.")
+                FeatureRow(Icons.Default.Headphones, "Music & background listening",
+                    "Browse songs, albums and folders, tune the equalizer, and listen with playback controls in notifications.")
+                FeatureRow(Icons.Default.Security, "Built-in browser",
+                    "Browse with tabs, ad and tracker filtering, supported-page skipping, downloads and Play in Hi Player. Website compatibility varies.")
+                FeatureRow(Icons.Default.Folder, "Files & personal connections",
+                    "Organise files, use the recycle bin and archive tools, and connect supported personal drives or media servers.")
+                FeatureRow(Icons.Default.Palette, "Make it yours",
+                    "Choose themes, text size, library views, sorting and playback settings. Helpful tips appear when you use each feature.")
+                FeatureRow(Icons.Default.CheckCircle, "Start your way",
+                    "Media access is optional. Skip setup to explore, then allow access from the library whenever you're ready.")
             }
         }
 
@@ -495,15 +473,15 @@ private fun FeatureRow(
                 Text(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.5.sp,
+                    fontSize = 15.sp,
                     color = Color(0xFF0C2133)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
-                    fontSize = 10.sp,
+                    fontSize = 14.sp,
                     color = Color(0xFF2C4A60),
-                    lineHeight = 13.sp
+                    lineHeight = 20.sp
                 )
             }
         }
@@ -714,7 +692,8 @@ private fun ThemeOptionCard(
 @Composable
 private fun PermissionsSetupView(
     selectedTheme: AppThemeMode,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onSkip: () -> Unit = onComplete,
 ) {
     val context = LocalContext.current
 
@@ -786,10 +765,10 @@ private fun PermissionsSetupView(
 
             Text(
                 text = "Allow media access to scan your library and notifications for playback controls. You can choose Not now and grant access later.",
-                fontSize = 10.sp,
+                fontSize = 14.sp,
                 color = Color(0xFF2C4A60),
                 textAlign = TextAlign.Center,
-                lineHeight = 13.sp
+                lineHeight = 20.sp
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -831,7 +810,7 @@ private fun PermissionsSetupView(
                 }
             },
             accent = accentColor, primaryEnabled = !requesting,
-            secondaryLabel = "Not now", onSecondary = onComplete, secondaryEnabled = !requesting,
+            secondaryLabel = "Not now", onSecondary = onSkip, secondaryEnabled = !requesting,
             primaryTag = "grant_permissions_button", message = permissionMessage,
         )
     }
@@ -876,15 +855,15 @@ private fun PermissionCard(
                 Text(
                     text = title,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.5.sp,
+                    fontSize = 15.sp,
                     color = Color(0xFF0C2133)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = description,
-                    fontSize = 10.sp,
+                    fontSize = 14.sp,
                     color = Color(0xFF2C4A60),
-                    lineHeight = 13.sp
+                    lineHeight = 20.sp
                 )
             }
         }

@@ -315,10 +315,10 @@ class MainActivity : FragmentActivity() {
                         if (currentScreen == AppScreen.Player) {
                             playerViewModel.saveCurrentProgress()
                             when {
-                                settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
+                                settings.autoPipEnabled && !playerViewModel.engine.isBackgroundPlayActive.value && playerViewModel.engine.isPlaying.value -> {
                                     enterPipMode()
                                 }
-                                settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value -> {
+                                playerViewModel.engine.isBackgroundPlayActive.value -> {
                                     // The player utility action explicitly opted into audio-only playback.
                                 }
                                 else -> playerViewModel.stopForNavigation()
@@ -338,6 +338,10 @@ class MainActivity : FragmentActivity() {
                                 PlayerScreen(
                                     playerViewModel = playerViewModel,
                                     videoQueue = videos,
+                                    onPlayAsAudio = {
+                                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                        currentScreen = AppScreen.Main
+                                    },
                                     currentThemeMode = settings.themeMode,
                                     onThemeSelected = { mode ->
                                         libraryViewModel.setThemeMode(mode)
@@ -352,10 +356,10 @@ class MainActivity : FragmentActivity() {
                                         // reachable without ever leaving the app. Stop playback
                                         // here unless the user opted into PiP or background audio.
                                         when {
-                                            settings.autoPipEnabled && playerViewModel.engine.isPlaying.value -> {
+                                            settings.autoPipEnabled && !playerViewModel.engine.isBackgroundPlayActive.value && playerViewModel.engine.isPlaying.value -> {
                                                 enterPipMode()
                                             }
-                                            settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value -> {
+                                            playerViewModel.engine.isBackgroundPlayActive.value -> {
                                                 // Intentionally left playing (audio-only is the point).
                                             }
                                             else -> {
@@ -451,6 +455,11 @@ class MainActivity : FragmentActivity() {
                                             NavTab.VIDEOS -> {
                                                 HomeScreen(
                                                     libraryViewModel = libraryViewModel,
+                                                    onPlaybackQueueSelected = { playerViewModel.setPlaybackQueue(it) },
+                                                    onPlayAsAudio = { video ->
+                                                        libraryViewModel.markVideoOpened(video)
+                                                        playerViewModel.playVideo(video, asAudio = true)
+                                                    },
                                                     onVideoSelected = { video ->
                                                         libraryViewModel.markVideoOpened(video)
                                                         playerViewModel.playVideo(video)
@@ -745,8 +754,8 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         when (intent.action) {
             PIP_ACTION_PLAY_PAUSE -> playerViewModel.togglePlayPause()
-            PIP_ACTION_PREVIOUS -> playerViewModel.playAdjacentVideo(libraryViewModel.allVideos.value, -1)
-            PIP_ACTION_NEXT -> playerViewModel.playAdjacentVideo(libraryViewModel.allVideos.value, 1)
+            PIP_ACTION_PREVIOUS -> playerViewModel.playAdjacentVideo(-1)
+            PIP_ACTION_NEXT -> playerViewModel.playAdjacentVideo(1)
             PIP_ACTION_CANCEL -> finishAndRemoveTask()
             else -> handleIntent(intent)
         }
@@ -848,7 +857,7 @@ class MainActivity : FragmentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val settings = libraryViewModel.playerSettings.value
-        if (playerViewModel.engine.isPlaying.value && settings.autoPipEnabled) {
+        if (playerViewModel.engine.isPlaying.value && !playerViewModel.engine.isBackgroundPlayActive.value && settings.autoPipEnabled) {
             enterPipMode()
         }
     }
@@ -869,8 +878,7 @@ class MainActivity : FragmentActivity() {
         // while entering Recents can recreate the activity and leave the GL
         // surface with a mismatched aspect transform when the app returns.
         playerViewModel.saveCurrentProgress()
-        val settings = libraryViewModel.playerSettings.value
-        if (!(settings.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
+        if (!playerViewModel.engine.isBackgroundPlayActive.value) {
             playerViewModel.pauseForAppBackground()
         }
     }
@@ -893,7 +901,7 @@ class MainActivity : FragmentActivity() {
         } else if (_browserPipActive.value) {
             _browserPipActive.value = false
             pipTransitionRequested = false
-        } else if (!(libraryViewModel.playerSettings.value.backgroundPlayEnabled && playerViewModel.engine.isBackgroundPlayActive.value)) {
+        } else if (!(playerViewModel.engine.isBackgroundPlayActive.value)) {
             pipTransitionRequested = false
             playerViewModel.stopForNavigation()
         }

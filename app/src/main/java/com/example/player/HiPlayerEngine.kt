@@ -476,7 +476,8 @@ class HiPlayerEngine(
         enableRemuxUltraBuffer: Boolean = false,
         enableTunneling: Boolean = false
     ) {
-        release()
+        val sessionPlayerBeforeRebuild = exoPlayer
+        release(forReplacement = true)
 
         val renderersFactory = DefaultRenderersFactory(context).apply {
             // ON keeps hardware decoding as the default and automatically adds
@@ -599,7 +600,8 @@ class HiPlayerEngine(
                 addListener(playerListener)
             }
         _playerInstance.value = exoPlayer
-        HiMediaSessionService.updatePlayer(exoPlayer)
+        HiMediaSessionService.replacePlayer(sessionPlayerBeforeRebuild, exoPlayer)
+        setBackgroundPlay(_isBackgroundPlayActive.value)
         setupLoudnessEnhancer()
         setupEqualizer()
         startProgressTracker()
@@ -728,6 +730,7 @@ class HiPlayerEngine(
         }
         val currentUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
         val currentMimeType = exoPlayer?.currentMediaItem?.localConfiguration?.mimeType
+        val currentTitle = exoPlayer?.currentMediaItem?.mediaMetadata?.title?.toString()
         val currentPos = exoPlayer?.currentPosition ?: 0L
         val isCurrentlyPlaying = exoPlayer?.isPlaying ?: false
 
@@ -745,7 +748,8 @@ class HiPlayerEngine(
                 uri = currentUri,
                 startPositionMs = currentPos,
                 autoPlay = isCurrentlyPlaying,
-                mediaMimeType = currentMimeType
+                mediaMimeType = currentMimeType,
+                mediaTitle = currentTitle,
             )
         }
     }
@@ -757,7 +761,8 @@ class HiPlayerEngine(
         externalSubtitleUri: Uri? = null,
         externalSubtitleMimeType: String? = null,
         mediaMimeType: String? = null,
-        resetDecoderRetry: Boolean = true
+        resetDecoderRetry: Boolean = true,
+        mediaTitle: String? = null,
     ) {
         _playerError.value = null
         if (uri != activeGrowingUri) {
@@ -780,7 +785,10 @@ class HiPlayerEngine(
         _availableSubtitleTracks.value = emptyList()
         _isHdrContent.value = false
         _is4kContent.value = false
+        val title = mediaTitle ?: exoPlayer?.currentMediaItem
+            ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
+            .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder().setTitle(title).build())
         if (!mediaMimeType.isNullOrBlank() && mediaMimeType != "video/*" && mediaMimeType != "*/*") {
             // Supplying the known MediaStore MIME type lets Media3 select the
             // right progressive extractor immediately instead of relying only
@@ -978,6 +986,10 @@ class HiPlayerEngine(
     /** Resumes only a stream that the activity lifecycle paused. */
     fun resumeAfterAppForeground() {
         val player = exoPlayer ?: return
+        if (HiMediaSessionService.sharedPlayer != null && HiMediaSessionService.sharedPlayer !== player) {
+            resumeAfterForeground = false
+            return
+        }
         if (resumeAfterForeground && _playerError.value == null && player.currentMediaItem != null) {
             player.play()
         }
@@ -993,7 +1005,7 @@ class HiPlayerEngine(
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
         resumeAfterForeground = false
-        _isBackgroundPlayActive.value = false
+        setBackgroundPlay(false)
         exoPlayer?.let {
             it.playWhenReady = false
             it.stop()
@@ -1045,6 +1057,9 @@ class HiPlayerEngine(
 
     fun setBackgroundPlay(enabled: Boolean) {
         _isBackgroundPlayActive.value = enabled
+        val selector = trackSelector ?: return
+        selector.setParameters(selector.buildUponParameters()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled))
     }
 
     fun setAbRepeatA() {
@@ -1345,7 +1360,8 @@ class HiPlayerEngine(
         }
     }
 
-    fun release() {
+    fun release(forReplacement: Boolean = false) {
+        if (!forReplacement) HiMediaSessionService.detachPlayer(exoPlayer)
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null

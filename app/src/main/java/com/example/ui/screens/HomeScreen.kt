@@ -152,7 +152,9 @@ fun HomeScreen(
     onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
     modifier: Modifier = Modifier,
     includeHeader: Boolean = true,
-    onSearchRequested: (() -> Unit)? = null
+    onSearchRequested: (() -> Unit)? = null,
+    onPlaybackQueueSelected: (List<VideoItem>) -> Unit = {},
+    onPlayAsAudio: (VideoItem) -> Unit = {},
 ) {
     val activeMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
     val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
@@ -184,6 +186,8 @@ fun HomeScreen(
                 scope.launch { pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0)) }
             },
             onSelectionChanged = { if (pager.settledPage == page) selectionActive = it },
+            onPlaybackQueueSelected = onPlaybackQueueSelected,
+            onPlayAsAudio = onPlayAsAudio,
         )
     }
 }
@@ -192,8 +196,8 @@ fun HomeScreen(
 @Composable
 private fun VideoLibraryPage(
     libraryViewModel: LibraryViewModel,
-    onVideoSelected: (VideoItem) -> Unit,
-    onPlayFromStart: (VideoItem) -> Unit,
+    onOpenVideo: (VideoItem) -> Unit,
+    onOpenFromStart: (VideoItem) -> Unit,
     onOpenSettings: () -> Unit,
     onMoveVideosToRecycleBin: (Collection<VideoItem>) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -203,6 +207,8 @@ private fun VideoLibraryPage(
     isActive: Boolean,
     onModeSelected: (LibraryNavMode) -> Unit,
     onSelectionChanged: (Boolean) -> Unit,
+    onPlaybackQueueSelected: (List<VideoItem>) -> Unit,
+    onPlayAsAudio: (VideoItem) -> Unit,
 ) {
     val context = LocalContext.current
     val allVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
@@ -217,9 +223,11 @@ private fun VideoLibraryPage(
     val selectedFolder = sharedFolder.takeIf { pageMode == LibraryNavMode.FOLDERS }
     val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
     val isLoading by libraryViewModel.isLoading.collectAsStateWithLifecycle()
+    val scanStatus by libraryViewModel.scanStatus.collectAsStateWithLifecycle()
+    val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = false) { libraryViewModel.refreshVideos() }
+    val swipeTip = com.example.ui.components.rememberFirstUseTip("video_library_swipe_v1")
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
     val continueWatchingVideos by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
-    val catalogMetadata by libraryViewModel.catalogMetadata.collectAsStateWithLifecycle()
     val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
     val deleteProgress by libraryViewModel.deleteProgress.collectAsStateWithLifecycle()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
@@ -261,6 +269,20 @@ private fun VideoLibraryPage(
     // Filtering, sorting and saved-order application already completed off-main.
     val orderedFilteredVideos = filteredVideos
     val currentOrderedVideos = rememberUpdatedState(orderedFilteredVideos)
+    val displayedQueue = if (navMode == LibraryNavMode.TREE_FOLDERS)
+        currentTreeNode?.directVideos.orEmpty() else orderedFilteredVideos
+    val onVideoSelected: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onOpenVideo(video)
+    }
+    val onPlayFromStart: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onOpenFromStart(video)
+    }
+    val onAudioSelected: (VideoItem) -> Unit = { video ->
+        onPlaybackQueueSelected(displayedQueue)
+        onPlayAsAudio(video)
+    }
     var hasFullDownloadAccess by remember { mutableStateOf(StoragePermission.isGranted()) }
     val allFilesAccessLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -791,7 +813,7 @@ private fun VideoLibraryPage(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess && allVideos.any { it.isPartialDownload }) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -814,14 +836,20 @@ private fun VideoLibraryPage(
                     }
                 }
             }
-            if (isLoading && allVideos.isEmpty()) {
-                com.example.ui.components.ContentSkeleton(
-                    label = "Loading your library…",
-                    layout = if (viewMode == LibraryViewMode.GRADLE_GRID)
-                        com.example.ui.components.SkeletonLayout.MEDIA_GRID
-                    else com.example.ui.components.SkeletonLayout.MEDIA_LIST,
-                    gridMinSize = gridMinSize.dp,
-                )
+            if (mediaAccess.granted) {
+                if (isActive) com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your videos",
+                    "Swipe left or right across the library to move between Folders, All Videos, Recent, Tree Folders and Favourites. You can also tap the tabs.",
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
+                if (allVideos.isNotEmpty() || scanStatus != com.example.ui.components.LibraryScanStatus.SCANNING)
+                    com.example.ui.components.LibraryScanFeedback(scanStatus, allVideos.size, audio = false)
+            }
+            if (!mediaAccess.granted || (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty())) {
+                libraryControls()
+            }
+            if (!mediaAccess.granted) {
+                com.example.ui.components.LibraryPermissionPanel(audio = false, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
+            } else if (scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING && allVideos.isEmpty()) {
+                com.example.ui.components.LibraryScanFeedback(scanStatus, 0, audio = false, centered = true)
             } else if (
                 navMode == LibraryNavMode.FOLDERS &&
                     selectedFolder == null &&
@@ -844,7 +872,10 @@ private fun VideoLibraryPage(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -876,7 +907,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -915,7 +949,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -982,9 +1019,6 @@ private fun VideoLibraryPage(
                                 )
                             }
                             items(node.directVideos, key = { videoKey(it) }, contentType = { "video" }) { video ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -992,14 +1026,13 @@ private fun VideoLibraryPage(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav ->
                                         libraryViewModel.toggleFavorite(video, isFav)
                                     },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video }
                                 )
@@ -1026,7 +1059,10 @@ private fun VideoLibraryPage(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -1038,9 +1074,6 @@ private fun VideoLibraryPage(
                             contentType = { _, _ -> "video_grid_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoGridState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1048,12 +1081,11 @@ private fun VideoLibraryPage(
                                 VideoGridCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video },
                                     onRename = {
@@ -1101,7 +1133,10 @@ private fun VideoLibraryPage(
                             item {
                                 ContinueWatchingStrip(
                                     items = continueWatchingVideos,
-                                    onVideoSelected = onVideoSelected,
+                                    onVideoSelected = { video ->
+                                        onPlaybackQueueSelected(continueWatchingVideos.map { it.video })
+                                        onOpenVideo(video)
+                                    },
                                     onRemove = { libraryViewModel.removeFromContinueWatching(it) },
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                                 )
@@ -1114,9 +1149,6 @@ private fun VideoLibraryPage(
                             contentType = { _, _ -> "video_item" }
                         ) { _, video ->
                             ReorderableItem(reorderableVideoListState, key = videoKey(video)) { isDragging ->
-                                LaunchedEffect(videoKey(video), isActive) {
-                                    if (isActive) libraryViewModel.requestCatalogMetadata(video)
-                                }
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
                                     (record.lastPositionMs.toFloat() / record.durationMs.toFloat()).coerceIn(0f, 1f)
@@ -1124,12 +1156,11 @@ private fun VideoLibraryPage(
                                 VideoItemCard(
                                     video = video.copy(isFavorite = record?.isFavorite ?: false),
                                     progressFraction = progressFraction,
-                                    catalogMetadata = catalogMetadata[videoKey(video)],
                                     isSelected = selectedVideoPaths.contains(videoKey(video)),
                                     onClick = { if (selectionMode) toggleVideoSelection(video) else onVideoSelected(video) },
                                     onLongClick = { toggleVideoSelection(video) },
                                     onFavoriteToggle = { isFav -> libraryViewModel.toggleFavorite(video, isFav) },
-                                    onPlayInBackground = { onVideoSelected(video) },
+                                    onPlayInBackground = { onAudioSelected(video) },
                                     onPlayFromStart = { onPlayFromStart(video) },
                                     onShowDetails = { inspectVideo = video },
                                     onRename = {

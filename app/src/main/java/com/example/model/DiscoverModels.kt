@@ -2,56 +2,6 @@ package com.example.model
 
 import android.net.Uri
 
-enum class DiscoverMediaType {
-    MOVIE,
-    TV
-}
-
-enum class DiscoverCatalogSource {
-    TMDB
-}
-
-data class DiscoverTitle(
-    val catalogId: Long,
-    val mediaType: DiscoverMediaType,
-    val title: String,
-    val overview: String,
-    val releaseYear: String? = null,
-    val posterUrl: String? = null,
-    val backdropUrl: String? = null,
-    val rating: Double? = null,
-    val language: String? = null,
-    val catalogSource: DiscoverCatalogSource = DiscoverCatalogSource.TMDB,
-)
-
-data class DiscoverSeason(
-    val seasonNumber: Int,
-    val name: String,
-    val episodeCount: Int = 0,
-    val posterUrl: String? = null,
-)
-
-data class DiscoverCastMember(
-    val id: Long,
-    val name: String,
-    val character: String? = null,
-    val profileUrl: String? = null,
-)
-
-data class DiscoverDetails(
-    val title: DiscoverTitle,
-    val runtimeMinutes: Int? = null,
-    val genres: List<String> = emptyList(),
-    val seasons: List<DiscoverSeason> = emptyList(),
-    val cast: List<DiscoverCastMember> = emptyList(),
-)
-
-data class DiscoverHomeSection(
-    val id: String,
-    val title: String,
-    val titles: List<DiscoverTitle>,
-)
-
 data class JellyfinConnection(
     val baseUrl: String,
     val username: String,
@@ -132,19 +82,3 @@ data class RemoteMediaMatch(
         thumbnailUrl = artworkUrl,
     )
 }
-
-data class DiscoverUiState(
-    val query: String = "",
-    val isLoading: Boolean = false,
-    val isLoadingHome: Boolean = false,
-    val isBrowsingGoogleDrive: Boolean = false,
-    val homeSections: List<DiscoverHomeSection> = emptyList(),
-    val results: List<DiscoverTitle> = emptyList(),
-    val googleDriveFiles: List<RemoteMediaMatch> = emptyList(),
-    val googleDriveMessage: String? = null,
-    val selectedDetails: DiscoverDetails? = null,
-    val sourceMatches: List<RemoteMediaMatch> = emptyList(),
-    val isSearchingSources: Boolean = false,
-    val errorMessage: String? = null,
-    val sourceMessage: String? = null,
-)

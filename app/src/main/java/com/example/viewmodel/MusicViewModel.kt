@@ -215,16 +215,22 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
 
+    private val _scanStatus = MutableStateFlow(com.example.ui.components.LibraryScanStatus.IDLE)
+    val scanStatus = _scanStatus.asStateFlow()
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) {
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
         val result = try {
             withContext(Dispatchers.IO) { com.example.data.AudioMediaScanner.scan(getApplication()) }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (error: Exception) {
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Audio refresh unavailable; keeping library", error)
             return@CoalescingRefresh
         }
+        _scanStatus.value = if (result.complete) com.example.ui.components.LibraryScanStatus.COMPLETE
+            else com.example.ui.components.LibraryScanStatus.INCOMPLETE
         if (result.complete) {
             _audioList.value = withContext(Dispatchers.Default) { applySavedTrackOrder(result.tracks) }
             withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveAudio(getApplication(), result.tracks) }
@@ -278,6 +284,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onAudioSessionIdChanged(audioSessionId: Int) {
                     applyMusicEqualizer(audioSessionId)
                 }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val track = playbackQueue.getOrNull(currentMediaItemIndex) ?: return
+                    _currentTrack.value = track
+                    _currentPositionMs.value = 0L
+                    _durationMs.value = track.durationMs
+                    clearLyrics()
+                    if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
+                }
+
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.value = playing
                     if (playing) {
@@ -290,8 +305,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
                         _durationMs.value = duration.coerceAtLeast(0L)
-                    } else if (playbackState == Player.STATE_ENDED) {
-                        playNext()
                     }
                 }
             })
@@ -351,19 +364,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun playTrack(track: AudioItem) {
+    private var playbackQueue: List<AudioItem> = emptyList()
+
+    fun playTrack(track: AudioItem, queue: List<AudioItem> = audioList.value) {
+        playbackQueue = com.example.player.PlaybackQueue.snapshot(queue) { it.uri.toString() }
+            .takeIf { items -> items.any { it.uri == track.uri } } ?: listOf(track)
         _currentTrack.value = track
-        clearLyrics()
         _isFullScreenPlayerOpen.value = true
-        // Respect the user's Lyrics choice across Next/Previous; don't request lyrics while off.
-        if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
+        clearLyrics()
         exoPlayer?.let { player ->
             player.stop()
-            player.clearMediaItems()
-            val mediaItem = MediaItem.fromUri(track.uri)
-            player.setMediaItem(mediaItem)
+            val items = playbackQueue.map { item ->
+                MediaItem.Builder().setUri(item.uri).setMediaId(item.uri.toString())
+                    .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album).build()).build()
+            }
+            player.setMediaItems(items, playbackQueue.indexOfFirst { it.uri == track.uri }, 0L)
+            player.repeatMode = Player.REPEAT_MODE_OFF
+            player.shuffleModeEnabled = false
             player.prepare()
             player.play()
+            com.example.player.HiMediaSessionService.startPlayback(getApplication(), player)
         }
     }
 
@@ -387,24 +408,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playNext() {
-        val list = audioList.value
-        val current = _currentTrack.value ?: return
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex != -1 && list.isNotEmpty()) {
-            val nextIndex = (currentIndex + 1) % list.size
-            playTrack(list[nextIndex])
-        }
+        exoPlayer?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
     }
 
     fun playPrevious() {
-        val list = audioList.value
-        val current = _currentTrack.value ?: return
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex > 0) {
-            playTrack(list[currentIndex - 1])
-        } else if (list.isNotEmpty()) {
-            playTrack(list.last())
-        }
+        exoPlayer?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
     }
 
     fun setSearchQuery(query: String) {
@@ -477,6 +485,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().contentResolver.unregisterContentObserver(audioObserver)
         progressJob?.cancel()
         musicEqualizer.close()
+        com.example.player.HiMediaSessionService.detachPlayer(exoPlayer)
         exoPlayer?.release()
         exoPlayer = null
     }

@@ -10,6 +10,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.core.animateFloatAsState
@@ -105,6 +109,7 @@ fun PlayerScreen(
     videoQueue: List<VideoItem> = emptyList(),
     onBack: () -> Unit,
     onEnterPip: () -> Unit,
+    onPlayAsAudio: () -> Unit = {},
     currentThemeMode: com.example.data.AppThemeMode = com.example.data.AppThemeMode.CYAN_NEON_DARK,
     onThemeSelected: (com.example.data.AppThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
@@ -196,6 +201,7 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+    val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_gestures_v1")
     var isMuted by remember { mutableStateOf(false) }
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember { mutableStateOf(false) }
@@ -215,6 +221,10 @@ fun PlayerScreen(
     var showAccount by remember { mutableStateOf(false) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = showHdrPresetMenu || showHdrCustomizer) {
+        showHdrPresetMenu = false
+        showHdrCustomizer = false
+    }
     var equalizerInteractionTick by remember { mutableStateOf(0) }
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
@@ -275,18 +285,7 @@ fun PlayerScreen(
         }
     }
 
-    // Preserve the library's displayed/saved ordering, but never leave this exact folder.
-    fun playAdjacentVideo(step: Int) {
-        val current = currentVideo ?: return
-        val next = com.example.player.FolderPlaybackQueue.adjacent(current, videoQueue, step) ?: return
-        playerViewModel.playVideo(next)
-    }
-
-    val onEnded by rememberUpdatedState(newValue = { playAdjacentVideo(1) })
-    DisposableEffect(playerViewModel.engine) {
-        playerViewModel.engine.onVideoEnded = { onEnded() }
-        onDispose { playerViewModel.engine.onVideoEnded = null }
-    }
+    fun playAdjacentVideo(step: Int) = playerViewModel.playAdjacentVideo(step)
 
     // File picker for opening a local video.
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -378,7 +377,8 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrInteractionTick) {
-        if (showHdrPresetMenu || showHdrCustomizer) {
+        // Customisation and its first-use guide stay open until explicitly closed.
+        if (showHdrPresetMenu && !showHdrCustomizer) {
             delay(3_000)
             showHdrPresetMenu = false
             showHdrCustomizer = false
@@ -511,8 +511,8 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls after 3 seconds of inactivity during playback
-    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning) {
-        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning) {
+    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning, playerTip.visible, showHdrPresetMenu, showHdrCustomizer) {
+        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning && !playerTip.visible && !showHdrPresetMenu && !showHdrCustomizer) {
             delay(3000)
             if (!isRatioTransitioning) areControlsVisible = false
         }
@@ -635,6 +635,7 @@ fun PlayerScreen(
         )
 
         HdrPresetMenu(
+            onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
             customPreset = customHdrPreset,
@@ -646,22 +647,12 @@ fun PlayerScreen(
                 val savedIntensity = hdrColorIntensities[it] ?: 0.5f
                 hdrColorIntensity = savedIntensity
                 hdrInteractionTick++
-                val nextPreset = customHdrPreset.copy(
-                    name = ColorPresets.CUSTOM.name,
-                    targetHue = -1f,
-                    red = 1f,
-                    green = 1f,
-                    blue = 1f,
-                    targetAdjustments = hdrColorTargetAdjustments(hdrColorIntensities),
-                )
-                customHdrPreset = nextPreset
-                playerViewModel.engine.setHdrColorPreset(nextPreset)
-                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
+                // Selecting a swatch only selects its controls. It must not tint the
+                // picture, reset global controls or enable HDR by itself.
             },
             onColorIntensityChange = { intensity ->
                 hdrInteractionTick++
                 hdrColorIntensity = intensity
-                hdrColorIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 hdrColorIntensities = updatedIntensities
                 val nextPreset = customHdrPreset.copy(
@@ -782,7 +773,7 @@ fun PlayerScreen(
             onZoomIn = { playerViewModel.zoomIn() },
             onZoomOut = { playerViewModel.zoomOut() },
             onEnterPip = onEnterPip,
-            onToggleBgPlay = { playerViewModel.engine.setBackgroundPlay(!isBgPlayActive) },
+            onToggleBgPlay = { playerViewModel.playAsAudio(); onPlayAsAudio() },
             isMuted = isMuted,
             onToggleMute = {
                 isMuted = !isMuted
@@ -843,6 +834,13 @@ fun PlayerScreen(
                 showSpeedOverlay = true
             }
         )
+
+        if (firstFrameRendered && !isScreenLocked && areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer && activeSheet == ActiveSheet.NONE) {
+            com.example.ui.components.FirstUseTip(playerTip, "Your video controls",
+                "Double-tap the left or right side to seek 10 seconds; double-tap the centre to play or pause. Swipe up/down on the left for brightness or right for volume. Tap HDR for picture presets, then Customize for whole-picture and selected-colour controls.",
+                Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 68.dp)
+                    .widthIn(max = 460.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState()), overVideo = true)
+        }
 
         // Network streams can pause while the next media segment arrives. Keep
         // the feedback compact, centred, and strictly transient: it is visible
@@ -1098,13 +1096,8 @@ private fun computeVideoRatioScale(
 private fun hdrColorTargetAdjustments(
     intensities: Map<HdrColor, Float>
 ): List<ColorTargetAdjustment> {
-    return intensities.map { (color, intensity) ->
-        ColorTargetAdjustment(
-            hue = hdrColorHue(color.color),
-            red = (1f + (color.color.red - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-            green = (1f + (color.color.green - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-            blue = (1f + (color.color.blue - 0.5f) * intensity).coerceIn(0.5f, 1.5f),
-        )
+    return intensities.mapNotNull { (color, intensity) ->
+        com.example.player.selectiveExposureAdjustment(hdrColorHue(color.color), intensity)
     }
 }
 

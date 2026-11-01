@@ -115,7 +115,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var playRequestJob: Job? = null
 
     init {
-        HiMediaSessionService.updatePlayer(engine.getPlayer())
+        engine.onVideoEnded = { playAdjacentVideo(1) }
         startProgressSync()
 
         // The app-level HDR setting previously only changed DataStore. Observe
@@ -156,7 +156,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun playVideo(video: VideoItem, startPositionOverride: Long? = null) {
+    private var playbackQueue: List<VideoItem> = emptyList()
+    private var pendingPlaybackQueue: List<VideoItem>? = null
+
+    fun setPlaybackQueue(items: List<VideoItem>) {
+        pendingPlaybackQueue = com.example.player.PlaybackQueue.snapshot(items) { it.uri.toString() }
+    }
+
+    fun playVideo(video: VideoItem, startPositionOverride: Long? = null,
+                  asAudio: Boolean = false, continueQueue: Boolean = false) {
+        saveCurrentProgress()
+        engine.pause()
+        if (!continueQueue) {
+            playbackQueue = pendingPlaybackQueue?.takeIf { items -> items.any { it.uri == video.uri } }
+                ?: listOf(video)
+        }
+        pendingPlaybackQueue = null
+        engine.setBackgroundPlay(asAudio)
         playRequestJob?.cancel()
         _currentVideo.value = video
         _showStartOverPrompt.value = false
@@ -176,11 +192,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             // applyConfiguration creates a fresh ExoPlayer, so reapply the
             // persisted picture mode to the replacement instance.
             engine.setHdrEnhanceActive(settings.enableHdrEnhance)
-            HiMediaSessionService.updatePlayer(engine.getPlayer())
 
             val record = recordDeferred.await()
             val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
-            _showStartOverPrompt.value = startPositionOverride == null && startPos >= 10_000L
+            _showStartOverPrompt.value = !engine.isBackgroundPlayActive.value && startPositionOverride == null && startPos >= 10_000L
 
             // Restore the saved ratio before preparing the new item. Previously
             // this happened after prepareMedia, so a quick tap on resize could
@@ -193,8 +208,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             engine.prepareMedia(
                 uri = video.uri,
                 startPositionMs = startPos,
-                mediaMimeType = video.mimeType
+                mediaMimeType = video.mimeType,
+                mediaTitle = video.title,
             )
+            engine.getPlayer().let { player ->
+                HiMediaSessionService.startPlayback(getApplication(), player,
+                    onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
+            }
 
         }
     }
@@ -231,19 +251,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun playCurrentVideoFromStart() {
         _showStartOverPrompt.value = false
-        _currentVideo.value?.let { playVideo(it, startPositionOverride = 0L) }
+        _currentVideo.value?.let { playVideo(it, startPositionOverride = 0L, continueQueue = true) }
     }
 
     fun dismissStartOverPrompt() {
         _showStartOverPrompt.value = false
     }
 
-    fun playAdjacentVideo(queue: List<VideoItem>, step: Int) {
+    fun playAdjacentVideo(step: Int) {
         val current = _currentVideo.value ?: return
-        if (queue.size < 2) return
-        val index = queue.indexOfFirst { it.uri == current.uri }
-        if (index < 0) return
-        playVideo(queue[(index + step + queue.size) % queue.size])
+        val next = com.example.player.PlaybackQueue.adjacent(current, playbackQueue, step) { it.uri.toString() }
+            ?: return
+        playVideo(next, startPositionOverride = 0L, asAudio = engine.isBackgroundPlayActive.value, continueQueue = true)
+    }
+
+    fun playAsAudio() {
+        closeSheet()
+        _showStartOverPrompt.value = false
+        engine.setBackgroundPlay(true)
+        // Keep the existing position and decoder; this is not a new navigation.
+        if (playRequestJob?.isActive == true) return
+        engine.getPlayer().let { player ->
+            player.play()
+            HiMediaSessionService.startPlayback(getApplication(), player,
+                onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
+        }
     }
 
     // Zoom Controls

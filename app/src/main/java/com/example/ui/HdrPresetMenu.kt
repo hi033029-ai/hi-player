@@ -3,12 +3,14 @@ package com.example.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -37,9 +40,10 @@ fun HdrPresetMenu(
     onCustomize: () -> Unit = {},
     onCustomPresetChange: (ColorPreset) -> Unit = {},
     selectedColor: HdrColor = HdrColor.RED,
-    colorIntensity: Float = 1f,
+    colorIntensity: Float = 0.5f,
     onColorSelected: (HdrColor) -> Unit = {},
     onColorIntensityChange: (Float) -> Unit = {},
+    onClose: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
@@ -50,10 +54,22 @@ fun HdrPresetMenu(
             modifier = modifier
                 .fillMaxWidth(0.76f)
                 .widthIn(max = 320.dp)
+                .heightIn(max = 420.dp)
+                .verticalScroll(rememberScrollState())
                 .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 7.dp, vertical = 5.dp),
         ) {
-            Text("Customize HDR", color = Color.White, fontSize = 10.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Customize HDR", color = Color.White, fontSize = 14.sp)
+                TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+            }
+            com.example.ui.components.FirstUseTip(
+                com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
+                "Adjust only what you choose",
+                "Whole-picture sliders affect the frame. Choose a colour below, then move its Light–Dark slider to adjust matching pixels only. The middle keeps the original colour.",
+                overVideo = true)
+            Text("Whole picture", color = Color.White, fontSize = 9.sp)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
@@ -71,7 +87,7 @@ fun HdrPresetMenu(
                 }
             }
             Text(
-                text = "Color intensity • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                text = "Selected colour only • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
                 color = selectedColor.color,
                 fontSize = 9.sp,
             )
@@ -107,6 +123,7 @@ fun HdrPresetMenu(
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Light", color = Color.White, fontSize = 8.sp)
+                Text("Original", color = Color.White, fontSize = 8.sp)
                 Text("Dark", color = Color.White, fontSize = 8.sp)
             }
         }

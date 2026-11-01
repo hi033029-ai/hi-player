@@ -16,12 +16,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.MediaScanner
 import com.example.data.PlayerPreferencesRepository
-import com.example.data.PublicCatalogClient
 import com.example.db.HiPlayerDatabase
 import com.example.db.PlaylistEntity
 import com.example.db.VideoEntity
-import com.example.model.DiscoverMediaType
-import com.example.model.DiscoverTitle
 import com.example.model.PendingDownloadFormat
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
@@ -39,8 +36,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -98,15 +93,6 @@ data class TreeFolderNode(
     val hasNewVideo: Boolean = false
 )
 
-/**
- * A concise TMDB rating shown beneath a local file title. This is an in-memory
- * display cache only: it never changes a file name, folder, playback URI, or
- * local library record.
- */
-data class LibraryCatalogMetadata(
-    val rating: Double? = null,
-)
-
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     data class DeleteProgress(val total: Int, val completed: Int, val failed: Int)
     private var downloadsObserver: FileObserver? = null
@@ -159,131 +145,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .apply()
     }
 
-    /**
-     * Resolves a concise rating for a local file. Results remain in memory only
-     * and requests are deduplicated per file for this app session.
-     */
-    fun requestCatalogMetadata(video: VideoItem) {
-        if (video.isPartialDownload || video.uri == Uri.EMPTY) return
-        val key = video.path.ifBlank { video.uri.toString() }
-        if (key.isBlank() || key in catalogMetadataRequests || key in _catalogMetadata.value) return
-        if ((catalogMetadataRetryAfter[key] ?: 0L) > System.currentTimeMillis()) return
-        val lookup = parseLibraryTitle(video.title) ?: return
-        catalogMetadataRequests += key
-        viewModelScope.launch {
-            val metadata = catalogMetadataSemaphore.withPermit {
-                runCatching {
-                    val desiredType = if (lookup.seasonNumber != null) DiscoverMediaType.TV else DiscoverMediaType.MOVIE
-                    val yearCandidates = PublicCatalogClient.searchLibraryTitle(
-                        query = lookup.query,
-                        mediaType = desiredType,
-                        releaseYear = lookup.releaseYear,
-                    )
-                    val title = chooseCatalogTitle(yearCandidates, lookup)
-                        ?: if (lookup.releaseYear != null) {
-                            chooseCatalogTitle(
-                                PublicCatalogClient.searchLibraryTitle(
-                                    query = lookup.query,
-                                    mediaType = desiredType,
-                                ),
-                                lookup,
-                            )
-                        } else null
-                    if (title == null) return@runCatching null
-                    // Keep a steady bounded request cadence for the free
-                    // personal TMDB credential while the library resolves.
-                    delay(160L)
-                    title.rating?.let { rating -> LibraryCatalogMetadata(rating = rating) }
-                }.getOrNull()
-            }
-            if (metadata != null) {
-                _catalogMetadata.value = _catalogMetadata.value + (key to metadata)
-                catalogMetadataRetryAfter.remove(key)
-            } else {
-                // A metadata request can recover after a filename rename or
-                // transient network/API problem, without polling continuously.
-                catalogMetadataRequests.remove(key)
-                catalogMetadataRetryAfter[key] = System.currentTimeMillis() + CATALOG_RETRY_DELAY_MS
-            }
-        }
-    }
-
-    private data class LibraryTitleLookup(
-        val query: String,
-        val releaseYear: String? = null,
-        val seasonNumber: Int? = null,
-        val episodeNumber: Int? = null,
-    )
-
-    private fun parseLibraryTitle(rawTitle: String): LibraryTitleLookup? {
-        val withoutExtension = rawTitle.substringBeforeLast('.', rawTitle)
-            .replace(Regex("[._]+"), " ")
-            .trim()
-        if (withoutExtension.isBlank()) return null
-        val releaseYear = RELEASE_YEAR_PATTERN.find(withoutExtension)?.value
-        val seasonMatch = SEASON_EPISODE_PATTERN.find(withoutExtension)
-            ?: SEASON_PATTERN.find(withoutExtension)
-        val season = seasonMatch?.groups?.get(1)?.value?.toIntOrNull()
-        val episode = seasonMatch?.groups?.get(2)?.value?.toIntOrNull()
-        val titlePart = if (seasonMatch != null) {
-            withoutExtension.substring(0, seasonMatch.range.first)
-        } else {
-            withoutExtension
-        }
-            .replace(MEDIA_RELEASE_MARKERS, " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        return titlePart.takeIf { it.length >= 2 }?.let {
-            LibraryTitleLookup(
-                query = it,
-                releaseYear = releaseYear,
-                seasonNumber = season,
-                episodeNumber = episode,
-            )
-        }
-    }
-
-    private fun chooseCatalogTitle(
-        candidates: List<DiscoverTitle>,
-        lookup: LibraryTitleLookup,
-    ): DiscoverTitle? {
-        val desiredType = if (lookup.seasonNumber != null) DiscoverMediaType.TV else DiscoverMediaType.MOVIE
-        val normalizedQuery = normalizeCatalogTitle(lookup.query)
-        return candidates
-            .asSequence()
-            .filter { it.mediaType == desiredType }
-            .map { title ->
-                val normalizedTitle = normalizeCatalogTitle(title.title)
-                val titleScore = when {
-                    normalizedTitle == normalizedQuery -> 100
-                    normalizedTitle.contains(normalizedQuery) || normalizedQuery.contains(normalizedTitle) -> 70
-                    else -> 0
-                }
-                val yearScore = when {
-                    lookup.releaseYear == null -> 0
-                    title.releaseYear == lookup.releaseYear -> 12
-                    else -> 0
-                }
-                title to (titleScore + yearScore)
-            }
-            .filter { (_, score) -> score >= 70 }
-            .maxByOrNull { (_, score) -> score }
-            ?.first
-    }
-
-    private fun normalizeCatalogTitle(value: String): String =
-        value.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-
-    private companion object {
-        const val CATALOG_RETRY_DELAY_MS = 60_000L
-        val RELEASE_YEAR_PATTERN = Regex("\\b(?:19|20|21)\\d{2}\\b")
-        val SEASON_EPISODE_PATTERN = Regex("(?i)\\bS(\\d{1,2})[ ._-]*E(\\d{1,3})\\b")
-        val SEASON_PATTERN = Regex("(?i)\\b(?:S|Season)[ ._-]?(\\d{1,2})\\b")
-        val MEDIA_RELEASE_MARKERS = Regex(
-            "(?i)\\b(19\\d{2}|20\\d{2}|21\\d{2}|2160p|1080p|720p|480p|4k|8k|web[ .-]?dl|web[ .-]?rip|bluray|brrip|dvdrip|hdr|hevc|x265|x264|h264|h265|aac|dts|proper|repack)\\b",
-        )
-    }
-
     fun moveVideoInDisplayOrder(from: Int, to: Int) {
         val current = _allVideos.value.toMutableList()
         if (from !in current.indices || to !in current.indices || from == to) return
@@ -308,11 +169,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val allVideos = combine(_allVideos, com.example.data.RecycleBinVisibility.hiddenPaths) { videos, hidden ->
         videos.filterNot { com.example.data.RecycleBinVisibility.isHidden(it.path, hidden) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val _catalogMetadata = MutableStateFlow<Map<String, LibraryCatalogMetadata>>(emptyMap())
-    val catalogMetadata = _catalogMetadata.asStateFlow()
-    private val catalogMetadataRequests = mutableSetOf<String>()
-    private val catalogMetadataRetryAfter = mutableMapOf<String, Long>()
-    private val catalogMetadataSemaphore = Semaphore(permits = 2)
     private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
     val deleteProgress = _deleteProgress.asStateFlow()
     private val _hiddenContinueUris = MutableStateFlow(readHiddenContinueUris())
@@ -614,7 +470,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
             _allVideos.value = resolvedVideos
             if (snapshot.complete) withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.saveVideos(getApplication(), resolvedVideos) }
-            // Visible cards request catalog data on demand. Do not launch a
             // coroutine/network lookup for every file in a large library.
         } catch (cancelled: CancellationException) {
             throw cancelled
