@@ -11,6 +11,8 @@ import java.util.Locale
 internal object AudioMediaScanner {
     data class Snapshot(val tracks: List<AudioItem>, val complete: Boolean)
     fun scan(context: android.content.Context): Snapshot {
+        val access = LibraryAccessPolicy.scope(context, audio = true)
+        if (access == LibraryAccessPolicy.Scope.NONE) return Snapshot(emptyList(), false)
         val tracks = mutableListOf<AudioItem>()
         var complete = false
 
@@ -56,6 +58,7 @@ internal object AudioMediaScanner {
         tracks += scanKnownMessengerAudio(tracks.map { it.path }.filter(String::isNotBlank).toSet())
         val uniqueTracks = tracks.distinctBy { track -> track.path.ifBlank { track.uri.toString() } }
 
+        if (LibraryAccessPolicy.scope(context, audio = true) != access) return Snapshot(emptyList(), false)
         return Snapshot(uniqueTracks, complete)
     }
 

@@ -672,23 +672,25 @@ fun HiBrowserScreen(
         pageTitle = if (activeTab?.privateTab == true) "Private tab" else "Hi Browser"
         loadingProgress = 0
         rendererGone = false
-        activeTab?.let { updateTab(it.id) { tab -> tab.copy(url = "", title = "New tab") } }
+        // Home is a fresh root, not a hidden WebView history entry.
+        activeTab?.let { tab ->
+            tab.webView?.let(::disposeOrbitWebView)
+            updateTab(tab.id) { it.copy(url = "", title = "New tab", webView = null, historyState = null, openerTabId = null) }
+        }
         showStartPage = true
         pendingFirstPaint = false
         pageError = null
     }
 
     fun navigateBrowserBack() {
-        if (!showStartPage && webView?.canGoBack() == true) {
-            pixelComet.restart()
-            webView?.goBack()
-            return
+        when (BrowserTabBackPolicy.backAction(showStartPage, webView?.canGoBack() == true)) {
+            BrowserTabBackPolicy.BackAction.PAGE_HISTORY -> {
+                pixelComet.restart()
+                webView?.goBack()
+            }
+            BrowserTabBackPolicy.BackAction.HOME -> showBrowserHome()
+            BrowserTabBackPolicy.BackAction.EXIT_BROWSER -> onBack()
         }
-        val target = BrowserTabBackPolicy.target(activeTabId, activeTab?.openerTabId, tabs.map { it.id }, recentTabIds)
-        if (target != null) {
-            // Unwind this tab instead of cycling endlessly between two root tabs.
-            closeTab(activeTabId)
-        } else if (!showStartPage) showBrowserHome() else onBack()
     }
 
     fun toggleDesktopSite() {

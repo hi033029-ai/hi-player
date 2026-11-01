@@ -219,14 +219,27 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val scanStatus = _scanStatus.asStateFlow()
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) {
-        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         cacheReady.await()
+        val access = com.example.data.LibraryAccessPolicy.scope(getApplication(), audio = true)
+        if (access == com.example.data.LibraryAccessPolicy.Scope.NONE) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+            withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), true) }
+            return@CoalescingRefresh
+        }
+        _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
         val result = try {
             withContext(Dispatchers.IO) { com.example.data.AudioMediaScanner.scan(getApplication()) }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (error: Exception) {
             _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Audio refresh unavailable; keeping library", error)
+            return@CoalescingRefresh
+        }
+        if (com.example.data.LibraryAccessPolicy.scope(getApplication(), true) != access) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+            withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), true) }
             return@CoalescingRefresh
         }
         _scanStatus.value = if (result.complete) com.example.ui.components.LibraryScanStatus.COMPLETE
@@ -241,7 +254,13 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val audioObserver = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) { loadAudioTracks() }
     }
-    fun loadAudioTracks() { refreshCoordinator.request() }
+    fun loadAudioTracks() {
+        if (com.example.data.LibraryAccessPolicy.scope(getApplication(), true) == com.example.data.LibraryAccessPolicy.Scope.NONE) {
+            _audioList.value = emptyList()
+            _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
+        }
+        refreshCoordinator.request()
+    }
 
     init {
         initPlayer()

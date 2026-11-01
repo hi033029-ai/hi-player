@@ -25,6 +25,8 @@ object MediaScanner {
     data class ScanSnapshot(val videos: List<VideoItem>, val complete: Boolean)
 
     suspend fun scanLocalVideos(context: Context): ScanSnapshot = withContext(Dispatchers.IO) {
+        val access = LibraryAccessPolicy.scope(context, audio = false)
+        if (access == LibraryAccessPolicy.Scope.NONE) return@withContext ScanSnapshot(emptyList(), false)
         var complete = false
         val videoList = mutableListOf<VideoItem>()
         val activeGrowingContentUris = mutableSetOf<String>()
@@ -162,55 +164,56 @@ object MediaScanner {
             android.util.Log.w("MediaScanner", "Video provider unavailable", e)
         }
 
-        // A pending file can already be indexed by MediaStore with zero
-        // duration. Replace that ordinary row with the growing-file entry so
-        // the Video Library keeps its partial-download state and file URI.
-        val indexedVideoPaths = videoList.map { it.path }.filter(String::isNotBlank).toSet()
-        val partialItems = scanPartialDownloadVideos(
-            context = context,
-            activeGrowingContentUris = activeGrowingContentUris,
-            indexedVideoPaths = indexedVideoPaths
-        )
-        val partialPaths = partialItems.map { it.path }.filter(String::isNotEmpty).toSet()
-        if (partialPaths.isNotEmpty()) {
-            videoList.removeAll { it.path in partialPaths }
-        }
-        // Some OEM MediaStore implementations expose a pending file through
-        // Video and Files collections with different (or blank) data paths.
-        // Remove that temporary Video row by its clean display name before the
-        // canonical partial item is added, without affecting completed videos.
-        val pendingTitles = partialItems.map { it.title.lowercase(Locale.ROOT) }.toSet()
-        if (pendingTitles.isNotEmpty()) {
-            videoList.removeAll { indexed ->
-                PendingDownloadFormat.isPending(indexed.title) &&
-                    PendingDownloadFormat.originalName(indexed.title).lowercase(Locale.ROOT) in pendingTitles
+        if (access == LibraryAccessPolicy.Scope.FULL) {
+            // A pending file can already be indexed by MediaStore with zero
+            // duration. Replace that ordinary row with the growing-file entry so
+            // the Video Library keeps its partial-download state and file URI.
+            val indexedVideoPaths = videoList.map { it.path }.filter(String::isNotBlank).toSet()
+            val partialItems = scanPartialDownloadVideos(
+                context = context,
+                activeGrowingContentUris = activeGrowingContentUris,
+                indexedVideoPaths = indexedVideoPaths
+            )
+            val partialPaths = partialItems.map { it.path }.filter(String::isNotEmpty).toSet()
+            if (partialPaths.isNotEmpty()) {
+                videoList.removeAll { it.path in partialPaths }
             }
-        }
-        videoList += partialItems
-
-        // WhatsApp can keep media outside the MediaStore collection until a
-        // gallery scan runs, especially in its Android/media app folder. Scan
-        // only the known video directories the app can read; never scan private
-        // chats or arbitrary storage trees.
-        val indexedPathsAfterMediaStore = videoList.map { it.path }
-            .filter(String::isNotBlank)
-            .toSet()
-        videoList += scanKnownMessengerVideos(indexedPathsAfterMediaStore)
-
-        // Own downloads remain visible even if the platform index is delayed or permission-limited.
-        BrowserDownloads.libraryVideoItems(context).forEach { downloaded ->
-            val duplicate = videoList.any { indexed ->
-                indexed.path == downloaded.path || indexed.uri == downloaded.uri ||
-                    (indexed.uri.authority == MediaStore.AUTHORITY && downloaded.uri.authority == MediaStore.AUTHORITY && indexed.id == downloaded.id)
+            // Some OEM MediaStore implementations expose a pending file through
+            // Video and Files collections with different (or blank) data paths.
+            // Remove that temporary Video row by its clean display name before the
+            // canonical partial item is added, without affecting completed videos.
+            val pendingTitles = partialItems.map { it.title.lowercase(Locale.ROOT) }.toSet()
+            if (pendingTitles.isNotEmpty()) {
+                videoList.removeAll { indexed ->
+                    PendingDownloadFormat.isPending(indexed.title) &&
+                        PendingDownloadFormat.originalName(indexed.title).lowercase(Locale.ROOT) in pendingTitles
+                }
             }
-            if (!duplicate) videoList += downloaded
+            videoList += partialItems
+
+            // WhatsApp can keep media outside the MediaStore collection until a
+            // gallery scan runs, especially in its Android/media app folder. Scan
+            // only the known video directories the app can read; never scan private
+            // chats or arbitrary storage trees.
+            val indexedPathsAfterMediaStore = videoList.map { it.path }
+                .filter(String::isNotBlank)
+                .toSet()
+            videoList += scanKnownMessengerVideos(indexedPathsAfterMediaStore)
+
+            // Own downloads remain visible even if the platform index is delayed or permission-limited.
+            BrowserDownloads.libraryVideoItems(context).forEach { downloaded ->
+                val duplicate = videoList.any { indexed ->
+                    indexed.path == downloaded.path || indexed.uri == downloaded.uri ||
+                        (indexed.uri.authority == MediaStore.AUTHORITY && downloaded.uri.authority == MediaStore.AUTHORITY && indexed.id == downloaded.id)
+                }
+                if (!duplicate) videoList += downloaded
+            }
+
         }
 
-        // If no local videos found on device/emulator, add high-quality 4K UHD Remux demo items
-        if (videoList.isEmpty()) {
-            videoList.addAll(getDemoRemuxVideos())
-        }
+        // An empty library is empty. Never insert remote demos as discovered local files.
 
+        if (LibraryAccessPolicy.scope(context, audio = false) != access) return@withContext ScanSnapshot(emptyList(), false)
         ScanSnapshot(videoList.distinctBy { video -> video.path.ifBlank { video.uri.toString() } }, complete)
     }
 
@@ -535,210 +538,6 @@ object MediaScanner {
         else -> "video/mp4"
     }
 
-    fun getDemoRemuxVideos(): List<VideoItem> {
-        val list = mutableListOf<VideoItem>()
-
-        // 202607 folder
-        list.add(
-            VideoItem(
-                id = 2001L,
-                uri = Uri.parse("https://media.w3.org/2010/05/sintel/trailer.mp4"),
-                title = "VID_20260715_143022_4K.mp4",
-                durationMs = 184000L,
-                sizeBytes = 2_150_000_000L,
-                width = 3840,
-                height = 2160,
-                mimeType = "video/mp4",
-                dateAdded = 1784100000L,
-                folderName = "202607",
-                path = "/storage/emulated/0/DCIM/202607/VID_20260715_143022_4K.mp4",
-                isHdr = true,
-                hdrFormat = "HDR10+ 60fps",
-                codec = "HEVC Main10",
-                bitrate = 55_000_000L,
-                frameRate = 60.0f,
-                audioChannels = 2,
-                thumbnailUrl = "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=600&auto=format&fit=crop&q=80"
-            )
-        )
-
-        // 202614 folder
-        list.add(
-            VideoItem(
-                id = 2002L,
-                uri = Uri.parse("https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/bolt-detection.mp4"),
-                title = "VID_20261408_091204_UHD.mp4",
-                durationMs = 312000L,
-                sizeBytes = 3_450_000_000L,
-                width = 3840,
-                height = 2160,
-                mimeType = "video/mp4",
-                dateAdded = 1784200000L,
-                folderName = "202614",
-                path = "/storage/emulated/0/DCIM/202614/VID_20261408_091204_UHD.mp4",
-                isHdr = true,
-                hdrFormat = "Dolby Vision",
-                codec = "HEVC 10-bit",
-                bitrate = 60_000_000L,
-                frameRate = 30.0f,
-                audioChannels = 6,
-                thumbnailUrl = "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80"
-            )
-        )
-
-        // Camera folder (Multiple videos)
-        val cameraTitles = listOf(
-            "IMG_8942_Cinematic_4K.mp4" to "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=600&auto=format&fit=crop&q=80",
-            "Sunset_Coastline_ProRes.mp4" to "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop&q=80",
-            "SlowMotion_240fps_1080p.mp4" to "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-            "Night_City_Timelapse_UHD.mp4" to "https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=600&auto=format&fit=crop&q=80",
-            "Family_Holiday_Trip_2026.mp4" to "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=600&auto=format&fit=crop&q=80",
-            "Drone_Aerial_Mountain_4K.mp4" to "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&auto=format&fit=crop&q=80"
-        )
-        cameraTitles.forEachIndexed { i, (title, thumb) ->
-            list.add(
-                VideoItem(
-                    id = 3000L + i,
-                    uri = Uri.parse("https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/classroom.mp4"),
-                    title = title,
-                    durationMs = (120000L + i * 45000L),
-                    sizeBytes = (1_200_000_000L + i * 650_000_000L),
-                    width = 3840,
-                    height = 2160,
-                    mimeType = "video/mp4",
-                    dateAdded = 1784000000L - i * 86400L,
-                    folderName = "Camera",
-                    path = "/storage/emulated/0/DCIM/Camera/$title",
-                    isHdr = (i % 2 == 0),
-                    hdrFormat = if (i % 2 == 0) "HDR10" else null,
-                    codec = if (i % 2 == 0) "HEVC Main10" else "AVC H.264",
-                    bitrate = 48_000_000L,
-                    frameRate = if (i == 2) 240.0f else 60.0f,
-                    audioChannels = 2,
-                    thumbnailUrl = thumb
-                )
-            )
-        }
-
-        // Download folder (Multiple videos)
-        val downloadTitles = listOf(
-            "Big_Buck_Bunny_4K_UHD_Remux_HDR10_TrueHD.mkv" to "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80",
-            "Avatar_The_Way_of_Water_4K_Remux_DTS-HD.mkv" to "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80",
-            "Oppenheimer_IMAX_4K_UHD_HEVC_Atmos.mkv" to "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=600&auto=format&fit=crop&q=80",
-            "Interstellar_2160p_HDR10_Remux.mkv" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&auto=format&fit=crop&q=80",
-            "Dune_Part_Two_4K_DolbyVision_Remux.mkv" to "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=600&auto=format&fit=crop&q=80"
-        )
-        downloadTitles.forEachIndexed { i, (title, thumb) ->
-            list.add(
-                VideoItem(
-                    id = 4000L + i,
-                    uri = Uri.parse("https://media.w3.org/2010/05/sintel/trailer.mp4"),
-                    title = title,
-                    durationMs = (596000L + i * 180000L),
-                    sizeBytes = (18_450_000_000L + i * 4_200_000_000L),
-                    width = 3840,
-                    height = 2160,
-                    mimeType = "video/mp4",
-                    dateAdded = 1784300000L - i * 43200L,
-                    folderName = "Download",
-                    path = "/storage/emulated/0/Download/$title",
-                    isHdr = true,
-                    hdrFormat = "Dolby Vision / HDR10+",
-                    codec = "HEVC UHD Remux",
-                    bitrate = 75_000_000L,
-                    frameRate = 24.0f,
-                    audioChannels = 8,
-                    thumbnailUrl = thumb
-                )
-            )
-        }
-
-        // Movies folder
-        list.add(
-            VideoItem(
-                id = 5001L,
-                uri = Uri.parse("https://media.w3.org/2010/05/sintel/trailer.mp4"),
-                title = "Sintel_4K_CinemaScope_DolbyAtmos.mkv",
-                durationMs = 888000L,
-                sizeBytes = 22_100_000_000L,
-                width = 4096,
-                height = 1744,
-                mimeType = "video/mp4",
-                dateAdded = 1784150000L,
-                folderName = "Movies",
-                path = "/storage/emulated/0/Movies/Sintel_4K_CinemaScope_DolbyAtmos.mkv",
-                isHdr = true,
-                hdrFormat = "HDR10 BT.2020",
-                codec = "HEVC 10-bit Remux",
-                bitrate = 85_000_000L,
-                frameRate = 24.0f,
-                audioChannels = 8,
-                thumbnailUrl = "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80"
-            )
-        )
-
-        // Private folder (Protected / Vault items)
-        val privateTitles = listOf(
-            "Personal_Vault_Clip_01.mp4",
-            "Project_Archive_Presentation.mp4",
-            "Backup_Recorded_Stream_2026.mp4"
-        )
-        privateTitles.forEachIndexed { i, title ->
-            list.add(
-                VideoItem(
-                    id = 6000L + i,
-                    uri = Uri.parse("https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/head-pose-face-detection-female.mp4"),
-                    title = title,
-                    durationMs = (150000L + i * 80000L),
-                    sizeBytes = (850_000_000L + i * 400_000_000L),
-                    width = 1920,
-                    height = 1080,
-                    mimeType = "video/mp4",
-                    dateAdded = 1784250000L - i * 10000L,
-                    folderName = "Private",
-                    path = "/storage/emulated/0/Private/$title",
-                    isHdr = false,
-                    hdrFormat = null,
-                    codec = "AVC H.264",
-                    bitrate = 18_000_000L,
-                    frameRate = 30.0f,
-                    audioChannels = 2
-                )
-            )
-        }
-
-        // Screenshots folder
-        val screenshotTitles = listOf(
-            "Screen_Recording_20260821_1102.mp4",
-            "Screen_Recording_20260822_1945.mp4",
-            "Screen_Recording_20260823_0815.mp4"
-        )
-        screenshotTitles.forEachIndexed { i, title ->
-            list.add(
-                VideoItem(
-                    id = 7000L + i,
-                    uri = Uri.parse("https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/bolt-detection.mp4"),
-                    title = title,
-                    durationMs = (45000L + i * 30000L),
-                    sizeBytes = (120_000_000L + i * 80_000_000L),
-                    width = 1080,
-                    height = 2400,
-                    mimeType = "video/mp4",
-                    dateAdded = 1784350000L - i * 5000L,
-                    folderName = "Screenshots",
-                    path = "/storage/emulated/0/DCIM/Screenshots/$title",
-                    isHdr = false,
-                    hdrFormat = null,
-                    codec = "AVC H.264",
-                    bitrate = 12_000_000L,
-                    frameRate = 60.0f,
-                    audioChannels = 2
-                )
-            )
-        }
-
-        return list
-    }
 
     suspend fun createVideoItemFromUri(context: Context, uri: Uri): VideoItem = withContext(Dispatchers.IO) {
         var name = "External Video"

@@ -50,7 +50,7 @@ class FirstUseExperienceTest {
         compose.onNodeWithTag("library_allow_access").performClick()
         assertEquals(1, calls)
     }
-    @Test fun scanningShowsCircleAndOnlyActualCompletionShowsComplete() {
+    @Test fun scanFeedbackDisappearsImmediatelyAfterCompletion() {
         val status = mutableStateOf(LibraryScanStatus.SCANNING)
         compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
             LibraryScanFeedback(status.value, 12, audio = true, centered = true)
@@ -60,7 +60,31 @@ class FirstUseExperienceTest {
         screenshot("scanning")
         compose.runOnIdle { status.value = LibraryScanStatus.COMPLETE }
         compose.onNodeWithTag("library_scan_circle").assertDoesNotExist()
-        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertExists()
+        compose.onNodeWithText("Scan complete · 12 audio tracks available").assertDoesNotExist()
+    }
+    @Test fun visualPlayerGuidePointsToHdrAndOpensRealControls() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_test")
+        var opened = 0
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            PlayerGestureCoach(state, androidx.compose.ui.geometry.Rect(100f, 400f, 148f, 448f),
+                androidx.compose.ui.geometry.Offset.Zero) { opened++ }
+        } } }
+        repeat(3) { compose.onNodeWithText("Next").performClick() }
+        compose.onNodeWithText("Here is HDR").assertIsDisplayed()
+        compose.onNodeWithContentDescription("HDR button is highlighted").assertExists()
+        compose.onNodeWithText("Open HDR").performClick()
+        assertEquals(1, opened)
+        assertFalse(state.visible)
+    }
+    @Test fun visualPlayerGuideCanBeSkippedWithoutOpeningHdr() {
+        val state = FirstUseTipState(ApplicationProvider.getApplicationContext(), "visual_skip_test")
+        var opened = false
+        compose.setContent { HiPlayerTheme {
+            PlayerGestureCoach(state, null, androidx.compose.ui.geometry.Offset.Zero) { opened = true }
+        } }
+        compose.onNodeWithText("Skip guide").performClick()
+        compose.onNodeWithTag("player_gesture_coach").assertDoesNotExist()
+        assertFalse(opened)
     }
     @Test fun contextualTipIsDismissibleAndRemembered() {
         val context = ApplicationProvider.getApplicationContext<Context>()
