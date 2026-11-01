@@ -128,13 +128,13 @@ internal class AdvancedFileToolsViewModel(application: Application) : AndroidVie
                 val now = Os.stat(source.file.absolutePath)
                 require(now.st_ino == identity.st_ino && now.st_dev == identity.st_dev && unchanged(source))
                 target.setLastModified(source.modified)
-                Os.unlink(source.file.absolutePath)
+                Os.remove(source.file.absolutePath)
             } finally {
                 // Delete only our own incomplete destination, never an outside
                 // replacement. Complete copies stay if source removal failed.
                 if (!complete && source.file.exists()) runCatching {
                     val now = Os.stat(target.absolutePath)
-                    if (now.st_ino == created.st_ino && now.st_dev == created.st_dev) Os.unlink(target.absolutePath)
+                    if (now.st_ino == created.st_ino && now.st_dev == created.st_dev) Os.remove(target.absolutePath)
                 }
             }
         }

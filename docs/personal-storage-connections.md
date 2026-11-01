@@ -1,6 +1,6 @@
-# Personal storage connections — source-only
+# Personal storage connections
 
-Status: **uncompiled, tests authored but not run, no OAuth registration or provider/device/server validation**. No APK, version bump, main push or release. Do not present OneDrive/Dropbox as ready to sign in until the developer setup below is complete. SMBJ dependency resolution and Android compatibility also need approved validation.
+Status: **APK 1.0.77 (78) compiled and packaged after user approval; no live provider/server or device validation**. OneDrive and Dropbox are disabled **Coming soon** entries in Settings → Connections until registration and testing are completed. Their authorization implementation is retained for later enablement. Main has not been merged. See the build validation note for test results.
 
 ## Connections card
 
@@ -18,7 +18,7 @@ Native public-client code + S256 PKCE in a Custom Tab; read-only scopes `account
 
 **Developer setup required:** create a scoped Dropbox app, select appropriate Full Dropbox read access if the intended UX is browsing the user's whole personal drive (App Folder exposes only that folder), enable only the three read scopes above, register exact redirect `com.aistudio.hiplayer.connections://oauth/dropbox`, and supply its public app key through `HI_PLAYER_DROPBOX_APP_KEY`. Complete provider testing/production approval as required. No Dropbox secret belongs in the APK.
 
-Both cloud entries show setup-required and disable Connect when their identifier is absent. The current source has no real IDs configured. Redirect callbacks require the expected provider path and random single-use state; PKCE verifiers stay in process memory. Codes, verifiers, access tokens and signed content URLs never enter preferences, saved-state Bundles, diagnostics or generic stream-header registration. Provider account identity is API-verified, not inferred from an unverified JWT.
+Both cloud entries currently show **Coming soon** and do not open authorization. The retained browser also shows setup-required and disables Connect when its identifier is absent. The current source has no real IDs configured. Redirect callbacks require the expected provider path and random single-use state; PKCE verifiers stay in process memory. Codes, verifiers, access tokens and signed content URLs never enter preferences, saved-state Bundles, diagnostics or generic stream-header registration. Provider account identity is API-verified, not inferred from an unverified JWT.
 
 **Current session limits:** no refresh token/offline scope/persisted credential store. Reconnect after process restart or access-token expiry. A cancelled/failed reconnect keeps the previous session. Disconnect invalidates local playback access but does not revoke provider consent or sign its website out. No background sync, upload, delete, file editing or multi-account federation. Cloud tokens are never forwarded to signed content hosts or redirects.
 

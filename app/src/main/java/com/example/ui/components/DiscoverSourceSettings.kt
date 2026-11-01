@@ -85,9 +85,9 @@ fun DiscoverSourceSettings(
                     if (profile != null) "Browse videos & music · Authorize Drive when opening" else "Your cloud files · Sign in to connect",
                     onAction = { if (profile == null) showAccount = true else showDrive = true })
                 SourceDivider()
-                SourceRow(Icons.Default.Cloud, "OneDrive", "Personal Microsoft cloud storage · Read-only", onAction = { personalStorage = "onedrive" })
+                SourceRow(Icons.Default.Cloud, "OneDrive", "Coming soon", enabled = false, onAction = {})
                 SourceDivider()
-                SourceRow(Icons.Default.Cloud, "Dropbox", "Your Dropbox files · Read-only", onAction = { personalStorage = "dropbox" })
+                SourceRow(Icons.Default.Cloud, "Dropbox", "Coming soon", enabled = false, onAction = {})
                 SourceDivider()
                 SourceRow(Icons.Default.Storage, "Network folders (SMB)", "Shared folders on your NAS or computer", onAction = { personalStorage = "smb" })
                 SourceDivider()
@@ -156,11 +156,11 @@ private enum class SourceDialog { JELLYFIN, JELLYFIN_PASSWORD, WEBDAV }
 
 @Composable
 private fun SourceRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String,
-    subtitle: String, onAction: () -> Unit) {
+    subtitle: String, enabled: Boolean = true, onAction: () -> Unit) {
     val palette = LocalHiPalette.current
-    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(onClick = onAction).padding(16.dp),
+    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(enabled = enabled, onClick = onAction).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = palette.primary, modifier = Modifier.size(24.dp))
+        Icon(icon, null, tint = if (enabled) palette.primary else palette.textSecondary, modifier = Modifier.size(24.dp))
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
