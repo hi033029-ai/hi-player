@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
@@ -253,6 +254,24 @@ fun MusicScreen(
             if (selectedCollection != null) {
                 TextButton(onClick = { selectedCollection = null }) {
                     Text("‹ All $pageMode", color = palette.textPrimary)
+                }
+            }
+            if (mediaAccess.granted && playbackQueue.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).testTag("music_play_all_row"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.FilledTonalButton(onClick = { musicViewModel.playAll(playbackQueue, shuffle = false) },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                        Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp)); Text("Play all")
+                    }
+                    androidx.compose.material3.OutlinedButton(onClick = { musicViewModel.playAll(playbackQueue, shuffle = true) },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                        Icon(Icons.Default.Shuffle, null, Modifier.size(18.dp), tint = palette.primary)
+                        Spacer(Modifier.width(6.dp)); Text("Shuffle all", color = palette.textPrimary)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text("${playbackQueue.size} ${if (playbackQueue.size == 1) "track" else "tracks"}",
+                        color = palette.textSecondary, fontSize = 11.sp)
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -725,6 +744,10 @@ private fun MusicPlaybackSurface(
     val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
     val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsStateWithLifecycle()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
+    val eqState by musicViewModel.equalizerState.collectAsStateWithLifecycle()
+    val waveform by musicViewModel.waveform.collectAsStateWithLifecycle()
+    val shuffleEnabled by musicViewModel.shuffleEnabled.collectAsStateWithLifecycle()
+    val repeatMode by musicViewModel.repeatMode.collectAsStateWithLifecycle()
         // Full Screen Audio Player or Wavy Now Playing Sheet
         if (currentTrack != null) {
             if (isFullScreenPlayerOpen) {
@@ -733,8 +756,13 @@ private fun MusicPlaybackSurface(
                     isPlaying = isPlaying,
                     currentPos = currentPos,
                     duration = duration,
-                    eqPreset = equalizerPreset,
+                    eqPreset = if (eqState.enabled) equalizerPreset else "Off",
                     activeSubtitle = activeSubtitle,
+                    waveform = waveform,
+                    shuffleEnabled = shuffleEnabled,
+                    repeatMode = repeatMode,
+                    onToggleShuffle = musicViewModel::toggleShuffle,
+                    onCycleRepeat = musicViewModel::cycleRepeatMode,
                     lyricsEnabled = lyricsEnabled,
                     lyricsText = lyricsText,
                     lyricsMessage = lyricsMessage,
