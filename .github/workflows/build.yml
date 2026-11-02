@@ -54,6 +54,12 @@ jobs:
         run: >-
           gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
           --tests 'com.example.player.PlaybackQueueTest'
+          --tests 'com.example.audio.EqualizerCurvesTest'
+          --tests 'com.example.ui.components.MusicEqualizerDialogTest'
+          --tests 'com.example.ui.screens.MusicNowPlayingLayoutTest'
+          --tests 'com.example.ui.screens.RootFileSectionsTest'
+          --tests 'com.example.ui.theme.ThemeTransitionContrastTest'
+          --tests 'com.example.viewmodel.LibraryRefreshFeedbackTest'
           --tests 'com.example.player.SelectiveColourBandTest'
           --tests 'com.example.ui.components.FirstUseExperienceTest'
           --tests 'com.example.audio.MusicEqualizerTest'
@@ -115,5 +121,5 @@ jobs:
           tag_name: apk-${{ github.run_id }}
           name: Hi Player APK ${{ github.run_id }}
           generate_release_notes: false
-          body: "Hi Player 1.0.80 (81), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
+          body: "Hi Player 1.0.81 (82), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
           files: app/build/outputs/apk/debug/*.apk

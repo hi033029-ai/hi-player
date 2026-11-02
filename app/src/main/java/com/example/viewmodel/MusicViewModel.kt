@@ -89,14 +89,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedFilter = MutableStateFlow("All")
     val selectedFilter = _selectedFilter.asStateFlow()
 
-    private val musicEqualizer = com.example.audio.MusicEqualizer()
-    private val _equalizerPreset = MutableStateFlow(musicPrefs.getString("eq_preset_v1", "Flat")
-        ?.takeIf { it in com.example.audio.MusicEqualizer.presets || it == "Custom" } ?: "Flat")
-    private val _equalizerBands = MutableStateFlow(List(5) { musicPrefs.getFloat("eq_band_$it", 0f).takeIf { v -> v.isFinite() }?.coerceIn(-12f, 12f) ?: 0f })
-    val equalizerBands = _equalizerBands.asStateFlow()
-    private val _equalizerStatus = MutableStateFlow("Start playback to activate the equalizer.")
-    val equalizerStatus = _equalizerStatus.asStateFlow()
-    val equalizerPreset = _equalizerPreset.asStateFlow()
+    private val audioEqualizer = com.example.audio.AudioEqualizerController(application)
+    val equalizerPreset = audioEqualizer.preset
+    val equalizerState = audioEqualizer.state
 
     private val _activeSubtitle = MutableStateFlow<String?>(null)
     val activeSubtitle = _activeSubtitle.asStateFlow()
@@ -308,7 +303,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .build().apply {
             addListener(object : Player.Listener {
                 override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                    applyMusicEqualizer(audioSessionId)
+                    audioEqualizer.attach(audioSessionId)
                 }
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     val track = playbackQueue.getOrNull(currentMediaItemIndex) ?: return
@@ -463,35 +458,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         progressJob?.cancel()
     }
 
-    fun setEqualizerPreset(preset: String) {
-        val bands = com.example.audio.MusicEqualizer.presets[preset] ?: return
-        _equalizerPreset.value = preset
-        _equalizerBands.value = bands
-        persistMusicEqualizer()
-        applyMusicEqualizer(exoPlayer?.audioSessionId ?: 0)
-    }
-
-    fun setEqualizerBand(index: Int, gain: Float) {
-        if (index !in 0..4 || !gain.isFinite()) return
-        _equalizerPreset.value = "Custom"
-        _equalizerBands.value = _equalizerBands.value.mapIndexed { i, old -> if (i == index) gain.coerceIn(-12f, 12f) else old }
-        persistMusicEqualizer()
-        applyMusicEqualizer(exoPlayer?.audioSessionId ?: 0)
-    }
-
-    private fun persistMusicEqualizer() {
-        musicPrefs.edit().apply {
-            putString("eq_preset_v1", _equalizerPreset.value)
-            _equalizerBands.value.forEachIndexed { i, value -> putFloat("eq_band_$i", value) }
-        }.apply()
-    }
-
-    private fun applyMusicEqualizer(session: Int) {
-        _equalizerStatus.value = if (musicEqualizer.apply(session, _equalizerBands.value)) {
-            if (_equalizerBands.value.all { it == 0f }) "Flat · processing bypassed" else "Equalizer active on the current audio session"
-        } else if (session <= 0) "Start playback to activate the equalizer."
-        else "Equalizer unavailable for this audio output. Playback is unchanged; try another output."
-    }
+    fun setEqualizerPreset(preset: String) = audioEqualizer.setPreset(preset)
+    fun setEqualizerEnabled(enabled: Boolean) = audioEqualizer.setEnabled(enabled)
+    fun setEqualizerBand(index: Int, gainDb: Float) = audioEqualizer.setBand(index, gainDb)
+    fun setEqualizerBass(strength: Int) = audioEqualizer.setBass(strength)
+    fun resetEqualizer() = audioEqualizer.reset()
 
     private fun startProgressUpdates() {
         progressJob?.cancel()
@@ -512,7 +483,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         refreshCoordinator.close()
         getApplication<Application>().contentResolver.unregisterContentObserver(audioObserver)
         progressJob?.cancel()
-        musicEqualizer.close()
+        audioEqualizer.release()
         com.example.player.HiMediaSessionService.detachPlayer(exoPlayer)
         exoPlayer?.release()
         exoPlayer = null
