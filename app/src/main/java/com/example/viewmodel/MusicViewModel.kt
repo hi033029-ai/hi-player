@@ -496,6 +496,16 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Pauses for app backgrounding; track, queue, position and notification stay ready to resume. */
+    fun pauseForAppBackground() {
+        val player = exoPlayer ?: return
+        if (!player.playWhenReady) return
+        player.pause()
+        _currentPositionMs.value = player.currentPosition.coerceAtLeast(0L)
+        musicPrefs.edit().putString("last_track_uri", _currentTrack.value?.uri?.toString())
+            .putLong("last_position_ms", _currentPositionMs.value).apply()
+    }
+
     fun seekTo(positionMs: Long) {
         exoPlayer?.seekTo(positionMs)
         _currentPositionMs.value = positionMs

@@ -81,13 +81,14 @@ fun FullScreenAudioPlayerScreen(
             }
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp).testTag("audio_lyrics_area"),
                 contentAlignment = Alignment.Center) {
+                val artSize = minOf(maxWidth, maxHeight, 260.dp)
                 androidx.compose.animation.Crossfade(lyricsEnabled, label = "lyricsMode") { showLyrics ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (showLyrics) {
                             FocusedLyricsView(track, lyricsText, activeLyricLineIndex, lyricsMessage, lyricsLoading,
                                 lyricsRetryable, onRetryLyrics)
                         } else {
-                            AudioTrackThumbnail(track, modifier = Modifier.size(minOf(maxWidth, maxHeight, 260.dp)),
+                            AudioTrackThumbnail(track, modifier = Modifier.size(artSize),
                                 shape = RoundedCornerShape(20.dp))
                         }
                     }
