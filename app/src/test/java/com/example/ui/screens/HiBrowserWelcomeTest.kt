@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -27,7 +26,7 @@ class HiBrowserWelcomeTest {
                 adBlockEnabled = true, onVisit = { visited = it }, onAddShortcut = { _, _ -> },
                 onRemoveShortcut = {})
         } }
-        compose.onNodeWithTag("browser_welcome_animation").assertExists()
+        compose.onNodeWithTag("browser_welcome_animation", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("Welcome to Hi Browser").assertIsDisplayed()
         compose.onNodeWithText("Example").performClick()
         compose.runOnIdle { assertEquals("https://example.com", visited) }
