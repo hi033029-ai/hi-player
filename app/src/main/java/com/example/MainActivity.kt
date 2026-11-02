@@ -906,17 +906,23 @@ class MainActivity : FragmentActivity() {
         // backgrounded. Do not reset requestedOrientation here: changing it
         // while entering Recents can recreate the activity and leave the GL
         // surface with a mismatched aspect transform when the app returns.
+        // Rotation/theme recreation is not "leaving the app"; keep playing.
+        if (isChangingConfigurations) return
         playerViewModel.saveCurrentProgress()
-        if (!playerViewModel.engine.isBackgroundPlayActive.value) {
+        // Back to Home (Android 12+ keeps the task in Recents), Home, Recents or
+        // screen lock: only the Settings "Background Audio Playback" option may
+        // keep sound going. Otherwise pause both players, keep their track,
+        // position and queue, and wait for an explicit Play (app or notification).
+        if (!libraryViewModel.playerSettings.value.backgroundPlayEnabled) {
             playerViewModel.pauseForAppBackground()
+            musicViewModel.pauseForAppBackground()
         }
     }
 
     override fun onStart() {
         super.onStart()
-        if (!isInPictureInPictureMode && !pipTransitionRequested) {
-            playerViewModel.resumeAfterAppForeground()
-        }
+        // Deliberately no auto-resume: returning to the app shows the saved,
+        // paused state; playback restarts only when the user taps Play.
     }
 
     override fun onPictureInPictureModeChanged(
