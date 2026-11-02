@@ -1,0 +1,6 @@
+# First-run and library transitions
+
+- On the first setup welcome screen, pixels gather into the Hi Player mark and the mark moves to its smaller header position. The welcome page has four short feature highlights. Continue and Skip setup remain available during the animation; it does not delay returning users. Compose animations respect the system animator duration scale.
+- Setup screens and the main tab content have short directional transitions. The shared app header and navigation remain outside the tab content transition. Video category search and actions stay in one stable toolbar outside the paged video content; selected-category feedback follows taps and swipes. The toolbar is available even for an empty or permission-limited library.
+- Removed the duplicate Archives, Docs and Folders shortcuts from the Files storage summary. The separate expandable sections remain; the summary is an ordinary item in the scrolling list.
+- Source changes only. No compile, tests, APK build, main merge or device validation has been performed for this follow-up. Check first launch and skip, reduced motion, narrow/large-font/landscape layouts, video category swipes and empty states, folder navigation, selection, Files scrolling, browser continuity, and playback on a future approved build.

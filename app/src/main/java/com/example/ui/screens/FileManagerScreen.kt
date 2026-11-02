@@ -201,7 +201,6 @@ fun FileManagerScreen(
     var showRecycleBin by rememberSaveable { mutableStateOf(false) }
     var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
     var selectAllScope by remember { mutableStateOf(SelectAllScope.FOLDERS) }
-    var sectionRequest by remember { mutableStateOf(0) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     val activeTab = FileViewTab.ALL_MERGED
@@ -407,35 +406,7 @@ fun FileManagerScreen(
                         drawStopIndicator = {}
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Shortcuts expand and scroll to the separate section below storage.
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(
-                            Triple(SelectAllScope.ARCHIVES, "Archives", allArchives.size),
-                            Triple(SelectAllScope.DOCUMENTS, "Docs", allDocuments.size),
-                            Triple(SelectAllScope.FOLDERS, "Folders", folderFiles.count { it.isDirectory }),
-                        ).forEach { (scope, label, count) ->
-                            val selected = scope == selectAllScope
-                            Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(10.dp))
-                                    .background(palette.primary.copy(alpha = if (selected) 0.12f else 0.04f))
-                                    .clickable {
-                                        fileManagerViewModel.clearSelection()
-                                        selectAllScope = scope
-                                        sectionRequest++
-                                    }
-                                    .padding(horizontal = 4.dp, vertical = 8.dp)
-                                    .testTag("storage_category_${scope.name}"),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(label, color = palette.textPrimary, fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("$count", color = palette.textSecondary, fontSize = 11.sp)
-                            }
-                        }
-                    }
                 }
             }
 
@@ -631,7 +602,6 @@ fun FileManagerScreen(
                             currentDir = currentDir,
                             headerContent = storageOverview,
                             rootSection = selectAllScope,
-                            sectionRequest = sectionRequest,
                             onSectionSelected = { selectAllScope = it },
                             selectionHeader = selectionActions,
                             onInspectArchive = { fileManagerViewModel.inspectArchive(it) },
