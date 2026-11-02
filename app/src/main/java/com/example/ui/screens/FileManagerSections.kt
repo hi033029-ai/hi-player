@@ -161,7 +161,6 @@ fun MergedFilesView(
     onContentScrolled: (Boolean) -> Unit = {},
     headerContent: @Composable () -> Unit = {},
     rootSection: SelectAllScope = SelectAllScope.FOLDERS,
-    sectionRequest: Int = 0,
     onSectionSelected: (SelectAllScope) -> Unit = {},
     selectionHeader: @Composable () -> Unit = {},
     onReorder: (String, String) -> Unit = { _, _ -> }
@@ -173,27 +172,11 @@ fun MergedFilesView(
     var foldersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     val mergedListState = rememberLazyListState()
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
-    LaunchedEffect(sectionRequest) {
-        if (sectionRequest > 0) {
-            when (rootSection) {
-                SelectAllScope.ARCHIVES -> archivesOpen = true
-                SelectAllScope.DOCUMENTS -> documentsOpen = true
-                SelectAllScope.FOLDERS -> foldersOpen = true
-            }
-            val documentIndex = 2 + if (archivesOpen) sections.archives.size.coerceAtLeast(1) else 0
-            val folderIndex = documentIndex + 1 + if (documentsOpen) sections.documents.size.coerceAtLeast(1) else 0
-            mergedListState.requestScrollToItem(when (rootSection) {
-                SelectAllScope.ARCHIVES -> 1
-                SelectAllScope.DOCUMENTS -> documentIndex
-                SelectAllScope.FOLDERS -> folderIndex
-            })
-        }
-    }
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
         state = mergedListState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("files_root_list"),
     ) {
         item(key = "storage_overview", contentType = "storage_overview") { headerContent() }
         listOf(SelectAllScope.ARCHIVES, SelectAllScope.DOCUMENTS, SelectAllScope.FOLDERS).forEach { scope ->
