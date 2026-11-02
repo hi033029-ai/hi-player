@@ -22,6 +22,11 @@ data class AudioEqState(
 
 /** Music-session effects only: never attach an effect to the global audio session (0). */
 internal class AudioEqualizerController(context: Context) {
+    companion object {
+        const val CUSTOM = "Custom"
+        // Higher than the default 0 so a system or third-party effect at 0 doesn't take control from music.
+        private const val EFFECT_PRIORITY = 1000
+    }
     private val prefs = context.getSharedPreferences("audio_equalizer_v1", Context.MODE_PRIVATE)
     // Preserve the previously saved five-band curve when upgrading from 1.0.80.
     private val legacy = context.getSharedPreferences("music_preferences", Context.MODE_PRIVATE)
@@ -49,9 +54,9 @@ internal class AudioEqualizerController(context: Context) {
         if (session == sessionId && runCatching { eq?.hasControl() == true }.getOrDefault(false)) return
         releaseEffects()
         session = sessionId
-        try { eq = Equalizer(0, sessionId) } catch (_: Exception) { eq = null }
+        try { eq = Equalizer(EFFECT_PRIORITY, sessionId) } catch (_: Exception) { eq = null }
         try {
-            bass = BassBoost(0, sessionId)
+            bass = BassBoost(EFFECT_PRIORITY, sessionId)
             if (bass?.strengthSupported != true) { bass?.release(); bass = null }
         } catch (_: Exception) { runCatching { bass?.release() }; bass = null }
         try {
@@ -83,13 +88,27 @@ internal class AudioEqualizerController(context: Context) {
         prefs.edit().putBoolean("enabled", value).apply()
         apply()
     }
+    /** Choosing a sound is an explicit request to hear it, so it also turns the equalizer on. */
     fun setPreset(value: String) {
+        if (value == CUSTOM) { selectCustom(); return }
         if (value !in EqualizerCurves.presets) return
         _preset.value = value
-        _state.value = _state.value.copy(preset = value, bands = _state.value.bands.map {
+        _state.value = _state.value.copy(preset = value, enabled = true, bands = _state.value.bands.map {
             it.copy(gainDb = EqualizerCurves.gain(value, it.frequencyHz).coerceIn(_state.value.minDb, _state.value.maxDb))
         })
-        prefs.edit().putString("preset", value).apply()
+        prefs.edit().putString("preset", value).putBoolean("enabled", true).apply()
+        apply()
+    }
+    /** Restores the user's saved custom curve (or keeps the current one as a starting point). */
+    private fun selectCustom() {
+        val s = _state.value
+        _preset.value = CUSTOM
+        _state.value = s.copy(preset = CUSTOM, enabled = true, bands = s.bands.map {
+            it.copy(gainDb = prefs.getFloat("band_${it.frequencyHz}", it.gainDb).coerceIn(s.minDb, s.maxDb))
+        })
+        prefs.edit().putString("preset", CUSTOM).putBoolean("enabled", true).also { editor ->
+            _state.value.bands.forEach { editor.putFloat("band_${it.frequencyHz}", it.gainDb) }
+        }.apply()
         apply()
     }
     fun setBand(index: Int, gain: Float) {
@@ -97,18 +116,18 @@ internal class AudioEqualizerController(context: Context) {
         val s = _state.value
         val band = s.bands.firstOrNull { it.index == index } ?: return
         val clamped = gain.coerceIn(s.minDb, s.maxDb)
-        _preset.value = "Custom"
-        _state.value = s.copy(preset = "Custom", bands = s.bands.map { if (it.index == index) it.copy(gainDb = clamped) else it })
+        _preset.value = CUSTOM
+        _state.value = s.copy(preset = CUSTOM, enabled = true, bands = s.bands.map { if (it.index == index) it.copy(gainDb = clamped) else it })
         // Save all displayed bands on first custom edit so changing one band preserves the rest.
-        prefs.edit().putString("preset", "Custom").also { editor ->
+        prefs.edit().putString("preset", CUSTOM).putBoolean("enabled", true).also { editor ->
             _state.value.bands.forEach { editor.putFloat("band_${it.frequencyHz}", it.gainDb) }
         }.apply()
         apply()
     }
     fun setBass(value: Int) {
         val strength = value.coerceIn(0, 1000)
-        _state.value = _state.value.copy(bassStrength = strength)
-        prefs.edit().putInt("bass", strength).apply()
+        _state.value = _state.value.copy(bassStrength = strength, enabled = _state.value.enabled || strength > 0)
+        prefs.edit().putInt("bass", strength).putBoolean("enabled", _state.value.enabled).apply()
         apply()
     }
     fun reset() { setBass(0); setPreset("Flat") }

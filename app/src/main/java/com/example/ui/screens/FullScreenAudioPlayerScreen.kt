@@ -21,7 +21,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioItem
-import com.example.ui.components.AudioLyricsPanel
+import com.example.ui.components.FocusedLyricsView
+import com.example.ui.components.WaveformSeekBar
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.example.ui.components.AudioTrackThumbnail
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.contrastContentColor
@@ -36,6 +41,8 @@ fun FullScreenAudioPlayerScreen(
     onLyricsTap: () -> Unit = {}, onBack: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier,
     lyricsMessage: String? = null, lyricsLoading: Boolean = false, lyricsRetryable: Boolean = false,
     onRetryLyrics: () -> Unit = {},
+    waveform: FloatArray? = null, shuffleEnabled: Boolean = false, repeatMode: Int = 0,
+    onToggleShuffle: () -> Unit = {}, onCycleRepeat: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
     val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
@@ -74,20 +81,41 @@ fun FullScreenAudioPlayerScreen(
             }
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(vertical = 6.dp).testTag("audio_lyrics_area"),
                 contentAlignment = Alignment.Center) {
-                if (lyricsEnabled) {
-                    AudioLyricsPanel(lyricsText, activeLyricLineIndex, lyricsMessage, lyricsLoading, lyricsRetryable, onRetryLyrics)
-                } else {
-                    AudioTrackThumbnail(track, modifier = Modifier.size(minOf(maxWidth, maxHeight, 260.dp)),
-                        shape = RoundedCornerShape(20.dp))
+                androidx.compose.animation.Crossfade(lyricsEnabled, label = "lyricsMode") { showLyrics ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (showLyrics) {
+                            FocusedLyricsView(track, lyricsText, activeLyricLineIndex, lyricsMessage, lyricsLoading,
+                                lyricsRetryable, onRetryLyrics)
+                        } else {
+                            AudioTrackThumbnail(track, modifier = Modifier.size(minOf(maxWidth, maxHeight, 260.dp)),
+                                shape = RoundedCornerShape(20.dp))
+                        }
+                    }
                 }
             }
             Column(Modifier.fillMaxWidth()) {
-                Slider(value = progress, onValueChange = { onSeek((it * total).toLong()) }, enabled = total > 0,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Music playback position" },
-                    colors = SliderDefaults.colors(thumbColor = palette.primary, activeTrackColor = palette.primary,
-                        inactiveTrackColor = palette.surfaceBorder))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(clock(position), color = palette.textSecondary, fontSize = 11.sp)
+                var scrub by remember { mutableStateOf<Float?>(null) }
+                WaveformSeekBar(progress = progress, peaks = waveform, enabled = total > 0,
+                    playedColor = palette.primary, remainingColor = palette.surfaceBorder,
+                    onSeekFraction = { onSeek((it * total).toLong()) }, onScrub = { scrub = it })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(clock(scrub?.let { (it * total).toLong() } ?: position), color = palette.textSecondary, fontSize = 11.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onToggleShuffle, modifier = Modifier.testTag("audio_shuffle")) {
+                            Icon(Icons.Default.Shuffle, if (shuffleEnabled) "Shuffle on" else "Shuffle off",
+                                tint = if (shuffleEnabled) palette.primary else palette.textSecondary)
+                        }
+                        IconButton(onClick = onCycleRepeat, modifier = Modifier.testTag("audio_repeat")) {
+                            Icon(if (repeatMode == androidx.media3.common.Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                                when (repeatMode) {
+                                    androidx.media3.common.Player.REPEAT_MODE_ONE -> "Repeat this track"
+                                    androidx.media3.common.Player.REPEAT_MODE_ALL -> "Repeat all"
+                                    else -> "Repeat off"
+                                },
+                                tint = if (repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) palette.primary else palette.textSecondary)
+                        }
+                    }
                     Text(clock(total), color = palette.textSecondary, fontSize = 11.sp)
                 }
             }

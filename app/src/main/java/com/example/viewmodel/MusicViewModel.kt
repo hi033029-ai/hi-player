@@ -93,6 +93,15 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val equalizerPreset = audioEqualizer.preset
     val equalizerState = audioEqualizer.state
 
+    private val _shuffleEnabled = MutableStateFlow(musicPrefs.getBoolean("shuffle_v1", false))
+    val shuffleEnabled = _shuffleEnabled.asStateFlow()
+    private val _repeatMode = MutableStateFlow(musicPrefs.getInt("repeat_mode_v1", Player.REPEAT_MODE_OFF)
+        .takeIf { it in listOf(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL, Player.REPEAT_MODE_ONE) } ?: Player.REPEAT_MODE_OFF)
+    val repeatMode = _repeatMode.asStateFlow()
+    private val _waveform = MutableStateFlow<FloatArray?>(null)
+    val waveform = _waveform.asStateFlow()
+    private var waveformJob: Job? = null
+
     private val _activeSubtitle = MutableStateFlow<String?>(null)
     val activeSubtitle = _activeSubtitle.asStateFlow()
 
@@ -301,6 +310,9 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .build().apply {
+            // ExoPlayer creates its session id up front and does not report that
+            // first id through onAudioSessionIdChanged, so connect effects now.
+            audioEqualizer.attach(audioSessionId)
             addListener(object : Player.Listener {
                 override fun onAudioSessionIdChanged(audioSessionId: Int) {
                     audioEqualizer.attach(audioSessionId)
@@ -311,8 +323,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     _currentPositionMs.value = 0L
                     _durationMs.value = track.durationMs
                     clearLyrics()
+                    loadWaveform(track)
                     if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
                 }
+                override fun onShuffleModeEnabledChanged(enabled: Boolean) { _shuffleEnabled.value = enabled }
+                override fun onRepeatModeChanged(mode: Int) { _repeatMode.value = mode }
 
                 override fun onIsPlayingChanged(playing: Boolean) {
                     _isPlaying.value = playing
@@ -387,7 +402,55 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 
     private var playbackQueue: List<AudioItem> = emptyList()
 
-    fun playTrack(track: AudioItem, queue: List<AudioItem> = audioList.value) {
+    /** Plays a whole library section from the top, or in a random order that still stays inside it. */
+    fun playAll(queue: List<AudioItem>, shuffle: Boolean) {
+        val tracks = com.example.player.PlaybackQueue.snapshot(queue) { it.uri.toString() }
+        if (tracks.isEmpty()) return
+        playTrack(if (shuffle) tracks.random() else tracks.first(), tracks, shuffle = shuffle)
+    }
+
+    fun toggleShuffle() {
+        val player = exoPlayer ?: return
+        val enable = !player.shuffleModeEnabled
+        if (enable) applyShuffleOrder(player)
+        player.shuffleModeEnabled = enable
+        _shuffleEnabled.value = enable
+        musicPrefs.edit().putBoolean("shuffle_v1", enable).apply()
+    }
+
+    fun cycleRepeatMode() {
+        val next = when (_repeatMode.value) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+        exoPlayer?.repeatMode = next
+        _repeatMode.value = next
+        musicPrefs.edit().putInt("repeat_mode_v1", next).apply()
+    }
+
+    /** Current track first, then the rest of this same queue in random order. */
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    private fun applyShuffleOrder(player: ExoPlayer) {
+        val count = player.mediaItemCount
+        if (count <= 1) return
+        val current = player.currentMediaItemIndex.coerceIn(0, count - 1)
+        val order = com.example.player.PlaybackQueue.shuffledOrder(current, count)
+        player.setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
+    }
+
+    private fun loadWaveform(track: AudioItem) {
+        waveformJob?.cancel()
+        val key = "${trackKey(track)}|${track.sizeBytes}|${track.durationMs}"
+        _waveform.value = com.example.audio.AudioWaveformExtractor.cached(key)
+        if (_waveform.value != null) return
+        waveformJob = viewModelScope.launch {
+            val peaks = com.example.audio.AudioWaveformExtractor.load(getApplication(), track.uri, key, track.durationMs)
+            if (_currentTrack.value?.uri == track.uri) _waveform.value = peaks
+        }
+    }
+
+    fun playTrack(track: AudioItem, queue: List<AudioItem> = audioList.value, shuffle: Boolean? = null) {
         playbackQueue = com.example.player.PlaybackQueue.snapshot(queue) { it.uri.toString() }
             .takeIf { items -> items.any { it.uri == track.uri } } ?: listOf(track)
         _currentTrack.value = track
@@ -398,12 +461,21 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             val items = playbackQueue.map { item ->
                 MediaItem.Builder().setUri(item.uri).setMediaId(item.uri.toString())
                     .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
-                        .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album).build()).build()
+                        .setTitle(item.title).setArtist(item.artist).setAlbumTitle(item.album)
+                        .setArtworkUri(item.albumArtUri ?: item.artworkUrl?.let(Uri::parse))
+                        .setIsPlayable(true).build()).build()
             }
             com.example.data.PlaybackLoudness.restoreForPlayback(getApplication())
             player.setMediaItems(items, playbackQueue.indexOfFirst { it.uri == track.uri }, 0L)
-            player.repeatMode = Player.REPEAT_MODE_OFF
-            player.shuffleModeEnabled = false
+            // The queue is exactly the library section the track was opened from;
+            // playback advances to its next item (or a shuffled item of it), never elsewhere.
+            player.repeatMode = _repeatMode.value
+            val shuffleOn = shuffle ?: _shuffleEnabled.value
+            if (shuffleOn) applyShuffleOrder(player)
+            player.shuffleModeEnabled = shuffleOn
+            _shuffleEnabled.value = shuffleOn
+            if (shuffle != null) musicPrefs.edit().putBoolean("shuffle_v1", shuffleOn).apply()
+            audioEqualizer.attach(player.audioSessionId)
             player.prepare()
             player.play()
             com.example.player.HiMediaSessionService.startPlayback(getApplication(), player)
@@ -434,7 +506,11 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun playPrevious() {
-        exoPlayer?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
+        exoPlayer?.let { player ->
+            // Standard behaviour: after 3 s, Previous restarts the current track.
+            if (player.currentPosition > 3000 || !player.hasPreviousMediaItem()) player.seekTo(0L)
+            else player.seekToPreviousMediaItem()
+        }
     }
 
     fun setSearchQuery(query: String) {
@@ -454,6 +530,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _isPlaying.value = false
         _currentPositionMs.value = 0L
         clearLyrics()
+        waveformJob?.cancel()
+        _waveform.value = null
         _isFullScreenPlayerOpen.value = false
         progressJob?.cancel()
     }

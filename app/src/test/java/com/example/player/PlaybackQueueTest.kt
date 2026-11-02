@@ -36,4 +36,10 @@ class PlaybackQueueTest {
         val queue = listOf("/Movies/a", "/Download/b")
         assertEquals("/Download/b", PlaybackQueue.adjacent(queue[0], queue, 1) { it })
     }
+    @Test fun shuffleStartsWithCurrentAndCoversSameQueueOnce() {
+        val order = PlaybackQueue.shuffledOrder(3, 10, kotlin.random.Random(7))
+        assertEquals(3, order.first())
+        assertEquals((0 until 10).toList(), order.sorted())
+        assertEquals(0, PlaybackQueue.shuffledOrder(0, 0).size)
+    }
 }
