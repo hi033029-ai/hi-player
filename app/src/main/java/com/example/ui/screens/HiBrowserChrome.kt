@@ -673,14 +673,7 @@ internal fun HiBrowserHome(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(96.dp))
-            HiPlayerLogoBadge(size = 104.dp)
-            Spacer(Modifier.height(14.dp))
-            Text(
-                if (isPrivate) "Private browsing" else "Hi Browser",
-                color = palette.textPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-            )
+            HiBrowserWelcome(isPrivate = isPrivate)
             if (isPrivate) {
                 Spacer(Modifier.height(8.dp))
                 Text(
