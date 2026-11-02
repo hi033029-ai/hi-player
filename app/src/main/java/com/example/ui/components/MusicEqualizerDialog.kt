@@ -91,7 +91,7 @@ fun MusicEqualizerDialog(
                                 Text("${if (band.gainDb > 0) "+" else ""}${band.gainDb.roundToInt()}",
                                     color = palette.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                 VerticalGainSlider(value = band.gainDb, min = state.minDb, max = state.maxDb,
-                                    onValueChange = { onBand(band.index, it) }, label = "$label Hz gain",
+                                    onValueChange = { onBand(band.index, it) }, label = if (band.frequencyHz >= 1000) "${band.frequencyHz / 1000f} kHz gain" else "${band.frequencyHz} Hz gain",
                                     activeTop = palette.secondary, activeBottom = palette.primary,
                                     track = palette.surfaceBorder,
                                     modifier = Modifier.padding(vertical = 4.dp).width(28.dp).height(120.dp))
