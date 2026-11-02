@@ -19,6 +19,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -450,8 +457,17 @@ class MainActivity : FragmentActivity() {
                                                 bottom = if (currentTab == NavTab.BROWSER) 0.dp else paddingValues.calculateBottomPadding(),
                                             )
                                     ) {
-                                        mainTabStateHolder.SaveableStateProvider(currentTab.name) {
-                                        when (currentTab) {
+                                        AnimatedContent(
+                                            targetState = currentTab,
+                                            transitionSpec = {
+                                                val forward = targetState.ordinal > initialState.ordinal
+                                                (slideInHorizontally(tween(220)) { if (forward) it / 12 else -it / 12 } + fadeIn(tween(180))) togetherWith
+                                                    (slideOutHorizontally(tween(220)) { if (forward) -it / 12 else it / 12 } + fadeOut(tween(180)))
+                                            },
+                                            label = "main_tab_transition",
+                                        ) { shownTab ->
+                                        mainTabStateHolder.SaveableStateProvider(shownTab.name) {
+                                        when (shownTab) {
                                             NavTab.VIDEOS -> {
                                                 HomeScreen(
                                                     libraryViewModel = libraryViewModel,
@@ -652,6 +668,7 @@ class MainActivity : FragmentActivity() {
                                                     includeHeader = false
                                                 )
                                             }
+                                        }
                                         }
                                         }
                                     }
