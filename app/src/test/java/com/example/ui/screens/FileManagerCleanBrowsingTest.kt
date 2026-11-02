@@ -31,7 +31,7 @@ class FileManagerCleanBrowsingTest {
         compose.onNodeWithTag("file_selection_circle", useUnmergedTree = true).assertExists()
     }
 
-    @Test fun rootHasNoNumericBreadcrumbOrDuplicateSectionPanels() {
+    @Test fun rootHasNoNumericBreadcrumbAndHasSeparateCategories() {
         compose.setContent {
             HiPlayerTheme {
                 MergedFilesView(
@@ -47,6 +47,9 @@ class FileManagerCleanBrowsingTest {
         compose.onNodeWithText("Extractable Archives").assertDoesNotExist()
         compose.onNodeWithText("Documents & Text Files").assertDoesNotExist()
         compose.onNodeWithText("Android Folders & Storage Explorer").assertDoesNotExist()
+        compose.onNodeWithTag("file_section_ARCHIVES").assertExists()
+        compose.onNodeWithTag("file_section_DOCUMENTS").assertExists()
+        compose.onNodeWithTag("file_section_FOLDERS").assertExists()
         compose.onNodeWithText("example.bin").assertExists()
     }
 }
