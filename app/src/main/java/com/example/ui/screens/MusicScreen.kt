@@ -256,24 +256,6 @@ fun MusicScreen(
                     Text("‹ All $pageMode", color = palette.textPrimary)
                 }
             }
-            if (mediaAccess.granted && playbackQueue.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).testTag("music_play_all_row"),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.FilledTonalButton(onClick = { musicViewModel.playAll(playbackQueue, shuffle = false) },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-                        Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp)); Text("Play all")
-                    }
-                    androidx.compose.material3.OutlinedButton(onClick = { musicViewModel.playAll(playbackQueue, shuffle = true) },
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-                        Icon(Icons.Default.Shuffle, null, Modifier.size(18.dp), tint = palette.primary)
-                        Spacer(Modifier.width(6.dp)); Text("Shuffle all", color = palette.textPrimary)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text("${playbackQueue.size} ${if (playbackQueue.size == 1) "track" else "tracks"}",
-                        color = palette.textSecondary, fontSize = 11.sp)
-                }
-            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
             if (!mediaAccess.granted) {
                 com.example.ui.components.LibraryPermissionPanel(audio = true, onOpenSettings = mediaAccess.openSettings, error = mediaAccess.error)
@@ -745,7 +727,6 @@ private fun MusicPlaybackSurface(
     val currentLyricLineIndex by musicViewModel.currentLyricLineIndex.collectAsStateWithLifecycle()
     val isFullScreenPlayerOpen by musicViewModel.isFullScreenPlayerOpen.collectAsStateWithLifecycle()
     val eqState by musicViewModel.equalizerState.collectAsStateWithLifecycle()
-    val waveform by musicViewModel.waveform.collectAsStateWithLifecycle()
     val shuffleEnabled by musicViewModel.shuffleEnabled.collectAsStateWithLifecycle()
     val repeatMode by musicViewModel.repeatMode.collectAsStateWithLifecycle()
         // Full Screen Audio Player or Wavy Now Playing Sheet
@@ -758,7 +739,6 @@ private fun MusicPlaybackSurface(
                     duration = duration,
                     eqPreset = if (eqState.enabled) equalizerPreset else "Off",
                     activeSubtitle = activeSubtitle,
-                    waveform = waveform,
                     shuffleEnabled = shuffleEnabled,
                     repeatMode = repeatMode,
                     onToggleShuffle = musicViewModel::toggleShuffle,
