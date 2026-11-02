@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -24,35 +26,35 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Seekable waveform progress bar. [peaks] are real decoded amplitudes (0..1);
- * while they are unavailable a flat neutral bar is drawn, never invented data.
- * Dragging previews the position locally and seeks once on release.
+ * Slim neon seek bar: a thin track with a gradient fill and a glowing thumb.
+ * The track thickens and the thumb grows while the user scrubs. Dragging
+ * previews locally (via [onScrub]) and seeks once on release.
  */
 @Composable
-fun WaveformSeekBar(
+fun NeonSeekBar(
     progress: Float,
-    peaks: FloatArray?,
     enabled: Boolean,
-    playedColor: Color,
-    remainingColor: Color,
+    startColor: Color,
+    endColor: Color,
+    trackColor: Color,
     onSeekFraction: (Float) -> Unit,
     modifier: Modifier = Modifier,
-    height: Dp = 56.dp,
     onScrub: (Float?) -> Unit = {},
 ) {
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    val scrubbing = dragFraction != null
     val shown = (dragFraction ?: progress).coerceIn(0f, 1f)
-    // Bars rise from flat when the decoded waveform arrives.
-    val reveal by animateFloatAsState(if (peaks != null) 1f else 0f, tween(450), label = "waveformReveal")
+    val trackHeight by animateDpAsState(if (scrubbing) 8.dp else 4.dp, tween(160), label = "seekTrack")
+    val thumbRadius by animateDpAsState(if (scrubbing) 10.dp else 7.dp, tween(160), label = "seekThumb")
+    val glow by animateFloatAsState(if (scrubbing) 0.45f else 0.25f, tween(160), label = "seekGlow")
     Canvas(
         modifier
             .fillMaxWidth()
-            .height(height)
-            .testTag("audio_waveform_seekbar")
+            .height(32.dp)
+            .testTag("audio_neon_seekbar")
             .semantics {
                 contentDescription = "Music playback position"
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
@@ -79,23 +81,26 @@ fun WaveformSeekBar(
                 )
             }
     ) {
-        val count = peaks?.size?.takeIf { it > 0 } ?: com.example.audio.AudioWaveformExtractor.BUCKETS
-        val slot = size.width / count
-        val barWidth = (slot * 0.62f).coerceAtLeast(1.5f)
-        val minBar = 3.dp.toPx()
-        val maxBar = size.height * 0.92f
-        val playedX = size.width * shown
-        for (i in 0 until count) {
-            val amplitude = peaks?.getOrNull(i)?.coerceIn(0f, 1f) ?: 0f
-            val h = minBar + (maxBar - minBar) * amplitude * reveal
-            val x = i * slot + (slot - barWidth) / 2f
-            val center = x + barWidth / 2f
-            val color = if (center <= playedX) playedColor else remainingColor
-            drawRoundRect(color, Offset(x, (size.height - h) / 2f), Size(barWidth, h), CornerRadius(barWidth / 2f))
+        val thumbR = thumbRadius.toPx()
+        val left = thumbR
+        val width = (size.width - thumbR * 2f).coerceAtLeast(1f)
+        val h = trackHeight.toPx()
+        val top = (size.height - h) / 2f
+        val radius = CornerRadius(h / 2f)
+        val playedX = left + width * shown
+        drawRoundRect(trackColor, Offset(left, top), Size(width, h), radius)
+        if (playedX > left) {
+            val fill = Brush.horizontalGradient(listOf(startColor, endColor), startX = left, endX = left + width)
+            // Soft glow under the played part.
+            drawRoundRect(fill, Offset(left, top - h), Size(playedX - left, h * 3f), CornerRadius(h * 1.5f), alpha = glow * 0.6f)
+            drawRoundRect(fill, Offset(left, top), Size(playedX - left, h), radius)
         }
-        // Playhead
-        val headWidth = 2.dp.toPx()
-        drawRoundRect(playedColor, Offset((playedX - headWidth / 2f).coerceIn(0f, size.width - headWidth), 0f),
-            Size(headWidth, size.height), CornerRadius(headWidth))
+        if (enabled) {
+            val thumbColor = androidx.compose.ui.graphics.lerp(startColor, endColor, shown)
+            val center = Offset(playedX, size.height / 2f)
+            drawCircle(thumbColor, thumbR * 1.9f, center, alpha = glow)
+            drawCircle(thumbColor, thumbR, center)
+            drawCircle(Color.White, thumbR * 0.42f, center, alpha = 0.9f)
+        }
     }
 }
