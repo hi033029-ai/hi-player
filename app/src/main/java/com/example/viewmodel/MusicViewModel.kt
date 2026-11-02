@@ -98,9 +98,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _repeatMode = MutableStateFlow(musicPrefs.getInt("repeat_mode_v1", Player.REPEAT_MODE_OFF)
         .takeIf { it in listOf(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL, Player.REPEAT_MODE_ONE) } ?: Player.REPEAT_MODE_OFF)
     val repeatMode = _repeatMode.asStateFlow()
-    private val _waveform = MutableStateFlow<FloatArray?>(null)
-    val waveform = _waveform.asStateFlow()
-    private var waveformJob: Job? = null
 
     private val _activeSubtitle = MutableStateFlow<String?>(null)
     val activeSubtitle = _activeSubtitle.asStateFlow()
@@ -323,7 +320,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     _currentPositionMs.value = 0L
                     _durationMs.value = track.durationMs
                     clearLyrics()
-                    loadWaveform(track)
                     if (_lyricsEnabled.value) fetchAndSyncLyrics(track)
                 }
                 override fun onShuffleModeEnabledChanged(enabled: Boolean) { _shuffleEnabled.value = enabled }
@@ -439,17 +435,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         player.setShuffleOrder(androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder(order, System.nanoTime()))
     }
 
-    private fun loadWaveform(track: AudioItem) {
-        waveformJob?.cancel()
-        val key = "${trackKey(track)}|${track.sizeBytes}|${track.durationMs}"
-        _waveform.value = com.example.audio.AudioWaveformExtractor.cached(key)
-        if (_waveform.value != null) return
-        waveformJob = viewModelScope.launch {
-            val peaks = com.example.audio.AudioWaveformExtractor.load(getApplication(), track.uri, key, track.durationMs)
-            if (_currentTrack.value?.uri == track.uri) _waveform.value = peaks
-        }
-    }
-
     fun playTrack(track: AudioItem, queue: List<AudioItem> = audioList.value, shuffle: Boolean? = null) {
         playbackQueue = com.example.player.PlaybackQueue.snapshot(queue) { it.uri.toString() }
             .takeIf { items -> items.any { it.uri == track.uri } } ?: listOf(track)
@@ -540,8 +525,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         _isPlaying.value = false
         _currentPositionMs.value = 0L
         clearLyrics()
-        waveformJob?.cancel()
-        _waveform.value = null
         _isFullScreenPlayerOpen.value = false
         progressJob?.cancel()
     }

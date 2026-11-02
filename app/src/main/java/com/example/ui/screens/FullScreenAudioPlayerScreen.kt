@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioItem
 import com.example.ui.components.FocusedLyricsView
-import com.example.ui.components.WaveformSeekBar
+import com.example.ui.components.NeonSeekBar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +41,7 @@ fun FullScreenAudioPlayerScreen(
     onLyricsTap: () -> Unit = {}, onBack: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier,
     lyricsMessage: String? = null, lyricsLoading: Boolean = false, lyricsRetryable: Boolean = false,
     onRetryLyrics: () -> Unit = {},
-    waveform: FloatArray? = null, shuffleEnabled: Boolean = false, repeatMode: Int = 0,
+    shuffleEnabled: Boolean = false, repeatMode: Int = 0,
     onToggleShuffle: () -> Unit = {}, onCycleRepeat: () -> Unit = {},
 ) {
     val palette = LocalHiPalette.current
@@ -96,8 +96,8 @@ fun FullScreenAudioPlayerScreen(
             }
             Column(Modifier.fillMaxWidth()) {
                 var scrub by remember { mutableStateOf<Float?>(null) }
-                WaveformSeekBar(progress = progress, peaks = waveform, enabled = total > 0,
-                    playedColor = palette.primary, remainingColor = palette.surfaceBorder,
+                NeonSeekBar(progress = progress, enabled = total > 0,
+                    startColor = palette.primary, endColor = palette.secondary, trackColor = palette.surfaceBorder,
                     onSeekFraction = { onSeek((it * total).toLong()) }, onScrub = { scrub = it })
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
