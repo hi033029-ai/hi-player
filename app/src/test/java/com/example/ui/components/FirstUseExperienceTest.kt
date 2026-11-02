@@ -162,12 +162,22 @@ class FirstUseExperienceTest {
         assertEquals(1, finished)
         compose.onNodeWithTag("onboarding_text_size_slider").assertDoesNotExist()
     }
+    @Test fun firstRunAnimationDoesNotBlockWelcomeActions() {
+        compose.mainClock.autoAdvance = false
+        var skipped = 0
+        compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> }, onSkip = { skipped++ }) } }
+        compose.mainClock.advanceTimeBy(350)
+        compose.onNodeWithTag("first_run_pixel_logo").assertExists()
+        compose.onNodeWithTag("welcome_skip_button").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, skipped) }
+        compose.mainClock.autoAdvance = true
+    }
     @Test fun welcomeSkipEntersAppWithoutRequestingPermissions() {
         var skipped = 0
         compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> }, onSkip = { skipped++ }) } }
         compose.onNodeWithTag("welcome_skip_button").assertIsDisplayed()
         screenshot("welcome")
-        compose.onNodeWithText("Make it yours").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Files & connections").performScrollTo().assertIsDisplayed()
         screenshot("welcome-features")
         compose.onNodeWithTag("welcome_skip_button").performClick()
         assertEquals(1, skipped)

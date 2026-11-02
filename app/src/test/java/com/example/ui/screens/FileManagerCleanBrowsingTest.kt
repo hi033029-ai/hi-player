@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.model.FileItem
 import com.example.ui.theme.HiPlayerTheme
@@ -31,7 +32,21 @@ class FileManagerCleanBrowsingTest {
         compose.onNodeWithTag("file_selection_circle", useUnmergedTree = true).assertExists()
     }
 
-    @Test fun rootHasNoNumericBreadcrumbOrDuplicateSectionPanels() {
+    @Test fun storageOverviewScrollsWithRootContent() {
+        val files = (1..25).map { n -> File("/storage/emulated/0/item$n.bin").let { f -> FileItem(f, f.name, f.path, false) } }
+        compose.setContent { HiPlayerTheme {
+            MergedFilesView(archives = emptyList(), documents = emptyList(), folderItems = files,
+                currentDir = File("/storage/emulated/0"),
+                headerContent = { androidx.compose.material3.Text("Internal Storage", modifier = androidx.compose.ui.Modifier.testTag("test_storage_summary")) },
+                onInspectArchive = {}, onExtractArchive = {}, onOpenDocument = {}, onNavigateFolder = {}, onNavigateUp = {})
+        } }
+        compose.onNodeWithTag("test_storage_summary").assertIsDisplayed()
+        compose.onNodeWithTag("files_root_list").performScrollToNode(hasText("item25.bin"))
+        compose.onNodeWithText("item25.bin").assertIsDisplayed()
+        compose.onNodeWithTag("test_storage_summary").assertDoesNotExist()
+    }
+
+    @Test fun rootHasNoNumericBreadcrumbAndHasSeparateCategories() {
         compose.setContent {
             HiPlayerTheme {
                 MergedFilesView(
@@ -47,6 +62,9 @@ class FileManagerCleanBrowsingTest {
         compose.onNodeWithText("Extractable Archives").assertDoesNotExist()
         compose.onNodeWithText("Documents & Text Files").assertDoesNotExist()
         compose.onNodeWithText("Android Folders & Storage Explorer").assertDoesNotExist()
+        compose.onNodeWithTag("file_section_ARCHIVES").assertExists()
+        compose.onNodeWithTag("file_section_DOCUMENTS").assertExists()
+        compose.onNodeWithTag("file_section_FOLDERS").assertExists()
         compose.onNodeWithText("example.bin").assertExists()
     }
 }

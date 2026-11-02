@@ -19,6 +19,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -450,8 +457,17 @@ class MainActivity : FragmentActivity() {
                                                 bottom = if (currentTab == NavTab.BROWSER) 0.dp else paddingValues.calculateBottomPadding(),
                                             )
                                     ) {
-                                        mainTabStateHolder.SaveableStateProvider(currentTab.name) {
-                                        when (currentTab) {
+                                        AnimatedContent(
+                                            targetState = currentTab,
+                                            transitionSpec = {
+                                                val forward = targetState.ordinal > initialState.ordinal
+                                                (slideInHorizontally(tween(220)) { if (forward) it / 12 else -it / 12 } + fadeIn(tween(180))) togetherWith
+                                                    (slideOutHorizontally(tween(220)) { if (forward) -it / 12 else it / 12 } + fadeOut(tween(180)))
+                                            },
+                                            label = "main_tab_transition",
+                                        ) { shownTab ->
+                                        mainTabStateHolder.SaveableStateProvider(shownTab.name) {
+                                        when (shownTab) {
                                             NavTab.VIDEOS -> {
                                                 HomeScreen(
                                                     libraryViewModel = libraryViewModel,
@@ -652,6 +668,7 @@ class MainActivity : FragmentActivity() {
                                                     includeHeader = false
                                                 )
                                             }
+                                        }
                                         }
                                         }
                                     }
@@ -889,17 +906,23 @@ class MainActivity : FragmentActivity() {
         // backgrounded. Do not reset requestedOrientation here: changing it
         // while entering Recents can recreate the activity and leave the GL
         // surface with a mismatched aspect transform when the app returns.
+        // Rotation/theme recreation is not "leaving the app"; keep playing.
+        if (isChangingConfigurations) return
         playerViewModel.saveCurrentProgress()
-        if (!playerViewModel.engine.isBackgroundPlayActive.value) {
+        // Back to Home (Android 12+ keeps the task in Recents), Home, Recents or
+        // screen lock: only the Settings "Background Audio Playback" option may
+        // keep sound going. Otherwise pause both players, keep their track,
+        // position and queue, and wait for an explicit Play (app or notification).
+        if (!libraryViewModel.playerSettings.value.backgroundPlayEnabled) {
             playerViewModel.pauseForAppBackground()
+            musicViewModel.pauseForAppBackground()
         }
     }
 
     override fun onStart() {
         super.onStart()
-        if (!isInPictureInPictureMode && !pipTransitionRequested) {
-            playerViewModel.resumeAfterAppForeground()
-        }
+        // Deliberately no auto-resume: returning to the app shows the saved,
+        // paused state; playback restarts only when the user taps Play.
     }
 
     override fun onPictureInPictureModeChanged(

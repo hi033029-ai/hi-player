@@ -177,6 +177,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val isLoading = _isLoading.asStateFlow()
     private val _scanStatus = MutableStateFlow(com.example.ui.components.LibraryScanStatus.IDLE)
     val scanStatus = _scanStatus.asStateFlow()
+    private val refreshFeedback = LibraryRefreshFeedback()
+    val showScanFeedback = refreshFeedback.visible
 
     private val cacheReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) { performRefresh() }
@@ -453,6 +455,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshVideos(silent: Boolean = false) {
+        refreshFeedback.request(userInitiated = !silent)
         // Clear revoked / narrowed access synchronously, before a coalesced scan waits.
         val access = com.example.data.LibraryAccessPolicy.scope(getApplication(), false)
         if (access != com.example.data.LibraryAccessPolicy.Scope.FULL) {
@@ -471,11 +474,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             _allVideos.value = emptyList()
             _scanStatus.value = com.example.ui.components.LibraryScanStatus.IDLE
             _isLoading.value = false
+            refreshFeedback.finish()
             withContext(Dispatchers.IO) { com.example.data.MediaLibraryCache.clear(getApplication(), false) }
             return
         }
         if (access == com.example.data.LibraryAccessPolicy.Scope.SELECTED) _allVideos.value = emptyList()
         _scanStatus.value = com.example.ui.components.LibraryScanStatus.SCANNING
+        refreshFeedback.begin(hasContent = _allVideos.value.isNotEmpty())
         try {
             val snapshot = MediaScanner.scanLocalVideos(getApplication())
             if (com.example.data.LibraryAccessPolicy.scope(getApplication(), false) != access) {
@@ -503,7 +508,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         } catch (error: Exception) {
             _scanStatus.value = com.example.ui.components.LibraryScanStatus.INCOMPLETE
             android.util.Log.w("HiLibrary", "Video refresh unavailable; keeping last successful library", error)
-        } finally { _isLoading.value = false }
+        } finally { _isLoading.value = false; refreshFeedback.finish() }
     }
 
     fun setNavMode(mode: LibraryNavMode) {

@@ -16,10 +16,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +31,8 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -111,6 +116,7 @@ fun SplashScreen(
     var selectedTheme by rememberSaveable { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
     var textSizeSp by rememberSaveable { mutableStateOf(14) }
 
+    var introShown by rememberSaveable { mutableStateOf(false) }
     var finishing by rememberSaveable { mutableStateOf(false) }
     fun finishOnce() {
         if (!finishing) {
@@ -150,7 +156,9 @@ fun SplashScreen(
             AnimatedContent(
                 targetState = currentStep,
                 transitionSpec = {
-                    fadeIn() togetherWith fadeOut()
+                    val forward = targetState.ordinal > initialState.ordinal
+                    (slideInHorizontally(tween(260)) { if (forward) it / 6 else -it / 6 } + fadeIn(tween(220))) togetherWith
+                        (slideOutHorizontally(tween(260)) { if (forward) -it / 6 else it / 6 } + fadeOut(tween(180)))
                 },
                 label = "onboarding_step"
             ) { step ->
@@ -164,10 +172,14 @@ fun SplashScreen(
 
                     OnboardingStep.WELCOME_NOTE -> {
                         WelcomeNoteView(
+                            playIntro = !introShown,
+                            onIntroFinished = { introShown = true },
                             onContinue = {
+                                introShown = true
                                 currentStep = OnboardingStep.CHOOSE_THEME
                             },
                             onSkip = {
+                                introShown = true
                                 if (!finishing) { finishing = true; onSkip() }
                             }
                         )
@@ -347,90 +359,67 @@ private fun SplashLogoView(
 
 @Composable
 private fun WelcomeNoteView(
+    playIntro: Boolean,
+    onIntroFinished: () -> Unit,
     onContinue: () -> Unit,
     onSkip: () -> Unit
 ) {
-    val context = LocalContext.current
-
-    var footerHeight by remember { mutableStateOf(180.dp) }
-    Box(modifier = Modifier.fillMaxSize()) {
+    var footerHeight by remember { mutableStateOf(150.dp) }
+    val intro = remember { Animatable(if (playIntro) 0f else 1f) }
+    LaunchedEffect(playIntro) {
+        if (playIntro) {
+            intro.animateTo(1f, tween(1450, easing = FastOutSlowInEasing))
+            onIntroFinished()
+        } else intro.snapTo(1f)
+    }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val gather = (intro.value / 0.65f).coerceIn(0f, 1f)
+        val rise = ((intro.value - 0.55f) / 0.45f).coerceIn(0f, 1f)
+        val startY = (maxHeight / 2 - 70.dp).coerceAtLeast(20.dp)
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = footerHeight)
+            modifier = Modifier.fillMaxSize().padding(bottom = footerHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 28.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
         ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Header with Logo
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .shadow(8.dp, RoundedCornerShape(18.dp), spotColor = Color(0xFF004080).copy(alpha = 0.3f))
-                    .clip(RoundedCornerShape(18.dp))
-                    .border(1.dp, Color(0xFF7E9EB8), RoundedCornerShape(18.dp))
-                    .background(Color(0xFFB5D8EB)),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = com.example.ui.components.rememberHiPlayerLogoPainter(),
-                    contentDescription = "Hi Player Logo",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(42.dp)
-                )
+            Spacer(Modifier.height(118.dp))
+            Text("Welcome to Hi Player", fontSize = 21.sp, fontWeight = FontWeight.Bold,
+                color = com.example.ui.theme.LocalHiPalette.current.textPrimary, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(18.dp))
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WelcomeFeature(Icons.Default.Tv, "Videos & HDR", "Playback, subtitles and picture controls")
+                WelcomeFeature(Icons.Default.Headphones, "Music", "Background listening and equalizer")
+                WelcomeFeature(Icons.Default.Security, "Browser", "Tabs, downloads and video playback")
+                WelcomeFeature(Icons.Default.Folder, "Files & connections", "Browse, organise and connect storage")
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Text(
-                text = "Welcome to Hi Player",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Your videos, music, browser and files — together, with controls that make them yours.",
-                fontSize = 14.sp,
-                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Feature Highlights
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FeatureRow(Icons.Default.Tv, "Video, HDR & picture controls",
-                    "Play local videos and streams, resume watching, choose subtitles and adjust picture presets. Format and HDR support depend on your device.")
-                FeatureRow(Icons.Default.Headphones, "Music & background listening",
-                    "Browse songs, albums and folders, tune the equalizer, and listen with playback controls in notifications.")
-                FeatureRow(Icons.Default.Security, "Built-in browser",
-                    "Browse with tabs, ad and tracker filtering, supported-page skipping, downloads and Play in Hi Player. Website compatibility varies.")
-                FeatureRow(Icons.Default.Folder, "Files & personal connections",
-                    "Organise files, use the recycle bin and archive tools, and connect supported personal drives or media servers.")
-                FeatureRow(Icons.Default.Palette, "Make it yours",
-                    "Choose themes, text size, library views, sorting and playback settings. Helpful tips appear when you use each feature.")
-                FeatureRow(Icons.Default.CheckCircle, "Start your way",
-                    "Media access is optional. Skip setup to explore, then allow access from the library whenever you're ready.")
-            }
+            Spacer(Modifier.height(12.dp))
         }
-
+        // Decoration never gates navigation: Continue and Skip remain usable while it animates.
+        Box(Modifier.align(Alignment.TopCenter).offset(y = startY + (20.dp - startY) * rise)
+            .size(96.dp).scale(1.65f - 0.65f * rise).testTag("first_run_pixel_logo"),
+            contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(96.dp)) {
+                val targets = listOf(
+                    0.27f to 0.20f, 0.27f to 0.32f, 0.27f to 0.44f, 0.27f to 0.56f, 0.27f to 0.68f, 0.27f to 0.80f,
+                    0.38f to 0.26f, 0.49f to 0.32f, 0.60f to 0.38f, 0.71f to 0.45f, 0.78f to 0.50f,
+                    0.38f to 0.74f, 0.49f to 0.68f, 0.60f to 0.62f, 0.71f to 0.55f,
+                    0.14f to 0.28f, 0.10f to 0.42f, 0.16f to 0.56f, 0.09f to 0.69f, 0.21f to 0.82f,
+                )
+                targets.forEachIndexed { i, (x, y) ->
+                    val sx = ((i * 47 + 13) % 101) / 100f
+                    val sy = ((i * 71 + 29) % 101) / 100f
+                    drawRect(color = Color(0xFF009DA8).copy(alpha = (1f - rise).coerceIn(0f, 1f)),
+                        topLeft = androidx.compose.ui.geometry.Offset(size.width * (sx + (x - sx) * gather), size.height * (sy + (y - sy) * gather)),
+                        size = androidx.compose.ui.geometry.Size(size.width * 0.055f, size.height * 0.055f))
+                }
+            }
+            Image(painter = com.example.ui.components.rememberHiPlayerLogoPainter(),
+                contentDescription = "Hi Player logo", contentScale = ContentScale.Fit,
+                modifier = Modifier.size(70.dp).alpha(((gather - 0.60f) / 0.40f).coerceIn(0f, 1f)))
         }
         OnboardingActions(
-            onHeightChanged = { footerHeight = it },
-            primaryLabel = "Continue", onPrimary = onContinue, accent = com.example.ui.theme.LocalHiPalette.current.primary,
+            onHeightChanged = { footerHeight = it }, primaryLabel = "Continue", onPrimary = onContinue,
+            accent = com.example.ui.theme.LocalHiPalette.current.primary,
             secondaryLabel = "Skip setup", onSecondary = onSkip, primaryTag = "welcome_continue_button",
             secondaryTag = "welcome_skip_button",
         )
@@ -438,54 +427,14 @@ private fun WelcomeNoteView(
 }
 
 @Composable
-private fun FeatureRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    description: String
-) {
-    Card(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
-        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-        elevation = CardDefaults.cardElevation(0.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                    .background(com.example.ui.theme.LocalHiPalette.current.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = com.example.ui.theme.LocalHiPalette.current.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    color = com.example.ui.theme.LocalHiPalette.current.textPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = description,
-                    fontSize = 14.sp,
-                    color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
-                    lineHeight = 20.sp
-                )
-            }
+private fun WelcomeFeature(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, description: String) {
+    val palette = com.example.ui.theme.LocalHiPalette.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, color = palette.textPrimary, fontSize = 14.sp)
+            Text(description, color = palette.textSecondary, fontSize = 12.sp, lineHeight = 17.sp)
         }
     }
 }
