@@ -43,7 +43,7 @@ fun MusicEqualizerDialog(
                 }
                 Text(state.status, color = palette.textSecondary, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(EqualizerCurves.presets.keys.toList()) { name ->
+                    items(EqualizerCurves.presets.keys.toList() + "Custom") { name ->
                         FilterChip(selected = state.preset == name, onClick = { onPreset(name) }, label = { Text(name) },
                             colors = FilterChipDefaults.filterChipColors(
                                 labelColor = palette.textPrimary, selectedContainerColor = palette.primary,
@@ -51,13 +51,14 @@ fun MusicEqualizerDialog(
                     }
                 }
                 if (state.available) {
-                    Text("Frequency bands", color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
+                    Text(if (state.preset == "Custom") "Custom equalizer · drag any band" else "Frequency bands · drag to customize",
+                        color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
                     state.bands.forEach { band ->
                         val label = if (band.frequencyHz >= 1000) "${band.frequencyHz / 1000f} kHz" else "${band.frequencyHz} Hz"
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(label, Modifier.width(58.dp), color = palette.textSecondary, fontSize = 11.sp)
                             Slider(value = band.gainDb, onValueChange = { onBand(band.index, it) },
-                                enabled = state.enabled, valueRange = state.minDb..state.maxDb,
+                                valueRange = state.minDb..state.maxDb,
                                 modifier = Modifier.weight(1f).semantics { contentDescription = "$label gain" },
                                 colors = SliderDefaults.colors(thumbColor = palette.primary, activeTrackColor = palette.primary))
                             Text("${if (band.gainDb > 0) "+" else ""}${band.gainDb.roundToInt()} dB",
@@ -68,7 +69,7 @@ fun MusicEqualizerDialog(
                 if (state.bassSupported) {
                     Text("Bass strength · ${state.bassStrength / 10}%", color = palette.textPrimary)
                     Slider(value = state.bassStrength.toFloat(), onValueChange = { onBass(it.roundToInt()) },
-                        valueRange = 0f..1000f, enabled = state.enabled,
+                        valueRange = 0f..1000f,
                         modifier = Modifier.semantics { contentDescription = "Bass strength" })
                 }
                 Text("Band count and gain range depend on your device and audio output. High boosts can distort; start low.",
