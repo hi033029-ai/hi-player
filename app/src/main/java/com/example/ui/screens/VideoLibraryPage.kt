@@ -136,7 +136,13 @@ internal fun VideoLibraryPage(
     val canShowLibrary = mediaAccess.granted && !(mediaAccess.limited && scanStatus == com.example.ui.components.LibraryScanStatus.SCANNING)
     val allVideos = if (canShowLibrary) availableVideos else emptyList()
     val folders = if (canShowLibrary) availableFolders else emptyList()
-    val swipeTip = com.example.ui.components.rememberFirstUseTip("video_library_swipe_v1")
+    // Share one library guide with MusicScreen instead of showing it again on
+    // every destination or pager tab.
+    val swipeTip = com.example.ui.components.rememberFirstUseTip("library_swipe_tabs_v1")
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(5_000)
+        swipeTip.dismiss()
+    }
     val historyRecords by libraryViewModel.historyRecords.collectAsStateWithLifecycle()
     val availableContinueWatching by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
     val continueWatchingVideos = if (canShowLibrary) availableContinueWatching else emptyList()

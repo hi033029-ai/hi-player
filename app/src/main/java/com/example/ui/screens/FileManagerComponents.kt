@@ -80,6 +80,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -628,7 +629,8 @@ fun ArchiveInspectorBottomSheet(
     entries: List<ArchiveEntryInfo>?,
     extractingProgress: FileManagerViewModel.ExtractionProgress?,
     onDismiss: () -> Unit,
-    onExtract: () -> Unit
+    onExtractHere: () -> Unit,
+    onChooseDestination: () -> Unit,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -734,26 +736,31 @@ fun ArchiveInspectorBottomSheet(
                     )
                 }
             } else {
-                Button(
-                    onClick = onExtract,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = palette.primary,
-                        contentColor = if (palette.isDark) Color.Black else Color.White
-                    )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Unarchive,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Extract All Files to Folder",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
+                    OutlinedButton(
+                        onClick = onChooseDestination,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Choose folder", fontSize = 12.sp) }
+                    Button(
+                        onClick = onExtractHere,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = palette.primary,
+                            contentColor = if (palette.isDark) Color.Black else Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Unarchive,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Extract Here", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
                 }
             }
 

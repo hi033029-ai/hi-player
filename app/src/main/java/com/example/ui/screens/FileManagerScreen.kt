@@ -233,7 +233,10 @@ fun FileManagerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 hasFullStorageAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
-                fileManagerViewModel.refreshCurrentDirectory(silent = true)
+                // Permission changes can affect Archives/Documents as well as
+                // the current folder. Re-scan everything immediately instead
+                // of waiting for the user to press Refresh.
+                fileManagerViewModel.refreshAll(silent = true)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -695,7 +698,8 @@ fun FileManagerScreen(
             entries = activeArchiveEntries,
             extractingProgress = extractingProgress,
             onDismiss = { fileManagerViewModel.dismissArchiveViewer() },
-            onExtract = { fileManagerViewModel.beginExtractTo(selectedArchive!!) }
+            onExtractHere = { fileManagerViewModel.extractArchive(selectedArchive!!, context) },
+            onChooseDestination = { fileManagerViewModel.beginExtractTo(selectedArchive!!) }
         )
     }
 

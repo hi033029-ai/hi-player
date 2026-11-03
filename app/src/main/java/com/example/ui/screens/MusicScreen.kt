@@ -85,6 +85,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -136,7 +137,12 @@ fun MusicScreen(
     val showScanFeedback by musicViewModel.showScanFeedback.collectAsStateWithLifecycle()
     val mediaAccess = com.example.ui.components.rememberLibraryMediaAccess(audio = true) { musicViewModel.loadAudioTracks(showFeedback = true) }
     val audioList = if (mediaAccess.granted) availableAudio else emptyList()
-    val swipeTip = com.example.ui.components.rememberFirstUseTip("music_library_swipe_v1")
+    // One guide for the whole library, not a new guide for every pager/tab.
+    val swipeTip = com.example.ui.components.rememberFirstUseTip("library_swipe_tabs_v1")
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(5_000)
+        swipeTip.dismiss()
+    }
     val currentTrack by musicViewModel.currentTrack.collectAsStateWithLifecycle()
     val isPlaying by musicViewModel.isPlaying.collectAsStateWithLifecycle()
     val searchQuery by musicViewModel.searchQuery.collectAsStateWithLifecycle()
@@ -218,7 +224,7 @@ fun MusicScreen(
         audioToolbar()
         if (mediaAccess.granted) {
                 com.example.ui.components.LibraryAccessExplanation(audio = true)
-            com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your music",
+            com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your library",
                 "Swipe left or right across the library to move between Songs, Folders, Playlists, Albums and Artists. Tap a tab to jump straight there.",
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp))
             // Background refreshes must not add a banner above the current library.

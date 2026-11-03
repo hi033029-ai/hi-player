@@ -57,29 +57,41 @@ class BrowserDownloadService : Service() {
                         val items = BrowserDownloads.downloads.value
                         val running = items.filter { it.status == BrowserDownloadStatus.RUNNING }
                         val queued = items.count { it.status == BrowserDownloadStatus.QUEUED }
-                        if (running.isEmpty() && queued == 0 && !BrowserDownloads.hasPendingCommands()) {
+                        val finalizing = items.filter { it.status == BrowserDownloadStatus.RUNNING && it.finalizing }
+                        if (running.isEmpty() && finalizing.isEmpty() && queued == 0 && !BrowserDownloads.hasPendingCommands()) {
                             val paused = items.count { it.status == BrowserDownloadStatus.PAUSED }
                             val failed = items.count { it.status == BrowserDownloadStatus.FAILED }
                             val complete = items.count { it.status == BrowserDownloadStatus.COMPLETED }
+                            val completedNames = items.filter { it.status == BrowserDownloadStatus.COMPLETED }
+                                .takeLast(3).joinToString { it.fileName }
                             val text = when {
                                 paused > 0 -> "$paused paused • tap Resume to continue"
                                 failed > 0 -> "$failed failed • open Hi Browser to retry"
-                                else -> "$complete downloads completed"
+                                complete == 1 && completedNames.isNotBlank() -> "File downloaded: $completedNames"
+                                else -> "$complete files downloaded"
                             }
                             val note = notification(text, false, resume = paused > 0).build()
                             idleStop = true
                             releaseCpu()
-                            stopForeground(STOP_FOREGROUND_DETACH)
-                            runCatching { notifications.notify(NOTIFICATION_ID, note) }
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            notifications.cancel(NOTIFICATION_ID)
+                            runCatching { notifications.notify(COMPLETION_NOTIFICATION_ID, note) }
                             stopSelf(lastStartId)
                             break
                         }
                         keepCpuAwake()
                         val bytes = running.sumOf { it.speedBytesPerSecond }
-                        val text = if (running.size == 1) running.first().fileName else "${running.size} downloading • $queued queued"
+                        val text = when {
+                            finalizing.size == 1 -> "Saving ${finalizing.first().fileName}…"
+                            finalizing.isNotEmpty() -> "Saving ${finalizing.size} downloaded files…"
+                            running.size == 1 -> running.first().fileName
+                            else -> "${running.size} downloading • $queued queued"
+                        }
                         val builder = notification(text, true).setSubText("${formatSpeed(bytes)}/s • Hi Browser engine")
                         val single = running.singleOrNull()
-                        if (single != null && single.totalBytes > 0) {
+                        if (finalizing.size == 1) {
+                            builder.setProgress(100, 100, false)
+                        } else if (single != null && single.totalBytes > 0) {
                             builder.setProgress(100, ((single.downloadedBytes.toDouble() / single.totalBytes) * 100).toInt().coerceIn(0, 100), false)
                         } else builder.setProgress(0, 0, true)
                         runCatching { notifications.notify(NOTIFICATION_ID, builder.build()) }
@@ -126,6 +138,7 @@ class BrowserDownloadService : Service() {
     companion object {
         private const val CHANNEL = "hi_browser_native_downloads"
         private const val NOTIFICATION_ID = 4601
+        private const val COMPLETION_NOTIFICATION_ID = 4602
         private fun formatSpeed(bytes: Long) = when {
             bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1048576.0)
             bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)

@@ -358,7 +358,7 @@ internal object BrowserDownloads {
             try {
                 synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = document.uri.toString())); persistLocked(context) } }
                 context.contentResolver.openOutputStream(document.uri, "w")?.use { output -> part(context, entry.id).inputStream().use { input ->
-                    val buffer = ByteArray(65536)
+                    val buffer = ByteArray(1024 * 1024)
                     while (true) { transfer.checkActive(); val n = input.read(buffer); if (n < 0) break; output.write(buffer, 0, n) }
                 } } ?: throw IOException("Cannot write downloaded file")
                 transfer.checkActive()
@@ -384,7 +384,7 @@ internal object BrowserDownloads {
                 synchronized(lock) { find(entry.id)?.let { replaceLocked(it.copy(savedUri = uri.toString())); persistLocked(context) } }
                 resolver.openOutputStream(uri, "w")?.use { output ->
                     part(context, entry.id).inputStream().use { input ->
-                        val buffer = ByteArray(64 * 1024)
+                        val buffer = ByteArray(1024 * 1024)
                         while (true) { transfer.checkActive(); val n = input.read(buffer); if (n < 0) break; output.write(buffer, 0, n) }
                     }
                 } ?: throw IOException("Could not write downloaded file")
@@ -407,7 +407,7 @@ internal object BrowserDownloads {
         while (!destination.createNewFile()) { destination = File(dir, "${entry.fileName.substringBeforeLast('.', entry.fileName)} (${count++})" + entry.fileName.substringAfterLast('.', "").let { if (it.isBlank()) "" else ".$it" }) }
         try {
             destination.outputStream().use { output -> part(context, entry.id).inputStream().use { input ->
-                val buffer = ByteArray(64 * 1024)
+                val buffer = ByteArray(1024 * 1024)
                 while (true) { transfer.checkActive(); val n = input.read(buffer); if (n < 0) break; output.write(buffer, 0, n) }
             } }
             transfer.checkActive()

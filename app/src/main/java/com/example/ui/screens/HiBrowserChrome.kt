@@ -3,6 +3,9 @@ package com.example.ui.screens
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -656,6 +659,11 @@ internal fun HiBrowserHome(
     val palette = LocalHiPalette.current
     var editing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
+    var showWelcome by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1_650)
+        showWelcome = false
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -673,7 +681,6 @@ internal fun HiBrowserHome(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(96.dp))
-            HiBrowserWelcome(isPrivate = isPrivate)
             if (isPrivate) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -732,6 +739,21 @@ internal fun HiBrowserHome(
                 contentDescription = if (editing) "Done editing" else "Edit shortcuts",
                 tint = palette.textPrimary,
             )
+        }
+        AnimatedVisibility(
+            visible = showWelcome,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(palette.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                HiBrowserWelcome(isPrivate = isPrivate)
+            }
         }
     }
     if (adding) {
