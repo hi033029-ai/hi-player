@@ -42,7 +42,7 @@ enum class ActiveSheet {
 }
 
 data class SubtitleStyleConfig(
-    val fontSizeSp: Int = 20,
+    val fontSizeSp: Int = 16,
     val fontFamily: String = "SansSerif",
     val textColorHex: Long = 0xFFFFFFFF,
     val bgOpacity: Float = 0.6f,
@@ -54,6 +54,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val videoDao = database.videoDao()
     private val preferencesRepo = PlayerPreferencesRepository(application)
     private val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    // Immediate local copies survive an Activity/ViewModel being closed before
+    // an asynchronous DataStore write finishes. Existing DataStore values are
+    // still used as the fallback for upgrades.
+    private val lastPlayerControls = application.getSharedPreferences("player_last_controls_v1", Context.MODE_PRIVATE)
+    private val rememberedAudioTracks = application.getSharedPreferences("player_audio_tracks_v1", Context.MODE_PRIVATE)
+    private var pendingAudioTrack: Pair<String, VideoTrackInfo>? = null
 
     val engine = HiPlayerEngine(application, viewModelScope)
 
@@ -124,6 +130,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         engine.onVideoEnded = { playAdjacentVideo(1) }
         startProgressSync()
 
+        viewModelScope.launch {
+            engine.availableAudioTracks.collect { restoreFileAudioTrack(it) }
+        }
+
         // The app-level HDR setting previously only changed DataStore. Observe
         // it here so a change takes effect immediately while a video is open.
         viewModelScope.launch {
@@ -146,7 +156,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     verticalOffsetDp = settings.subtitleVerticalOffsetDp,
                 )
                 applyRememberedBrightness(settings.playerBrightnessPercent)
-                engine.setVolumeBoost(settings.volumeBoostPercent)
+                engine.setVolumeBoost(savedVolumeBoost(settings.volumeBoostPercent))
                 engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
                 engine.setAudioDelay(settings.audioDelayMs)
                 engine.setSubtitleOffset(settings.subtitleOffsetMs)
@@ -179,6 +189,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         pendingPlaybackQueue = null
         engine.setBackgroundPlay(asAudio)
         playRequestJob?.cancel()
+        pendingAudioTrack = null
         _currentVideo.value = video
         _showStartOverPrompt.value = false
         _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
@@ -221,6 +232,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 mediaMimeType = video.mimeType,
                 mediaTitle = video.title,
             )
+            pendingAudioTrack = readFileAudioTrack(video.uri)?.let { video.uri.toString() to it }
+            restoreFileAudioTrack(engine.availableAudioTracks.value)
             engine.getPlayer().let { player ->
                 // The playback notification (and lock-screen controls) exist for
                 // background listening. Without that setting a video must not post
@@ -263,6 +276,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // surface from retaining its title, controls, or growing-download HUD
         // while the main screen is recomposed.
         _currentVideo.value = null
+        pendingAudioTrack = null
     }
 
     /** Keeps a selected stream intact when the app is temporarily backgrounded. */
@@ -478,9 +492,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setVolumeBoost(percent: Int) {
         val normalized = percent.coerceIn(0, 100)
         engine.setVolumeBoost(normalized)
-        viewModelScope.launch {
-            preferencesRepo.setVolumeBoostPercent(normalized)
-        }
+        persistVolumeBoost(normalized)
     }
 
     fun setEqualizerPreset(preset: String) {
@@ -499,9 +511,51 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectAudioTrack(track: VideoTrackInfo) {
         if (!track.isSupported) return
+        pendingAudioTrack = null
         engine.selectAudioTrack(track)
-        languageSaveJob?.cancel()
-        languageSaveJob = viewModelScope.launch { preferencesRepo.setPreferredAudioLanguage(track.language) }
+        _currentVideo.value?.uri?.let { saveFileAudioTrack(it, track) }
+        // Unknown tags cannot safely become a cross-file language preference.
+        val language = com.example.data.normalizeTrackLanguage(track.language)
+        if (language != null) {
+            lastPlayerControls.edit().putString("audio_language", language).apply()
+            languageSaveJob?.cancel()
+            languageSaveJob = viewModelScope.launch { preferencesRepo.setPreferredAudioLanguage(language) }
+        }
+    }
+
+    private fun audioTrackKey(uri: Uri): String? {
+        // Never persist credential-bearing network URLs.
+        if (uri.scheme !in listOf("content", "file")) return null
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(uri.toString().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private fun saveFileAudioTrack(uri: Uri, track: VideoTrackInfo) {
+        val key = audioTrackKey(uri) ?: return
+        val value = org.json.JSONObject().put("id", track.id).put("label", track.label)
+            .put("language", track.language ?: "").put("mime", track.mimeType ?: "")
+            .put("group", track.trackGroupIndex).put("index", track.trackIndex).toString()
+        rememberedAudioTracks.edit().putString(key, value).apply()
+    }
+
+    private fun readFileAudioTrack(uri: Uri): VideoTrackInfo? = runCatching {
+        val key = audioTrackKey(uri) ?: return null
+        val json = org.json.JSONObject(rememberedAudioTracks.getString(key, null) ?: return null)
+        VideoTrackInfo(id = json.getString("id"), label = json.getString("label"),
+            language = json.optString("language").ifBlank { null },
+            mimeType = json.optString("mime").ifBlank { null }, isSelected = false,
+            trackType = androidx.media3.common.C.TRACK_TYPE_AUDIO,
+            trackGroupIndex = json.getInt("group"), trackIndex = json.getInt("index"))
+    }.getOrNull()
+
+    private fun restoreFileAudioTrack(tracks: List<VideoTrackInfo>) {
+        val (uri, saved) = pendingAudioTrack ?: return
+        if (_currentVideo.value?.uri?.toString() != uri ||
+            engine.getPlayer().currentMediaItem?.localConfiguration?.uri?.toString() != uri) return
+        val track = matchingRememberedAudioTrack(tracks, saved) ?: return
+        pendingAudioTrack = null // Clear before selection can emit another track event.
+        if (!track.isSelected) engine.selectAudioTrack(track)
     }
 
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
@@ -632,6 +686,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun persistPlayerBrightness(level: Float) {
         _playerBrightness.value = level
         pendingBrightnessPercent = (level * 100f).roundToInt().coerceIn(1, 100)
+        lastPlayerControls.edit().putInt("brightness", pendingBrightnessPercent!!).apply()
         brightnessSaveJob?.cancel()
         brightnessSaveJob = viewModelScope.launch {
             preferencesRepo.setPlayerBrightnessPercent((level * 100f).roundToInt())
@@ -649,6 +704,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun persistVolumeBoost(percent: Int) {
+        lastPlayerControls.edit().putInt("volume_boost", percent.coerceIn(0, 100)).apply()
         viewModelScope.launch {
             preferencesRepo.setVolumeBoostPercent(percent)
         }
@@ -707,8 +763,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val pending = pendingBrightnessPercent
         if (pending != null && savedPercent != pending) return
         if (pending == savedPercent) pendingBrightnessPercent = null
-        _playerBrightness.value = savedPercent.takeIf { it >= 1 }?.div(100f)
+        val remembered = if (lastPlayerControls.contains("brightness"))
+            lastPlayerControls.getInt("brightness", savedPercent).coerceIn(1, 100) else savedPercent
+        _playerBrightness.value = remembered.takeIf { it >= 1 }?.div(100f)
     }
+
+    private fun savedVolumeBoost(fallback: Int): Int =
+        lastPlayerControls.getInt("volume_boost", fallback).coerceIn(0, 100)
 
     private fun restorePlayerControls(settings: com.example.data.AppPlayerSettings) {
         _subtitleStyle.value = SubtitleStyleConfig(
@@ -719,11 +780,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             verticalOffsetDp = settings.subtitleVerticalOffsetDp,
         )
         applyRememberedBrightness(settings.playerBrightnessPercent)
-        engine.setRememberedTrackPreferences(settings.preferredAudioLanguage, settings.preferredSubtitleLanguage, settings.subtitlesEnabled)
+        val preferredAudio = lastPlayerControls.getString("audio_language", null) ?: settings.preferredAudioLanguage
+        engine.setRememberedTrackPreferences(preferredAudio, settings.preferredSubtitleLanguage, settings.subtitlesEnabled)
         _isMuted.value = settings.playerMuted
         engine.setMuted(settings.playerMuted)
 
-        engine.setVolumeBoost(settings.volumeBoostPercent)
+        engine.setVolumeBoost(savedVolumeBoost(settings.volumeBoostPercent))
         engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
         engine.setAudioDelay(settings.audioDelayMs)
         engine.setSubtitleOffset(settings.subtitleOffsetMs)
