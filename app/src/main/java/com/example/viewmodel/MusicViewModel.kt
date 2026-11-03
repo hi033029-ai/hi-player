@@ -173,19 +173,25 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun updateSyncedLyrics(positionMs: Long) {
+        if (!_lyricsEnabled.value || lyricsLines.isEmpty()) return
+        val lineIndex = com.example.lyrics.LyricsTiming.activeLineIndex(lyricsLines, positionMs)
+        _currentLyricLineIndex.value = lineIndex
+        _activeSubtitle.value = lyricsLines.getOrNull(lineIndex)?.second?.takeIf { it.isNotBlank() }
+    }
+
     private fun startLyricsSyncLoop() {
         lyricsSyncJob?.cancel()
         if (lyricsLines.isEmpty()) {
-            _activeSubtitle.value = _lyricsText.value?.let { com.example.lyrics.LyricsText.parse(it).plain.firstOrNull() }
+            _activeSubtitle.value = null // Untimed lyrics cannot identify a current line.
             return
         }
         lyricsSyncJob = viewModelScope.launch {
             while (isActive && _lyricsEnabled.value) {
-                val positionMs = _currentPositionMs.value
-                val lineIndex = lyricsLines.indexOfLast { it.first <= positionMs }
-                _currentLyricLineIndex.value = lineIndex
-                _activeSubtitle.value = lyricsLines.getOrNull(lineIndex)?.second?.takeIf { it.isNotBlank() }
-                delay(250)
+                val player = exoPlayer
+                updateSyncedLyrics(player?.currentPosition ?: _currentPositionMs.value)
+                // Read the player clock directly, not the 500 ms progress UI snapshot.
+                delay(if (player?.isPlaying == true) 50 else 250)
             }
         }
     }
@@ -326,12 +332,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onRepeatModeChanged(mode: Int) { _repeatMode.value = mode }
 
                 override fun onIsPlayingChanged(playing: Boolean) {
+                    updateSyncedLyrics(currentPosition)
                     _isPlaying.value = playing
                     if (playing) {
                         startProgressUpdates()
                     } else {
                         progressJob?.cancel()
                     }
+                }
+
+                override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                    updateSyncedLyrics(newPosition.positionMs)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -494,6 +505,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun seekTo(positionMs: Long) {
         exoPlayer?.seekTo(positionMs)
         _currentPositionMs.value = positionMs
+        updateSyncedLyrics(positionMs)
     }
 
     fun playNext() {

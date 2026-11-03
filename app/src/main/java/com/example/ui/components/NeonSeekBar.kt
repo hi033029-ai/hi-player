@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -45,6 +46,8 @@ fun NeonSeekBar(
     onScrub: (Float?) -> Unit = {},
 ) {
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    val currentOnSeek by rememberUpdatedState(onSeekFraction)
+    val currentOnScrub by rememberUpdatedState(onScrub)
     val scrubbing = dragFraction != null
     val shown = (dragFraction ?: progress).coerceIn(0f, 1f)
     val trackHeight by animateDpAsState(if (scrubbing) 8.dp else 4.dp, tween(160), label = "seekTrack")
@@ -58,25 +61,25 @@ fun NeonSeekBar(
             .semantics {
                 contentDescription = "Music playback position"
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
-                if (enabled) setProgress { target -> onSeekFraction(target.coerceIn(0f, 1f)); true }
+                if (enabled) setProgress { target -> currentOnSeek(target.coerceIn(0f, 1f)); true }
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> onSeekFraction((offset.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures { offset -> currentOnSeek((offset.x / size.width).coerceIn(0f, 1f)) }
             }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        dragFraction = (offset.x / size.width).coerceIn(0f, 1f); onScrub(dragFraction)
+                        dragFraction = (offset.x / size.width).coerceIn(0f, 1f); currentOnScrub(dragFraction)
                     },
                     onDragEnd = {
-                        dragFraction?.let(onSeekFraction); dragFraction = null; onScrub(null)
+                        dragFraction?.let(currentOnSeek); dragFraction = null; currentOnScrub(null)
                     },
-                    onDragCancel = { dragFraction = null; onScrub(null) },
+                    onDragCancel = { dragFraction = null; currentOnScrub(null) },
                     onHorizontalDrag = { change, _ ->
                         change.consume()
-                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f); onScrub(dragFraction)
+                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f); currentOnScrub(dragFraction)
                     },
                 )
             }

@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -50,4 +51,24 @@ class MusicNowPlayingLayoutTest {
         compose.onNodeWithContentDescription("Play").performClick()
         compose.runOnIdle { assertEquals(2, expanded); assertTrue(played) }
     }
+    @Test fun miniPlayerShowsOnlyTheCurrentTimedLineAndCompactSeekBar() {
+        val lyric = mutableStateOf("First line")
+        val index = mutableStateOf(0)
+        val enabled = mutableStateOf(true)
+        compose.setContent { HiPlayerTheme {
+            WavyNowPlayingBottomSheet(track, true, 1000, 200000, "Flat", lyric.value,
+                onTogglePlay = {}, onNext = {}, onPrevious = {}, onSeek = {}, onOpenEq = {},
+                onOpenSubtitleSearch = {}, onCancel = {}, lyricsEnabled = enabled.value,
+                activeLyricLineIndex = index.value)
+        } }
+        compose.onNodeWithTag("mini_player_lyric").assertIsDisplayed().assertTextEquals("First line")
+        compose.onNodeWithTag("audio_neon_seekbar").assertIsDisplayed()
+        compose.runOnIdle { lyric.value = "Next line"; index.value = 1 }
+        compose.onNodeWithTag("mini_player_lyric").assertTextEquals("Next line")
+        compose.runOnIdle { index.value = -1 }
+        compose.onNodeWithTag("mini_player_lyric").assertDoesNotExist()
+        compose.runOnIdle { index.value = 0; enabled.value = false }
+        compose.onNodeWithTag("mini_player_lyric").assertDoesNotExist()
+    }
+
 }

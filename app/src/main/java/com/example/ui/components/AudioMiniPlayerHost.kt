@@ -21,11 +21,14 @@ internal fun AudioMiniPlayerHost(musicViewModel: MusicViewModel, onOpenMusic: ()
     val duration by musicViewModel.durationMs.collectAsStateWithLifecycle()
     val preset by musicViewModel.equalizerPreset.collectAsStateWithLifecycle()
     val subtitle by musicViewModel.activeSubtitle.collectAsStateWithLifecycle()
+    val lyricsEnabled by musicViewModel.lyricsEnabled.collectAsStateWithLifecycle()
+    val lyricIndex by musicViewModel.currentLyricLineIndex.collectAsStateWithLifecycle()
     val item = track ?: return
     WavyNowPlayingBottomSheet(
         track = item, isPlaying = playing, currentPos = position,
         duration = duration.takeIf { it > 0 } ?: item.durationMs,
         eqPreset = preset, activeSubtitle = subtitle,
+        lyricsEnabled = lyricsEnabled, activeLyricLineIndex = lyricIndex,
         onTogglePlay = musicViewModel::togglePlayPause,
         onNext = musicViewModel::playNext, onPrevious = musicViewModel::playPrevious,
         onSeek = musicViewModel::seekTo, onOpenEq = onOpenMusic,

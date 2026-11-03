@@ -311,7 +311,7 @@ internal fun VideoLibraryPage(
     // content. The shared search/category toolbar remains outside the pager.
     val libraryControls: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (selectedFolder != null || navMode != LibraryNavMode.FOLDERS || selectionMode) {
+            if (selectedFolder != null || selectionMode || (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null)) {
                 Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
                     if (selectionMode) videoSelectionActions() else {
                         // 3. FOLDER NAVIGATION BREADCRUMB & STATUS BAR
@@ -411,137 +411,18 @@ internal fun VideoLibraryPage(
 
                                 }
                             }
-                        } else if (navMode != LibraryNavMode.FOLDERS) {
-                            // Status & Toolbar when in main view
+                        } else if (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable(onClickLabel = "Up one folder") { libraryViewModel.navigateTreeUp() }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(palette.primary)
-                                    )
-                                    Text(
-                                        text = when (navMode) {
-                                            LibraryNavMode.FOLDERS -> "Folders Directory (${folders.size} folders)"
-                                            LibraryNavMode.FAVORITES -> "Favorites (${filteredVideos.size} files)"
-                                            LibraryNavMode.RECENT -> "Recent History (${continueWatchingVideos.size} files)"
-                                            LibraryNavMode.TREE_FOLDERS -> {
-                                                val label = treeCurrentPath?.substringAfterLast('/') ?: "Storage"
-                                                val count = currentTreeNode?.totalVideoCount ?: 0
-                                                "$label ($count videos)"
-                                            }
-                                            else -> "All Media (${filteredVideos.size} files)"
-                                        },
-                                        color = palette.textPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.5.sp
-                                    )
-                                }
-
-                                // Tree navigation keeps only its back button here; All Videos and
-                                // Tree Folders use the single control row above, avoiding duplicates.
-                                if (false) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        // Up-one-level button while browsing inside the folder tree
-                                        if (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null) {
-                                            IconButton(
-                                                onClick = { libraryViewModel.navigateTreeUp() },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                                    contentDescription = "Up one folder",
-                                                    tint = palette.primary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-
-                                        IconButton(
-                                            onClick = { libraryViewModel.toggleViewMode() },
-                                            modifier = Modifier
-                                                .size(32.dp)
-                                                .testTag("view_mode_toggle")
-                                        ) {
-                                            Icon(
-                                                imageVector = if (viewMode == LibraryViewMode.LAYER_LIST) Icons.Default.GridView else Icons.Default.ViewList,
-                                                contentDescription = if (viewMode == LibraryViewMode.LAYER_LIST) "Switch to Grid" else "Switch to List",
-                                                tint = palette.textSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-
-                                        Box {
-                                            IconButton(
-                                                onClick = { sortMenuExpanded = true },
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .testTag("sort_by_button")
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Sort,
-                                                    contentDescription = "Sort By",
-                                                    tint = palette.textSecondary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-
-                                            DropdownMenu(
-                                                expanded = sortMenuExpanded,
-                                                onDismissRequest = { sortMenuExpanded = false },
-                                                modifier = Modifier.background(palette.surfaceElevated)
-                                            ) {
-                                                Text(
-                                                    text = "SORT MEDIA BY",
-                                                    color = palette.primary,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                                )
-
-                                                VideoSortOption.entries.forEach { option ->
-                                                    DropdownMenuItem(
-                                                        text = {
-                                                            Text(
-                                                                text = option.displayName,
-                                                                color = if (sortOption == option) palette.primary else palette.textPrimary,
-                                                                fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal,
-                                                                fontSize = 12.5.sp
-                                                            )
-                                                        },
-                                                        trailingIcon = {
-                                                            if (sortOption == option) {
-                                                                Box(
-                                                                    modifier = Modifier
-                                                                        .size(8.dp)
-                                                                        .clip(CircleShape)
-                                                                        .background(palette.primary)
-                                                                )
-                                                            }
-                                                        },
-                                                        onClick = {
-                                                            sortMenuExpanded = false
-                                                            libraryViewModel.setSortOption(option)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Up one folder", tint = palette.primary,
+                                    modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(treeCurrentPath?.substringAfterLast('/').orEmpty(), color = palette.textPrimary,
+                                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
@@ -735,16 +616,6 @@ internal fun VideoLibraryPage(
                             }
                         }
                         if (node.childFolders.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "SUBFOLDERS",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = palette.primary,
-                                    letterSpacing = 0.5.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                                )
-                            }
                             if (viewMode == LibraryViewMode.GRADLE_GRID) {
                                 val columns = (360 / gridMinSize).coerceIn(1, 3)
                                 val rows = node.childFolders.chunked(columns)
@@ -784,16 +655,6 @@ internal fun VideoLibraryPage(
                         }
 
                         if (node.directVideos.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "VIDEOS HERE",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = palette.primary,
-                                    letterSpacing = 0.5.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
-                                )
-                            }
                             items(node.directVideos, key = { videoKey(it) }, contentType = { "video" }) { video ->
                                 val record = historyMap[video.uri.toString()]
                                 val progressFraction = if (record != null && record.durationMs > 0) {
