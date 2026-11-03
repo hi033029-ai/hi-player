@@ -86,7 +86,7 @@ fun FullScreenAudioPlayerScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (showLyrics) {
                             FocusedLyricsView(track, lyricsText, activeLyricLineIndex, lyricsMessage, lyricsLoading,
-                                lyricsRetryable, onRetryLyrics)
+                                lyricsRetryable, onRetryLyrics, isPlaying = isPlaying)
                         } else {
                             AudioTrackThumbnail(track, modifier = Modifier.size(artSize),
                                 shape = RoundedCornerShape(20.dp))
