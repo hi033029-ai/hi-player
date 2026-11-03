@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -74,6 +73,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
+import com.example.player.findActivity
 import com.example.ui.components.AudioSettingsBottomSheet
 import com.example.ui.components.ControlsOverlay
 import com.example.ui.components.FetchSubtitleUrlDialog
@@ -117,7 +117,7 @@ fun PlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = remember(context) { runCatching { context.findActivity() }.getOrNull() }
     // Observe the engine's current ExoPlayer so the video surface, HDR manager and
     // seek controller re-bind when the engine rebuilds the player (decoder fallback,
     // HDR/codec switches). Holding a released player was a source of playback crashes.
@@ -306,7 +306,7 @@ fun PlayerScreen(
     }
 
     // Handle orientation changes
-    LaunchedEffect(screenOrientation) {
+    LaunchedEffect(activity, screenOrientation) {
         activity?.requestedOrientation = screenOrientation
     }
 
