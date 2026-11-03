@@ -42,8 +42,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Subtitles
 import com.example.ui.components.WavyAudioWaveform
-import com.example.ui.components.WaveformSeekBar
-import com.example.ui.components.rememberWaveformAmplitudes
+import com.example.ui.components.NeonSeekBar
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.GraphicEq
@@ -680,7 +679,6 @@ fun WavyNowPlayingBottomSheet(
     val palette = LocalHiPalette.current
     val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
     val progress = if (total > 0) (currentPos.toFloat() / total).coerceIn(0f, 1f) else 0f
-    val waveform = rememberWaveformAmplitudes(track.uri.toString())
     Card(
         modifier = modifier.fillMaxWidth().testTag("now_playing_bottom_sheet"),
         shape = RoundedCornerShape(16.dp),
@@ -711,14 +709,21 @@ fun WavyNowPlayingBottomSheet(
                 Icon(Icons.Default.Close, "Cancel Playing", tint = palette.textSecondary)
             }
         }
-        WaveformSeekBar(
-            amplitudes = waveform,
+        if (lyricsEnabled && activeLyricLineIndex >= 0 && !activeSubtitle.isNullOrBlank()) {
+            Text(
+                text = activeSubtitle,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp).testTag("mini_player_lyric"),
+                color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        NeonSeekBar(
             progress = progress,
-            onSeek = { fraction -> onSeek((fraction * total).toLong()) },
-            onSeekFinished = { fraction -> onSeek((fraction * total).toLong()) },
-            modifier = Modifier.fillMaxWidth().height(34.dp),
-            playedColor = palette.primary,
-            unplayedColor = palette.primary.copy(alpha = 0.28f),
+            enabled = total > 0,
+            startColor = palette.primary,
+            endColor = palette.secondary,
+            trackColor = palette.primary.copy(alpha = 0.24f),
+            onSeekFraction = { fraction -> onSeek((fraction * total).toLong()) },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(40.dp),
         )
     }
 }

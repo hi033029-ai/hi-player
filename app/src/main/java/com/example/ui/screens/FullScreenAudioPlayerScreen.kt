@@ -22,8 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioItem
 import com.example.ui.components.FocusedLyricsView
-import com.example.ui.components.WaveformSeekBar
-import com.example.ui.components.rememberWaveformAmplitudes
+import com.example.ui.components.NeonSeekBar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +48,6 @@ fun FullScreenAudioPlayerScreen(
     val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
     val position = currentPos.coerceIn(0, total.coerceAtLeast(0))
     val progress = if (total > 0) (position.toFloat() / total).coerceIn(0f, 1f) else 0f
-    val waveform = rememberWaveformAmplitudes(track.uri.toString())
     fun clock(ms: Long): String = "%02d:%02d".format(java.util.Locale.US, ms / 60000, ms / 1000 % 60)
     BackHandler(onBack = onBack)
     Surface(modifier.fillMaxSize().testTag("full_screen_audio_player"), color = palette.background) {
@@ -98,17 +96,15 @@ fun FullScreenAudioPlayerScreen(
             }
             Column(Modifier.fillMaxWidth()) {
                 var scrub by remember { mutableStateOf<Float?>(null) }
-                WaveformSeekBar(
-                    amplitudes = waveform,
+                NeonSeekBar(
                     progress = progress,
-                    onSeek = { fraction -> scrub = fraction },
-                    onSeekFinished = { fraction ->
-                        scrub = null
-                        onSeek((fraction * total).toLong())
-                    },
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    playedColor = palette.primary,
-                    unplayedColor = palette.primary.copy(alpha = 0.28f),
+                    enabled = total > 0,
+                    startColor = palette.primary,
+                    endColor = palette.secondary,
+                    trackColor = palette.primary.copy(alpha = 0.24f),
+                    onScrub = { scrub = it },
+                    onSeekFraction = { fraction -> onSeek((fraction * total).toLong()) },
+                    modifier = Modifier.fillMaxWidth().height(40.dp),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
