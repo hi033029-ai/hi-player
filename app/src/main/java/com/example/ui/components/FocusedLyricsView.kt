@@ -1,15 +1,6 @@
 package com.example.ui.components
 
 import android.os.Build
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -41,8 +32,7 @@ import com.example.lyrics.LyricsText
 import com.example.model.AudioItem
 
 /**
- * Shows only the line being sung over the track artwork. Lines slide/fade in
- * as the song advances instead of listing the whole lyric sheet.
+ * Shows the current timed line immediately over the track artwork.
  */
 @Composable
 fun FocusedLyricsView(
@@ -61,28 +51,15 @@ fun FocusedLyricsView(
         when {
             timed.isNotEmpty() -> {
                 val index = activeIndex.coerceIn(-1, timed.lastIndex)
-                AnimatedContent(
-                    targetState = index,
-                    transitionSpec = {
-                        val forward = targetState >= initialState
-                        (slideInVertically(tween(420, easing = FastOutSlowInEasing)) { h -> if (forward) h / 2 else -h / 2 } +
-                            fadeIn(tween(420)) + scaleIn(tween(420), initialScale = 0.94f))
-                            .togetherWith(slideOutVertically(tween(320)) { h -> if (forward) -h / 2 else h / 2 } + fadeOut(tween(260)))
-                    },
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    label = "focusedLyricLine",
-                ) { lineIndex ->
-                    val current = timed.getOrNull(lineIndex)?.second.orEmpty().ifBlank { "♪" }
-                    val next = timed.getOrNull(lineIndex + 1)?.second?.takeIf { it.isNotBlank() }
-                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(current, color = Color.White, fontSize = 26.sp, lineHeight = 32.sp,
-                            fontWeight = FontWeight.Bold, style = textStyle, modifier = Modifier.testTag("audio_lyric_current"))
-                        if (next != null) {
-                            Spacer(Modifier.height(14.dp))
-                            Text(next, color = Color.White.copy(alpha = 0.5f), fontSize = 16.sp, style = textStyle)
-                        }
+                val current = timed.getOrNull(index)?.second.orEmpty().ifBlank { "♪" }
+                val next = timed.getOrNull(index + 1)?.second?.takeIf { it.isNotBlank() }
+                Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(current, color = Color.White, fontSize = 26.sp, lineHeight = 32.sp,
+                        fontWeight = FontWeight.Bold, style = textStyle, modifier = Modifier.testTag("audio_lyric_current"))
+                    if (next != null) {
+                        Spacer(Modifier.height(14.dp))
+                        Text(next, color = Color.White.copy(alpha = 0.5f), fontSize = 16.sp, style = textStyle)
                     }
                 }
             }
