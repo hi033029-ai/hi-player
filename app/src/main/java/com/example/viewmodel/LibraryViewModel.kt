@@ -142,7 +142,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun saveVideoOrder(videos: List<VideoItem>) {
         libraryPrefs.edit()
             .putString("video_display_order", videos.map { it.path.ifBlank { it.uri.toString() } }.joinToString("\u0001"))
+            .putBoolean("video_custom_order_enabled", true)
             .apply()
+        _customVideoOrderEnabled.value = true
     }
 
     fun moveVideoInDisplayOrder(from: Int, to: Int) {
@@ -200,7 +202,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     )
     val gridMinSize = _gridMinSize.asStateFlow()
 
-    private val _sortOption = MutableStateFlow(VideoSortOption.DATE_DESC)
+    private val _sortOption = MutableStateFlow(
+        runCatching { VideoSortOption.valueOf(libraryPrefs.getString("video_sort_option", null) ?: "DATE_DESC") }
+            .getOrDefault(VideoSortOption.DATE_DESC)
+    )
+    private val _customVideoOrderEnabled = MutableStateFlow(
+        libraryPrefs.getBoolean("video_custom_order_enabled", !libraryPrefs.contains("video_sort_option"))
+    )
     val sortOption = _sortOption.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
@@ -295,7 +303,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         val navMode: LibraryNavMode,
         val query: String,
         val folder: String?,
-        val sort: VideoSortOption
+        val sort: VideoSortOption,
+        val customOrder: Boolean
     )
 
     private val historyAndFavFlow = combine(historyRecords, favoriteRecords) { history, favorites ->
@@ -310,12 +319,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private fun createModeVideos(mode: LibraryNavMode) = combine(
         allVideos,
-        combine(_searchQuery, _selectedFolder, _sortOption) { query, folder, sort ->
-            FilterCriteria(mode, query, if (mode == LibraryNavMode.FOLDERS) folder else null, sort)
+        combine(_searchQuery, _selectedFolder, _sortOption, _customVideoOrderEnabled) { query, folder, sort, customOrder ->
+            FilterCriteria(mode, query, if (mode == LibraryNavMode.FOLDERS) folder else null, sort, customOrder)
         },
         historyAndFavFlow
     ) { videos: List<VideoItem>, criteria: FilterCriteria, historyFav: Pair<List<VideoEntity>, List<VideoEntity>> ->
-        val (nav, query, folder, sort) = criteria
+        val (nav, query, folder, sort, customOrder) = criteria
         val (history, favorites) = historyFav
         var list = videos
 
@@ -374,7 +383,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     .thenByDescending { it.sizeBytes }
             )
         }
-        applySavedVideoOrder(sorted)
+        if (customOrder) applySavedVideoOrder(sorted) else sorted
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -621,6 +630,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setSortOption(option: VideoSortOption) {
+        libraryPrefs.edit().putString("video_sort_option", option.name)
+            .putBoolean("video_custom_order_enabled", false).apply()
+        _customVideoOrderEnabled.value = false
         _sortOption.value = option
     }
 
