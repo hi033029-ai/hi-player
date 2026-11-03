@@ -1,6 +1,14 @@
 package com.example.ui.components
 
 import android.os.Build
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -37,10 +45,17 @@ import com.example.model.AudioItem
 @Composable
 fun FocusedLyricsView(
     track: AudioItem, text: String?, activeIndex: Int, message: String?, loading: Boolean,
-    retryable: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier,
+    retryable: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier, isPlaying: Boolean = true,
 ) {
     val parsed = remember(text) { LyricsText.parse(text.orEmpty()) }
     val timed = parsed.timed
+    val pulse = if (isPlaying && timed.isNotEmpty()) {
+        val animated by rememberInfiniteTransition(label = "lyricGlow").animateFloat(
+            initialValue = 0.35f, targetValue = 0.75f,
+            animationSpec = infiniteRepeatable(tween(1400), RepeatMode.Reverse), label = "lyricGlowPulse",
+        )
+        animated
+    } else 0.35f
     Box(modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).testTag("audio_focused_lyrics")) {
         AudioTrackThumbnail(track, Modifier.fillMaxSize().then(
             if (Build.VERSION.SDK_INT >= 31) Modifier.blur(28.dp) else Modifier),
@@ -56,7 +71,10 @@ fun FocusedLyricsView(
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(current, color = Color.White, fontSize = 26.sp, lineHeight = 32.sp,
-                        fontWeight = FontWeight.Bold, style = textStyle, modifier = Modifier.testTag("audio_lyric_current"))
+                        fontWeight = FontWeight.Bold, style = textStyle.copy(shadow = Shadow(
+                            color = Color(0xFF8FEAFF).copy(alpha = pulse),
+                            offset = Offset.Zero, blurRadius = 18f,
+                        )), modifier = Modifier.testTag("audio_lyric_current"))
                     if (next != null) {
                         Spacer(Modifier.height(14.dp))
                         Text(next, color = Color.White.copy(alpha = 0.5f), fontSize = 16.sp, style = textStyle)

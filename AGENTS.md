@@ -38,3 +38,6 @@
 - Basic navigation and settings must not wait for artificial splash timers, branding intros or unrelated network requests. Gate only real prerequisites; keep cached content usable while refreshing.
 - Primary labels must wrap/grow rather than clip. Use minimum touch sizes, measured footer space, scrollable short-screen content and responsive action wrapping. Respect OS font scaling; do not silently cap it or double-apply app text scaling.
 - Judge quality end-to-end: local video/audio playback, seek/resume, browser playback/downloads, file actions, account/Drive and settings, not just login/onboarding. Before release, review narrow/wide/landscape screens, larger fonts, long strings, Back history, interruption/restoration, offline/error/cancel states on an approved build. Never call these runtime-verified based only on source review.
+
+## Preserve working behavior
+- Prefer minimal, targeted touchups: preserve working code and behavior, and avoid unrelated rewrites.
