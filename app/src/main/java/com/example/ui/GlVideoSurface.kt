@@ -521,6 +521,12 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             post {
                 if (player === next && renderer.surface === surface) {
                     runCatching { next.setVideoSurface(surface) }
+                    // Returning from Recents can recreate the GL surface. A paused
+                    // decoder does not draw into the new surface on its own, which
+                    // left a black, wrongly sized picture; redraw the current frame.
+                    if (!next.isPlaying && next.playbackState == androidx.media3.common.Player.STATE_READY) {
+                        runCatching { next.seekTo(next.currentPosition) }
+                    }
                 }
             }
         }

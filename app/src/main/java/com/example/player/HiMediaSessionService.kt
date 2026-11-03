@@ -46,6 +46,11 @@ class HiMediaSessionService : MediaSessionService() {
             }
         }
 
+        /** Pauses a different session player (e.g. music) without taking over the notification. */
+        fun pauseOtherPlayback(player: Player) {
+            sharedPlayer?.takeIf { it !== player }?.pause()
+        }
+
         fun detachPlayer(player: Player?) {
             if (player == null || sharedPlayer !== player) return
             sharedPlayer = null

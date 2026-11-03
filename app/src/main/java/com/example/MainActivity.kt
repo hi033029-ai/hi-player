@@ -837,7 +837,10 @@ class MainActivity : FragmentActivity() {
                 .setAspectRatio(aspectRatio)
                 .setActions(buildPipActions())
                 .build()
-            enterPictureInPictureMode(params)
+            // Some launchers (e.g. MIUI Recents) refuse PiP. A flag left set here
+            // made onStop skip the background pause, so audio kept playing.
+            val entered = runCatching { enterPictureInPictureMode(params) }.getOrDefault(false)
+            if (!entered) pipTransitionRequested = false
         }
     }
 
@@ -916,11 +919,15 @@ class MainActivity : FragmentActivity() {
         if (!libraryViewModel.playerSettings.value.backgroundPlayEnabled) {
             playerViewModel.pauseForAppBackground()
             musicViewModel.pauseForAppBackground()
+        } else if (playerViewModel.engine.isPlaying.value) {
+            // The option may have been switched on after the video started.
+            playerViewModel.attachVideoSessionForBackground()
         }
     }
 
     override fun onStart() {
         super.onStart()
+        if (!isInPictureInPictureMode) pipTransitionRequested = false
         // Deliberately no auto-resume: returning to the app shows the saved,
         // paused state; playback restarts only when the user taps Play.
     }
@@ -938,7 +945,13 @@ class MainActivity : FragmentActivity() {
             pipTransitionRequested = false
         } else if (!(playerViewModel.engine.isBackgroundPlayActive.value)) {
             pipTransitionRequested = false
-            playerViewModel.stopForNavigation()
+            // Leaving PiP happens two ways: expanding back to the app (activity
+            // still started) or closing the window (already stopped). Only a
+            // closed window ends the video; expanding previously stopped the
+            // player too, leaving a frozen screen that ignored Play.
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                playerViewModel.stopForNavigation()
+            }
         }
         // Tapping the PiP window's own close/"cancel" control finishes the
         // activity, which triggers onStop() above and pauses playback there
