@@ -222,11 +222,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 mediaTitle = video.title,
             )
             engine.getPlayer().let { player ->
-                HiMediaSessionService.startPlayback(getApplication(), player,
-                    onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
+                // The playback notification (and lock-screen controls) exist for
+                // background listening. Without that setting a video must not post
+                // one; it only stops any music that is still playing.
+                if (settings.backgroundPlayEnabled) {
+                    HiMediaSessionService.startPlayback(getApplication(), player,
+                        onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
+                } else {
+                    HiMediaSessionService.pauseOtherPlayback(player)
+                }
             }
 
         }
+    }
+
+    /** Attaches the current video to the playback notification (Background Audio Playback). */
+    fun attachVideoSessionForBackground() {
+        if (_currentVideo.value == null) return
+        val player = engine.getPlayer()
+        if (HiMediaSessionService.sharedPlayer === player) return
+        HiMediaSessionService.startPlayback(getApplication(), player,
+            onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
     }
 
     /**
@@ -240,6 +256,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _showStartOverPrompt.value = false
         closeSheet()
         engine.stopForNavigation()
+        // A stopped player left in the session showed a stuck 00:00 notification.
+        HiMediaSessionService.detachPlayer(engine.getPlayer())
         // The library has already persisted the resume point before this path
         // is called. Clearing the selected item prevents a disposed player
         // surface from retaining its title, controls, or growing-download HUD
@@ -399,6 +417,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
 
     fun togglePlayPause() {
+        // A stopped (idle) player ignores play(); re-prepare at the kept position.
+        val player = engine.getPlayer()
+        if (!player.isPlaying && player.playbackState == androidx.media3.common.Player.STATE_IDLE &&
+            player.currentMediaItem != null) player.prepare()
         engine.togglePlayPause()
         saveCurrentProgress()
     }
