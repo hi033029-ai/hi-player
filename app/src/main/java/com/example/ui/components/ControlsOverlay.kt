@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
@@ -111,7 +110,6 @@ fun ControlsOverlay(
     onPrevious: () -> Unit = {},
     onNext: () -> Unit = {},
     onBack: () -> Unit,
-    onOpenAccount: (() -> Unit)? = null,
     onToggleLock: () -> Unit,
     onRotateScreen: () -> Unit,
     onZoomIn: () -> Unit,
@@ -230,13 +228,9 @@ fun ControlsOverlay(
                         )
                     }
 
-                    onOpenAccount?.let { openAccount ->
-                        // Use white artwork on the media scrim, independent of library theme.
-                        IconButton(onClick = openAccount) {
-                            Icon(androidx.compose.material.icons.Icons.Default.AccountCircle,
-                                contentDescription = "Hi Player account", tint = Color.White)
-                        }
-                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    PlayerDeviceStatus()
+
                 }
 
                 // The reference keeps the main transport controls in the lower panel.
