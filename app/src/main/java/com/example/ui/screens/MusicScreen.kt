@@ -171,7 +171,14 @@ fun MusicScreen(
     var audioGridMinSize by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(musicPreferences.getInt("grid_min_size_dp", 160).coerceIn(120, 240))
     }
-    var audioSort by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("Name") }
+    var audioSort by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(musicPreferences.getString("audio_sort", "Name")
+            ?.takeIf { it in listOf("Custom", "Name", "Artist", "Duration", "Newest") } ?: "Name")
+    }
+    fun setAudioSort(value: String) {
+        audioSort = value
+        musicPreferences.edit().putString("audio_sort", value).apply()
+    }
     val reorderThresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
 
     val audioGridTransformState = rememberTransformableState { zoomChange, _, _ ->
@@ -212,7 +219,7 @@ fun MusicScreen(
                     musicPreferences.edit().putBoolean("horizontal_view", it).apply()
                 },
                 sort = audioSort,
-                onSort = { audioSort = it },
+                onSort = { setAudioSort(it) },
             )
 
         }
@@ -406,7 +413,7 @@ fun MusicScreen(
                                             itemCount = filteredList.size,
                                             thresholdPx = reorderThresholdPx,
                                             onMove = { from, to ->
-                                                audioSort = "Custom"
+                                                setAudioSort("Custom")
                                                 musicViewModel.moveTrackInDisplayOrder(
                                                     filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
                                                     filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
@@ -466,7 +473,7 @@ fun MusicScreen(
                                     itemCount = filteredList.size,
                                     thresholdPx = reorderThresholdPx,
                                     onMove = { from, to ->
-                                        audioSort = "Custom"
+                                        setAudioSort("Custom")
                                         musicViewModel.moveTrackInDisplayOrder(
                                             filteredList[from].path.ifBlank { filteredList[from].uri.toString() },
                                             filteredList[to].path.ifBlank { filteredList[to].uri.toString() }
