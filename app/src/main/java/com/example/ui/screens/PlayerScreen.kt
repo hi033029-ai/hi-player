@@ -733,7 +733,7 @@ fun PlayerScreen(
                             Color.Black.copy(alpha = subtitleStyle.bgOpacity.coerceIn(0f, 1f)),
                             RoundedCornerShape(5.dp),
                         )
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
                 )
             }
         }
