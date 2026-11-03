@@ -5,6 +5,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.viewmodel.MusicViewModel
 import com.example.ui.screens.WavyNowPlayingBottomSheet
 
+internal fun openExpandedMusicPlayer(onOpenMusic: () -> Unit, onOpenExpandedPlayer: () -> Unit) {
+    // The expanded player is rendered by MusicScreen, so make that destination
+    // visible before flipping its full-screen state from a global mini-player.
+    onOpenMusic()
+    onOpenExpandedPlayer()
+}
+
 /** Position ticks invalidate this small playback surface, not the app's navigation/library shell. */
 @Composable
 internal fun AudioMiniPlayerHost(musicViewModel: MusicViewModel, onOpenMusic: () -> Unit) {
@@ -23,6 +30,6 @@ internal fun AudioMiniPlayerHost(musicViewModel: MusicViewModel, onOpenMusic: ()
         onNext = musicViewModel::playNext, onPrevious = musicViewModel::playPrevious,
         onSeek = musicViewModel::seekTo, onOpenEq = onOpenMusic,
         onOpenSubtitleSearch = onOpenMusic, onCancel = musicViewModel::stopTrack,
-        onExpandFullScreen = musicViewModel::openFullScreenPlayer,
+        onExpandFullScreen = { openExpandedMusicPlayer(onOpenMusic, musicViewModel::openFullScreenPlayer) },
     )
 }
