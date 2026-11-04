@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +48,7 @@ import com.example.ui.components.NeonSeekBar
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
@@ -118,7 +121,7 @@ import com.example.viewmodel.MusicViewModel
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MusicScreen(
     musicViewModel: MusicViewModel,
@@ -128,6 +131,7 @@ fun MusicScreen(
     onSearchRequested: (() -> Unit)? = null,
     libraryViewModel: LibraryViewModel? = null,
     onMoveAudioToRecycleBin: (AudioItem) -> Unit = {},
+    onMoveAudioBatchToRecycleBin: (Collection<AudioItem>) -> Unit = {},
 ) {
     val context = LocalContext.current
     val palette = LocalHiPalette.current
@@ -162,6 +166,25 @@ fun MusicScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val libraryMode = modes[pager.settledPage]
     var pendingDeleteTrack by remember { mutableStateOf<AudioItem?>(null) }
+    var pendingDeleteTracks by remember { mutableStateOf<List<AudioItem>?>(null) }
+    var selectedAudioKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var audioSelectionMode by remember { mutableStateOf(false) }
+    var selectionCandidates by remember { mutableStateOf<List<AudioItem>>(emptyList()) }
+    var showAudioProperties by remember { mutableStateOf(false) }
+    val selectedAudio = remember(selectedAudioKeys, audioList) {
+        audioList.filter { audioLibraryKey(it) in selectedAudioKeys }
+    }
+    fun toggleAudioSelection(track: AudioItem) {
+        val key = audioLibraryKey(track)
+        selectedAudioKeys = if (key in selectedAudioKeys) selectedAudioKeys - key else selectedAudioKeys + key
+        audioSelectionMode = true
+    }
+    fun exitAudioSelection() { selectedAudioKeys = emptySet(); audioSelectionMode = false }
+    fun toggleAudioFolder(tracks: List<AudioItem>) {
+        val keys = tracks.map(::audioLibraryKey).toSet()
+        selectedAudioKeys = if (keys.all { it in selectedAudioKeys }) selectedAudioKeys - keys else selectedAudioKeys + keys
+        audioSelectionMode = true
+    }
     val musicPreferences = remember {
         context.getSharedPreferences("music_preferences", android.content.Context.MODE_PRIVATE)
     }
@@ -227,7 +250,16 @@ fun MusicScreen(
         if (currentTrack == null || !expandedPlayer) {
         // Keep the toolbar outside the list so it remains available when a
         // library mode has no matching tracks (for example an empty playlist).
-        audioToolbar()
+        if (audioSelectionMode) {
+            com.example.ui.components.InlineSelectionToolbar(
+                count = selectedAudio.size, height = 48.dp,
+                onClose = { exitAudioSelection() },
+                onSelectAll = { selectedAudioKeys = selectionCandidates.map(::audioLibraryKey).toSet() },
+                onClear = { selectedAudioKeys = emptySet() },
+                onProperties = { showAudioProperties = true },
+                onDelete = { pendingDeleteTracks = selectedAudio },
+            )
+        } else audioToolbar()
         if (mediaAccess.granted) {
                 com.example.ui.components.LibraryAccessExplanation(audio = true)
             com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your library",
@@ -241,7 +273,7 @@ fun MusicScreen(
             state = pager, key = { modes[it] }, beyondViewportPageCount = 2,
             flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(pager,
                 snapAnimationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
-            userScrollEnabled = pendingDeleteTrack == null,
+            userScrollEnabled = pendingDeleteTrack == null && pendingDeleteTracks == null && !audioSelectionMode,
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("music_library_pager"),
         ) { page ->
             val pageMode = modes[page]
@@ -264,6 +296,7 @@ fun MusicScreen(
             val filteredList = presentation?.tracks.orEmpty()
             val groupedAudio = presentation?.groups.orEmpty()
             val playbackQueue = if (groupedAudio.isNotEmpty()) groupedAudio.values.flatten() else filteredList
+            androidx.compose.runtime.SideEffect { if (pager.settledPage == page) selectionCandidates = playbackQueue }
             Column(Modifier.fillMaxSize()) {
             if (selectedCollection != null) {
                 TextButton(onClick = { selectedCollection = null }) {
@@ -327,9 +360,14 @@ fun MusicScreen(
                             border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedCollection = entry.key },
+                                .combinedClickable(
+                                    onClick = { if (audioSelectionMode && pageMode == "Folders") toggleAudioFolder(entry.value) else if (!audioSelectionMode) selectedCollection = entry.key },
+                                    onLongClick = if (pageMode == "Folders") ({ toggleAudioFolder(entry.value) }) else null,
+                                ),
                             shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+                            colors = CardDefaults.cardColors(containerColor = if (audioSelectionMode && pageMode == "Folders" &&
+                                entry.value.isNotEmpty() && entry.value.all { audioLibraryKey(it) in selectedAudioKeys })
+                                palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated),
                             elevation = CardDefaults.cardElevation(0.dp),
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
@@ -390,9 +428,11 @@ fun MusicScreen(
                                     AudioTrackCard(
                                         track = track,
                                         isSelected = isSelected,
+                                        isMultiSelected = audioLibraryKey(track) in selectedAudioKeys,
+                                        onLongClick = { toggleAudioSelection(track) },
                                         isPlaying = isSelected && isPlaying,
-                                        onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track, playbackQueue) },
+                                        onDelete = if (audioSelectionMode) null else ({ pendingDeleteTrack = track }),
+                                    onClick = { if (audioSelectionMode) toggleAudioSelection(track) else musicViewModel.playTrack(track, playbackQueue) },
                                         modifier = Modifier.padding(4.dp),
                                     )
                                 }
@@ -403,12 +443,14 @@ fun MusicScreen(
                                 AudioTrackCard(
                                     track = track,
                                     isSelected = isSelected,
+                                        isMultiSelected = audioLibraryKey(track) in selectedAudioKeys,
+                                        onLongClick = { toggleAudioSelection(track) },
                                     isPlaying = isSelected && isPlaying,
-                                    onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track, playbackQueue) },
-                                    modifier = Modifier
-                                        .padding(4.dp)
-                                        .reorderableDrag(
+                                    onDelete = if (audioSelectionMode) null else ({ pendingDeleteTrack = track }),
+                                    onClick = { if (audioSelectionMode) toggleAudioSelection(track) else musicViewModel.playTrack(track, playbackQueue) },
+                                    modifier = Modifier.padding(4.dp),
+                                    showReorderHandle = !audioSelectionMode,
+                                    reorderModifier = Modifier.reorderableDrag(
                                             itemIndex = index,
                                             itemCount = filteredList.size,
                                             thresholdPx = reorderThresholdPx,
@@ -447,9 +489,11 @@ fun MusicScreen(
                                 AudioTrackCard(
                                     track = track,
                                     isSelected = isSelected,
+                                        isMultiSelected = audioLibraryKey(track) in selectedAudioKeys,
+                                        onLongClick = { toggleAudioSelection(track) },
                                     isPlaying = isSelected && isPlaying,
-                                    onDelete = { pendingDeleteTrack = track },
-                                    onClick = { musicViewModel.playTrack(track, playbackQueue) }
+                                    onDelete = if (audioSelectionMode) null else ({ pendingDeleteTrack = track }),
+                                    onClick = { if (audioSelectionMode) toggleAudioSelection(track) else musicViewModel.playTrack(track, playbackQueue) }
                                 )
                             }
                         }
@@ -465,10 +509,13 @@ fun MusicScreen(
                             AudioTrackCard(
                                 track = track,
                                 isSelected = isSelected,
+                                        isMultiSelected = audioLibraryKey(track) in selectedAudioKeys,
+                                        onLongClick = { toggleAudioSelection(track) },
                                 isPlaying = isSelected && isPlaying,
-                                onDelete = { pendingDeleteTrack = track },
-                                onClick = { musicViewModel.playTrack(track, playbackQueue) },
-                                modifier = Modifier.reorderableDrag(
+                                onDelete = if (audioSelectionMode) null else ({ pendingDeleteTrack = track }),
+                                onClick = { if (audioSelectionMode) toggleAudioSelection(track) else musicViewModel.playTrack(track, playbackQueue) },
+                                showReorderHandle = !audioSelectionMode,
+                                reorderModifier = Modifier.reorderableDrag(
                                     itemIndex = index,
                                     itemCount = filteredList.size,
                                     thresholdPx = reorderThresholdPx,
@@ -495,6 +542,27 @@ fun MusicScreen(
             onOpenEq = { showEqDialog = true },
             toggleLyrics = toggleLyrics,
         )
+    }
+
+    androidx.activity.compose.BackHandler(enabled = audioSelectionMode && pendingDeleteTracks == null && !showAudioProperties) { exitAudioSelection() }
+
+    if (showAudioProperties) {
+        AlertDialog(onDismissRequest = { showAudioProperties = false },
+            title = { Text("Audio properties") },
+            text = { Text("${selectedAudio.size} track${if (selectedAudio.size == 1) "" else "s"}\n" +
+                selectedAudio.joinToString("\n") { it.title }.take(1200), maxLines = 12, overflow = TextOverflow.Ellipsis) },
+            confirmButton = { TextButton(onClick = { showAudioProperties = false }) { Text("Close") } })
+    }
+    pendingDeleteTracks?.let { tracks ->
+        AlertDialog(onDismissRequest = { pendingDeleteTracks = null },
+            title = { Text("Move audio to Recycle Bin?") },
+            text = { Text("Move ${tracks.size} selected audio file${if (tracks.size == 1) "" else "s"} to Recycle Bin? Folders and other files remain. Folder groups may include locations with the same name. Files that cannot be accessed will be kept.") },
+            confirmButton = { TextButton(onClick = {
+                onMoveAudioBatchToRecycleBin(tracks)
+                pendingDeleteTracks = null
+                exitAudioSelection()
+            }) { Text("Move to Recycle Bin") } },
+            dismissButton = { TextButton(onClick = { pendingDeleteTracks = null }) { Text("Cancel") } })
     }
 
     pendingDeleteTrack?.let { track ->
@@ -524,6 +592,7 @@ fun MusicScreen(
 
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AudioTrackCard(
     track: AudioItem,
@@ -532,6 +601,10 @@ fun AudioTrackCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onDelete: (() -> Unit)? = null,
+    isMultiSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    showReorderHandle: Boolean = false,
+    reorderModifier: Modifier = Modifier,
 ) {
     val palette = LocalHiPalette.current
     var menuExpanded by remember { mutableStateOf(false) }
@@ -540,9 +613,9 @@ fun AudioTrackCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .then(if (isSelected) Modifier.hiContainerBorder(RoundedCornerShape(12.dp), selected = true) else Modifier)
-            .background(if (isSelected) palette.primary.copy(alpha = 0.08f) else palette.surfaceElevated)
-            .clickable(onClick = onClick)
+            .then(if (isSelected || isMultiSelected) Modifier.hiContainerBorder(RoundedCornerShape(12.dp), selected = true) else Modifier)
+            .background(if (isSelected || isMultiSelected) palette.primary.copy(alpha = 0.08f) else palette.surfaceElevated)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 10.dp)
             .testTag("audio_track_${track.id}"),
         verticalAlignment = Alignment.CenterVertically
@@ -618,7 +691,11 @@ fun AudioTrackCard(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        if (onDelete != null) Box {
+        if (showReorderHandle) {
+            Icon(Icons.Default.DragHandle, "Hold to reorder audio", tint = palette.textSecondary,
+                modifier = Modifier.size(32.dp).then(reorderModifier))
+        }
+        if (onDelete != null && !isMultiSelected) Box {
             IconButton(onClick = { menuExpanded = true }) {
                 Icon(Icons.Default.MoreVert, "Audio options", tint = palette.textSecondary)
             }
