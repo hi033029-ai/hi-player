@@ -9,6 +9,8 @@
 // ==/UserScript==
 (function () {
   'use strict';
+  // These page helpers must not alter XML, SVG, or server error documents.
+  if (document.contentType && document.contentType.toLowerCase() !== 'text/html') return;
   if (window.top !== window || window.__orbitSkipper) return;
   window.__orbitSkipper = true;
 

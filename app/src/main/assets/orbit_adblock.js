@@ -4,6 +4,8 @@
 // It never reads page data and never sends anything anywhere.
 (function () {
   'use strict';
+  // These page helpers must not alter XML, SVG, or server error documents.
+  if (document.contentType && document.contentType.toLowerCase() !== 'text/html') return;
   if (window.__hiAdShieldV1) return;
   window.__hiAdShieldV1 = true;
   var host = (location.hostname || '').toLowerCase();
