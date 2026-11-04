@@ -1,14 +1,3 @@
-From 873e14ee8b82f20fee7fd109b2bc1902a3e77a2f Mon Sep 17 00:00:00 2001
-From: Hi Player contributor <contributor@users.noreply.github.com>
-Date: Wed, 4 Nov 2026 03:51:05 +0000
-Subject: [PATCH] Handle expired browser links without modifying XML
-
----
- app/src/main/assets/orbit_adblock.js          |  2 +
- app/src/main/assets/orbit_page_skipper.js     |  2 +
- .../com/example/ui/screens/HiBrowserScreen.kt | 37 ++++++++++++++++---
- 3 files changed, 36 insertions(+), 5 deletions(-)
-
 diff --git a/app/src/main/assets/orbit_adblock.js b/app/src/main/assets/orbit_adblock.js
 index 76400f7..77a0af8 100644
 --- a/app/src/main/assets/orbit_adblock.js
@@ -36,7 +25,7 @@ index 085fcb3..873a30a 100644
    window.__orbitSkipper = true;
  
 diff --git a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
-index 5fd284c..10ff0dd 100644
+index 5fd284c..89d55a2 100644
 --- a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
 +++ b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
 @@ -300,7 +300,18 @@ private fun hiBrowserInitialState(store: OrbitBrowserStore): HiBrowserInitialSta
@@ -59,7 +48,21 @@ index 5fd284c..10ff0dd 100644
  
  private data class HiBrowserSecureRequest(val url: String, val fromPrivateTab: Boolean, val forSignIn: Boolean, val tabId: Int)
  
-@@ -797,7 +808,7 @@ fun HiBrowserScreen(
+@@ -530,6 +541,13 @@ fun HiBrowserScreen(
+         if (pageError?.tabId != activeTabId) pageError = null
+         // A restored tab (app reopened, or its page was released) shows the loader until it paints.
+         if (restoredTab != null && restoredTab.url.isNotBlank() && !isOrbitWebViewUsable(restoredTab.webView)) pendingFirstPaint = true
++        // A retained tab can still be loading while it is in the background.
++        restoredTab?.let { tab ->
++            tab.webView?.takeIf { tab.url.isNotBlank() && it.progress < 100 }?.let { view ->
++                pixelComet.start()
++                pixelComet.onProgress(view.progress)
++            }
++        }
+         // Only the visible tab keeps playing media and running animations.
+         tabs.forEach { tab ->
+             val view = tab.webView ?: return@forEach
+@@ -797,7 +815,7 @@ fun HiBrowserScreen(
          if (BrowserAdvancedRules.paused(Uri.parse(url).host)) return
          val css = OrbitBrowserFilterEngine.cosmeticCss(runCatching { Uri.parse(url).host }.getOrNull(), adBlockFlag.enabled)
          if (css.isNotBlank()) view.evaluateJavascript(
@@ -68,7 +71,30 @@ index 5fd284c..10ff0dd 100644
              null,
          )
      }
-@@ -1619,6 +1630,16 @@ fun HiBrowserScreen(
+@@ -1280,7 +1298,7 @@ fun HiBrowserScreen(
+     val density = LocalDensity.current
+     val imeVisibleNow = hiImeVisible()
+     val onPageNow = !showStartPage
+-    val showBrowserBar = !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint
++    val showBrowserBar = !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint || pixelComet.loading
+     // The address bar floats over the page and slides away by moving its layer,
+     // so the WebView is never resized while the page scrolls.
+     val barHiddenFraction by animateFloatAsState(
+@@ -1520,6 +1538,13 @@ fun HiBrowserScreen(
+                                                 return true
+                                             }
+                                         }
++                                        // Give immediate feedback for an accepted user navigation,
++                                        // without treating fragment-only links as page loads.
++                                        if (request.isForMainFrame && request.hasGesture() && !request.isRedirect &&
++                                            activeTabId == tabId && view.url?.substringBefore('#') != uri.toString().substringBefore('#')) {
++                                            pixelComet.start()
++                                            browserBarHidden = false
++                                        }
+                                         if (request.isForMainFrame && !activeTab.privateTab) {
+                                             if (request.isRedirect) {
+                                                 view.url?.takeIf { BrowserHistoryPolicy.isWebUrl(it) }?.let { redirectSources.putIfAbsent(tabId, it) }
+@@ -1619,6 +1644,16 @@ fun HiBrowserScreen(
                                          recordHistory(view.title ?: url, url, redirectedFrom = redirectSources.remove(tabId))
                                      }
                                      injectCosmeticCss(view, url)
@@ -85,7 +111,19 @@ index 5fd284c..10ff0dd 100644
                                      if (!HiBrowserDocumentScripts.isSupported()) {
                                          if (store.adBlock) injectOrbitAsset(view, viewContext, "orbit_adblock.js")
                                          if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
-@@ -1684,7 +1705,9 @@ fun HiBrowserScreen(
+@@ -1643,6 +1678,11 @@ fun HiBrowserScreen(
+                                 }
+                             }
+                             setDownloadListener(DownloadListener { url, userAgent, contentDisposition, mimeType, size ->
++                                // A download is not a page load; don't leave its progress indicator running.
++                                if (activeTabId == tabId) {
++                                    pixelComet.cancel(); loadingProgress = 100
++                                    pendingFirstPaint = false
++                                }
+                                 val name = DownloadFileResolver.resolve(URLUtil.guessFileName(url, contentDisposition, mimeType), url, mimeType, contentDisposition).fileName
+                                 pendingDownload = BrowserDownloadRequest(url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, name, size.coerceAtLeast(0), this.url.orEmpty())
+                             })
+@@ -1684,7 +1724,9 @@ fun HiBrowserScreen(
              HiBrowserErrorPage(
                  url = visibleError.url,
                  offline = visibleError.offline || !networkOnline,
@@ -95,7 +133,7 @@ index 5fd284c..10ff0dd 100644
                  onHome = { showBrowserHome() },
                  modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
                  bottomInset = barHeightDp,
-@@ -2674,7 +2697,9 @@ private fun HiBrowserLoadingPage(
+@@ -2674,7 +2716,9 @@ private fun HiBrowserLoadingPage(
  private fun HiBrowserErrorPage(
      url: String,
      offline: Boolean,
@@ -105,7 +143,7 @@ index 5fd284c..10ff0dd 100644
      onHome: () -> Unit,
      modifier: Modifier = Modifier,
      bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
-@@ -2701,7 +2726,7 @@ private fun HiBrowserErrorPage(
+@@ -2701,7 +2745,7 @@ private fun HiBrowserErrorPage(
          )
          Spacer(Modifier.height(16.dp))
          Text(
@@ -114,7 +152,7 @@ index 5fd284c..10ff0dd 100644
              color = palette.textPrimary,
              fontSize = 19.sp,
              fontWeight = FontWeight.SemiBold,
-@@ -2709,7 +2734,8 @@ private fun HiBrowserErrorPage(
+@@ -2709,7 +2753,8 @@ private fun HiBrowserErrorPage(
          )
          Spacer(Modifier.height(8.dp))
          Text(
@@ -124,7 +162,7 @@ index 5fd284c..10ff0dd 100644
              else "This page is unavailable or couldn't be opened securely. Try again, check the address, or return Home.",
              color = palette.textSecondary,
              fontSize = 14.sp,
-@@ -2717,7 +2743,8 @@ private fun HiBrowserErrorPage(
+@@ -2717,7 +2762,8 @@ private fun HiBrowserErrorPage(
          )
          Spacer(Modifier.height(20.dp))
          Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -134,6 +172,3 @@ index 5fd284c..10ff0dd 100644
              TextButton(onClick = onHome) { Text("Home") }
          }
      }
--- 
-2.49.0
-
