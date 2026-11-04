@@ -380,6 +380,19 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             isDirectory = false, fileType = FileType.AUDIO)))
     }
 
+    fun moveAudioToRecycleBin(tracks: Collection<com.example.model.AudioItem>) {
+        val items = tracks.mapNotNull { track ->
+            val file = track.path.takeIf { it.isNotBlank() }?.let(::File) ?: return@mapNotNull null
+            FileItem(file = file, name = file.name, path = file.path, isDirectory = false,
+                sizeBytes = track.sizeBytes, fileType = FileType.AUDIO)
+        }
+        if (items.isEmpty() && tracks.isNotEmpty()) {
+            _deleteResultMessage.value = "Couldn't move audio. Check file access in Settings and try again."
+            return
+        }
+        moveToRecycleBin(items)
+    }
+
     fun moveVideosToRecycleBin(videos: Collection<com.example.model.VideoItem>, onComplete: (Set<String>) -> Unit = {}) {
         val items = videos.mapNotNull { video ->
             val file = video.path.takeIf { it.isNotBlank() }?.let(::File)
