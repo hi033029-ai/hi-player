@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import com.example.ui.theme.LocalHiPalette
 
 /** Replaces a folder title in the same 64dp slot; never adds another app bar. */
@@ -29,10 +30,11 @@ fun InlineSelectionToolbar(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     onOrganize: (() -> Unit)? = null,
+    height: Dp = 64.dp,
 ) {
     val palette = LocalHiPalette.current
     var showTools by remember { mutableStateOf(false) }
-    Row(modifier.fillMaxWidth().height(64.dp).testTag("inline_selection_toolbar"),
+    Row(modifier.fillMaxWidth().height(height).testTag("inline_selection_toolbar"),
         verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Exit selection", tint = palette.textPrimary) }
         Text("$count", Modifier.weight(1f).semantics { contentDescription = "$count selected" },

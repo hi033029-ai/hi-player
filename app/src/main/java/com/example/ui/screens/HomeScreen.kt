@@ -182,20 +182,28 @@ fun HomeScreen(
     val visibleVideos = if (canShow) availableVideos else emptyList()
     val visibleFolders = if (canShow) availableFolders else emptyList()
     val favoriteCount = remember(visibleVideos) { visibleVideos.count { it.isFavorite } }
-    var selectionToolbarVisible by remember { mutableStateOf(false) }
+    var selectionToolbar by remember { mutableStateOf<VideoSelectionToolbarState?>(null) }
     Column(modifier = modifier.fillMaxSize()) {
-        if (selectedFolder == null && treePath == null && !selectionToolbarVisible) {
+        if (selectedFolder == null && treePath == null) {
+            Box(Modifier.fillMaxWidth()) {
             VideoLibraryHeaderControls(
                 modes = modes, selected = modes[pager.currentPage], folderCount = visibleFolders.size,
                 videoCount = visibleVideos.size, recentCount = if (canShow) recent.size else 0,
                 favoriteCount = favoriteCount, query = searchQuery,
-                onQueryChange = libraryViewModel::setSearchQuery, viewMode = viewMode,
-                onToggleView = libraryViewModel::toggleViewMode, onSort = libraryViewModel::setSortOption,
-                onSelect = { mode -> libraryViewModel.selectFolder(null); scope.launch {
+                onQueryChange = { if (!selectionActive) libraryViewModel.setSearchQuery(it) }, viewMode = viewMode,
+                onToggleView = { if (!selectionActive) libraryViewModel.toggleViewMode() },
+                onSort = { if (!selectionActive) libraryViewModel.setSortOption(it) },
+                onSelect = { mode -> if (!selectionActive) { libraryViewModel.selectFolder(null); scope.launch {
                     pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0),
                         animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-                } },
+                } } },
             )
+            selectionToolbar?.let { state ->
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(LocalHiPalette.current.surface)) {
+                    VideoSelectionToolbar(state)
+                }
+            }
+            }
         }
     androidx.compose.foundation.pager.HorizontalPager(
         state = pager,
@@ -211,7 +219,7 @@ fun HomeScreen(
             onMoveVideosToRecycleBin, Modifier.fillMaxSize(), includeHeader, onSearchRequested,
             pageMode = modes[page], isActive = pager.settledPage == page, mediaAccess = mediaAccess,
             onSelectionChanged = { if (pager.settledPage == page) selectionActive = it },
-            onSelectionToolbarChanged = { if (pager.settledPage == page) selectionToolbarVisible = it },
+            onSelectionToolbarChanged = { if (pager.settledPage == page) selectionToolbar = it },
             onPlaybackQueueSelected = onPlaybackQueueSelected,
             onPlayAsAudio = onPlayAsAudio,
         )

@@ -3,7 +3,8 @@ package com.example.ui.components
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,13 +32,15 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalHiPalette
 import com.example.viewmodel.VideoFolder
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderItemRow(
     folder: VideoFolder,
     isSelected: Boolean = false,
     hasNewVideo: Boolean = folder.hasNewVideo,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val palette = LocalHiPalette.current
 
@@ -46,7 +49,7 @@ fun FolderItemRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 10.dp, vertical = 7.dp)
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
@@ -118,6 +121,7 @@ fun FolderItemRow(
  * Grid-shaped folder tile, used when the library's grid/list toggle is set
  * to grid mode (previously the toggle had no effect at all on folder listings).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderGridCard(
     name: String,
@@ -125,7 +129,8 @@ fun FolderGridCard(
     isSelected: Boolean = false,
     hasNewVideo: Boolean = false,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val palette = LocalHiPalette.current
 
@@ -134,7 +139,7 @@ fun FolderGridCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
             .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 10.dp, horizontal = 8.dp)
             .testTag("folder_grid_$name"),
         horizontalAlignment = Alignment.CenterHorizontally
