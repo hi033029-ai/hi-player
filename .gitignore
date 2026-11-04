@@ -1,0 +1,8 @@
+# Never commit new signing keys or local credentials.
+*.jks
+*.keystore
+!debug.keystore
+.env
+local.properties
+.gradle/
+**/build/

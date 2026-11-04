@@ -19,3 +19,7 @@ This is a source review, not a Play approval or legal opinion. The 1.0.90 APK is
 7. **Validation:** Produce and verify a release AAB with the proper key, run the applicable tests, and test real devices and provider sign-in before a staged internal release. Do not claim submission or approval before it occurs.
 
 The `com.example` source namespace is separate from the application ID; its name alone does not prove a publishing prohibition. The cloud redirect scheme in source matches the manifest; whether a provider accepts it depends on its registered OAuth configuration. Existing backup XML explicitly excludes the named media-source preference and settings DataStore, but other stores still require review. The presence of `All rights reserved` with an Apache license is not by itself proof that the license grant is invalid.
+
+## Candidate build preparation
+
+A manual, non-publishing release-bundle workflow and private-key setup instructions are available in [Play candidate build setup](play-candidate-build.md). It preserves the current features, including opt-in Drive, and does not by itself resolve the review items above. Source inspection found both bundled decoder AARs' arm64 and x86_64 ELF load segments aligned to 16 KiB; the complete release AAB and all packaged native libraries still require verification.

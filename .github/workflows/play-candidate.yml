@@ -1,0 +1,71 @@
+name: Build Play candidate (manual)
+
+# This only prepares a review candidate; it does not publish to Google Play.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Verify and build signed release bundle
+    runs-on: ubuntu-latest
+    environment: play-release
+    timeout-minutes: 45
+    env:
+      KEYSTORE_PATH: ${{ runner.temp }}/hi-player-upload.jks
+      UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
+      STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - name: Validate private upload key
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in UPLOAD_KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD KEY_ALIAS; do
+            if [[ -z "${!name:-}" ]]; then echo "Missing required release signing secret: $name" >&2; exit 1; fi
+          done
+          umask 077
+          printf '%s' "$UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          # The existing public test key is not acceptable for Play uploads.
+          fingerprint=$(keytool -J-Duser.language=en -list -v -keystore "$KEYSTORE_PATH" -storepass:env STORE_PASSWORD -alias "$KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test -n "$fingerprint"
+          if [[ "$fingerprint" == 'D5476AB29CC741FCC49D65A7C39A2FB7062DFE80C1A68A336E6F81E7915D5F68' ]]; then
+            echo 'The public test signing key must not be used for a Play release.' >&2; exit 1
+          fi
+      - name: Run unit tests
+        run: gradle --no-daemon testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
+      - name: Build release bundle with existing features
+        run: gradle --no-daemon bundleRelease -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
+      - name: Verify bundle signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t bundles < <(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab')
+          [[ ${#bundles[@]} -eq 1 ]]
+          key_fingerprint=$(keytool -J-Duser.language=en -list -v -keystore "$KEYSTORE_PATH" -storepass:env STORE_PASSWORD -alias "$KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          bundle_fingerprint=$(keytool -J-Duser.language=en -printcert -jarfile "${bundles[0]}" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          [[ -n "$key_fingerprint" && "$bundle_fingerprint" == "$key_fingerprint" ]]
+          sha256sum "${bundles[0]}"
+      - name: Upload candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: hi-player-play-candidate
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove temporary signing key
+        if: always()
+        shell: bash
+        run: rm -f "$KEYSTORE_PATH"
