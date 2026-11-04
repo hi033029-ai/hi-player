@@ -1,4 +1,4 @@
-From 73b4dd323ef767c0c5f391401d520e7ff5e04208 Mon Sep 17 00:00:00 2001
+From 873e14ee8b82f20fee7fd109b2bc1902a3e77a2f Mon Sep 17 00:00:00 2001
 From: Hi Player contributor <contributor@users.noreply.github.com>
 Date: Wed, 4 Nov 2026 03:51:05 +0000
 Subject: [PATCH] Handle expired browser links without modifying XML
@@ -36,7 +36,7 @@ index 085fcb3..873a30a 100644
    window.__orbitSkipper = true;
  
 diff --git a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
-index 5fd284c..a9fd91a 100644
+index 5fd284c..10ff0dd 100644
 --- a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
 +++ b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
 @@ -300,7 +300,18 @@ private fun hiBrowserInitialState(store: OrbitBrowserStore): HiBrowserInitialSta
@@ -110,7 +110,7 @@ index 5fd284c..a9fd91a 100644
          Spacer(Modifier.height(16.dp))
          Text(
 -            if (offline) "No internet connection" else "Can't reach this page",
-+            if (expiredLink) "This link has expired" else if (offline) "No internet connection" else "Can't reach this page",
++            if (expiredLink) "Link expired" else if (offline) "No internet connection" else "Can't reach this page",
              color = palette.textPrimary,
              fontSize = 19.sp,
              fontWeight = FontWeight.SemiBold,
@@ -119,7 +119,7 @@ index 5fd284c..a9fd91a 100644
          Spacer(Modifier.height(8.dp))
          Text(
 -            if (offline) "Check Wi-Fi or mobile data. The page reloads by itself when you're back online."
-+            if (expiredLink) "Go back to the original page and open the link again to get a fresh one."
++            if (expiredLink) "Regenerate the link and try again."
 +            else if (offline) "Check Wi-Fi or mobile data. The page reloads by itself when you're back online."
              else "This page is unavailable or couldn't be opened securely. Try again, check the address, or return Home.",
              color = palette.textSecondary,
