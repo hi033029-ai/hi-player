@@ -516,7 +516,8 @@ class MainActivity : FragmentActivity() {
                                                     },
                                                     includeHeader = false,
                                                     libraryViewModel = libraryViewModel,
-                                                    onMoveAudioToRecycleBin = { fileManagerViewModel.moveAudioToRecycleBin(it) }
+                                                    onMoveAudioToRecycleBin = { fileManagerViewModel.moveAudioToRecycleBin(it) },
+                                                    onMoveAudioBatchToRecycleBin = { fileManagerViewModel.moveAudioToRecycleBin(it) }
                                                 )
                                             }
                                             NavTab.BROWSER -> {
