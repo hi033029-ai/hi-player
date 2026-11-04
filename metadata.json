@@ -1,6 +1,6 @@
 {
   "name": "Hi Player",
-  "description": "A high-performance 4K UHD Blu-ray Remux local video player with background playback, PiP, hardware decoding, audio/video settings, and gestural controls.",
+  "description": "A local video and music player with background playback, picture-in-picture, and playback controls.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

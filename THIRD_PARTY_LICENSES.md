@@ -59,21 +59,12 @@ Hi Player utilizes the following open-source libraries and components. We gratef
 
 ---
 
-### 6. Retrofit & OkHttp
+### 6. OkHttp
 - **Provider**: Square, Inc.
 - **License**: Apache License 2.0
-- **URL**: https://square.github.io/retrofit/ / https://square.github.io/okhttp/
-- **Modules**: `com.squareup.retrofit2:retrofit`, `com.squareup.okhttp3:okhttp`
-- **Purpose**: Robust HTTP networking and subtitle/metadata retrieval.
-
----
-
-### 7. Moshi
-- **Provider**: Square, Inc.
-- **License**: Apache License 2.0
-- **URL**: https://github.com/square/moshi
-- **Modules**: `com.squareup.moshi:moshi-kotlin`
-- **Purpose**: Lightweight JSON serialization and parsing.
+- **URL**: https://github.com/square/okhttp
+- **Direct module**: `com.squareup.okhttp3:okhttp`
+- **Purpose**: HTTP networking.
 
 ---
 
@@ -91,3 +82,14 @@ Hi Player utilizes the following open-source libraries and components. We gratef
 - **License**: MIT License (Robolectric) / Eclipse Public License 1.0 (JUnit)
 - **URL**: https://github.com/robolectric/robolectric / https://junit.org/
 - **Purpose**: Local JVM unit and integration testing without requiring an emulator.
+
+
+### Additional directly used components and filter sources
+
+- **SMBJ** (`com.hierynomus:smbj`): Apache License 2.0; https://github.com/hierynomus/smbj.
+- **Reorderable** (`sh.calvin.reorderable:reorderable`): Apache License 2.0; https://github.com/Calvin-LL/Reorderable.
+- **FFmpeg**: The app includes `media3-ffmpeg-decoder-debug.aar`, containing native FFmpeg JNI libraries. FFmpeg is generally LGPL 2.1 or later; optional components or build options may change the applicable license. See https://ffmpeg.org/legal.html and the [LGPL 2.1 text](licenses/FFmpeg-LGPL-2.1.txt). The exact source revision, configuration, accompanying notices, corresponding source and applicable relinking obligations must be verified for this binary before distribution. This notice alone is not a claim of compliance or a patent license.
+- **EasyList / EasyPrivacy**: The browser can download filter data from these lists. The projects describe dual licensing under Creative Commons Attribution-ShareAlike and the GNU General Public License; see https://easylist.to/pages/licence.html. Determine the license and attribution requirements for the actual versions and any bundled or modified rules before distribution.
+- **Peter Lowe's ad and tracking server list**: The browser can download filter data from https://pgl.yoyo.org/adservers/. Verify the terms and attribution requirements for the exact list used.
+
+This inventory is not a complete transitive-dependency or service license report. Review the actual release dependency graph, native binaries, SDK terms, notices and content-provider rights before publication.

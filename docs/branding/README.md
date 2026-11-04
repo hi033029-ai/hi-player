@@ -1,4 +1,4 @@
-# Hi Player — Pixel Play
+# Hi Player — Brand Mark
 
 Vector adaptation of the first AI-generated teal/cyan ribbon-and-pixels concept selected by Khan. This is a small-size production adaptation, not an exact bitmap trace or a claim of trademark clearance.
 

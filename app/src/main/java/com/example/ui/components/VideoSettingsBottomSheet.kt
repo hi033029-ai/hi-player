@@ -86,7 +86,7 @@ fun VideoSettingsBottomSheet(
                 color = HiTextPrimary
             )
             Text(
-                text = "4K UHD Blu-ray Remux engine & playback tuning",
+                text = "Video playback and decoder tuning",
                 fontSize = 12.sp,
                 color = HiTextSecondary
             )
