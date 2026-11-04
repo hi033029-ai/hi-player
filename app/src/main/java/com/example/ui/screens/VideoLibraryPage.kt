@@ -99,6 +99,19 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
+internal data class VideoSelectionToolbarState(
+    val count: Int, val onClose: () -> Unit, val onSelectAll: () -> Unit,
+    val onClear: () -> Unit, val onProperties: () -> Unit, val onDelete: () -> Unit,
+)
+
+@Composable
+internal fun VideoSelectionToolbar(state: VideoSelectionToolbarState) {
+    com.example.ui.components.InlineSelectionToolbar(
+        count = state.count, onClose = state.onClose, onSelectAll = state.onSelectAll,
+        onClear = state.onClear, onProperties = state.onProperties, onDelete = state.onDelete,
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VideoLibraryPage(
@@ -114,7 +127,7 @@ internal fun VideoLibraryPage(
     isActive: Boolean,
     mediaAccess: com.example.ui.components.LibraryMediaAccess,
     onSelectionChanged: (Boolean) -> Unit,
-    onSelectionToolbarChanged: (Boolean) -> Unit,
+    onSelectionToolbarChanged: (VideoSelectionToolbarState?) -> Unit,
     onPlaybackQueueSelected: (List<VideoItem>) -> Unit,
     onPlayAsAudio: (VideoItem) -> Unit,
 ) {
@@ -163,6 +176,7 @@ internal fun VideoLibraryPage(
     var showFolders by rememberSaveable { mutableStateOf(false) }
     var inspectVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedFolderKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isVideoSelectionMode by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<VideoItem?>(null) }
     var renameText by rememberSaveable { mutableStateOf("") }
@@ -175,7 +189,6 @@ internal fun VideoLibraryPage(
     androidx.compose.runtime.SideEffect {
         if (isActive) {
             onSelectionChanged(selectionMode || inspectVideo != null || renameTarget != null || pendingDeleteVideos != null || showSelectionProperties)
-            onSelectionToolbarChanged(selectionMode)
         }
     }
     // Imported, SAF, and growing downloads can share a MediaStore ID of zero.
@@ -185,8 +198,12 @@ internal fun VideoLibraryPage(
         video.uri.toString().takeIf { it.isNotBlank() && it != Uri.EMPTY.toString() }
             ?: "video:${video.id}:${video.title}"
     }
-    val selectedVideos = remember(selectedVideoPaths, allVideos) {
-        allVideos.filter { selectedVideoPaths.contains(it.path.ifBlank { it.uri.toString() }) }
+    val selectedVideos = remember(selectedVideoPaths, selectedFolderKeys, allVideos) {
+        allVideos.filter { video ->
+            videoKey(video) in selectedVideoPaths || selectedFolderKeys.any { key ->
+                videoBelongsToSelectedFolder(key, video.path, video.folderName)
+            }
+        }
     }
     // Filtering, sorting and saved-order application already completed off-main.
     val orderedFilteredVideos = filteredVideos
@@ -251,7 +268,13 @@ internal fun VideoLibraryPage(
         isVideoSelectionMode = true
     }
 
+    fun toggleFolderSelection(key: String) {
+        selectedFolderKeys = if (key in selectedFolderKeys) selectedFolderKeys - key else selectedFolderKeys + key
+        isVideoSelectionMode = true
+    }
+
     fun exitVideoSelectionMode() {
+        selectedFolderKeys = emptySet()
         selectedVideoPaths = emptySet()
         isVideoSelectionMode = false
     }
@@ -296,24 +319,33 @@ internal fun VideoLibraryPage(
     }
     val selectionCandidates = if (navMode == LibraryNavMode.TREE_FOLDERS) currentTreeNode?.directVideos.orEmpty() else filteredVideos
     LaunchedEffect(selectedFolder, treeCurrentPath, navMode) { exitVideoSelectionMode() }
-    val videoSelectionActions: @Composable () -> Unit = {
-        com.example.ui.components.InlineSelectionToolbar(
+    val toolbarState = remember(selectionMode, selectedVideos, selectionCandidates, selectedFolderKeys, folders, currentTreeNode, selectedFolder, navMode, searchQuery) {
+        if (!selectionMode) null else VideoSelectionToolbarState(
             count = selectedVideos.size,
             onClose = { exitVideoSelectionMode() },
-            onSelectAll = { selectedVideoPaths = selectionCandidates.map(::videoKey).toSet() },
-            onClear = { selectedVideoPaths = emptySet() },
+            onSelectAll = {
+                selectedVideoPaths = selectionCandidates.map(::videoKey).toSet()
+                selectedFolderKeys = when {
+                    navMode == LibraryNavMode.FOLDERS && selectedFolder == null && searchQuery.isBlank() -> folders.map { "name:${it.name}" }.toSet()
+                    navMode == LibraryNavMode.TREE_FOLDERS -> currentTreeNode?.childFolders.orEmpty().map { "path:${it.dirPath}" }.toSet()
+                    else -> emptySet()
+                }
+            },
+            onClear = { selectedVideoPaths = emptySet(); selectedFolderKeys = emptySet() },
             onProperties = { showSelectionProperties = true },
             onDelete = { pendingDeleteVideos = selectedVideos },
         )
     }
+    androidx.compose.runtime.SideEffect { if (isActive) onSelectionToolbarChanged(toolbarState) }
+    val videoSelectionActions: @Composable () -> Unit = { toolbarState?.let { VideoSelectionToolbar(it) } }
 
     // Folder breadcrumbs and contextual selection controls scroll with their
     // content. The shared search/category toolbar remains outside the pager.
     val libraryControls: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (selectedFolder != null || selectionMode || (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null)) {
+            if (selectedFolder != null || (navMode == LibraryNavMode.TREE_FOLDERS && treeCurrentPath != null)) {
                 Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.CenterStart) {
-                    if (selectionMode) videoSelectionActions() else {
+                    run {
                         // 3. FOLDER NAVIGATION BREADCRUMB & STATUS BAR
                         if (selectedFolder != null) {
                             // Inside Folder Header Bar
@@ -465,11 +497,8 @@ internal fun VideoLibraryPage(
             // 4. PLAN SHEET CONTENT CANVAS
             // Keep branch-specific fillMaxSize() lists below the toolbar/header.
             // A weighted canvas prevents them from drawing underneath the controls.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+            Column(Modifier.fillMaxSize()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess && allVideos.any { it.isPartialDownload }) {
                 Row(
                     modifier = Modifier
@@ -547,8 +576,9 @@ internal fun VideoLibraryPage(
                                 name = folder.name,
                                 videoCount = folder.videoCount,
                                 hasNewVideo = folder.hasNewVideo,
-                                isSelected = selectedFolder == folder.name,
-                                onClick = { libraryViewModel.selectFolder(folder.name) }
+                                isSelected = "name:${folder.name}" in selectedFolderKeys,
+                                onClick = { if (selectionMode) toggleFolderSelection("name:${folder.name}") else libraryViewModel.selectFolder(folder.name) },
+                                onLongClick = { toggleFolderSelection("name:${folder.name}") }
                             )
                         }
                     }
@@ -580,10 +610,9 @@ internal fun VideoLibraryPage(
                         ) { _, folder ->
                                     FolderItemRow(
                                         folder = folder,
-                                        isSelected = selectedFolder == folder.name,
-                                onClick = {
-                                    libraryViewModel.selectFolder(folder.name)
-                                }
+                                        isSelected = "name:${folder.name}" in selectedFolderKeys,
+                                onClick = { if (selectionMode) toggleFolderSelection("name:${folder.name}") else libraryViewModel.selectFolder(folder.name) },
+                                onLongClick = { toggleFolderSelection("name:${folder.name}") }
                             )
                         }
                     }
@@ -630,7 +659,9 @@ internal fun VideoLibraryPage(
                                                     name = child.name,
                                                     videoCount = child.totalVideoCount,
                                                     hasNewVideo = child.hasNewVideo,
-                                                    onClick = { libraryViewModel.navigateTreeInto(child.dirPath) }
+                                                    isSelected = "path:${child.dirPath}" in selectedFolderKeys,
+                                                    onClick = { if (selectionMode) toggleFolderSelection("path:${child.dirPath}") else libraryViewModel.navigateTreeInto(child.dirPath) },
+                                                    onLongClick = { toggleFolderSelection("path:${child.dirPath}") }
                                                 )
                                             }
                                         }
@@ -648,7 +679,9 @@ internal fun VideoLibraryPage(
                                             sampleVideo = null,
                                             hasNewVideo = child.hasNewVideo
                                         ),
-                                        onClick = { libraryViewModel.navigateTreeInto(child.dirPath) }
+                                        isSelected = "path:${child.dirPath}" in selectedFolderKeys,
+                                        onClick = { if (selectionMode) toggleFolderSelection("path:${child.dirPath}") else libraryViewModel.navigateTreeInto(child.dirPath) },
+                                        onLongClick = { toggleFolderSelection("path:${child.dirPath}") }
                                     )
                                 }
                             }
@@ -834,8 +867,14 @@ internal fun VideoLibraryPage(
                 }
             }
             }
+            if (selectionMode && (selectedFolder != null || treeCurrentPath != null)) {
+                Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(palette.surface)) {
+                    videoSelectionActions()
+                }
+            }
             }
         }
+    }
 
     if (isActive) {
     // Video Technical Telemetry Inspector Dialog
@@ -926,7 +965,7 @@ internal fun VideoLibraryPage(
             modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingDeleteVideos = null },
             title = { Text("Delete video${if (videosToDelete.size == 1) "" else "s"}?") },
-            text = { Text("This moves ${videosToDelete.size} file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. You can restore them or permanently delete them later.") },
+            text = { Text("This moves ${videosToDelete.size} video file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. Folders and other files remain. Folder groups may include locations with the same name. You can restore the videos later.") },
             confirmButton = {
                 TextButton(onClick = {
                     onMoveVideosToRecycleBin(videosToDelete)
