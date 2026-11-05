@@ -38,6 +38,11 @@ class GeckoLoadingStateTest {
         assertNull(next.error)
         assertTrue(next.loading)
     }
+    @Test fun interceptedNavigationStopsTheLoadingIndicator() {
+        val state = GeckoLoadingState.cancel(GeckoLoadingState.start(initial, "https://example.org"))
+        assertFalse(state.loading)
+        assertNull(state.error)
+    }
     @Test fun stopWithoutSpecificFailureIsNotReportedAsSuccess() {
         val stopped = GeckoLoadingState.stop(GeckoLoadingState.start(initial, "https://example.org"), false)
         assertFalse(stopped.loading)

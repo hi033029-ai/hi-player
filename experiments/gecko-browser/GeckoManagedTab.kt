@@ -9,8 +9,10 @@ internal class GeckoManagedTab(
     tab: GeckoTabRegistry.Tab,
     desktop: Boolean,
     onChanged: (GeckoTabSnapshot) -> Unit,
+    navigationPolicy: GeckoNavigationPolicy,
+    onNavigationDecision: (GeckoNavigationDecision) -> Unit,
 ) : GeckoManagedSession<GeckoView> {
-    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged)
+    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)

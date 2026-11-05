@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Looper
 import androidx.annotation.MainThread
 import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.GeckoSession
@@ -42,6 +43,8 @@ internal class GeckoTabEngine(
     privateTab: Boolean,
     desktop: Boolean,
     private val onChanged: (GeckoTabSnapshot) -> Unit,
+    private val navigationPolicy: GeckoNavigationPolicy,
+    private val onNavigationDecision: (GeckoNavigationDecision) -> Unit,
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -70,6 +73,13 @@ internal class GeckoTabEngine(
             }
         }
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
+                val decision = navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
+                if (decision == GeckoNavigationDecision.Allow) return GeckoResult.allow()
+                update(GeckoLoadingState.cancel(snapshot))
+                if (decision != GeckoNavigationDecision.Block) onNavigationDecision(decision)
+                return GeckoResult.deny()
+            }
             override fun onLocationChange(
                 session: GeckoSession,
                 url: String?,

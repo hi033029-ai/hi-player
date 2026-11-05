@@ -13,6 +13,8 @@ internal object GeckoLoadingState {
     fun progress(state: GeckoTabSnapshot, progress: Int): GeckoTabSnapshot =
         if (state.loading) state.copy(progress = progress.coerceIn(0, 100)) else state
 
+    fun cancel(state: GeckoTabSnapshot): GeckoTabSnapshot = state.copy(loading = false)
+
     fun error(state: GeckoTabSnapshot, error: GeckoPageError): GeckoTabSnapshot =
         state.copy(loading = false, error = error)
 
