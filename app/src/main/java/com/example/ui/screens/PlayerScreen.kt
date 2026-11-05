@@ -228,7 +228,6 @@ fun PlayerScreen(
         showHdrPresetMenu = false
         showHdrCustomizer = false
     }
-    var equalizerInteractionTick by remember { mutableStateOf(0) }
     var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
     var hdrColorIntensity by remember { mutableStateOf(0.5f) }
@@ -345,15 +344,6 @@ fun PlayerScreen(
         isRatioTransitioning = true
         delay(360)
         isRatioTransitioning = false
-    }
-
-    LaunchedEffect(activeSheet, equalizerPreset, equalizerInteractionTick) {
-        if (activeSheet == ActiveSheet.EQUALIZER) {
-            delay(5_000)
-            if (activeSheet == ActiveSheet.EQUALIZER) {
-                playerViewModel.closeSheet()
-            }
-        }
     }
 
     LaunchedEffect(activeSheet) {
@@ -811,7 +801,6 @@ fun PlayerScreen(
                 }
             },
             onOpenEqualizer = {
-                equalizerInteractionTick++
                 if (activeSheet == ActiveSheet.EQUALIZER) {
                     playerViewModel.closeSheet()
                 } else {
@@ -976,21 +965,11 @@ fun PlayerScreen(
                 EqualizerBottomSheet(
                     selectedPreset = equalizerPreset,
                     customBandsDb = equalizerBandsDb,
-                    onSelectPreset = {
-                        playerViewModel.setEqualizerPreset(it)
-                        equalizerInteractionTick++
-                        if (it != "Custom") {
-                            playerViewModel.closeSheet()
-                        }
-                    },
+                    onSelectPreset = { playerViewModel.setEqualizerPreset(it) },
                     onCustomBandChange = { index, gainDb ->
                         playerViewModel.setCustomEqualizerBand(index, gainDb)
-                        equalizerInteractionTick++
                     },
                     onDismiss = { playerViewModel.closeSheet() },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 12.dp, bottom = 128.dp),
                 )
             }
             ActiveSheet.VIDEO_SETTINGS -> {
