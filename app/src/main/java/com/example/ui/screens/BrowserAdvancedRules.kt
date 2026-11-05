@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import com.example.BuildConfig
 import android.net.Uri
 import org.json.JSONObject
 import java.net.IDN
@@ -67,7 +68,9 @@ internal object BrowserAdvancedRules {
         if (name !in setOf("orbit_adblock.js", "orbit_youtube.js", "orbit_page_skipper.js")) return script
         val rules = json(state).getJSONObject("sites").toString()
         val adScript = name != "orbit_page_skipper.js"
-        return "(function(){var rules=$rules;var h=location.hostname;try{h=top.location.hostname||h;}catch(e){try{h=new URL(document.referrer).hostname||h;}catch(ignore){}}var p=rules[h.toLowerCase().replace(/\\.$/, '')]||{};" +
+        val youtubeGuard = if (BuildConfig.PLAY_STORE_BUILD)
+            "if(/(^|\\.)(youtube\\.com|youtube-nocookie\\.com|youtu\\.be)$/.test(h.toLowerCase().replace(/\\.$/,'')) || /(^|\\.)(youtube\\.com|youtube-nocookie\\.com|youtu\\.be)$/.test(location.hostname.toLowerCase().replace(/\\.$/,'')))return;" else ""
+        return "(function(){var rules=$rules;var h=location.hostname;try{h=top.location.hostname||h;}catch(e){try{h=new URL(document.referrer).hostname||h;}catch(ignore){}}" + youtubeGuard + "var p=rules[h.toLowerCase().replace(/\\.$/, '')]||{};" +
             (if (adScript) "if(p.pause)return;" else "window.__hiSkipOptions={speed:p.speed||30,autoContinue:p.continue!==false};") + script + "\n})();"
     }
 }

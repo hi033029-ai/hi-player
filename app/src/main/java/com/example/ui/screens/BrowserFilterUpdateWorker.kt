@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Context
+import com.example.BuildConfig
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit
 /** Android schedules this outside the browser UI, including after normal process death/reboot. */
 class BrowserFilterUpdateWorker(context: Context, parameters: WorkerParameters) : Worker(context, parameters) {
     override fun doWork(): Result {
+        if (BuildConfig.PLAY_STORE_BUILD) return Result.success()
         if (isStopped) return Result.retry()
         // Disabled protections stay disabled. Checks send no account/cookie/page data.
         val store = OrbitBrowserStore(applicationContext)
@@ -28,6 +30,13 @@ class BrowserFilterUpdateWorker(context: Context, parameters: WorkerParameters) 
 
     companion object {
         fun schedule(context: Context) {
+            if (BuildConfig.PLAY_STORE_BUILD) {
+                val manager = WorkManager.getInstance(context.applicationContext)
+                manager.cancelUniqueWork("browser-blocker-refresh")
+                manager.cancelUniqueWork("browser-filter-stale-check")
+                manager.cancelUniqueWork("browser-filter-daily")
+                return
+            }
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)

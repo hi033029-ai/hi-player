@@ -59,14 +59,17 @@ android {
     }
   }
 
+  assetPacks += listOf(":webfilters")
   buildTypes {
     release {
+      buildConfigField("boolean", "PLAY_STORE_BUILD", "true")
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      buildConfigField("boolean", "PLAY_STORE_BUILD", "false")
       signingConfig = signingConfigs.getByName("debugConfig")
       // The shipped APK is the debug variant. A debuggable app runs Compose and
       // WebView glue without ART's optimizations or baseline profiles, which is
@@ -115,6 +118,7 @@ dependencies {
   implementation("androidx.fragment:fragment-ktx:1.8.6")
   implementation("androidx.browser:browser:1.8.0")
   implementation("androidx.work:work-runtime-ktx:2.10.1")
+  implementation("com.google.android.play:asset-delivery:2.3.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
   // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
   // formats that may be unsupported by a device hardware decoder.
