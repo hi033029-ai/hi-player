@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.BuildConfig
+import com.google.android.play.core.assetpacks.AssetPackManagerFactory
+
 import android.content.Context
 import android.util.AtomicFile
 import android.net.Uri
@@ -249,11 +252,26 @@ internal object OrbitBrowserFilterEngine {
         val stored = File(context.filesDir, "orbit-filters.txt")
         runCatching {
             // openRead recovers AtomicFile's backup after an interrupted install.
-            val reader = runCatching { AtomicFile(stored).openRead().bufferedReader() }
+            // Play only consumes bundled or Play-delivered declarative data. Never
+            // reuse a sideloaded build's downloaded list after an upgrade.
+            val reader = if (BuildConfig.PLAY_STORE_BUILD) {
+                val assets = runCatching { AssetPackManagerFactory.getInstance(context).getPackLocation("webfilters")?.assetsPath() }.getOrNull()
+                val delivered = assets?.let { File(it, "orbit_filters.txt") }
+                if (delivered != null && delivered.isFile) delivered.bufferedReader()
+                else context.assets.open("orbit_filters.txt").bufferedReader()
+            } else runCatching { AtomicFile(stored).openRead().bufferedReader() }
                 .getOrElse { context.assets.open("orbit_filters.txt").bufferedReader() }
             reader.useLines { lines -> parse(lines.take(MAX_FILTER_LINES)) }
         }
         loaded = true
+    }
+
+    /** Re-read the installed fast-follow pack; fallback remains available offline. */
+    fun refreshPlayFilters(context: Context): Boolean = synchronized(loadLock) {
+        val installed = runCatching { AssetPackManagerFactory.getInstance(context).getPackLocation("webfilters")?.assetsPath() }
+            .getOrNull()?.let { File(it, "orbit_filters.txt").isFile } == true
+        reload(context)
+        installed
     }
 
     /** Called by durable background work; failed updates remain eligible for retry. */
@@ -274,6 +292,7 @@ internal object OrbitBrowserFilterEngine {
     fun shouldBlock(uri: Uri, enabled: Boolean, pageHost: String? = null, mainFrame: Boolean = true): Boolean {
         if (!enabled) return false
         val host = uri.host?.lowercase()?.trimEnd('.') ?: return false
+        if (BuildConfig.PLAY_STORE_BUILD && (isYoutubeHost(host) || isYoutubeHost(pageHost))) return false
         BrowserAdvancedRules.decision(host, pageHost)?.let { return it }
         val blocks = blockIndex
         var path: String? = null
@@ -355,7 +374,7 @@ internal object OrbitBrowserFilterEngine {
     }
 
     fun cosmeticCss(host: String?, enabled: Boolean): String {
-        if (!enabled) return ""
+        if (!enabled || (BuildConfig.PLAY_STORE_BUILD && isYoutubeHost(host))) return ""
         val data = hostSelectors
         val hostCss = generateSequence(host?.lowercase()?.removePrefix("www.")) { value ->
             val dot = value.indexOf('.')
@@ -482,6 +501,13 @@ internal object OrbitReaderMode {
         }
         append("</body></html>")
     }
+}
+
+internal fun isYoutubeHost(value: String?): Boolean {
+    val host = value?.lowercase(java.util.Locale.ROOT)?.trimEnd('.') ?: return false
+    return host == "youtu.be" || host.endsWith(".youtu.be") ||
+        host == "youtube.com" || host.endsWith(".youtube.com") ||
+        host == "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")
 }
 
 internal fun isOrbitYoutube(url: String): Boolean = runCatching {

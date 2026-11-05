@@ -24,4 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Hi Player"
 
-include(":app")
+include(":app", ":webfilters")

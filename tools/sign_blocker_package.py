@@ -29,7 +29,7 @@ def main():
     if args.version < 1 or not 1 <= args.expires_days <= 90 or args.min_app_version < 77:
         parser.error("Invalid package version, expiry, or app compatibility floor")
     public = subprocess.check_output(["openssl", "pkey", "-in", str(key), "-pubout"], stderr=subprocess.DEVNULL)
-    pinned = (root / "app/src/main/assets/blocker_update_public_key.pem").read_bytes()
+    pinned = (root / "app/src/debug/assets/blocker_update_public_key.pem").read_bytes()
     if public.strip() != pinned.strip():
         parser.error("Signing key does not match the app's pinned public key")
     output = args.output.resolve()
@@ -37,7 +37,7 @@ def main():
     old = output / "manifest.json"
     if old.is_file() and args.version <= json.loads(old.read_text())["version"]:
         parser.error("New release version must be higher than the previous package")
-    script = (root / "app/src/main/assets/orbit_youtube.js").read_bytes()
+    script = (root / "app/src/debug/assets/orbit_youtube.js").read_bytes()
     if not 0 < len(script) <= 100_000:
         parser.error("Script exceeds the updater's byte limit")
     digest = hashlib.sha256(script).hexdigest()

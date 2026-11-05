@@ -23,3 +23,12 @@ The `com.example` source namespace is separate from the application ID; its name
 ## Candidate build preparation
 
 A manual, non-publishing release-bundle workflow and private-key setup instructions are available in [Play candidate build setup](play-candidate-build.md). It preserves the current features, including opt-in Drive, and does not by itself resolve the review items above. Source inspection found both bundled decoder AARs' arm64 and x86_64 ELF load segments aligned to 16 KiB; the complete release AAB and all packaged native libraries still require verification.
+
+
+## Play variant source preparation (not validated)
+
+The Play release variant keeps the browser and generic filtering, but excludes the YouTube-specific skipper asset and its remote executable-code updater. It uses only bundled filtering data or a fast-follow Play asset pack; the separate debug variant retains the existing behavior. YouTube domains and top-level YouTube pages are exempted from the release request/cosmetic filters. WebView does not expose a reliable initiator for every third-party subresource, so embedded-player cases require device testing. Generic filters may still affect third-party requests on other pages; Play approval and YouTube compliance are not guaranteed.
+
+Filter pack changes are tied to a Play app update, not independent instant code updates. The bundled fallback is used until Play delivers the pack, including offline and sideloaded cases. The pack and fallback currently contain the same small set; maintainers must review rule provenance/licensing and supply updated declarative rules when preparing a new release. Play pack delivery and upgrade behavior have not been tested.
+
+The file manager still asks before launching Android's installer and explains its all-files access request. Approval of either special permission depends on actual core functionality and Play review; describing a media player as a file manager does not itself qualify. Confirm the package ID and existing listing before changing identity. Set up and retain a private upload key, configure Firebase/OAuth signing identities, verify online lyrics rights, complete privacy/data-safety/account-deletion obligations, and validate the release AAB and physical devices before submitting. No tests or build were run for this source-only preparation.

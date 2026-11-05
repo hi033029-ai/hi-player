@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname,
-  '../app/src/main/assets/orbit_youtube.js'), 'utf8');
+  '../app/src/debug/assets/orbit_youtube.js'), 'utf8');
 
 function fixture({ ad = false, duration = 300, mobile = false, host = 'm.youtube.com', initialResponse = undefined } = {}) {
   const observers = [], tasks = new Map(), events = new Map();
