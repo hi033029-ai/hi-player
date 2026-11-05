@@ -24,4 +24,11 @@ class SubtitleSheetLayoutTest {
         compose.onNodeWithText("Subtitle appearance").assertExists()
         compose.onNodeWithText("Subtitles Off").assertExists()
     }
+    @Test fun synchronizationChangesExistingOffset() {
+        var offset = 0L
+        compose.setContent { SubtitleSettingsBottomSheet(emptyList(), 0, {}, { offset = it }, {}, {}, {}) }
+        compose.onNodeWithContentDescription("Show imported subtitles later").performScrollTo().performClick()
+        compose.runOnIdle { org.junit.Assert.assertEquals(100L, offset) }
+    }
+
 }

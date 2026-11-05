@@ -71,7 +71,7 @@ fun SubtitleCustomizationBottomSheet(
     }
 
     ModalBottomSheet(
-
+        sheetMaxWidth = 560.dp,
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = HiSurfaceDark,

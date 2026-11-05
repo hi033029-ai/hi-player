@@ -1,27 +1,34 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.LocalHiPalette
+import kotlin.math.roundToInt
 
-/** Compact in-player equalizer popup, styled like the HDR options overlay. */
+/** In-player controls for the existing video equalizer. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerBottomSheet(
     selectedPreset: String,
@@ -29,102 +36,53 @@ fun EqualizerBottomSheet(
     onSelectPreset: (String) -> Unit,
     onCustomBandChange: (Int, Float) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val presets = listOf(
-        "Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal",
-        "Dance", "Electronic", "Acoustic", "Podcast", "Movie"
-    )
-    val bands = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
-    val palette = LocalHiPalette.current
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth(0.90f)
-            .background(Color.Black.copy(alpha = 0.26f))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+    val presets = listOf("Custom", "Flat", "Bass Boost", "Jazz", "Rock", "Classical", "Vocal",
+        "Dance", "Electronic", "Acoustic", "Podcast", "Movie")
+    // The engine maps these five logical bands onto the device's actual bands.
+    val bands = listOf("Low", "Low-mid", "Mid", "High-mid", "High")
+    val accent = Color(0xFF66B6FF)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetMaxWidth = 560.dp,
+        containerColor = Color(0xFF202020),
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.LightGray) },
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            presets.forEach { preset ->
-                PresetChip(
-                    text = preset,
-                    selected = selectedPreset == preset,
-                    onClick = { onSelectPreset(preset) },
-                )
+        Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp).padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Equalizer", color = Color.White, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("Done", color = accent) }
             }
-            PresetChip(
-                text = "Custom",
-                selected = selectedPreset == "Custom",
-                onClick = { onSelectPreset("Custom") },
-            )
-        }
-
-        if (selectedPreset == "Custom") {
-            Text(
-                text = "Custom equalizer",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                bands.forEachIndexed { index, label ->
-                    val value = customBandsDb.getOrElse(index) { 0f }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = label,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            maxLines = 1,
-                        )
-                        Slider(
-                            value = value,
-                            onValueChange = { onCustomBandChange(index, it) },
-                            valueRange = -12f..12f,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.38f),
-                                activeTickColor = Color.White,
-                                inactiveTickColor = Color.White.copy(alpha = 0.55f),
-                            ),
-                        )
-                        Text(
-                            text = "%+.1f dB".format(value),
-                            color = Color.White,
-                            fontSize = 9.sp,
-                        )
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                presets.forEach { preset ->
+                    FilterChip(selected = selectedPreset == preset, onClick = { onSelectPreset(preset) },
+                        label = { Text(preset) }, colors = FilterChipDefaults.filterChipColors(
+                            labelColor = Color.White, selectedLabelColor = Color.Black,
+                            selectedContainerColor = accent))
+                }
+            }
+            if (selectedPreset == "Custom") {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    bands.forEachIndexed { index, label ->
+                        val gain = customBandsDb.getOrElse(index) { 0f }
+                        Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${if (gain > 0) "+" else ""}${gain.roundToInt()} dB", color = Color.White, fontSize = 11.sp)
+                            VerticalGainSlider(value = gain, min = -12f, max = 12f,
+                                onValueChange = { onCustomBandChange(index, it) }, label = "$label band gain",
+                                activeTop = accent, activeBottom = accent, track = Color.Gray,
+                                modifier = Modifier.width(48.dp).height(120.dp).padding(vertical = 4.dp))
+                            Text(label, color = Color.LightGray, fontSize = 11.sp)
+                        }
                     }
                 }
+            } else {
+                Text("Select Custom to adjust the bands.", color = Color.LightGray, fontSize = 12.sp)
             }
         }
     }
-}
-
-@Composable
-private fun PresetChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val palette = LocalHiPalette.current
-    Text(
-        text = text,
-        color = Color.White,
-        fontSize = 11.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 8.dp),
-    )
 }

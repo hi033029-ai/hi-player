@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,7 +43,7 @@ import com.example.ui.theme.contrastContentColor
 import kotlin.math.roundToInt
 
 /**
- * Compact equalizer: presets in rows of three, device bands as vertical
+ * Compact equalizer: a scrollable preset strip, device bands as vertical
  * sliders side by side, and a single-line bass control. Dragging a band
  * switches the preset to Custom in the view model.
  */
@@ -66,35 +67,31 @@ fun MusicEqualizerDialog(
                         modifier = Modifier.semantics { contentDescription = "Enable music equalizer" })
                 }
 
-                // Presets: three per row.
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    EqualizerCurves.presets.keys.toList().chunked(3).forEach { row ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { name ->
-                                PresetPill(name, selected = state.enabled && state.preset == name,
-                                    onClick = { onPreset(name) }, modifier = Modifier.weight(1f))
-                            }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (listOf("Custom") + EqualizerCurves.presets.keys).forEach { name ->
+                        PresetPill(name, selected = state.enabled && state.preset == name,
+                            onClick = { onPreset(name) }, modifier = Modifier.widthIn(min = 78.dp))
                     }
                 }
 
                 if (state.available && state.bands.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(palette.surface)
-                        .padding(horizontal = 6.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 6.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         state.bands.forEach { band ->
                             val label = if (band.frequencyHz >= 1000) {
                                 val k = band.frequencyHz / 1000f
                                 if (k >= 10f) "${k.roundToInt()}k" else "${(k * 10).roundToInt() / 10f}k"
                             } else "${band.frequencyHz}"
-                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.width(54.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("${if (band.gainDb > 0) "+" else ""}${band.gainDb.roundToInt()}",
                                     color = palette.textPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                 VerticalGainSlider(value = band.gainDb, min = state.minDb, max = state.maxDb,
                                     onValueChange = { onBand(band.index, it) }, label = if (band.frequencyHz >= 1000) "${band.frequencyHz / 1000f} kHz gain" else "${band.frequencyHz} Hz gain",
                                     activeTop = palette.secondary, activeBottom = palette.primary,
                                     track = palette.surfaceBorder,
-                                    modifier = Modifier.padding(vertical = 4.dp).width(28.dp).height(120.dp))
+                                    modifier = Modifier.padding(vertical = 4.dp).width(48.dp).height(120.dp))
                                 Text(label, color = palette.textSecondary, fontSize = 10.sp, maxLines = 1)
                             }
                         }
@@ -142,23 +139,24 @@ private fun PresetPill(name: String, selected: Boolean, onClick: () -> Unit, mod
 
 /** Vertical slider centred on 0 dB; fill grows up for boosts and down for cuts. */
 @Composable
-private fun VerticalGainSlider(
+internal fun VerticalGainSlider(
     value: Float, min: Float, max: Float, onValueChange: (Float) -> Unit, label: String,
     activeTop: Color, activeBottom: Color, track: Color, modifier: Modifier = Modifier,
 ) {
     val range = (max - min).takeIf { it > 0f } ?: 1f
-    fun valueAt(y: Float, height: Float): Float =
-        (max - (y / height).coerceIn(0f, 1f) * range).coerceIn(min, max)
+    fun valueAt(y: Float, height: Float, thumbRadius: Float): Float =
+        (max - ((y - thumbRadius) / (height - 2f * thumbRadius).coerceAtLeast(1f))
+            .coerceIn(0f, 1f) * range).coerceIn(min, max)
     Canvas(modifier
         .semantics {
             contentDescription = label
             progressBarRangeInfo = ProgressBarRangeInfo(value, min..max)
             setProgress { target -> onValueChange(target.coerceIn(min, max)); true }
         }
-        .pointerInput(min, max) { detectTapGestures { onValueChange(valueAt(it.y, size.height.toFloat())) } }
+        .pointerInput(min, max) { detectTapGestures { onValueChange(valueAt(it.y, size.height.toFloat(), 7.dp.toPx())) } }
         .pointerInput(min, max) {
             detectVerticalDragGestures { change, _ ->
-                change.consume(); onValueChange(valueAt(change.position.y, size.height.toFloat()))
+                change.consume(); onValueChange(valueAt(change.position.y, size.height.toFloat(), 7.dp.toPx()))
             }
         }) {
         val thumbR = 7.dp.toPx()

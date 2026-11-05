@@ -26,4 +26,14 @@ class MusicEqualizerDialogTest {
         compose.onNodeWithContentDescription("1.0 kHz gain").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(3f) }
         compose.runOnIdle { assertEquals(0, band); assertEquals(3f, gain, 0.01f) }
     }
+    @Test fun customPresetIsAvailable() {
+        var selected = ""
+        compose.setContent { HiPlayerTheme {
+            MusicEqualizerDialog(AudioEqState(enabled = true, available = true),
+                {}, { selected = it }, { _, _ -> }, {}, {}, {})
+        } }
+        compose.onNodeWithContentDescription("Custom preset").performClick()
+        compose.runOnIdle { assertEquals("Custom", selected) }
+    }
+
 }
