@@ -74,8 +74,8 @@ internal class GeckoTabEngine(
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
-            override fun onTitleChange(session: GeckoSession, title: String) {
-                update(snapshot.copy(title = title.ifBlank { "New tab" }))
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
             }
             override fun onCrash(session: GeckoSession) {
                 update(snapshot.copy(loading = false, loadFailed = true))
