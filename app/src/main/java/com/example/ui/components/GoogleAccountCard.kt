@@ -73,7 +73,7 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
             if (profile == null) {
                 // Google's neutral button treatment and existing unmodified Google G artwork.
                 OutlinedButton(enabled = model.configured && !busy, onClick = {
-                    context.accountActivity()?.let { activity -> model.signIn(activity) { openWebsiteAccountChooser() } }
+                    context.accountActivity()?.let { activity -> model.signIn(activity) }
                 },
                     colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color(0xFF1F1F1F)),
                     border = BorderStroke(1.dp, Color(0xFF747775))) {
@@ -81,11 +81,11 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
                     Spacer(Modifier.width(10.dp))
                     Text(if (busy) "Signing in…" else "Sign in with Google")
                 }
-                Text("Choose an account for Hi Player first. Then a browser tab opens for Google website sign-in; choose the same account there if you want to use it on websites.", color = palette.textSecondary)
+                Text("Choose an account to sign in to Hi Player. To sign in to a website, open the website and use its sign-in button in the browser.", color = palette.textSecondary)
                 if (!model.configured) Text("Google sign-in setup required: configure the OAuth Web client ID and enable Google in Firebase Authentication.", color = palette.textSecondary)
             } else {
                 Text("Signed in to Hi Player. Your session is managed by Firebase Authentication.", color = palette.textSecondary)
-                OutlinedButton(enabled = !busy, onClick = { openWebsiteAccountChooser() }) { Text("Open Google website sign-in") }
+                OutlinedButton(enabled = !busy, onClick = { openWebsiteAccountChooser() }) { Text("Open Google website sign-in (optional)") }
                 OutlinedButton(enabled = !busy, onClick = model::signOut) { Text("Sign out of Hi Player") }
             }
             message?.let { Text(it, color = palette.textSecondary) }
