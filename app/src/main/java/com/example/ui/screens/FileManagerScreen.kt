@@ -537,7 +537,7 @@ fun FileManagerScreen(
                     Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFF9A6700))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Allow full storage access", fontWeight = FontWeight.Bold, color = Color(0xFF5F4300), fontSize = 13.sp)
-                        Text("Required to delete and manage files reliably.", color = Color(0xFF7A5A12), fontSize = 11.sp)
+                        Text("Lets you browse, move and manage shared files. You can change this access in Android settings.", color = Color(0xFF7A5A12), fontSize = 11.sp)
                     }
                     Button(
                         onClick = {
@@ -548,7 +548,7 @@ fun FileManagerScreen(
                             )
                         },
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                    ) { Text("Allow", fontSize = 12.sp) }
+                    ) { Text("Settings", fontSize = 12.sp) }
                 }
             }
         }
