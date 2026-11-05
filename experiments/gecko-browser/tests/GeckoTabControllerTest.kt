@@ -21,15 +21,15 @@ class GeckoTabControllerTest {
         controller.attach(view)
         controller.load("https://one.example")
         val second = controller.open(true, "https://two.example")!!
-        assertNull(sessions.getValue(0).view)
+        assertNull(sessions.getValue(1).view)
         assertSame(view, sessions.getValue(second.id).view)
-        controller.select(0)
-        assertSame(view, sessions.getValue(0).view)
+        controller.select(1)
+        assertSame(view, sessions.getValue(1).view)
         assertNull(sessions.getValue(second.id).view)
-        assertEquals(listOf("https://one.example"), sessions.getValue(0).urls)
+        assertEquals(listOf("https://one.example"), sessions.getValue(1).urls)
         assertEquals(listOf("https://two.example"), sessions.getValue(second.id).urls)
         controller.close()
-        assertEquals(1, sessions.getValue(0).closeCount)
+        assertEquals(1, sessions.getValue(1).closeCount)
         assertEquals(1, sessions.getValue(second.id).closeCount)
     }
 
@@ -40,10 +40,10 @@ class GeckoTabControllerTest {
         controller.attach(view)
         val child = controller.open(false)!!
         assertTrue(controller.closeTab(child.id))
-        assertEquals(0, controller.activeId)
+        assertEquals(1, controller.activeId)
         assertEquals(1, sessions.getValue(child.id).closeCount)
-        assertSame(view, sessions.getValue(0).view)
-        assertEquals(0, sessions.getValue(0).closeCount)
+        assertSame(view, sessions.getValue(1).view)
+        assertEquals(0, sessions.getValue(1).closeCount)
     }
 
     @Test fun closingLastTabCreatesAndAttachesFreshNormalSession() {
@@ -51,8 +51,8 @@ class GeckoTabControllerTest {
         val controller = GeckoTabController<Any> { tab -> FakeSession().also { sessions[tab.id] = it } }
         val view = Any()
         controller.attach(view)
-        assertTrue(controller.closeTab(0))
-        assertEquals(1, sessions.getValue(0).closeCount)
+        assertTrue(controller.closeTab(1))
+        assertEquals(1, sessions.getValue(1).closeCount)
         assertEquals(1, controller.tabs.size)
         assertFalse(controller.tabs.single().privateTab)
         assertSame(view, sessions.getValue(controller.activeId).view)
@@ -75,20 +75,51 @@ class GeckoTabControllerTest {
         controller.attach(view)
         controller.attach(view)
         controller.detach()
-        assertNull(sessions.getValue(0).view)
+        assertNull(sessions.getValue(1).view)
         controller.attach(view)
         controller.close()
         controller.close()
-        assertNull(sessions.getValue(0).view)
-        assertEquals(1, sessions.getValue(0).closeCount)
+        assertNull(sessions.getValue(1).view)
+        assertEquals(1, sessions.getValue(1).closeCount)
     }
 
     @Test fun failedCreationRestoresPreviouslySelectedTab() {
         val controller = GeckoTabController<Any> { tab ->
-            if (tab.id != 0) error("creation failed") else FakeSession()
+            if (tab.id != 1) error("creation failed") else FakeSession()
         }
         try { controller.open(false); fail("should throw") } catch (_: IllegalStateException) { }
-        assertEquals(0, controller.activeId)
+        assertEquals(1, controller.activeId)
         assertEquals(1, controller.tabs.size)
+    }
+}
+
+class GeckoControllerRestoreTest {
+    private class Fake : GeckoManagedSession<Any> {
+        var attached = false
+        var closes = 0
+        override fun attach(view: Any) { attached = true }
+        override fun detach() { attached = false }
+        override fun load(url: String) = Unit
+        override fun close() { closes++ }
+    }
+    @Test fun createsSessionsForRestoredRegularTabsAndAttachesSelectedOne() {
+        val sessions = mutableMapOf<Int, Fake>()
+        val tabs = listOf(GeckoTabRegistry.Tab(4, false, null), GeckoTabRegistry.Tab(5, false, 4))
+        val controller = GeckoTabController<Any>(tabs, 4) { tab -> Fake().also { sessions[tab.id] = it } }
+        controller.attach(Any())
+        assertTrue(sessions.getValue(4).attached)
+        assertFalse(sessions.getValue(5).attached)
+        controller.select(5)
+        assertTrue(sessions.getValue(5).attached)
+        assertFalse(sessions.getValue(4).attached)
+    }
+    @Test fun failureCreatingRestoredSessionClosesPreviouslyCreatedSessions() {
+        val created = Fake()
+        val tabs = listOf(GeckoTabRegistry.Tab(4, false, null), GeckoTabRegistry.Tab(5, false, 4))
+        try {
+            GeckoTabController<Any>(tabs, 4) { tab -> if (tab.id == 5) error("failure") else created }
+            fail("should throw")
+        } catch (_: IllegalStateException) { }
+        assertEquals(1, created.closes)
     }
 }

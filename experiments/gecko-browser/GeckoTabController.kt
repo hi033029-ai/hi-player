@@ -9,16 +9,25 @@ internal interface GeckoManagedSession<View : Any> : AutoCloseable {
 
 /** Experimental: a single displayed view and one independent session per open tab. */
 internal class GeckoTabController<View : Any>(
+    restoredTabs: List<GeckoTabRegistry.Tab> = emptyList(),
+    restoredActiveId: Int? = null,
     private val newSession: (GeckoTabRegistry.Tab) -> GeckoManagedSession<View>,
 ) : AutoCloseable {
-    private val registry = GeckoTabRegistry()
+    private val registry = GeckoTabRegistry(restoredTabs, restoredActiveId)
     private val sessions = mutableMapOf<Int, GeckoManagedSession<View>>()
     private var view: View? = null
     private var closed = false
     val tabs: List<GeckoTabRegistry.Tab> get() = registry.tabs
     val activeId: Int get() = registry.activeId
 
-    init { sessions[activeId] = newSession(tabs.single()) }
+    init {
+        try {
+            tabs.forEach { tab -> sessions[tab.id] = newSession(tab) }
+        } catch (error: Exception) {
+            sessions.values.forEach { runCatching { it.close() } }
+            throw error
+        }
+    }
 
     /** A newly attached view displays only the active session. */
     fun attach(newView: View) {

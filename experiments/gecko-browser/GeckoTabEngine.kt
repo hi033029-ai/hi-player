@@ -95,7 +95,8 @@ internal class GeckoTabEngine(
                     else -> GeckoPageError.CONTENT
                 }
                 update(GeckoLoadingState.error(snapshot, kind))
-                // Preserve Gecko's normal error handling; never ignore certificate errors.
+                // Null halts the failed load; the UI must display a safe recovery state.
+                // Never ignore certificate errors.
                 return null
             }
             override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {

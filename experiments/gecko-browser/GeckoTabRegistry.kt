@@ -3,21 +3,42 @@ package com.example.browser.gecko
 import com.example.ui.screens.BrowserTabBackPolicy
 
 /** In-memory tab ordering only. Does not persist URLs or private browsing data. */
-internal class GeckoTabRegistry {
+internal class GeckoTabRegistry(restoredTabs: List<Tab> = emptyList(), restoredActiveId: Int? = null) {
     internal data class Tab(val id: Int, val privateTab: Boolean, val openerId: Int?)
 
-    private val mutableTabs = mutableListOf(Tab(id = 0, privateTab = false, openerId = null))
-    private val recent = mutableListOf(0)
-    private var nextId = 1
+    private val mutableTabs: MutableList<Tab>
+    private val recent: MutableList<Int>
+    private var nextId: Int
     val tabs: List<Tab> get() = mutableTabs.toList()
-    var activeId: Int = 0
+    var activeId: Int
         private set
+
+    init {
+        val restored = restoredTabs.asSequence().filter { it.id > 0 && !it.privateTab }
+            .distinctBy { it.id }.take(MAX_TABS).toList()
+        val ids = restored.map { it.id }.toSet()
+        mutableTabs = restored.map { tab ->
+            tab.copy(openerId = tab.openerId?.takeIf { it in ids && it != tab.id })
+        }.toMutableList()
+        if (mutableTabs.isEmpty()) mutableTabs += Tab(id = 1, privateTab = false, openerId = null)
+        activeId = restoredActiveId?.takeIf { wanted -> mutableTabs.any { it.id == wanted } }
+            ?: mutableTabs.last().id
+        recent = mutableListOf(activeId)
+        nextId = (mutableTabs.maxOf { it.id }.takeIf { it < Int.MAX_VALUE } ?: 0) + 1
+    }
+
+    private fun allocateId(): Int {
+        while (mutableTabs.any { it.id == nextId }) nextId = if (nextId == Int.MAX_VALUE) 1 else nextId + 1
+        val result = nextId
+        nextId = if (nextId == Int.MAX_VALUE) 1 else nextId + 1
+        return result
+    }
 
     /** A new tab becomes active; null means the existing 12-tab limit was reached. */
     fun open(privateTab: Boolean, openerId: Int? = activeId): Tab? {
         if (mutableTabs.size >= MAX_TABS) return null
         val validOpener = openerId?.takeIf { id -> mutableTabs.any { it.id == id } }
-        val tab = Tab(nextId++, privateTab, validOpener)
+        val tab = Tab(allocateId(), privateTab, validOpener)
         mutableTabs += tab
         select(tab.id)
         return tab
@@ -45,7 +66,7 @@ internal class GeckoTabRegistry {
         }
         recent.remove(id)
         if (mutableTabs.isEmpty()) {
-            val tab = Tab(nextId++, privateTab = false, openerId = null)
+            val tab = Tab(allocateId(), privateTab = false, openerId = null)
             mutableTabs += tab
             activeId = tab.id
             recent.clear()
