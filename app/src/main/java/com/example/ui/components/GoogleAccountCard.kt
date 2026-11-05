@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.widget.Toast
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -16,13 +17,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.auth.GoogleAccountViewModel
+import com.example.auth.SecureWebSessions
 import com.example.ui.screens.HiProviderIcon
 import com.example.ui.theme.LocalHiPalette
 
@@ -37,6 +42,15 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
     includeDriveConnection: Boolean = true) {
     val palette = LocalHiPalette.current
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val toolbarColor = palette.surface.toArgb()
+    fun openWebsiteAccountChooser() {
+        val activity = context.accountActivity() ?: return
+        if (activity.isFinishing || activity.isDestroyed || !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (SecureWebSessions.open(activity, SecureWebSessions.GOOGLE_ACCOUNT_CHOOSER, toolbarColor).isFailure) {
+            Toast.makeText(activity, "Couldn't open Google website sign-in. Install or enable a browser with Custom Tabs, then retry.", Toast.LENGTH_LONG).show()
+        }
+    }
     var showDrive by remember { mutableStateOf(false) }
     val profile by model.profile.collectAsState()
     LaunchedEffect(profile?.uid) { showDrive = false }
@@ -58,20 +72,24 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
             }
             if (profile == null) {
                 // Google's neutral button treatment and existing unmodified Google G artwork.
-                OutlinedButton(enabled = model.configured && !busy, onClick = { context.accountActivity()?.let(model::signIn) },
+                OutlinedButton(enabled = model.configured && !busy, onClick = {
+                    context.accountActivity()?.let { activity -> model.signIn(activity) { openWebsiteAccountChooser() } }
+                },
                     colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color(0xFF1F1F1F)),
                     border = BorderStroke(1.dp, Color(0xFF747775))) {
                     HiProviderIcon("Google", 20.dp)
                     Spacer(Modifier.width(10.dp))
                     Text(if (busy) "Signing in…" else "Sign in with Google")
                 }
+                Text("Choose an account for Hi Player first. Then a browser tab opens for Google website sign-in; choose the same account there if you want to use it on websites.", color = palette.textSecondary)
                 if (!model.configured) Text("Google sign-in setup required: configure the OAuth Web client ID and enable Google in Firebase Authentication.", color = palette.textSecondary)
             } else {
                 Text("Signed in to Hi Player. Your session is managed by Firebase Authentication.", color = palette.textSecondary)
+                OutlinedButton(enabled = !busy, onClick = { openWebsiteAccountChooser() }) { Text("Open Google website sign-in") }
                 OutlinedButton(enabled = !busy, onClick = model::signOut) { Text("Sign out of Hi Player") }
             }
             message?.let { Text(it, color = palette.textSecondary) }
-            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions remain browser-managed.", color = palette.textSecondary)
+            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions are separate and managed by your browser; sites choose which sign-in methods they support.", color = palette.textSecondary)
             if (includeDriveConnection && profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
 
         }

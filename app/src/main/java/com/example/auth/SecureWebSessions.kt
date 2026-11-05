@@ -9,6 +9,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 /** Browser-managed, non-ephemeral sessions. Never import/export account cookies. */
 internal object SecureWebSessions {
     const val GOOGLE_ACCOUNT = "https://accounts.google.com/"
+    const val GOOGLE_ACCOUNT_CHOOSER = "https://accounts.google.com/AccountChooser"
     const val YOUTUBE = "https://www.youtube.com/"
     const val GMAIL = "https://mail.google.com/"
     fun isGoogleAuthentication(url: String): Boolean = runCatching {

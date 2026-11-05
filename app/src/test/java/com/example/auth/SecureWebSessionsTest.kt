@@ -7,6 +7,10 @@ class SecureWebSessionsTest {
         assertFalse(SecureWebSessions.isGoogleAuthentication("https://accounts.google.com.evil.test/login"))
         assertFalse(SecureWebSessions.isGoogleAuthentication("http://accounts.google.com/"))
     }
+    @Test fun websiteAccountChooserUsesTheGoogleHttpsOrigin() {
+        assertTrue(SecureWebSessions.isGoogleAuthentication(SecureWebSessions.GOOGLE_ACCOUNT_CHOOSER))
+        assertEquals("https://accounts.google.com", SecureWebsitePolicy.originKey(SecureWebSessions.GOOGLE_ACCOUNT_CHOOSER))
+    }
     @Test fun onlyHttpsPagesWithoutEmbeddedCredentialsCanBeOpened() {
         assertTrue(SecureWebSessions.validPage("https://www.youtube.com/"))
         assertFalse(SecureWebSessions.validPage("javascript:alert(1)"))

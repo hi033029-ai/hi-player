@@ -49,7 +49,7 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
     }
     init { auth?.addAuthStateListener(listener) }
 
-    fun signIn(activity: Activity) {
+    fun signIn(activity: Activity, onSignedIn: () -> Unit = {}) {
         if (_busy.value) return
         if (!configured) {
             _message.value = "Google sign-in setup is missing. Enable Google in Firebase Authentication and configure the app's OAuth clients."
@@ -58,6 +58,7 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
         _busy.value = true
         _message.value = null
         viewModelScope.launch {
+            var signedIn = false
             try {
                 val option = GetSignInWithGoogleOption.Builder(GoogleSignInConfiguration.clientId(activity)).build()
                 val response = credentials.getCredential(activity, GetCredentialRequest.Builder().addCredentialOption(option).build())
@@ -69,6 +70,7 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
                 // Parsing a JWT or choosing an Android account alone is NOT sign-in.
                 val result = checkNotNull(auth).signInWithCredential(GoogleAuthProvider.getCredential(google.idToken, null)).await()
                 _profile.value = checkNotNull(result.user.toProfile())
+                signedIn = true
             } catch (_: GetCredentialCancellationException) {
                 // Account chooser cancellation is not a failure and changes no account.
             } catch (cancelled: CancellationException) { throw cancelled
@@ -81,6 +83,9 @@ internal class GoogleAccountViewModel(application: Application) : AndroidViewMod
             } catch (_: Exception) {
                 _message.value = "Google sign-in couldn't finish. Check Google Play services and the app's OAuth setup, then retry."
             } finally { _busy.value = false }
+            // A successful app login is not a website login. UI may separately
+            // offer a browser-owned website account chooser after validation.
+            if (signedIn) onSignedIn()
         }
     }
 
