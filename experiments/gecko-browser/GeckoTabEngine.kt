@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Looper
 import androidx.annotation.MainThread
 import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
@@ -28,8 +30,10 @@ internal data class GeckoTabSnapshot(
     val progress: Int = 0,
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
-    val loadFailed: Boolean = false,
-)
+    val error: GeckoPageError? = null,
+) {
+    val loadFailed: Boolean get() = error != null
+}
 
 /** One session per tab. Callers own tab ordering and persisted non-private metadata. */
 internal class GeckoTabEngine(
@@ -56,16 +60,34 @@ internal class GeckoTabEngine(
         checkMain()
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                update(snapshot.copy(url = url, loading = true, progress = 0, loadFailed = false))
+                update(GeckoLoadingState.start(snapshot, url))
             }
             override fun onProgressChange(session: GeckoSession, progress: Int) {
-                update(snapshot.copy(progress = progress.coerceIn(0, 100)))
+                update(GeckoLoadingState.progress(snapshot, progress))
             }
             override fun onPageStop(session: GeckoSession, success: Boolean) {
-                update(snapshot.copy(loading = false, progress = if (success) 100 else snapshot.progress, loadFailed = !success))
+                update(GeckoLoadingState.stop(snapshot, success))
             }
         }
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: List<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean,
+            ) {
+                update(GeckoLoadingState.location(snapshot, url))
+            }
+            override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
+                val kind = when (error.category) {
+                    WebRequestError.ERROR_CATEGORY_NETWORK -> GeckoPageError.NETWORK
+                    WebRequestError.ERROR_CATEGORY_SECURITY, WebRequestError.ERROR_CATEGORY_SAFEBROWSING -> GeckoPageError.SECURITY
+                    else -> GeckoPageError.CONTENT
+                }
+                update(GeckoLoadingState.error(snapshot, kind))
+                // Preserve Gecko's normal error handling; never ignore certificate errors.
+                return null
+            }
             override fun onCanGoBack(session: GeckoSession, canGoBack: Boolean) {
                 update(snapshot.copy(canGoBack = canGoBack))
             }
@@ -78,7 +100,7 @@ internal class GeckoTabEngine(
                 update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
             }
             override fun onCrash(session: GeckoSession) {
-                update(snapshot.copy(loading = false, loadFailed = true))
+                update(GeckoLoadingState.error(snapshot, GeckoPageError.RENDERER))
             }
         }
         session.open(runtime)
@@ -98,7 +120,14 @@ internal class GeckoTabEngine(
         attachedView = null
         if (!closed) session.setActive(false)
     }
-    @MainThread fun load(url: String) { checkMain(); check(!closed); session.loadUri(url) }
+    @MainThread fun load(url: String) {
+        checkMain(); check(!closed)
+        update(GeckoLoadingState.start(snapshot, url))
+        try { session.loadUri(url) } catch (error: Exception) {
+            update(GeckoLoadingState.error(snapshot, GeckoPageError.CONTENT))
+            throw error
+        }
+    }
     @MainThread fun reload() { checkMain(); if (!closed) session.reload() }
     @MainThread fun stop() { checkMain(); if (!closed) session.stop() }
     @MainThread fun back() { checkMain(); if (!closed && snapshot.canGoBack) session.goBack() }
