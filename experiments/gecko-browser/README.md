@@ -22,3 +22,9 @@ The experimental session class covers basic session lifecycle, a private-mode fl
 The experimental navigation delegate can request secure sign-in or external-site handling through injected callbacks. It does not perform authentication or launch a browser itself. The future UI integration must use the existing `SecureWebSessions` policy, present the sign-in prompt, and never launch an external activity for a redirect without a user gesture. This has not been validated against real providers or a Gecko runtime.
 
 An experimental runtime-wide appearance adapter maps dark mode and text zoom while accounting for the device font scale. Gecko text-size changes need a page reload and dark mode is a site preference, not proof that every page will be dark. The adapter is not connected to the existing settings store or UI, and it has not been validated on a device.
+
+## Dependency compatibility probe
+
+An isolated API 26, Java 17 test project with Hi Player's AGP 9.1.1 / Kotlin 2.2 toolchain was tested against real Maven artifacts (not just a local `classes.jar`). With GeckoView ARM64 159.0.20261102144711, Kotlin compilation failed because the resolved Kotlin stdlib 2.4.20 has metadata newer than the compiler supports. The 159 POM also requests Media3 1.11.1, potentially changing the app's existing Media3 dependencies. Do not add this dependency to the app without resolving and testing the full dependency graph.
+
+The same isolated project's 34 unit tests passed with the real ARM64 GeckoView 150.0.20260511200624 artifact. Those tests use fake sessions and do not exercise a running Gecko engine or the existing browser. This older version is a compatibility probe, not a security or release recommendation; review current supported releases and security updates before choosing a production version. Neither result verifies API 24–25, other ABIs, app integration, native runtime, website sign-in, or the feature-parity checklist above.
