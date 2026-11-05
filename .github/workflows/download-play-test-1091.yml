@@ -1,0 +1,49 @@
+name: Build Play-variant test APK 1.0.91
+
+on:
+  push:
+    branches: [ 'apk/1.0.91-play-test' ]
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
+      STORE_PASSWORD: android
+      KEY_ALIAS: androiddebugkey
+      KEY_PASSWORD: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - name: Build Play-variant APK signed with public test key
+        run: gradle --no-daemon :app:assembleRelease -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
+      - name: Verify and name APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          if unzip -Z1 "$apk" | grep -q 'orbit_youtube.js'; then
+            echo 'Unexpected YouTube-specific script in Play variant' >&2; exit 1
+          fi
+          cp "$apk" Hi-Player-1.0.91-Play-test.apk
+          sha256sum Hi-Player-1.0.91-Play-test.apk
+      - name: Publish test APK download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.91-play-test
+          target_commitish: 8b8d46a92aa41c96a4f8b45a1503d0bc366057d1
+          name: Hi Player 1.0.91 Play-variant test APK
+          prerelease: true
+          body: 'Play-variant APK signed with the public debug test key. For user testing only; not a Play Store AAB and not Play-approved. Play-delivered filter packs require installation through Google Play; the bundled filter fallback is used otherwise. Physical-device and full test validation remain outstanding.'
+          files: Hi-Player-1.0.91-Play-test.apk
