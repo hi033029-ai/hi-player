@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.BuildConfig
+
 import com.example.ui.theme.hiContainerBorder
 
 import com.example.downloads.BrowserDownload
@@ -347,7 +349,7 @@ private object HiBrowserDocumentScripts {
                 registered += WebViewCompat.addDocumentStartJavaScript(webView, it, setOf("*"))
             }
         }
-        if (store.youtubeAdSkip) {
+        if (!BuildConfig.PLAY_STORE_BUILD && store.youtubeAdSkip) {
             readAsset(context, "orbit_youtube.js")?.let { raw ->
                 val it = BrowserAdvancedRules.wrap("orbit_youtube.js", raw)
                 registered += WebViewCompat.addDocumentStartJavaScript(
@@ -372,6 +374,7 @@ private object HiBrowserDocumentScripts {
 
     private val assets = ConcurrentHashMap<String, String>()
     fun readAsset(context: Context, name: String): String? {
+        if (BuildConfig.PLAY_STORE_BUILD && name == "orbit_youtube.js") return null
         if (name == "orbit_youtube.js") SignedBlockerUpdates.script()?.let { return it }
         return assets[name] ?: runCatching {
             context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
@@ -812,6 +815,7 @@ fun HiBrowserScreen(
     }
 
     fun injectCosmeticCss(view: WebView, url: String) {
+        if (BuildConfig.PLAY_STORE_BUILD && isYoutubeHost(Uri.parse(url).host)) return
         if (BrowserAdvancedRules.paused(Uri.parse(url).host)) return
         val css = OrbitBrowserFilterEngine.cosmeticCss(runCatching { Uri.parse(url).host }.getOrNull(), adBlockFlag.enabled)
         if (css.isNotBlank()) view.evaluateJavascript(
@@ -827,11 +831,15 @@ fun HiBrowserScreen(
             try {
                 val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
                 val result = withContext(Dispatchers.IO) {
-                    val filters = OrbitBrowserFilterEngine.update(context) { job?.isActive == false }
-                    val script = SignedBlockerUpdates.update(context, force = true) { job?.isActive == false }
+                    val filters = if (BuildConfig.PLAY_STORE_BUILD) OrbitBrowserFilterEngine.refreshPlayFilters(context)
+                        else OrbitBrowserFilterEngine.update(context) { job?.isActive == false }
+                    val script = BuildConfig.PLAY_STORE_BUILD || SignedBlockerUpdates.update(context, force = true) { job?.isActive == false }
                     filters to script
                 }
-                Toast.makeText(context, if (result.first && result.second)
+                Toast.makeText(context, if (BuildConfig.PLAY_STORE_BUILD) {
+                    if (result.first) "Play filter pack is ready. Reload the page to apply."
+                    else "Play filter pack is not ready. Bundled protection remains active."
+                } else if (result.first && result.second)
                     "Blockers updated. Reload a page to apply script changes."
                     else "Some updates were unavailable. Existing protection is still in use.", Toast.LENGTH_LONG).show()
             } finally { blockerUpdating = false }
@@ -1237,7 +1245,7 @@ fun HiBrowserScreen(
     LaunchedEffect(context) {
         BrowserDownloads.restore(context)
         withContext(Dispatchers.IO) {
-            SignedBlockerUpdates.load(context)
+            if (!BuildConfig.PLAY_STORE_BUILD) SignedBlockerUpdates.load(context)
             listOf("orbit_adblock.js", "orbit_page_skipper.js", "orbit_youtube.js", "orbit_desktop_viewport.js")
                 .forEach { HiBrowserDocumentScripts.readAsset(context, it) }
         }
@@ -1522,7 +1530,7 @@ fun HiBrowserScreen(
                                         requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                         return true
                                     }
-                                    if (request.isForMainFrame && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
+                                    if (request.isForMainFrame && !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
                                     if (uri.scheme == "http" || uri.scheme == "https") {
                                         if (request.isForMainFrame && !isOrbitYoutube(uri.toString())) {
                                             val stream = StreamUrlClassifier.classify(uri.toString())
@@ -1561,7 +1569,7 @@ fun HiBrowserScreen(
                                     if (tabs.firstOrNull { it.id == tabId }?.url.isNullOrBlank()) return
                                     // Best effort only on older WebViews. This callback is NOT a
                                     // document-start guarantee; commit/finish retry in the new document.
-                                    if (!HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url)) {
+                                    if (!BuildConfig.PLAY_STORE_BUILD && !HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url)) {
                                         HiBrowserDocumentScripts.readAsset(viewContext, "orbit_youtube.js")?.let {
                                             view.evaluateJavascript(it, null)
                                         }
@@ -1582,7 +1590,7 @@ fun HiBrowserScreen(
                                     applyOrbitTextZoom(view, store.textZoom)
                                     if (!HiBrowserDocumentScripts.isSupported() && tabs.firstOrNull { it.id == tabId }?.desktop == true)
                                         injectOrbitAsset(view, viewContext, "orbit_desktop_viewport.js")
-                                    if (!HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url))
+                                    if (!BuildConfig.PLAY_STORE_BUILD && !HiBrowserDocumentScripts.isSupported() && store.youtubeAdSkip && isOrbitYoutube(url))
                                         injectOrbitAsset(view, viewContext, "orbit_youtube.js")
                                     if (activeTabId == tabId) pendingFirstPaint = false
                                     injectCosmeticCss(view, url)
@@ -1657,7 +1665,7 @@ fun HiBrowserScreen(
                                     if (!HiBrowserDocumentScripts.isSupported()) {
                                         if (store.adBlock) injectOrbitAsset(view, viewContext, "orbit_adblock.js")
                                         if (store.pageSkipper) injectOrbitAsset(view, viewContext, "orbit_page_skipper.js")
-                                        if (store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
+                                        if (!BuildConfig.PLAY_STORE_BUILD && store.youtubeAdSkip && isOrbitYoutube(url)) injectOrbitAsset(view, viewContext, "orbit_youtube.js")
                                         if (!isOrbitYoutube(url)) view.evaluateJavascript(HI_BROWSER_VIDEO_HOOK_SCRIPT, null)
                                     }
                                 }
@@ -2543,7 +2551,7 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Privacy and content") {
                     BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
                     BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
-                    BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
+                    if (!BuildConfig.PLAY_STORE_BUILD) BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
                     BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
                 }
                 BrowserSettingsGroup("Advanced protection & page skipper") {
@@ -2569,14 +2577,19 @@ private fun BrowserSettingsDialog(
                     BrowserSettingsSwitchRow("Desktop site", "Ask sites for their desktop layout", desktopSite, onDesktopSiteChange)
                 }
                 BrowserSettingsGroup("Data") {
-                    Text(if (blockerVersion > 0) "YouTube blocker · signed version $blockerVersion" else "YouTube blocker · bundled version",
-                        color = palette.textSecondary, fontSize = 12.sp)
-                    BrowserSettingsActionRow(if (blockerUpdating) "Updating blockers…" else "Update blockers now",
-                        onUpdateFilterLists, enabled = !blockerUpdating)
-                    BrowserSettingsActionRow("Roll back YouTube blocker", onRollbackBlocker,
-                        enabled = !blockerUpdating && blockerVersion > 0)
-                    Text("Automatic checks every 6 hours when Android allows. Rollback uses the previous signed version or the bundled blocker. Reload to apply changes.",
-                        color = palette.textSecondary, fontSize = 12.sp)
+                    if (BuildConfig.PLAY_STORE_BUILD) {
+                        Text("Web filters are delivered with app updates. Bundled filters remain available offline.", color = palette.textSecondary, fontSize = 12.sp)
+                        BrowserSettingsActionRow(if (blockerUpdating) "Checking filters…" else "Check Play filters", onUpdateFilterLists, enabled = !blockerUpdating)
+                    } else {
+                        Text(if (blockerVersion > 0) "YouTube blocker · signed version $blockerVersion" else "YouTube blocker · bundled version",
+                            color = palette.textSecondary, fontSize = 12.sp)
+                        BrowserSettingsActionRow(if (blockerUpdating) "Updating blockers…" else "Update blockers now",
+                            onUpdateFilterLists, enabled = !blockerUpdating)
+                        BrowserSettingsActionRow("Roll back YouTube blocker", onRollbackBlocker,
+                            enabled = !blockerUpdating && blockerVersion > 0)
+                        Text("Automatic checks every 6 hours when Android allows. Rollback uses the previous signed version or the bundled blocker. Reload to apply changes.",
+                            color = palette.textSecondary, fontSize = 12.sp)
+                    }
                     BrowserSettingsActionRow("Clear browsing data", onClearBrowsingData)
                 }
                 Spacer(Modifier.height(16.dp))
