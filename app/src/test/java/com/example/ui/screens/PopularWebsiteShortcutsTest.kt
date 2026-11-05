@@ -1,12 +1,11 @@
 package com.example.ui.screens
 
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.auth.SecureWebSessions
 import com.example.ui.theme.HiPlayerTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -24,12 +23,10 @@ class PopularWebsiteShortcutsTest {
         assertTrue(setOf("Facebook", "TikTok", "Yahoo").all { name -> POPULAR_WEBSITES.any { it.first == name } })
     }
 
-    @Test fun privateTabExplainsBrowserHandoffBeforeOpening() {
-        compose.setContent { HiPlayerTheme { PopularWebsiteShortcuts(isPrivate = true) } }
+    @Test fun shortcutUsesTheExistingBrowserNavigationCallback() {
+        var visited = ""
+        compose.setContent { HiPlayerTheme { PopularWebsiteShortcuts(onVisit = { visited = it }) } }
         compose.onNodeWithTag("popular_site_facebook").performClick()
-        compose.onNodeWithText("Open Facebook").assertExists()
-        compose.onNodeWithText("Continue in browser").assertExists()
-        compose.onNodeWithText("This leaves Hi Browser's private tab. Your device browser may use saved accounts and history.").assertExists()
-        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle { assertEquals("https://www.facebook.com/", visited) }
     }
 }

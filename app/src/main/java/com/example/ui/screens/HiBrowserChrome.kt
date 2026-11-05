@@ -714,7 +714,7 @@ internal fun HiBrowserHome(
                 Text("Tap a shortcut to remove it", color = palette.textTertiary, fontSize = 12.sp)
             }
             Spacer(Modifier.height(24.dp))
-            PopularWebsiteShortcuts(isPrivate = isPrivate)
+            PopularWebsiteShortcuts(onVisit = onVisit)
             Spacer(Modifier.height(32.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
