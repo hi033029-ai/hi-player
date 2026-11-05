@@ -17,4 +17,4 @@ The inspected stable Mozilla artifact `org.mozilla.geckoview:geckoview:159.0.202
 - [ ] Dependency/ABI/minSdk/build size and update process; migration and rollback for saved bookmarks and settings.
 - [ ] Compile, automated tests, manual device validation and Google/site sign-in verification before changing the default browser. Keep the existing browser until parity is demonstrated.
 
-The experimental class covers session lifecycle, private-mode flag, basic page loading/progress, navigation state and desktop settings only. It does not yet supply tabs UI, secure OAuth, downloads, popup handling, persistence, filtering or video integration.
+The experimental session class covers session lifecycle, private-mode flag, basic page loading/progress, navigation state and desktop settings only. An isolated in-memory tab registry and six unit tests cover the existing tab limit, tab selection, opener return and last-tab behavior; the registry is not yet wired to Gecko sessions or the app UI. It does not yet supply tabs UI, secure OAuth, downloads, popup handling, persistence, filtering or video integration.
