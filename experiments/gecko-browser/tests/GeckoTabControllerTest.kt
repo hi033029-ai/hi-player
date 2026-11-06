@@ -150,6 +150,43 @@ class GeckoControllerRestoreTest {
         assertTrue(sessions.getValue(5).attached)
         assertFalse(sessions.getValue(4).attached)
     }
+    @Test fun restoresUrlAndDesktopOnlyForRestoredRegularSessions() {
+        val sessions = mutableMapOf<Int, MutableList<String>>()
+        val tabs = listOf(GeckoTabRegistry.Tab(4, false, null), GeckoTabRegistry.Tab(5, true, null))
+        val states = mapOf(4 to GeckoTabPersistence.DisplayState("https://example.org", "Example", true),
+            5 to GeckoTabPersistence.DisplayState("https://secret.example", "Secret", false))
+        val controller = GeckoTabController<Any>(tabs, 4, states) { tab ->
+            object : GeckoManagedSession<Any> {
+                val events = mutableListOf<String>().also { sessions[tab.id] = it }
+                override fun attach(view: Any) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) { events += "load:$url" }
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun setDesktop(enabled: Boolean) { events += "desktop:$enabled" }
+                override fun close() = Unit
+            }
+        }
+        assertEquals(listOf("desktop:true", "load:https://example.org"), sessions.getValue(4))
+        assertFalse(sessions.containsKey(5))
+        controller.close()
+    }
+
+    @Test fun failedRestoreLoadClosesAllCreatedSessions() {
+        val created = Fake()
+        val tabs = listOf(GeckoTabRegistry.Tab(4, false, null))
+        try {
+            GeckoTabController<Any>(tabs, 4, mapOf(4 to GeckoTabPersistence.DisplayState("https://example.org", "Page", false))) {
+                object : GeckoManagedSession<Any> by created {
+                    override fun load(url: String) { error("load failed") }
+                }
+            }
+            fail("should throw")
+        } catch (_: IllegalStateException) { }
+        assertEquals(1, created.closes)
+    }
     @Test fun failureCreatingRestoredSessionClosesPreviouslyCreatedSessions() {
         val created = Fake()
         val tabs = listOf(GeckoTabRegistry.Tab(4, false, null), GeckoTabRegistry.Tab(5, false, 4))

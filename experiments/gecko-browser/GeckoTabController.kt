@@ -16,6 +16,7 @@ internal interface GeckoManagedSession<View : Any> : AutoCloseable {
 internal class GeckoTabController<View : Any>(
     restoredTabs: List<GeckoTabRegistry.Tab> = emptyList(),
     restoredActiveId: Int? = null,
+    restoredStates: Map<Int, GeckoTabPersistence.DisplayState> = emptyMap(),
     private val newSession: (GeckoTabRegistry.Tab) -> GeckoManagedSession<View>,
 ) : AutoCloseable {
     private val registry = GeckoTabRegistry(restoredTabs, restoredActiveId)
@@ -27,7 +28,15 @@ internal class GeckoTabController<View : Any>(
 
     init {
         try {
-            tabs.forEach { tab -> sessions[tab.id] = newSession(tab) }
+            val restoredIds = restoredTabs.asSequence().filter { !it.privateTab && it.id > 0 }.map { it.id }.toSet()
+            tabs.forEach { tab ->
+                val session = newSession(tab)
+                sessions[tab.id] = session
+                if (tab.id in restoredIds) restoredStates[tab.id]?.let { state ->
+                    session.setDesktop(state.desktop)
+                    if (state.url.isNotBlank()) session.load(state.url)
+                }
+            }
         } catch (error: Exception) {
             sessions.values.forEach { runCatching { it.close() } }
             throw error
