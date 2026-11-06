@@ -40,6 +40,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
     val snapshots = mutableStateMapOf<Int, GeckoTabSnapshot>()
     private val desktop = mutableMapOf<Int, Boolean>()
     private val lastRecordedUrl = mutableMapOf<Int, String>()
+    private val popupOpeners = mutableMapOf<Int, Int>()
     private val generations = mutableMapOf<Int, Long>()
     private var nextGeneration = 0L
     private var ready = false
@@ -84,6 +85,13 @@ internal class GeckoBrowserCoordinator<View : Any>(
         // are already known; a new tab is registered before its session factory is invoked.
         if (previous == null || previous.privateTab != snapshot.privateTab) return
         snapshots[snapshot.id] = snapshot
+        // Gecko opens a reserved child after the onNewSession callback returns. Do not
+        // attach it early; select only after its first page starts, and only if its
+        // opener is still selected. A user who switched tabs must not be interrupted.
+        if (ready && snapshot.loading && snapshot.url.isNotBlank()) {
+            val opener = popupOpeners.remove(snapshot.id)
+            if (opener != null && activeId == opener) select(snapshot.id)
+        }
         if (snapshot.loading || snapshot.error != null) lastRecordedUrl.remove(snapshot.id)
         if (ready && !snapshot.privateTab && !snapshot.loading && snapshot.error == null) {
             val completed = previous.loading && snapshot.progress == 100
@@ -109,6 +117,28 @@ internal class GeckoBrowserCoordinator<View : Any>(
         persist()
         return true
     }
+    /** Reserves an unopened background child. The factory must not open or load it. */
+    fun reservePopup(openerId: Int, factory: (GeckoTabRegistry.Tab, (GeckoTabSnapshot) -> Unit) -> GeckoManagedSession<View>): GeckoManagedSession<View>? {
+        check(!closed)
+        val before = controller.tabs.map { it.id }.toSet()
+        val reserved = try {
+            controller.reservePopup(openerId) { tab ->
+                snapshots[tab.id] = GeckoTabSnapshot(tab.id, tab.privateTab)
+                val generation = ++nextGeneration
+                generations[tab.id] = generation
+                factory(tab) { snapshot ->
+                    if (snapshot.id == tab.id && generations[tab.id] == generation) onSnapshot(snapshot)
+                }
+            }
+        } catch (error: Exception) {
+            snapshots.keys.filter { it !in before }.toList().forEach { snapshots.remove(it); generations.remove(it) }
+            throw error
+        } ?: return null
+        popupOpeners[reserved.first.id] = openerId
+        revision++
+        persist()
+        return reserved.second
+    }
     fun select(id: Int): Boolean {
         check(!closed)
         if (!controller.select(id)) return false
@@ -122,6 +152,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots.remove(id)
         desktop.remove(id)
         lastRecordedUrl.remove(id)
+        popupOpeners.remove(id)
         generations.remove(id)
         revision++
         persist()
@@ -180,6 +211,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots.clear()
         desktop.clear()
         lastRecordedUrl.clear()
+        popupOpeners.clear()
         generations.clear()
     }
 }

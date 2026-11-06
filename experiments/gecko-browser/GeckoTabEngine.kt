@@ -2,6 +2,7 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.MainThread
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.AllowOrDeny
@@ -35,6 +36,7 @@ internal class GeckoTabEngine(
     private val promptDelegate: GeckoSession.PromptDelegate? = null,
     private val openWhenCreated: Boolean = true,
     private val onPopupRequested: ((String) -> GeckoSession?)? = null,
+    private val popupAllowed: (Boolean) -> Boolean = { it },
     private val onCloseRequested: (() -> Unit)? = null,
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
@@ -51,6 +53,7 @@ internal class GeckoTabEngine(
         private set
     private var attachedView: GeckoView? = null
     private var closed = false
+    private val popupGate = GeckoPopupGate(SystemClock::elapsedRealtime)
 
     init {
         checkMain()
@@ -72,9 +75,21 @@ internal class GeckoTabEngine(
         }
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
-                val decision = navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
-                if (decision == GeckoNavigationDecision.Allow) return GeckoResult.allow()
-                update(GeckoLoadingState.cancel(snapshot))
+                val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
+                popupGate.clear()
+                if (newWindow && !runCatching { popupAllowed(request.hasUserGesture) }.getOrDefault(false)) {
+                    return GeckoResult.deny()
+                }
+                // A new blank child is needed by websites that create a window first and
+                // navigate it afterwards. Its later navigations still use normal policy.
+                val blankPopup = newWindow && request.uri == "about:blank"
+                val decision = if (blankPopup) GeckoNavigationDecision.Allow
+                    else navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
+                if (decision == GeckoNavigationDecision.Allow) {
+                    if (newWindow) popupGate.permit(request.uri)
+                    return GeckoResult.allow()
+                }
+                if (!newWindow) update(GeckoLoadingState.cancel(snapshot))
                 if (decision != GeckoNavigationDecision.Block) onNavigationDecision(decision)
                 return GeckoResult.deny()
             }
@@ -89,7 +104,8 @@ internal class GeckoTabEngine(
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 // The host must apply popup and secure-origin policy first. Gecko, not
                 // this delegate, opens the returned new session after the callback.
-                val child = onPopupRequested?.invoke(uri) ?: return null
+                if (!popupGate.consume(uri)) return null
+                val child = runCatching { onPopupRequested?.invoke(uri) }.getOrNull() ?: return null
                 if (child === session || child.isOpen) return null
                 return GeckoResult.fromValue(child)
             }
@@ -166,7 +182,7 @@ internal class GeckoTabEngine(
     }
     @MainThread override fun close() {
         checkMain(); if (closed) return
-        detach(); closed = true; session.close()
+        detach(); closed = true; popupGate.clear(); session.close()
     }
     private fun update(value: GeckoTabSnapshot) { if (!closed) { snapshot = value; onChanged(value) } }
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
