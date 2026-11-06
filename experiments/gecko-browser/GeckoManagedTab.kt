@@ -19,7 +19,7 @@ internal class GeckoManagedTab(
     onCloseRequested: (() -> Unit)? = null,
     onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     permissionDelegate: GeckoSession.PermissionDelegate? = null,
-) : GeckoManagedSession<GeckoView> {
+) : GeckoManagedSession<GeckoView>, GeckoFindable {
     val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, popupAllowed, onCloseRequested, onExternalResponse, permissionDelegate)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
@@ -30,6 +30,8 @@ internal class GeckoManagedTab(
     override fun forward() = engine.forward()
     override fun exitFullScreen() = engine.exitFullScreen()
     override fun purgeHistory() = engine.purgeHistory()
+    override fun find(query: String?, backwards: Boolean, completion: (GeckoFindResult?) -> Unit) = engine.find(query, backwards, completion)
+    override fun clearFind() = engine.clearFind()
     override fun setDesktop(enabled: Boolean) = engine.setDesktop(enabled)
     override fun close() = engine.close()
 }

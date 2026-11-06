@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import com.example.ui.screens.BrowserFindBar
 import com.example.ui.screens.BrowserHistoryPolicy
 import com.example.ui.screens.BrowserHistorySuggestions
 import com.example.ui.screens.HiBrowserHome
@@ -47,6 +48,7 @@ internal fun GeckoBrowserShell(
     normalizeAddress: (String) -> String?,
     onVoiceSearch: () -> Unit,
     onMenu: () -> Unit,
+    find: GeckoFindController? = null,
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
     historyRevision: Int = 0,
@@ -69,7 +71,8 @@ internal fun GeckoBrowserShell(
     LaunchedEffect(focused, activeTab.privateTab, historyRevision) {
         history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
     }
-    BackHandler(enabled = !home && (snapshot.fullscreen || snapshot.canGoBack)) {
+    BackHandler(enabled = find?.visible == true) { find?.dismiss() }
+    BackHandler(enabled = find?.visible != true && !home && (snapshot.fullscreen || snapshot.canGoBack)) {
         if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
     }
 
@@ -102,6 +105,11 @@ internal fun GeckoBrowserShell(
             pageContent(coordinator.controller)
         }
         if (!snapshot.fullscreen) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            if (find?.visible == true) BrowserFindBar(
+                query = find.query, matchLabel = find.label,
+                onQueryChange = find::changeQuery, onPrevious = { find.next(true) },
+                onNext = { find.next(false) }, onClose = find::dismiss,
+            )
             if (!home && snapshot.loading) {
                 LinearProgressIndicator(progress = { snapshot.progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp))
             }

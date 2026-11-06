@@ -155,6 +155,15 @@ internal class GeckoTabController<View : Any>(
     fun exitFullScreen() { check(!closed); sessions.getValue(activeId).exitFullScreen() }
     fun setDesktop(enabled: Boolean) { check(!closed); sessions.getValue(activeId).setDesktop(enabled) }
 
+    fun find(tabId: Int, query: String?, backwards: Boolean, completion: (GeckoFindResult?) -> Unit) {
+        check(!closed)
+        val session = sessions[tabId] as? GeckoFindable
+        if (session == null) completion(null) else session.find(query, backwards, completion)
+    }
+    fun clearFind(tabId: Int) {
+        if (!closed) (sessions[tabId] as? GeckoFindable)?.clearFind()
+    }
+
     /** Request history purge on every tab, including private and inactive tabs. */
     fun purgeHistory(): Boolean {
         check(!closed)

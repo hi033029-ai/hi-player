@@ -175,6 +175,15 @@ internal class GeckoTabEngine(
     @MainThread fun back() { checkMain(); if (!closed && snapshot.canGoBack) session.goBack() }
     @MainThread fun forward() { checkMain(); if (!closed && snapshot.canGoForward) session.goForward() }
     @MainThread fun exitFullScreen() { checkMain(); if (!closed) session.exitFullScreen() }
+    @MainThread fun find(query: String?, backwards: Boolean, completion: (GeckoFindResult?) -> Unit) {
+        checkMain()
+        if (closed || !session.isOpen) { completion(null); return }
+        val finder = session.finder
+        finder.displayFlags = GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL
+        finder.find(query, if (backwards) GeckoSession.FINDER_FIND_BACKWARDS else GeckoSession.FINDER_FIND_FORWARD)
+            .accept({ result -> completion(result?.let { GeckoFindResult(it.found, it.current, it.total) }) }, { completion(null) })
+    }
+    @MainThread fun clearFind() { checkMain(); if (!closed && session.isOpen) session.finder.clear() }
     @MainThread fun purgeHistory() { checkMain(); check(!closed); if (session.isOpen) session.purgeHistory() }
     @MainThread fun setDesktop(enabled: Boolean) {
         checkMain(); if (closed) return

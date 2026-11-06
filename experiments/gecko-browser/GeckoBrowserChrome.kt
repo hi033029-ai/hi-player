@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +63,9 @@ internal fun GeckoBrowserChrome(
     var clearFailed by remember { mutableStateOf(false) }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
     val current = coordinator.activeSnapshot
+    val find = remember(coordinator) { GeckoFindController(coordinator.controller::find, coordinator.controller::clearFind) }
+    DisposableEffect(find) { onDispose { find.close() } }
+    LaunchedEffect(coordinator.activeId, current.url, current.loading) { find.pageChanged(coordinator.activeId, current.url, current.loading) }
     val onPage = current.url.isNotBlank()
     val bookmarkUrl = GeckoTabPersistence.safeUrl(current.url)
     val saved = bookmarkUrl.isNotEmpty() && store.isBookmarked(bookmarkUrl)
@@ -69,7 +74,7 @@ internal fun GeckoBrowserChrome(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch,
-        onMenu = { showMenu = true }, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, pageContent = pageContent,
+        onMenu = { showMenu = true }, find = find, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, pageContent = pageContent,
     )
     if (services != null) {
         GeckoDownloadUi(services.downloads)
@@ -121,7 +126,10 @@ internal fun GeckoBrowserChrome(
                 HiMenuAction("New tab", Icons.Default.Add) { coordinator.open(false) },
             ),
             onSetDefaultBrowser = null,
-            tools = listOf(HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) { coordinator.setDesktop(!coordinator.desktopMode()) }),
+            tools = listOf(
+                HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage) { find.open(coordinator.activeId, current.url) },
+                HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) { coordinator.setDesktop(!coordinator.desktopMode()) },
+            ),
             rows = listOf(
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
