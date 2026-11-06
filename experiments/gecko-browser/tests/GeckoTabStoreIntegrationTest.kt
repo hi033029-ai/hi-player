@@ -3,6 +3,8 @@ package com.example.browser.gecko
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.ui.screens.OrbitBrowserStore
+import com.example.ui.screens.OrbitBrowserEntry
+import java.util.concurrent.Executor
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,5 +28,14 @@ class GeckoTabStoreIntegrationTest {
         assertEquals("https://example.org/path", restored.states.getValue(8).url)
         assertTrue(restored.states.getValue(8).desktop)
         assertFalse(context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).getString("open_tabs", "")!!.contains("private.example"))
+    }
+    @Test fun completedVisitUsesExistingHistoryStore() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = OrbitBrowserStore(context)
+        store.clearHistory()
+        val adapter = GeckoOrbitTabStore(store, Executor { it.run() })
+        adapter.recordVisit(OrbitBrowserEntry("Example", "https://example.org/page"))
+        assertEquals(OrbitBrowserEntry("Example", "https://example.org/page"), store.history().first())
+        store.clearHistory()
     }
 }

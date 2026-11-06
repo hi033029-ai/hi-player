@@ -3,6 +3,8 @@ package com.example.browser.gecko
 import android.content.Context
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -41,7 +43,7 @@ class GeckoBrowserShellTest {
                 override fun stop() = Unit
                 override fun back() = Unit
                 override fun forward() = Unit
-        override fun exitFullScreen() = Unit
+                override fun exitFullScreen() = Unit
                 override fun setDesktop(enabled: Boolean) = Unit
                 override fun close() = Unit
             }
@@ -74,7 +76,7 @@ class GeckoBrowserShellTest {
                 override fun stop() = Unit
                 override fun back() = Unit
                 override fun forward() = Unit
-                override fun exitFullScreen() = Unit
+                        override fun exitFullScreen() = Unit
                 override fun setDesktop(enabled: Boolean) = Unit
                 override fun close() = Unit
             }
@@ -89,5 +91,41 @@ class GeckoBrowserShellTest {
         compose.runOnIdle { update(GeckoTabSnapshot(1, false, "https://example.org", fullscreen = false)) }
         compose.onNodeWithContentDescription("Reload").assertIsDisplayed()
         compose.runOnIdle { coordinator.close() }
+    }
+    @Test fun historySuggestionsOpenPageAndStayHiddenInPrivateTabs() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).edit().clear().commit()
+        val store = OrbitBrowserStore(context)
+        store.clearHistory()
+        store.addHistory(OrbitBrowserEntry("Previous page", "https://visited.example/page"))
+        var loaded = ""
+        val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { tab, changed ->
+            object : GeckoManagedSession<GeckoView> {
+                override fun attach(view: GeckoView) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) { loaded = url; changed(GeckoTabSnapshot(tab.id, tab.privateTab, url)) }
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun exitFullScreen() = Unit
+                override fun setDesktop(enabled: Boolean) = Unit
+                override fun close() = Unit
+            }
+        }
+        compose.setContent { HiPlayerTheme {
+            GeckoBrowserShell(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {},
+                pageContent = { Text("Gecko page") })
+        } }
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Visited websites").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Previous page").performClick()
+        compose.runOnIdle {
+            assertEquals("https://visited.example/page", loaded)
+            coordinator.open(true)
+        }
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.onNodeWithText("Visited websites").assertDoesNotExist()
+        compose.runOnIdle { coordinator.close(); store.clearHistory() }
     }
 }

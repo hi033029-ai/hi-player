@@ -1,12 +1,15 @@
 package com.example.browser.gecko
 
 import com.example.ui.screens.OrbitSavedTab
+import com.example.ui.screens.OrbitBrowserEntry
 import org.junit.Assert.*
 import org.junit.Test
 
 class GeckoBrowserCoordinatorTest {
     private class Store(var tabs: List<OrbitSavedTab> = emptyList(), var active: Int = -1) : GeckoTabStore {
         var writes = 0
+        val visits = mutableListOf<OrbitBrowserEntry>()
+        override fun recordVisit(entry: OrbitBrowserEntry) { visits += entry }
         override fun readTabs() = tabs
         override fun readActiveId() = active
         override fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int) { this.tabs = tabs; active = activeId; writes++ }
@@ -119,6 +122,41 @@ class GeckoBrowserCoordinatorTest {
         coordinator.exitFullScreen()
         assertEquals(1, sessions.getValue(active).fullscreenExits)
         assertEquals(0, sessions.filterKeys { it != active }.values.single().fullscreenExits)
+        coordinator.close()
+    }
+    @Test fun onlySuccessfulNonPrivateNonSensitiveVisitsAreRecorded() {
+        val store = Store()
+        val sessions = mutableMapOf<Int, Fake>()
+        val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, callback -> Fake(tab, callback).also { sessions[tab.id] = it } }
+        val first = sessions.getValue(1)
+        first.callback(GeckoTabSnapshot(1, false, "https://example.org", loading = true, progress = 20))
+        assertTrue(store.visits.isEmpty())
+        first.callback(GeckoTabSnapshot(1, false, "https://example.org", "Example", progress = 100))
+        assertEquals(listOf(OrbitBrowserEntry("Example", "https://example.org")), store.visits)
+        first.callback(GeckoTabSnapshot(1, false, "https://example.org", "Updated", progress = 100))
+        assertEquals("Updated", store.visits.last().title)
+        first.callback(GeckoTabSnapshot(1, false, "https://example.org/?code=secret", loading = true))
+        first.callback(GeckoTabSnapshot(1, false, "https://example.org/?code=secret", progress = 100))
+        assertEquals(2, store.visits.size)
+        first.callback(GeckoTabSnapshot(1, false, "https://failed.example", loading = true))
+        first.callback(GeckoTabSnapshot(1, false, "https://failed.example", error = GeckoPageError.NETWORK))
+        assertEquals(2, store.visits.size)
+        assertTrue(coordinator.open(true))
+        val id = coordinator.activeId
+        val privateSession = sessions.getValue(id)
+        privateSession.callback(GeckoTabSnapshot(id, true, "https://private.example", loading = true))
+        privateSession.callback(GeckoTabSnapshot(id, true, "https://private.example", progress = 100))
+        assertEquals(2, store.visits.size)
+        coordinator.close()
+    }
+    @Test fun cancelledNavigationAtFullProgressDoesNotRecordVisit() {
+        val store = Store()
+        lateinit var fake: Fake
+        val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, callback -> Fake(tab, callback).also { fake = it } }
+        val loading = GeckoTabSnapshot(1, false, "https://example.org", loading = true, progress = 100)
+        fake.callback(loading)
+        fake.callback(GeckoLoadingState.cancel(loading))
+        assertTrue(store.visits.isEmpty())
         coordinator.close()
     }
 }
