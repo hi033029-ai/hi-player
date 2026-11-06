@@ -19,9 +19,11 @@
 - Gecko MediaStore destination prototype: 10 transfer/destination tests passed with fake storage; not connected to the browser or download queue.
 - In the isolated GeckoView 159 probe, 31 selected player, scanner and download-library unit tests passed after adapting a Robolectric storage fixture. This is not real playback or browser validation; the fixture change is not in the production branch.
 - The shared address-input extraction was tested in a separate copy but has not been applied to this branch.
+- A production-source-set regression test confirms the existing Media3 1.5.1 factory registers both bundled AV1 and FFmpeg audio renderers. The same test fails under the GeckoView 159 probe because AV1 is omitted.
+- A separate experimental Media3 1.11 bridge explicitly registers the existing Libgav1 renderer: three Robolectric tests pass for disabled, hardware-first, and software-preferred registration ordering. These tests do not decode media; ABI/native and actual playback compatibility remain unverified. The bridge is not included in the app build.
 
 ## Blockers and risks
-- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. Upgrading without replacing/rebuilding and testing the AV1 extension would regress the existing software AV1 fallback. FFmpeg binary compatibility also needs runtime validation.
+- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. A probe bridge restores renderer registration, but upgrading without validating actual decoding or rebuilding/replacing the extension could regress the existing software AV1 fallback. FFmpeg binary compatibility also needs runtime validation.
 - GeckoView requires Android 26 or newer; API 24–25 need a safe tested fallback.
 - No connected Android device is currently available for real runtime, sign-in, or playback checks.
 - The experimental Gecko components are outside the app source set and the current shipping browser remains WebView.
