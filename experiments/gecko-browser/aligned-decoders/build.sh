@@ -5,7 +5,7 @@ set -euo pipefail
 : "${JAVA_HOME:?Set JAVA_HOME to a JDK 17 or newer}"
 GRADLE_BIN=${GRADLE_BIN:-gradle}
 OUT_DIR=${OUT_DIR:-"$PWD/aligned-decoder-output"}
-for tool in git meson ninja nasm "$GRADLE_BIN"; do command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }; done
+for tool in git meson ninja nasm python3 "$GRADLE_BIN"; do command -v "$tool" >/dev/null || { echo "Missing required tool: $tool" >&2; exit 1; }; done
 NDK="$ANDROID_HOME/ndk/27.2.12479018"
 [ -d "$NDK" ] || { echo 'Install Android NDK 27.2.12479018' >&2; exit 1; }
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -31,9 +31,30 @@ sed 's/ninja -C "${ABI_BUILD_DIR}"/ninja -j2 -C "${ABI_BUILD_DIR}"/' "$AV1/jni/b
 sed 's/^JOBS=.*/JOBS=2/' "$FFMPEG/jni/build_ffmpeg.sh" > "$WORK/build_ffmpeg.sh"
 bash "$WORK/build_dav1d.sh" "$AV1" "$NDK" linux-x86_64
 bash "$WORK/build_ffmpeg.sh" "$FFMPEG" "$NDK" linux-x86_64 21 truehd eac3 ac3 dca mlp flac vorbis opus
+# A fresh project directory prevents stale CMake paths or native objects from a
+# previous checkout being reused when the pinned source is rebuilt.
+PROJECT="$WORK/project"
+mkdir -p "$PROJECT/av1" "$PROJECT/ffmpeg"
+cp "$HERE/settings.gradle.kts" "$HERE/build.gradle.kts" "$PROJECT/"
+cp "$HERE/av1/build.gradle.kts" "$PROJECT/av1/"
+cp "$HERE/ffmpeg/build.gradle.kts" "$PROJECT/ffmpeg/"
 export MEDIA3_SOURCE="$WORK/media"
-"$GRADLE_BIN" -p "$HERE" :av1:assembleRelease :ffmpeg:assembleRelease --no-daemon --max-workers=2
+"$GRADLE_BIN" -p "$PROJECT" :av1:assembleRelease :ffmpeg:assembleRelease --no-daemon --max-workers=2
+AV1_AAR="$PROJECT/av1/build/outputs/aar/av1-release.aar"
+FFMPEG_AAR="$PROJECT/ffmpeg/build/outputs/aar/ffmpeg-release.aar"
+# Fail before publishing if any shipped ABI is missing or an unexpected native
+# library was included. This checks packaging, not runtime behavior.
+python3 - "$AV1_AAR" "$FFMPEG_AAR" <<'PYVERIFY'
+import sys, zipfile
+abis = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
+for path, lib in zip(sys.argv[1:], ("libdav1dJNI.so", "libffmpegJNI.so")):
+    with zipfile.ZipFile(path) as archive:
+        actual = {name for name in archive.namelist() if name.startswith("jni/") and name.endswith(".so")}
+        expected = {f"jni/{abi}/{lib}" for abi in abis}
+        if actual != expected:
+            raise SystemExit(f"Native ABI mismatch in {path}: {sorted(actual)}")
+PYVERIFY
 mkdir -p "$OUT_DIR"
-cp "$HERE/av1/build/outputs/aar/av1-release.aar" "$OUT_DIR/media3-av1-1.11.1.aar"
-cp "$HERE/ffmpeg/build/outputs/aar/ffmpeg-release.aar" "$OUT_DIR/media3-ffmpeg-1.11.1.aar"
-sha256sum "$OUT_DIR"/*.aar
+cp "$AV1_AAR" "$OUT_DIR/media3-av1-1.11.1.aar"
+cp "$FFMPEG_AAR" "$OUT_DIR/media3-ffmpeg-1.11.1.aar"
+sha256sum "$OUT_DIR/media3-av1-1.11.1.aar" "$OUT_DIR/media3-ffmpeg-1.11.1.aar"
