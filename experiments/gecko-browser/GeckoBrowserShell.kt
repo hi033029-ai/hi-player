@@ -19,7 +19,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import com.example.ui.screens.BrowserHistoryPolicy
+import com.example.ui.screens.BrowserHistorySuggestions
 import com.example.ui.screens.HiBrowserHome
 import com.example.ui.screens.HiBrowserTabCard
 import com.example.ui.screens.HiBrowserTabSwitcher
@@ -27,6 +30,8 @@ import com.example.ui.screens.HiBrowserToolbar
 import com.example.ui.screens.OrbitBrowserEntry
 import com.example.ui.screens.OrbitBrowserStore
 import org.mozilla.geckoview.GeckoView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Experimental browser chrome connected to Gecko. The host supplies search normalization,
@@ -56,8 +61,13 @@ internal fun GeckoBrowserShell(
     var focused by remember(activeId) { mutableStateOf(false) }
     var showTabs by remember { mutableStateOf(false) }
     var shortcutRevision by remember { mutableIntStateOf(0) }
+    var history by remember { mutableStateOf(emptyList<OrbitBrowserEntry>()) }
+    val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
     LaunchedEffect(snapshot.url, focused) { if (!focused) address = snapshot.url }
+    LaunchedEffect(focused, activeTab.privateTab) {
+        history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
+    }
     BackHandler(enabled = !home && (snapshot.fullscreen || snapshot.canGoBack)) {
         if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
     }
@@ -93,6 +103,12 @@ internal fun GeckoBrowserShell(
         if (!snapshot.fullscreen) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             if (!home && snapshot.loading) {
                 LinearProgressIndicator(progress = { snapshot.progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp))
+            }
+            if (focused && !activeTab.privateTab) {
+                BrowserHistorySuggestions(
+                    entries = remember(history, address) { BrowserHistoryPolicy.suggestions(history, address) },
+                    onOpen = { focusManager.clearFocus(); navigate(it) },
+                )
             }
             HiBrowserToolbar(
                 address = address,

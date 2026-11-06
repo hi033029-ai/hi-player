@@ -4,7 +4,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
+import com.example.ui.screens.OrbitBrowserEntry
 import com.example.ui.screens.OrbitBrowserStore
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import com.example.ui.screens.OrbitSavedTab
 
 /** Small boundary for the existing tab store; never stores a private Gecko session. */
@@ -12,12 +15,17 @@ internal interface GeckoTabStore {
     fun readTabs(): List<OrbitSavedTab>
     fun readActiveId(): Int
     fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int)
+    fun recordVisit(entry: OrbitBrowserEntry)
 }
 
-internal class GeckoOrbitTabStore(private val store: OrbitBrowserStore) : GeckoTabStore {
+internal class GeckoOrbitTabStore(private val store: OrbitBrowserStore, private val executor: Executor = historyExecutor) : GeckoTabStore {
     override fun readTabs() = store.savedTabs()
     override fun readActiveId() = store.savedActiveTabId
     override fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int) = store.saveTabs(tabs, activeId)
+    override fun recordVisit(entry: OrbitBrowserEntry) { executor.execute { runCatching { store.addHistory(entry) } } }
+    private companion object {
+        val historyExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-history").apply { isDaemon = true } }
+    }
 }
 
 /**
@@ -31,6 +39,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
 ) : AutoCloseable {
     val snapshots = mutableStateMapOf<Int, GeckoTabSnapshot>()
     private val desktop = mutableMapOf<Int, Boolean>()
+    private val lastRecordedUrl = mutableMapOf<Int, String>()
     private val generations = mutableMapOf<Int, Long>()
     private var nextGeneration = 0L
     private var ready = false
@@ -75,6 +84,17 @@ internal class GeckoBrowserCoordinator<View : Any>(
         // are already known; a new tab is registered before its session factory is invoked.
         if (previous == null || previous.privateTab != snapshot.privateTab) return
         snapshots[snapshot.id] = snapshot
+        if (snapshot.loading || snapshot.error != null) lastRecordedUrl.remove(snapshot.id)
+        if (ready && !snapshot.privateTab && !snapshot.loading && snapshot.error == null) {
+            val completed = previous.loading && snapshot.progress == 100
+            val updatedTitle = lastRecordedUrl[snapshot.id] == snapshot.url && previous.title != snapshot.title
+            val safeUrl = GeckoTabPersistence.safeUrl(snapshot.url)
+            if ((completed || updatedTitle) && safeUrl.isNotEmpty()) {
+                val title = snapshot.title.take(500).takeUnless { it.isBlank() || it == "New tab" } ?: safeUrl
+                store.recordVisit(OrbitBrowserEntry(title, safeUrl))
+                lastRecordedUrl[snapshot.id] = safeUrl
+            }
+        }
         if (ready && (previous.url != snapshot.url || previous.title != snapshot.title)) persist()
     }
 
@@ -101,6 +121,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         if (!controller.closeTab(id)) return false
         snapshots.remove(id)
         desktop.remove(id)
+        lastRecordedUrl.remove(id)
         generations.remove(id)
         revision++
         persist()
@@ -118,6 +139,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
             throw error
         }
         controller.setDesktop(desktop[tab.id] ?: false)
+        lastRecordedUrl.remove(tab.id)
         snapshots[tab.id] = GeckoTabSnapshot(tab.id, tab.privateTab)
         revision++
         persist()
@@ -157,6 +179,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         controller.close()
         snapshots.clear()
         desktop.clear()
+        lastRecordedUrl.clear()
         generations.clear()
     }
 }

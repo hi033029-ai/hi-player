@@ -40,7 +40,7 @@ internal object GeckoTabPersistence {
 
     private fun safeTitle(title: String): String = title.take(500).ifBlank { "New tab" }
 
-    private fun safeUrl(url: String): String {
+    fun safeUrl(url: String): String {
         if (url.isBlank()) return ""
         if (url.length > 4096) return ""
         val uri = runCatching { URI(url) }.getOrNull() ?: return ""
