@@ -103,7 +103,7 @@ internal object BrowserDownloads {
         scope.launch { repairCompletedMedia(context) }
     }
 
-    private fun persistLocked(context: Context) {
+    private fun persistLocked(context: Context): Boolean {
         val json = JSONArray()
         _downloads.value.forEach { d ->
             json.put(JSONObject().apply {
@@ -118,12 +118,14 @@ internal object BrowserDownloads {
         }
         val file = journal(context)
         var output: java.io.FileOutputStream? = null
-        try {
+        val saved = try {
             output = file.startWrite()
             output.write(json.toString().toByteArray(Charsets.UTF_8))
             file.finishWrite(output)
-        } catch (e: IOException) { output?.let(file::failWrite) }
+            true
+        } catch (e: IOException) { output?.let(file::failWrite); false }
         lastPersist = System.currentTimeMillis()
+        return saved
     }
 
     private fun replaceLocked(value: BrowserDownload) { _downloads.value = _downloads.value.map { if (it.id == value.id) value else it } }
@@ -146,6 +148,34 @@ internal object BrowserDownloads {
         start(context, intent)
     }
     internal fun safeFileName(raw: String): String = DownloadFileResolver.safeName(raw)
+
+    /** Record an already-published stream without saving its URL, cookies or headers. Call on IO. */
+    internal fun recordPublishedStream(context: Context, uri: Uri, treeUri: Uri?, fileName: String, mimeType: String?, bytes: Long, location: String): Boolean {
+        if (uri.scheme != "content" || uri.authority.isNullOrBlank() || bytes < 0 || (treeUri != null && treeUri.scheme != "content")) return false
+        val app = context.applicationContext
+        return synchronized(lock) {
+            restoreLocked(app)
+            if (_downloads.value.any { it.status == BrowserDownloadStatus.COMPLETED && it.savedUri == uri.toString() }) return@synchronized true
+            val previous = _downloads.value
+            val entry = BrowserDownload(
+                id = ++lastId, fileName = DownloadFileResolver.safeName(fileName), sourceUrl = "",
+                mimeType = DownloadFileResolver.normalizeMime(mimeType), downloadedBytes = bytes, totalBytes = bytes,
+                status = BrowserDownloadStatus.COMPLETED, savedUri = uri.toString(),
+                destinationTreeUri = treeUri?.toString(), saveLocation = location.take(200), formatChecked = true,
+            )
+            _downloads.value = listOf(entry) + previous
+            val saved = runCatching {
+                if (!persistLocked(app)) false else {
+                    val array = journal(app).openRead().bufferedReader().use { JSONArray(it.readText()) }
+                    (0 until array.length()).any { index ->
+                        val item = array.getJSONObject(index)
+                        item.optLong("id", -1) == entry.id && item.optString("savedUri") == uri.toString() && item.optString("status") == BrowserDownloadStatus.COMPLETED.name
+                    }
+                }
+            }.getOrDefault(false)
+            if (saved) true else { _downloads.value = previous; false }
+        }
+    }
 
     private fun start(context: Context, intent: Intent) {
         runCatching { ContextCompat.startForegroundService(context.applicationContext, intent) }

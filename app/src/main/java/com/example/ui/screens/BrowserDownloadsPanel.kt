@@ -58,7 +58,7 @@ internal fun BrowserDownloadsPanel(downloads: List<BrowserDownload>, query: Stri
                 Text("Saved to: ${d.saveLocation}")
                 Text("${downloadBytes(d.downloadedBytes)} / ${if (d.totalBytes > 0) downloadBytes(d.totalBytes) else "unknown size"}")
                 Text("Type: ${d.mimeType ?: "Detecting"}")
-                Text("Server: ${runCatching { java.net.URI(d.sourceUrl).host }.getOrDefault("")}")
+                if (d.sourceUrl.isNotBlank()) Text("Server: ${runCatching { java.net.URI(d.sourceUrl).host }.getOrDefault("")}")
                 d.error?.let { Text(it) }
                 if (d.status != BrowserDownloadStatus.COMPLETED && d.isVideo) Text("Play while downloading depends on the container. Some MP4 files need the end of the file first.")
             } }, confirmButton = { TextButton(onClick = { details = null }) { Text("Done") } })
@@ -106,7 +106,7 @@ private fun DownloadProgressRow(download: BrowserDownload, onPlay: () -> Unit, o
                         DropdownMenuItem(text = { Text("Share") }, onClick = { menu = false; BrowserDownloads.share(context, download.id) })
                     }
                     DropdownMenuItem(text = { Text("Rename") }, enabled = !download.finalizing, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text("Copy download link") }, onClick = { menu = false; BrowserDownloads.copyLink(context, download.id) })
+                    if (download.sourceUrl.isNotBlank()) DropdownMenuItem(text = { Text("Copy download link") }, onClick = { menu = false; BrowserDownloads.copyLink(context, download.id) })
                     DropdownMenuItem(text = { Text("Details") }, onClick = { menu = false; onDetails() })
                     if (download.isActive) DropdownMenuItem(text = { Text("Cancel download") }, onClick = { menu = false; BrowserDownloads.cancel(context, download.id) })
                     else DropdownMenuItem(text = { Text("Remove from history") }, onClick = { menu = false; BrowserDownloads.removeFromList(context, download.id) })

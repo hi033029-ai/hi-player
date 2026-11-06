@@ -49,6 +49,14 @@ class BrowserDownloadUiTest {
         assertTrue(stats.top >= row.top && stats.bottom <= row.bottom)
         compose.onNodeWithText("done.mp4").assertExists()
     }
+    @Test fun completedStreamDoesNotOfferAnEmptyDownloadLink() {
+        val row = BrowserDownload(99, "file.txt", "", "text/plain", status = BrowserDownloadStatus.COMPLETED, savedUri = "content://test/item")
+        compose.setContent { CompositionLocalProvider(LocalHiPalette provides MonochromeLightPalette) { Box(Modifier.size(400.dp, 760.dp)) { BrowserDownloadsPanel(listOf(row), "", {}) } } }
+        compose.onNodeWithContentDescription("Options for file.txt").performClick()
+        compose.onNodeWithText("Copy download link").assertDoesNotExist()
+        compose.onNodeWithText("Details").performClick()
+        compose.onNodeWithText("Server:", substring = true).assertDoesNotExist()
+    }
     @Test fun confirmationShowsEditableNameDefaultFolderAndWorkingCancel() {
         var cancelled = false
         val request = BrowserDownloadRequest("http://127.0.0.1:9/video.mp4", "Test", "", "video/mp4", "video.mp4", 1024)
