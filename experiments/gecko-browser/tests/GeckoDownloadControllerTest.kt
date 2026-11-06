@@ -70,6 +70,18 @@ class GeckoDownloadControllerTest {
         controller.offer(source); controller.approve(); controller.close(); worker.run(); ui.run()
         assertTrue(target.aborted); assertFalse(target.committed); assertEquals(GeckoDownloadState.Idle, controller.state)
     }
+    @Test fun customDestinationIsOnlyCreatedAfterApprovalAndNameIsSanitized() {
+        val worker = Tasks(); val target = Target(); var factoryCalls = 0
+        val controller = GeckoDownloadController(worker, { it() }) { _, _ -> error("default destination used") }
+        controller.offer(Source())
+        assertEquals(0, factoryCalls)
+        controller.approve("../chosen.txt", "selected folder") { factoryCalls++; target }
+        assertEquals(0, factoryCalls)
+        worker.run()
+        assertEquals(1, factoryCalls); assertTrue(target.committed)
+        val done = controller.state as GeckoDownloadState.Finished
+        assertFalse(done.name.contains('/')); assertEquals("selected folder", done.location)
+    }
     @Test fun rejectedWorkerAndDestinationFailureCloseInput() {
         val source = Source()
         val controller = GeckoDownloadController(Executor { throw RejectedExecutionException() }, { it() }) { _, _ -> Target() }

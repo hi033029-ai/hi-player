@@ -20,9 +20,9 @@ internal interface GeckoDownloadSource : Closeable {
 
 internal sealed interface GeckoDownloadState {
     data object Idle : GeckoDownloadState
-    data class Offer(val name: String, val length: Long?) : GeckoDownloadState
+    data class Offer(val name: String, val length: Long?, val mimeType: String? = null) : GeckoDownloadState
     data class Active(val name: String, val bytes: Long, val length: Long?) : GeckoDownloadState
-    data class Finished(val name: String, val outcome: GeckoDownloadOutcome) : GeckoDownloadState
+    data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads") : GeckoDownloadState
 }
 
 /**
@@ -49,7 +49,7 @@ internal class GeckoDownloadController(
         }
         val name = DownloadFileResolver.safeName(DownloadFileResolver.dispositionName(source.contentDisposition) ?: "download")
         offer = source
-        state = GeckoDownloadState.Offer(name, source.contentLength)
+        state = GeckoDownloadState.Offer(name, source.contentLength, source.mimeType)
         return true
     }
 
@@ -59,28 +59,29 @@ internal class GeckoDownloadController(
         if (!closed && cancellation == null) state = GeckoDownloadState.Idle
     }
 
-    @MainThread fun approve() {
+    @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null) {
         val source = offer ?: return
         val pending = state as? GeckoDownloadState.Offer ?: return
         offer = null
+        val name = DownloadFileResolver.safeName(fileName ?: pending.name)
         val input = try { source.takeBody() } catch (_: Exception) { null }
         runCatching { source.close() }
-        if (input == null) { state = GeckoDownloadState.Finished(pending.name, GeckoDownloadOutcome.Failed); return }
+        if (input == null) { state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location); return }
         val cancel = GeckoDownloadCancellation()
         cancellation = cancel
         val id = ++generation
-        state = GeckoDownloadState.Active(pending.name, 0, pending.length)
+        state = GeckoDownloadState.Active(name, 0, pending.length)
         try {
             worker.execute {
                 val outcome = try {
-                    val target = destination(pending.name, source.mimeType)
+                    val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
                     var lastReported = 0L
                     transferGeckoDownload(input, target, cancel) { bytes ->
                         if (bytes - lastReported >= 256 * 1024) {
                             lastReported = bytes
                             dispatchMain {
                                 if (!closed && generation == id && cancellation === cancel) {
-                                    state = GeckoDownloadState.Active(pending.name, bytes, pending.length)
+                                    state = GeckoDownloadState.Active(name, bytes, pending.length)
                                 }
                             }
                         }
@@ -92,14 +93,14 @@ internal class GeckoDownloadController(
                 dispatchMain {
                     if (!closed && generation == id && cancellation === cancel) {
                         cancellation = null
-                        state = GeckoDownloadState.Finished(pending.name, outcome)
+                        state = GeckoDownloadState.Finished(name, outcome, location)
                     }
                 }
             }
         } catch (_: Exception) {
             runCatching { input.close() }
             cancellation = null
-            state = GeckoDownloadState.Finished(pending.name, GeckoDownloadOutcome.Failed)
+            state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)
         }
     }
 

@@ -44,14 +44,9 @@ internal class GeckoBrowserServices(
                 appContext, store, navigationPolicy, onNavigationDecision,
                 filePicker, permissionBroker, onCloseRequested,
             ) { _, offer ->
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                    runCatching { offer.close() }
-                    downloadNotice = "Downloads in this browser are not available on this Android version."
-                } else {
-                    val successfulResponse = offer.statusCode in 200..299
-                    if (!downloads.offer(offer)) downloadNotice = if (successfulResponse)
-                        "Finish the current download and try again." else "The website did not provide the file. Please try again."
-                }
+                val successfulResponse = offer.statusCode in 200..299
+                if (!downloads.offer(offer)) downloadNotice = if (successfulResponse)
+                    "Finish the current download and try again." else "The website did not provide the file. Please try again."
             }
         } catch (error: Exception) {
             closeServices()
