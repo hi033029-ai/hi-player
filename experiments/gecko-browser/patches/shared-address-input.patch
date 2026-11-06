@@ -1,0 +1,101 @@
+diff --git a/app/src/main/java/com/example/ui/screens/BrowserAddressInput.kt b/app/src/main/java/com/example/ui/screens/BrowserAddressInput.kt
+new file mode 100644
+index 0000000..f9ad95c
+--- /dev/null
++++ b/app/src/main/java/com/example/ui/screens/BrowserAddressInput.kt
+@@ -0,0 +1,27 @@
++package com.example.ui.screens
++
++import java.net.URLEncoder
++import java.nio.charset.StandardCharsets
++
++/** Shared address/search behavior for browser engines. */
++internal enum class BrowserSearchProvider(
++    val displayName: String,
++    private val searchBaseUrl: String,
++) {
++    GOOGLE("Google", "https://www.google.com/search?q="),
++    BING("Bing", "https://www.bing.com/search?q="),
++    DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q="),
++    ;
++
++    fun searchUrl(query: String): String =
++        searchBaseUrl + URLEncoder.encode(query, StandardCharsets.UTF_8.name())
++}
++
++internal fun normalizeBrowserInput(raw: String, provider: BrowserSearchProvider): String? {
++    val value = raw.trim()
++    if (value.isBlank()) return null
++    if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) return value
++    if (value.contains('.') && !value.contains(' ')) return "https://$value"
++    return provider.searchUrl(value)
++}
++
+diff --git a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
+index a85e257..bc67244 100644
+--- a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
++++ b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
+@@ -168,8 +168,6 @@ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.flow.MutableStateFlow
+ import kotlinx.coroutines.flow.asStateFlow
+ import java.io.ByteArrayInputStream
+-import java.net.URLEncoder
+-import java.nio.charset.StandardCharsets
+ import java.util.WeakHashMap
+ import android.app.Activity
+ import android.content.ActivityNotFoundException
+@@ -2660,27 +2658,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled
+     )
+ }
+ 
+-private enum class BrowserSearchProvider(
+-    val displayName: String,
+-    private val searchBaseUrl: String,
+-) {
+-    GOOGLE("Google", "https://www.google.com/search?q="),
+-    BING("Bing", "https://www.bing.com/search?q="),
+-    DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q="),
+-    ;
+-
+-    fun searchUrl(query: String): String =
+-        searchBaseUrl + URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+-}
+-
+-private fun normalizeBrowserInput(raw: String, provider: BrowserSearchProvider): String? {
+-    val value = raw.trim()
+-    if (value.isBlank()) return null
+-    if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) return value
+-    if (value.contains('.') && !value.contains(' ')) return "https://$value"
+-    return provider.searchUrl(value)
+-}
+-
+ private fun formatBytes(value: Long): String = when {
+     value <= 0L -> "0 B"
+     value < 1_024L -> "$value B"
+diff --git a/app/src/test/java/com/example/ui/screens/BrowserAddressInputTest.kt b/app/src/test/java/com/example/ui/screens/BrowserAddressInputTest.kt
+new file mode 100644
+index 0000000..5e454f6
+--- /dev/null
++++ b/app/src/test/java/com/example/ui/screens/BrowserAddressInputTest.kt
+@@ -0,0 +1,21 @@
++package com.example.ui.screens
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class BrowserAddressInputTest {
++    @Test fun blankDoesNotNavigate() {
++        assertNull(normalizeBrowserInput("  ", BrowserSearchProvider.GOOGLE))
++    }
++    @Test fun webAddressesKeepTheirOriginalScheme() {
++        assertEquals("HTTP://Example.com/A", normalizeBrowserInput("  HTTP://Example.com/A  ", BrowserSearchProvider.BING))
++        assertEquals("https://example.com/a?q=x", normalizeBrowserInput("example.com/a?q=x", BrowserSearchProvider.GOOGLE))
++    }
++    @Test fun searchesUseSelectedProviderAndEncodeInput() {
++        assertEquals("https://www.google.com/search?q=hello+world", normalizeBrowserInput("hello world", BrowserSearchProvider.GOOGLE))
++        assertEquals("https://www.bing.com/search?q=hello+world", normalizeBrowserInput("hello world", BrowserSearchProvider.BING))
++        assertEquals("https://duckduckgo.com/?q=hello+world", normalizeBrowserInput("hello world", BrowserSearchProvider.DUCKDUCKGO))
++        assertEquals("https://www.google.com/search?q=%D9%85%D8%B1%D8%AD%D8%A8%D8%A7+%26+%E2%99%AB", normalizeBrowserInput("مرحبا & ♫", BrowserSearchProvider.GOOGLE))
++    }
++}
