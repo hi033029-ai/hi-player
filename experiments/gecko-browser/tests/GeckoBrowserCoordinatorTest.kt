@@ -29,6 +29,7 @@ class GeckoBrowserCoordinatorTest {
         override fun back() = Unit
         override fun forward() = Unit
         override fun exitFullScreen() { fullscreenExits++ }
+        override fun purgeHistory() = Unit
         override fun setDesktop(enabled: Boolean) { desktopEnabled = enabled }
         override fun close() { closed = true }
     }

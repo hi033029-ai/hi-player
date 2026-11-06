@@ -24,6 +24,7 @@ class GeckoCoordinatorPopupTest {
         override fun back() = Unit
         override fun forward() = Unit
         override fun exitFullScreen() = Unit
+        override fun purgeHistory() = Unit
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() = Unit
     }

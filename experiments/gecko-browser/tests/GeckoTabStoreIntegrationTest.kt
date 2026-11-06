@@ -53,4 +53,18 @@ class GeckoTabStoreIntegrationTest {
         store.clearHistory()
     }
 
+    @Test fun durableHistoryClearPreservesBookmarks() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = OrbitBrowserStore(context)
+        store.clearHistory()
+        val history = OrbitBrowserEntry("History", "https://example.org/history")
+        val bookmark = OrbitBrowserEntry("Saved", "https://example.org/bookmark")
+        store.addHistory(history); store.addBookmark(bookmark)
+        assertTrue(store.clearHistoryAndWait())
+        assertTrue(store.history().isEmpty())
+        assertTrue(store.isBookmarked(bookmark.url))
+        assertEquals("[]", context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).getString("history", null))
+        store.removeBookmark(bookmark.url)
+    }
+
 }
