@@ -43,6 +43,7 @@ internal fun GeckoBrowserShell(
     onVoiceSearch: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
+    permissionUi: GeckoPermissionUi? = null,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it, Modifier.fillMaxSize()) },
 ) {
     // Observe tab structure and current snapshots independently.
@@ -123,7 +124,8 @@ internal fun GeckoBrowserShell(
             dismissButton = { TextButton(onClick = { coordinator.home() }) { Text("Home") } },
         )
     }
-    if (showTabs) {
+    if (permissionUi != null) GeckoPermissionDialog(permissionUi)
+    if (showTabs && permissionUi?.request == null) {
         HiBrowserTabSwitcher(
             tabs = coordinator.tabs.map { tab ->
                 val state = coordinator.snapshots[tab.id] ?: GeckoTabSnapshot(tab.id, tab.privateTab)
