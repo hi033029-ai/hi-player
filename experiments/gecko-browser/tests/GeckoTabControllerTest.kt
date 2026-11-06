@@ -17,6 +17,7 @@ class GeckoTabControllerTest {
         override fun back() { commands += "back" }
         override fun forward() { commands += "forward" }
         override fun exitFullScreen() = Unit
+        override fun purgeHistory() = Unit
         override fun setDesktop(enabled: Boolean) { commands += "desktop:$enabled" }
         override fun close() { closeCount++ }
     }
@@ -82,6 +83,19 @@ class GeckoTabControllerTest {
         controller.select(1)
         controller.back(); controller.setDesktop(false)
         assertEquals(listOf("back", "desktop:false"), sessions.getValue(1).commands)
+        controller.close()
+    }
+
+    @Test fun purgeHistoryTargetsAllTabsAndContinuesAfterFailure() {
+        val calls = mutableListOf<Int>()
+        val controller = GeckoTabController<Any> { tab ->
+            object : GeckoManagedSession<Any> by FakeSession() {
+                override fun purgeHistory() { calls += tab.id; if (tab.id == 1) error("failure") }
+            }
+        }
+        val privateTab = controller.open(true)!!
+        assertFalse(controller.purgeHistory())
+        assertEquals(setOf(1, privateTab.id), calls.toSet())
         controller.close()
     }
 
@@ -170,6 +184,7 @@ class GeckoControllerRestoreTest {
         override fun back() = Unit
         override fun forward() = Unit
         override fun exitFullScreen() = Unit
+        override fun purgeHistory() = Unit
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closes++ }
     }
@@ -200,6 +215,7 @@ class GeckoControllerRestoreTest {
                 override fun back() = Unit
                 override fun forward() = Unit
         override fun exitFullScreen() = Unit
+        override fun purgeHistory() = Unit
                 override fun setDesktop(enabled: Boolean) { events += "desktop:$enabled" }
                 override fun close() = Unit
             }
@@ -245,6 +261,7 @@ class GeckoPopupReservationTest {
         override fun back() = Unit
         override fun forward() = Unit
         override fun exitFullScreen() = Unit
+        override fun purgeHistory() = Unit
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closed = true }
     }
