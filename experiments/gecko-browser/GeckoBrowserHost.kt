@@ -1,6 +1,8 @@
 package com.example.browser.gecko
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.example.ui.screens.OrbitBrowserStore
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -31,10 +33,19 @@ internal fun createGeckoBrowserCoordinator(
             onPopupRequested = {
                 // Gecko itself opens the newly returned session. Keep it owned by the
                 // coordinator but do not attach or call loadUri before Gecko opens it.
-                val child = coordinator.reservePopup(tab.id) { popup, callback -> createTab(popup, callback, false) }
-                (child as? GeckoManagedTab)?.engine?.session
+                val child = coordinator.reservePopup(tab.id) { popup, callback -> createTab(popup, callback, false) } as? GeckoManagedTab
+                if (child != null) {
+                    // Gecko opens the session after the delegate returns; discard abandoned
+                    // unopened reservations instead of consuming one of the tab slots forever.
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        if (coordinator.isPopupSession(child.tab.id, child) && !child.engine.session.isOpen) coordinator.closeTab(child.tab.id)
+                    }, 30_000)
+                }
+                child?.engine?.session
             },
-            onCloseRequested = { onCloseRequested(tab.id) },
+            onCloseRequested = {
+                if (coordinator.isPopup(tab.id)) coordinator.closeTab(tab.id) else onCloseRequested(tab.id)
+            },
             onExternalResponse = { offer -> onExternalResponse(tab.id, offer) },
             permissionDelegate = permissionDelegate,
         )

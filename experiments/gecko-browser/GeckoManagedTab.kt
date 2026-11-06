@@ -7,7 +7,7 @@ import org.mozilla.geckoview.GeckoSession
 /** The caller owns snapshots and must not persist private-tab data. */
 internal class GeckoManagedTab(
     context: Context,
-    tab: GeckoTabRegistry.Tab,
+    val tab: GeckoTabRegistry.Tab,
     desktop: Boolean,
     onChanged: (GeckoTabSnapshot) -> Unit,
     navigationPolicy: GeckoNavigationPolicy,

@@ -49,6 +49,7 @@ internal fun GeckoBrowserShell(
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
+    historyRevision: Int = 0,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it, Modifier.fillMaxSize()) },
 ) {
     // Observe tab structure and current snapshots independently.
@@ -65,7 +66,7 @@ internal fun GeckoBrowserShell(
     val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
     LaunchedEffect(snapshot.url, focused) { if (!focused) address = snapshot.url }
-    LaunchedEffect(focused, activeTab.privateTab) {
+    LaunchedEffect(focused, activeTab.privateTab, historyRevision) {
         history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
     }
     BackHandler(enabled = !home && (snapshot.fullscreen || snapshot.canGoBack)) {

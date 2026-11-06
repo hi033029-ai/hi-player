@@ -95,6 +95,8 @@ internal class GeckoTabController<View : Any>(
         return tab to session
     }
 
+    fun isSession(id: Int, session: GeckoManagedSession<View>): Boolean = !closed && sessions[id] === session
+
     fun select(id: Int): Boolean {
         check(!closed)
         if (id == activeId) return true

@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import com.example.ui.screens.OrbitBrowserEntry
 import com.example.ui.screens.OrbitBrowserStore
 import java.util.concurrent.Executor
+import android.os.Handler
+import android.os.Looper
 import java.util.concurrent.Executors
 import com.example.ui.screens.OrbitSavedTab
 
@@ -16,6 +18,8 @@ internal interface GeckoTabStore {
     fun readActiveId(): Int
     fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int)
     fun recordVisit(entry: OrbitBrowserEntry)
+    fun clearHistory(completion: (Boolean) -> Unit)
+    fun removeHistory(url: String, completion: (Boolean) -> Unit)
 }
 
 internal class GeckoOrbitTabStore(private val store: OrbitBrowserStore, private val executor: Executor = historyExecutor) : GeckoTabStore {
@@ -23,6 +27,19 @@ internal class GeckoOrbitTabStore(private val store: OrbitBrowserStore, private 
     override fun readActiveId() = store.savedActiveTabId
     override fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int) = store.saveTabs(tabs, activeId)
     override fun recordVisit(entry: OrbitBrowserEntry) { executor.execute { runCatching { store.addHistory(entry) } } }
+    override fun clearHistory(completion: (Boolean) -> Unit) {
+        // FIFO executor ensures writes queued before the clear cannot resurrect old history.
+        executor.execute {
+            val success = runCatching { store.clearHistory() }.isSuccess
+            Handler(Looper.getMainLooper()).post { completion(success) }
+        }
+    }
+    override fun removeHistory(url: String, completion: (Boolean) -> Unit) {
+        executor.execute {
+            val success = runCatching { store.removeHistory(url) }.isSuccess
+            Handler(Looper.getMainLooper()).post { completion(success) }
+        }
+    }
     private companion object {
         val historyExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-history").apply { isDaemon = true } }
     }
@@ -41,6 +58,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
     private val desktop = mutableMapOf<Int, Boolean>()
     private val lastRecordedUrl = mutableMapOf<Int, String>()
     private val popupOpeners = mutableMapOf<Int, Int>()
+    private val popupIds = mutableSetOf<Int>()
+    private val suppressHistoryUntilNextLoad = mutableSetOf<Int>()
     private val generations = mutableMapOf<Int, Long>()
     private var nextGeneration = 0L
     private var ready = false
@@ -92,8 +111,9 @@ internal class GeckoBrowserCoordinator<View : Any>(
             val opener = popupOpeners.remove(snapshot.id)
             if (opener != null && activeId == opener) select(snapshot.id)
         }
+        if (snapshot.loading && !previous.loading) suppressHistoryUntilNextLoad.remove(snapshot.id)
         if (snapshot.loading || snapshot.error != null) lastRecordedUrl.remove(snapshot.id)
-        if (ready && !snapshot.privateTab && !snapshot.loading && snapshot.error == null) {
+        if (ready && !snapshot.privateTab && snapshot.id !in suppressHistoryUntilNextLoad && !snapshot.loading && snapshot.error == null) {
             val completed = previous.loading && snapshot.progress == 100
             val updatedTitle = lastRecordedUrl[snapshot.id] == snapshot.url && previous.title != snapshot.title
             val safeUrl = GeckoTabPersistence.safeUrl(snapshot.url)
@@ -135,10 +155,13 @@ internal class GeckoBrowserCoordinator<View : Any>(
             throw error
         } ?: return null
         popupOpeners[reserved.first.id] = openerId
+        popupIds.add(reserved.first.id)
         revision++
         persist()
         return reserved.second
     }
+    fun isPopup(id: Int): Boolean = !closed && id in popupIds
+    fun isPopupSession(id: Int, session: GeckoManagedSession<View>): Boolean = isPopup(id) && controller.isSession(id, session)
     fun select(id: Int): Boolean {
         check(!closed)
         if (!controller.select(id)) return false
@@ -153,6 +176,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
         desktop.remove(id)
         lastRecordedUrl.remove(id)
         popupOpeners.remove(id)
+        popupIds.remove(id)
+        suppressHistoryUntilNextLoad.remove(id)
         generations.remove(id)
         revision++
         persist()
@@ -174,6 +199,20 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots[tab.id] = GeckoTabSnapshot(tab.id, tab.privateTab)
         revision++
         persist()
+    }
+    /** Clears local history in the same ordered queue as pending visit writes. */
+    fun clearHistory(completion: (Boolean) -> Unit) {
+        check(!closed)
+        // A late title or completion callback for the current page must not recreate
+        // an entry the user just cleared. The next new navigation can be recorded.
+        suppressHistoryUntilNextLoad.addAll(controller.tabs.map { it.id })
+        lastRecordedUrl.clear()
+        store.clearHistory(completion)
+    }
+    fun removeHistory(url: String, completion: (Boolean) -> Unit) {
+        check(!closed)
+        snapshots.values.filter { it.url == url }.forEach { suppressHistoryUntilNextLoad.add(it.id); lastRecordedUrl.remove(it.id) }
+        store.removeHistory(url, completion)
     }
     fun load(url: String) { check(!closed); controller.load(url) }
     fun reload() { check(!closed); controller.reload() }
@@ -212,6 +251,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
         desktop.clear()
         lastRecordedUrl.clear()
         popupOpeners.clear()
+        popupIds.clear()
+        suppressHistoryUntilNextLoad.clear()
         generations.clear()
     }
 }
