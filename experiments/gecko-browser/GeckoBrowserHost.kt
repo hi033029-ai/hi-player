@@ -17,6 +17,7 @@ internal fun createGeckoBrowserCoordinator(
     permissionDelegate: GeckoSession.PermissionDelegate,
     onCloseRequested: (Int) -> Unit,
     onExternalResponse: (Int, GeckoDownloadOffer) -> Unit,
+    onContextLink: (Int, String?, String?) -> Unit,
 ): GeckoBrowserCoordinator<GeckoView> {
     lateinit var coordinator: GeckoBrowserCoordinator<GeckoView>
     fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean): GeckoManagedTab {
@@ -54,6 +55,11 @@ internal fun createGeckoBrowserCoordinator(
             },
             onExternalResponse = { offer -> onExternalResponse(tab.id, offer) },
             permissionDelegate = permissionDelegate,
+            onContextLink = { link, image ->
+                Handler(Looper.getMainLooper()).post {
+                    if (coordinator.controller.isSession(tab.id, owned)) onContextLink(tab.id, link, image)
+                }
+            },
         )
         return owned
     }

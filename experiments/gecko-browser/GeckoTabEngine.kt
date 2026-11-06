@@ -40,6 +40,7 @@ internal class GeckoTabEngine(
     private val onCloseRequested: (() -> Unit)? = null,
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
+    private val onContextLink: ((String?, String?) -> Unit)? = null,
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -139,6 +140,10 @@ internal class GeckoTabEngine(
                 if (onExternalResponse == null) runCatching { offer.close() } else {
                     try { onExternalResponse.invoke(offer) } catch (_: Exception) { runCatching { offer.close() } }
                 }
+            }
+            override fun onContextMenu(session: GeckoSession, screenX: Int, screenY: Int, element: GeckoSession.ContentDelegate.ContextElement) {
+                // Prefer a linked address; only use image sources for image elements.
+                onContextLink?.invoke(element.linkUri, element.srcUri.takeIf { element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_IMAGE })
             }
             override fun onCloseRequest(session: GeckoSession) { onCloseRequested?.invoke() }
             override fun onCrash(session: GeckoSession) {

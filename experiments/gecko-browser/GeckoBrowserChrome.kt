@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -78,7 +79,9 @@ internal fun GeckoBrowserChrome(
     )
     if (services != null) {
         LaunchedEffect(coordinator.revision) { services.secureRouting.prune(coordinator.tabs.map { it.id }.toSet()) }
+        LaunchedEffect(coordinator.activeId, current.url, current.loading) { services.contextActions.dismiss() }
         GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
+        GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             androidx.compose.material3.AlertDialog(
@@ -130,6 +133,7 @@ internal fun GeckoBrowserChrome(
             onSetDefaultBrowser = null,
             tools = listOf(
                 HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage) { find.open(coordinator.activeId, current.url) },
+                *if (services != null) arrayOf(HiMenuAction("Share page", Icons.Default.Share, enabled = onPage) { services.contextActions.offer(coordinator.activeId, current.url, null) }) else emptyArray(),
                 HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) { coordinator.setDesktop(!coordinator.desktopMode()) },
             ),
             rows = listOf(

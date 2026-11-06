@@ -2,6 +2,8 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.net.Uri
 import com.example.auth.SecureWebSessions
 import android.os.Build
@@ -51,6 +53,7 @@ internal class GeckoBrowserServices(
     val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
     val clearData: GeckoClearDataController
     val secureRouting: GeckoSecureRouting
+    val contextActions: GeckoContextActions
     val settings = createGeckoBrowserSettings(appContext, store)
     private var closed = false
 
@@ -65,14 +68,27 @@ internal class GeckoBrowserServices(
                 openWebsite = { SecureWebSessions.open(context, it, android.graphics.Color.BLACK).isSuccess },
                 openExternal = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true }.getOrDefault(false) },
             )
+            contextActions = GeckoContextActions(
+                activeTab = { coordinator.tabs.firstOrNull { it.id == coordinator.activeId }?.let { it.id to it.privateTab } },
+                openTab = { privateTab, url -> if (coordinator.open(privateTab)) { coordinator.load(url); true } else false },
+                copy = { url ->
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Link", url)); true
+                },
+                share = { url ->
+                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url)
+                    context.startActivity(Intent.createChooser(send, "Share link")); true
+                },
+            )
             coordinator = createGeckoBrowserCoordinator(
                 appContext, store, secureRouting::policy, secureRouting::decision,
                 filePicker, permissionBroker, onCloseRequested,
-            ) { tabId, offer ->
+                onContextLink = contextActions::offer,
+                onExternalResponse = { tabId, offer ->
                 val successfulResponse = offer.statusCode in 200..299
                 if (!downloads.offer(offer, recordInHistory = shouldRecordDownload(tabId))) downloadNotice = if (successfulResponse)
                     "Finish the current download and try again." else "The website did not provide the file. Please try again."
-            }
+            })
             clearData = createGeckoClearDataController(appContext, coordinator, worker, secureRouting::clearPrivateRouting)
         } catch (error: Exception) {
             closeServices()
