@@ -22,7 +22,7 @@ class GeckoDocumentTreeDestinationTest {
     }
     @Test fun successfulCopyPublishesUniquelyNamedDocument() {
         val backend = Backend()
-        val dest = GeckoDocumentTreeDestination(backend, "../movie.mp4", "video/mp4") { "abc-123" }
+        val dest = GeckoDocumentTreeDestination(backend, "../movie.mp4", "video/mp4", uniqueId = { "abc-123" })
         assertEquals(GeckoDownloadOutcome.Complete(3), transferGeckoDownload(ByteArrayInputStream(byteArrayOf(1, 2, 3)), dest, GeckoDownloadCancellation()))
         assertEquals(backend.uri, dest.publishedUri); assertFalse(backend.deleted)
         assertTrue(backend.name.endsWith("-abc123.mp4")); assertFalse(backend.name.contains('/'))
@@ -31,18 +31,18 @@ class GeckoDocumentTreeDestinationTest {
     }
     @Test fun failedOpenDeletesOnlyCreatedDocument() {
         val backend = Backend().apply { failOpen = true }
-        val dest = GeckoDocumentTreeDestination(backend, "report.txt", "text/plain") { "1" }
+        val dest = GeckoDocumentTreeDestination(backend, "report.txt", "text/plain", uniqueId = { "1" })
         assertEquals(GeckoDownloadOutcome.Failed, transferGeckoDownload(ByteArrayInputStream(byteArrayOf(1)), dest, GeckoDownloadCancellation()))
         assertTrue(backend.deleted); assertNull(dest.publishedUri)
     }
     @Test fun cancellationDeletesOnlyCreatedDocument() {
         val backend = Backend(); val cancel = GeckoDownloadCancellation()
-        val dest = GeckoDocumentTreeDestination(backend, "report", null) { "2" }
+        val dest = GeckoDocumentTreeDestination(backend, "report", null, uniqueId = { "2" })
         val result = transferGeckoDownload(ByteArrayInputStream(ByteArray(100)), dest, cancel) { cancel.cancel() }
         assertEquals(GeckoDownloadOutcome.Cancelled, result); assertTrue(backend.deleted); assertNull(dest.publishedUri)
     }
     @Test fun cannotReuseDestination() {
-        val backend = Backend(); val dest = GeckoDocumentTreeDestination(backend, "a", null) { "3" }
+        val backend = Backend(); val dest = GeckoDocumentTreeDestination(backend, "a", null, uniqueId = { "3" })
         dest.open().close(); dest.commit()
         try { dest.open(); fail("should not reopen") } catch (_: IllegalStateException) { }
     }

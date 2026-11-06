@@ -46,4 +46,19 @@ class GeckoDownloadUiTest {
         compose.onNodeWithText("OK").performClick()
         compose.runOnIdle { controller.close() }
     }
+    @Test fun privateOfferExplainsFileRemainsWithoutDownloadHistory() {
+        val controller = GeckoDownloadController(Executor { it.run() }, { it() }) { _, _ -> error("not approved") }
+        compose.setContent { HiPlayerTheme { GeckoDownloadUi(controller) } }
+        compose.runOnIdle { controller.offer(object : GeckoDownloadSource {
+            override val mimeType: String? = null
+            override val contentDisposition: String? = null
+            override val contentLength: Long? = null
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(byteArrayOf(1))
+            override fun close() = Unit
+        }, recordInHistory = false) }
+        compose.onNodeWithText("The file stays on your device, but will not appear in browser download history.").assertIsDisplayed()
+        compose.runOnIdle { controller.close() }
+    }
+
 }

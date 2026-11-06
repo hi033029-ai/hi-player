@@ -18,15 +18,16 @@ internal class GeckoDocumentTreeDestination(
     fileName: String,
     mimeType: String?,
     private val uniqueId: () -> String = { UUID.randomUUID().toString() },
-) : GeckoDownloadDestination {
+    override val treeUri: Uri? = null,
+) : GeckoPublishedDestination {
     constructor(context: Context, treeUri: Uri, fileName: String, mimeType: String?) :
-        this(AndroidGeckoDocumentTreeBackend(context.applicationContext, treeUri), fileName, mimeType)
+        this(AndroidGeckoDocumentTreeBackend(context.applicationContext, treeUri), fileName, mimeType, treeUri = treeUri)
 
     private val safeName = DownloadFileResolver.safeName(fileName)
     private val mime = DownloadFileResolver.normalizeMime(mimeType) ?: "application/octet-stream"
     private var created: Uri? = null
     private var started = false
-    var publishedUri: Uri? = null
+    override var publishedUri: Uri? = null
         private set
 
     override fun open(): OutputStream {

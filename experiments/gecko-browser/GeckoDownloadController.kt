@@ -20,9 +20,9 @@ internal interface GeckoDownloadSource : Closeable {
 
 internal sealed interface GeckoDownloadState {
     data object Idle : GeckoDownloadState
-    data class Offer(val name: String, val length: Long?, val mimeType: String? = null) : GeckoDownloadState
+    data class Offer(val name: String, val length: Long?, val mimeType: String? = null, val recordInHistory: Boolean = true) : GeckoDownloadState
     data class Active(val name: String, val bytes: Long, val length: Long?) : GeckoDownloadState
-    data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads") : GeckoDownloadState
+    data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null) : GeckoDownloadState
 }
 
 /**
@@ -33,6 +33,7 @@ internal sealed interface GeckoDownloadState {
 internal class GeckoDownloadController(
     private val worker: Executor,
     private val dispatchMain: (() -> Unit) -> Unit,
+    private val onPublished: ((GeckoPublishedDestination, String, String?, Long, String) -> Boolean)? = null,
     private val destination: (String, String?) -> GeckoDownloadDestination,
 ) : AutoCloseable {
     var state: GeckoDownloadState by mutableStateOf(GeckoDownloadState.Idle)
@@ -42,14 +43,14 @@ internal class GeckoDownloadController(
     private var generation = 0L
     private var closed = false
 
-    @MainThread fun offer(source: GeckoDownloadSource): Boolean {
+    @MainThread fun offer(source: GeckoDownloadSource, recordInHistory: Boolean = true): Boolean {
         if (closed || offer != null || cancellation != null || source.statusCode !in 200..299) {
             runCatching { source.close() }
             return false
         }
         val name = DownloadFileResolver.safeName(DownloadFileResolver.dispositionName(source.contentDisposition) ?: "download")
         offer = source
-        state = GeckoDownloadState.Offer(name, source.contentLength, source.mimeType)
+        state = GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory)
         return true
     }
 
@@ -73,10 +74,11 @@ internal class GeckoDownloadController(
         state = GeckoDownloadState.Active(name, 0, pending.length)
         try {
             worker.execute {
+                var recorded: Boolean? = null
                 val outcome = try {
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
                     var lastReported = 0L
-                    transferGeckoDownload(input, target, cancel) { bytes ->
+                    val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
                         if (bytes - lastReported >= 256 * 1024) {
                             lastReported = bytes
                             dispatchMain {
@@ -86,6 +88,11 @@ internal class GeckoDownloadController(
                             }
                         }
                     }
+                    val recorder = onPublished
+                    if (pending.recordInHistory && transferred is GeckoDownloadOutcome.Complete && target is GeckoPublishedDestination && recorder != null) {
+                        recorded = runCatching { recorder(target, name, source.mimeType, transferred.bytes, location) }.getOrDefault(false)
+                    }
+                    transferred
                 } catch (_: Exception) {
                     runCatching { input.close() }
                     if (cancel.isCancelled()) GeckoDownloadOutcome.Cancelled else GeckoDownloadOutcome.Failed
@@ -93,7 +100,7 @@ internal class GeckoDownloadController(
                 dispatchMain {
                     if (!closed && generation == id && cancellation === cancel) {
                         cancellation = null
-                        state = GeckoDownloadState.Finished(name, outcome, location)
+                        state = GeckoDownloadState.Finished(name, outcome, location, recorded)
                     }
                 }
             }

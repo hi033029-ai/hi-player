@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
+import com.example.downloads.BrowserDownloads
 import androidx.activity.result.ActivityResultRegistry
 import androidx.annotation.MainThread
 import androidx.compose.runtime.getValue
@@ -29,7 +31,17 @@ internal class GeckoBrowserServices(
     private val androidPermissions = GeckoRuntimePermissionLauncher(context, registry)
     val permissions = GeckoPermissionUi(androidPermissions)
     private val permissionBroker = GeckoPermissionBroker(permissions)
-    val downloads = GeckoDownloadController(worker, { action -> main.post(action) }) { name, mime ->
+    val downloads = GeckoDownloadController(worker, { action -> main.post(action) }, onPublished = { target, fallback, mime, bytes, location ->
+        val uri = target.publishedUri
+        if (uri == null) false else {
+            val name = runCatching {
+                appContext.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
+            BrowserDownloads.recordPublishedStream(appContext, uri, target.treeUri, name, mime, bytes, location)
+        }
+    }) { name, mime ->
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
         GeckoMediaStoreDestination(appContext, name, mime)
     }
@@ -43,9 +55,9 @@ internal class GeckoBrowserServices(
             coordinator = createGeckoBrowserCoordinator(
                 appContext, store, navigationPolicy, onNavigationDecision,
                 filePicker, permissionBroker, onCloseRequested,
-            ) { _, offer ->
+            ) { tabId, offer ->
                 val successfulResponse = offer.statusCode in 200..299
-                if (!downloads.offer(offer)) downloadNotice = if (successfulResponse)
+                if (!downloads.offer(offer, recordInHistory = shouldRecordDownload(tabId))) downloadNotice = if (successfulResponse)
                     "Finish the current download and try again." else "The website did not provide the file. Please try again."
             }
         } catch (error: Exception) {
@@ -53,6 +65,7 @@ internal class GeckoBrowserServices(
             throw error
         }
     }
+    private fun shouldRecordDownload(tabId: Int): Boolean = coordinator.tabs.firstOrNull { it.id == tabId }?.privateTab == false
     fun dismissDownloadNotice() { downloadNotice = null }
     @MainThread override fun close() {
         if (closed) return

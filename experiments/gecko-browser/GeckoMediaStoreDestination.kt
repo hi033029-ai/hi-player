@@ -22,14 +22,15 @@ internal class GeckoMediaStoreDestination(
     private val backend: PendingMediaStore,
     fileName: String,
     mimeType: String?,
-) : GeckoDownloadDestination {
+) : GeckoPublishedDestination {
     constructor(context: Context, fileName: String, mimeType: String?) :
         this(AndroidPendingMediaStore(context.applicationContext.contentResolver), fileName, mimeType)
 
     private val name = DownloadFileResolver.safeName(fileName)
     private val mime = DownloadFileResolver.normalizeMime(mimeType) ?: "application/octet-stream"
     private var pending: Uri? = null
-    var publishedUri: Uri? = null
+    override val treeUri: Uri? = null
+    override var publishedUri: Uri? = null
         private set
     private var started = false
 

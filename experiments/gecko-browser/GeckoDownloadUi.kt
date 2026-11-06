@@ -1,6 +1,7 @@
 package com.example.browser.gecko
 
 import android.net.Uri
+import android.content.Intent
 import android.os.Build
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,6 +33,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController) {
     var requestedFor by remember { mutableStateOf<GeckoDownloadState.Offer?>(null) }
     var selectedTree by remember(state) { mutableStateOf<Uri?>(null) }
     var pickerFailed by remember(state) { mutableStateOf(false) }
+    var permissionFailed by remember(state) { mutableStateOf(false) }
     val chooseFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val expected = requestedFor
         requestedFor = null
@@ -53,14 +55,21 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController) {
                         }) { Text("Choose folder") }
                         if (selectedTree != null && Build.VERSION.SDK_INT >= 29) TextButton(onClick = { selectedTree = null }) { Text("Use Downloads folder") }
                         if (pickerFailed) Text("Could not open the folder picker.")
+                        if (permissionFailed) Text("Could not retain access to this folder. Choose another folder.")
+                        if (!state.recordInHistory) Text("The file stays on your device, but will not appear in browser download history.")
                         Text("Downloads stop if you close the browser and cannot resume.")
                     }
                 },
                 confirmButton = { TextButton(enabled = Build.VERSION.SDK_INT >= 29 || selectedTree != null, onClick = {
                     val tree = selectedTree
-                    val chosenName = state.name
-                    val override = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, chosenName, state.mimeType) } }
-                    controller.approve(chosenName, if (tree == null) "Downloads" else "selected folder", override)
+                    val granted = tree == null || !state.recordInHistory || runCatching {
+                        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    }.isSuccess
+                    if (!granted) permissionFailed = true else {
+                        val chosenName = state.name
+                        val override = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, chosenName, state.mimeType) } }
+                        controller.approve(chosenName, if (tree == null) "Downloads" else "selected folder", override)
+                    }
                 }) { Text("Download") } },
                 dismissButton = { TextButton(onClick = controller::reject) { Text("Cancel") } },
             )
@@ -81,7 +90,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController) {
                 GeckoDownloadOutcome.Cancelled -> "Download cancelled"
                 GeckoDownloadOutcome.Failed -> "Download failed"
             }) },
-            text = { Text(if (state.outcome is GeckoDownloadOutcome.Complete) "The file was saved in ${state.location}." else "The download could not be completed.") },
+            text = { Text(if (state.outcome is GeckoDownloadOutcome.Complete) if (state.recorded == false) "The file was saved in ${state.location}, but could not be added to download history." else "The file was saved in ${state.location}." else "The download could not be completed.") },
             confirmButton = { TextButton(onClick = controller::dismissResult) { Text("OK") } },
         )
         GeckoDownloadState.Idle -> Unit

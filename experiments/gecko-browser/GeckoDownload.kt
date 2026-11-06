@@ -2,6 +2,7 @@ package com.example.browser.gecko
 
 import androidx.annotation.WorkerThread
 import org.mozilla.geckoview.WebResponse
+import android.net.Uri
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
@@ -31,6 +32,12 @@ internal interface GeckoDownloadDestination {
     fun open(): OutputStream
     fun commit()
     fun abort()
+}
+
+/** Metadata for a completed destination; never contains a website URL or credentials. */
+internal interface GeckoPublishedDestination : GeckoDownloadDestination {
+    val publishedUri: Uri?
+    val treeUri: Uri?
 }
 
 internal sealed interface GeckoDownloadOutcome {
