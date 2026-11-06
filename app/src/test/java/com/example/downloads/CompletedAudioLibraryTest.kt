@@ -26,7 +26,7 @@ class CompletedAudioLibraryTest {
             // Simulate SAF/Downloads URI with no Audio index row and no filesystem DATA access.
             if (projection?.contains(MediaStore.MediaColumns.DATA) == true) throw IllegalArgumentException("No filesystem path")
             return MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
-                if (!missing) addRow(arrayOf("downloaded song.mp3", 4096L))
+                if (!missing) addRow(arrayOf<Any>("downloaded song.mp3", 4096L))
             }
         }
         override fun getType(uri: Uri) = "audio/mpeg"

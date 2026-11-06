@@ -27,7 +27,7 @@ class AudioMediaScannerTest {
             selectionSeen = selection
             // Typical downloaded audio with IS_MUSIC=0, missing duration and
             // optional artist/album/path fields must still be visible.
-            return MatrixCursor(arrayOf("_id", "_display_name", "mime_type", "is_music")).apply { addRow(arrayOf(71L, "downloaded.opus", "audio/opus", 0)) }
+            return MatrixCursor(arrayOf("_id", "_display_name", "mime_type", "is_music")).apply { addRow(arrayOf<Any>(71L, "downloaded.opus", "audio/opus", 0)) }
         }
         override fun getType(uri: Uri) = "audio/opus"
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
