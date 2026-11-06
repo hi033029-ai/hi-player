@@ -52,6 +52,7 @@ internal fun GeckoBrowserShell(
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
     historyRevision: Int = 0,
+    secureRouting: GeckoSecureRouting? = null,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it, Modifier.fillMaxSize()) },
 ) {
     // Observe tab structure and current snapshots independently.
@@ -59,7 +60,8 @@ internal fun GeckoBrowserShell(
     val activeId = coordinator.activeId
     val activeTab = coordinator.tabs.single { it.id == activeId }
     val snapshot = coordinator.activeSnapshot
-    val home = snapshot.url.isBlank()
+    val secureUrl = secureRouting?.route(activeId)
+    val home = snapshot.url.isBlank() && secureUrl == null
     var address by remember(activeId) { mutableStateOf(snapshot.url) }
     var focused by remember(activeId) { mutableStateOf(false) }
     var showTabs by remember { mutableStateOf(false) }
@@ -67,12 +69,13 @@ internal fun GeckoBrowserShell(
     var history by remember { mutableStateOf(emptyList<OrbitBrowserEntry>()) }
     val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
-    LaunchedEffect(snapshot.url, focused) { if (!focused) address = snapshot.url }
+    LaunchedEffect(snapshot.url, secureUrl, focused) { if (!focused) address = secureUrl ?: snapshot.url }
     LaunchedEffect(focused, activeTab.privateTab, historyRevision) {
         history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
     }
     BackHandler(enabled = find?.visible == true) { find?.dismiss() }
-    BackHandler(enabled = find?.visible != true && !home && (snapshot.fullscreen || snapshot.canGoBack)) {
+    BackHandler(enabled = find?.visible != true && secureUrl != null) { secureRouting?.leaveTab(activeId); coordinator.home() }
+    BackHandler(enabled = find?.visible != true && secureUrl == null && !home && (snapshot.fullscreen || snapshot.canGoBack)) {
         if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
     }
 
@@ -80,11 +83,14 @@ internal fun GeckoBrowserShell(
         val url = normalizeAddress(text) ?: return
         focused = false
         address = url
+        secureRouting?.leaveTab(activeId)
         coordinator.load(url)
     }
 
     Box(modifier.fillMaxSize()) {
-        if (home) {
+        if (secureUrl != null && secureRouting != null) {
+            GeckoSecureSitePage(secureRouting, activeId) { coordinator.load(it) }
+        } else if (home) {
             HiBrowserHome(
                 isPrivate = activeTab.privateTab,
                 shortcuts = shortcuts,
@@ -110,7 +116,7 @@ internal fun GeckoBrowserShell(
                 onQueryChange = find::changeQuery, onPrevious = { find.next(true) },
                 onNext = { find.next(false) }, onClose = find::dismiss,
             )
-            if (!home && snapshot.loading) {
+            if (!home && secureUrl == null && snapshot.loading) {
                 LinearProgressIndicator(progress = { snapshot.progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp))
             }
             if (focused && !activeTab.privateTab) {
@@ -125,22 +131,22 @@ internal fun GeckoBrowserShell(
                 onFocusChange = { focused = it },
                 onSubmit = ::navigate,
                 isPrivate = activeTab.privateTab,
-                isSecure = !home && snapshot.secure,
-                isLoading = snapshot.loading,
+                isSecure = secureUrl == null && !home && snapshot.secure,
+                isLoading = secureUrl == null && snapshot.loading,
                 showReload = !home,
                 tabCount = coordinator.tabs.size,
                 providers = providerNames,
                 selectedProvider = selectedProvider,
                 onProviderSelect = onProviderSelect,
-                onHome = { coordinator.home(); address = "" },
+                onHome = { secureRouting?.leaveTab(activeId); coordinator.home(); address = "" },
                 onVoiceSearch = onVoiceSearch,
-                onReloadOrStop = { if (snapshot.loading) coordinator.stop() else coordinator.reload() },
+                onReloadOrStop = { if (secureUrl != null) secureRouting?.continueWebsite(activeId) else if (snapshot.loading) coordinator.stop() else coordinator.reload() },
                 onShowTabs = { showTabs = true },
                 onMenu = onMenu,
             )
         }
     }
-    if (!home && snapshot.error != null) {
+    if (!home && secureUrl == null && snapshot.error != null) {
         AlertDialog(
             onDismissRequest = { coordinator.home() },
             title = { Text("Page could not be loaded") },

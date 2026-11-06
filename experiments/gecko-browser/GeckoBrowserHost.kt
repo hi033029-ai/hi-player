@@ -19,14 +19,20 @@ internal fun createGeckoBrowserCoordinator(
     onExternalResponse: (Int, GeckoDownloadOffer) -> Unit,
 ): GeckoBrowserCoordinator<GeckoView> {
     lateinit var coordinator: GeckoBrowserCoordinator<GeckoView>
-    fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean): GeckoManagedTab =
-        GeckoManagedTab(
+    fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean): GeckoManagedTab {
+        lateinit var owned: GeckoManagedTab
+        owned = GeckoManagedTab(
             context = context.applicationContext,
             tab = tab,
             desktop = false,
             onChanged = changed,
             navigationPolicy = navigationPolicy(tab.privateTab),
-            onNavigationDecision = { decision -> onNavigationDecision(tab.id, decision) },
+            onNavigationDecision = { decision ->
+                // Defer until construction finishes and reject callbacks from replaced/closed sessions.
+                Handler(Looper.getMainLooper()).post {
+                    if (coordinator.controller.isSession(tab.id, owned)) onNavigationDecision(tab.id, decision)
+                }
+            },
             promptDelegate = promptDelegate,
             openWhenCreated = open,
             popupAllowed = { userGesture -> !store.popupBlock || userGesture },
@@ -49,6 +55,8 @@ internal fun createGeckoBrowserCoordinator(
             onExternalResponse = { offer -> onExternalResponse(tab.id, offer) },
             permissionDelegate = permissionDelegate,
         )
+        return owned
+    }
     coordinator = GeckoBrowserCoordinator(GeckoOrbitTabStore(store)) { tab, changed -> createTab(tab, changed, true) }
     return coordinator
 }

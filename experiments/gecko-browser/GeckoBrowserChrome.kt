@@ -66,17 +66,19 @@ internal fun GeckoBrowserChrome(
     val find = remember(coordinator) { GeckoFindController(coordinator.controller::find, coordinator.controller::clearFind) }
     DisposableEffect(find) { onDispose { find.close() } }
     LaunchedEffect(coordinator.activeId, current.url, current.loading) { find.pageChanged(coordinator.activeId, current.url, current.loading) }
-    val onPage = current.url.isNotBlank()
-    val bookmarkUrl = GeckoTabPersistence.safeUrl(current.url)
+    val onPage = current.url.isNotBlank() && services?.secureRouting?.route(coordinator.activeId) == null
+    val bookmarkUrl = if (onPage) GeckoTabPersistence.safeUrl(current.url) else ""
     val saved = bookmarkUrl.isNotEmpty() && store.isBookmarked(bookmarkUrl)
 
     GeckoBrowserShell(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch,
-        onMenu = { showMenu = true }, find = find, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, pageContent = pageContent,
+        onMenu = { showMenu = true }, find = find, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, secureRouting = services?.secureRouting, pageContent = pageContent,
     )
     if (services != null) {
+        LaunchedEffect(coordinator.revision) { services.secureRouting.prune(coordinator.tabs.map { it.id }.toSet()) }
+        GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             androidx.compose.material3.AlertDialog(
@@ -138,8 +140,8 @@ internal fun GeckoBrowserChrome(
                 HiMenuAction("Close this tab", Icons.Default.Close) { coordinator.closeTab(coordinator.activeId) },
             ),
             bottomRow = listOf(
-                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = current.canGoBack) { coordinator.back() },
-                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = current.canGoForward) { coordinator.forward() },
+                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = onPage && current.canGoBack) { coordinator.back() },
+                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = onPage && current.canGoForward) { coordinator.forward() },
                 HiMenuAction(if (saved) "Remove bookmark" else "Add bookmark", if (saved) Icons.Default.Star else Icons.Default.StarBorder, enabled = bookmarkUrl.isNotEmpty(), checked = saved) {
                     if (saved) store.removeBookmark(bookmarkUrl)
                     else store.addBookmark(OrbitBrowserEntry(current.title.ifBlank { bookmarkUrl }, bookmarkUrl))

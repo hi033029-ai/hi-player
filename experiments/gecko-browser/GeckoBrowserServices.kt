@@ -1,6 +1,9 @@
 package com.example.browser.gecko
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.example.auth.SecureWebSessions
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -19,8 +22,6 @@ internal class GeckoBrowserServices(
     context: Context,
     registry: ActivityResultRegistry,
     store: OrbitBrowserStore,
-    navigationPolicy: (Boolean) -> GeckoNavigationPolicy,
-    onNavigationDecision: (Int, GeckoNavigationDecision) -> Unit,
     onCloseRequested: (Int) -> Unit,
 ) : AutoCloseable {
     private val appContext = context.applicationContext
@@ -49,21 +50,30 @@ internal class GeckoBrowserServices(
         private set
     val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
     val clearData: GeckoClearDataController
+    val secureRouting: GeckoSecureRouting
     val settings = createGeckoBrowserSettings(appContext, store)
     private var closed = false
 
     init {
         try {
             settings.applySystemScale(context.resources.configuration.fontScale)
+            secureRouting = GeckoSecureRouting(
+                tabPrivacy = { id -> coordinator.tabs.firstOrNull { it.id == id }?.privateTab },
+                prefers = { SecureWebSessions.prefersBrowser(appContext, it) },
+                rememberOrigin = { SecureWebSessions.rememberBrowser(appContext, it) },
+                forgetOrigin = { SecureWebSessions.forgetBrowser(appContext, it) },
+                openWebsite = { SecureWebSessions.open(context, it, android.graphics.Color.BLACK).isSuccess },
+                openExternal = { url -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true }.getOrDefault(false) },
+            )
             coordinator = createGeckoBrowserCoordinator(
-                appContext, store, navigationPolicy, onNavigationDecision,
+                appContext, store, secureRouting::policy, secureRouting::decision,
                 filePicker, permissionBroker, onCloseRequested,
             ) { tabId, offer ->
                 val successfulResponse = offer.statusCode in 200..299
                 if (!downloads.offer(offer, recordInHistory = shouldRecordDownload(tabId))) downloadNotice = if (successfulResponse)
                     "Finish the current download and try again." else "The website did not provide the file. Please try again."
             }
-            clearData = createGeckoClearDataController(appContext, coordinator, worker)
+            clearData = createGeckoClearDataController(appContext, coordinator, worker, secureRouting::clearPrivateRouting)
         } catch (error: Exception) {
             closeServices()
             throw error

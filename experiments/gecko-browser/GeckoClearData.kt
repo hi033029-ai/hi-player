@@ -68,6 +68,7 @@ internal fun createGeckoClearDataController(
     context: Context,
     coordinator: GeckoBrowserCoordinator<*>,
     worker: Executor,
+    clearPrivateRouting: () -> Unit = {},
 ): GeckoClearDataController {
     val appContext = context.applicationContext
     val main = Handler(Looper.getMainLooper())
@@ -75,7 +76,7 @@ internal fun createGeckoClearDataController(
         purgeTabs = { coordinator.controller.purgeHistory() },
         clearHistory = coordinator::clearHistory,
         clearIcons = { completion -> HiSiteIcons.clearSavedAndWait(appContext, completion) },
-        clearRouting = { completion -> worker.execute {
+        clearRouting = { completion -> clearPrivateRouting(); worker.execute {
             val success = runCatching { SecureWebSessions.clearRoutingAndWait(appContext) }.getOrDefault(false)
             main.post { completion(success) }
         } },
