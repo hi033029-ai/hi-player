@@ -45,6 +45,7 @@ internal class GeckoTabEngine(
     private val onChanged: (GeckoTabSnapshot) -> Unit,
     private val navigationPolicy: GeckoNavigationPolicy,
     private val onNavigationDecision: (GeckoNavigationDecision) -> Unit,
+    private val promptDelegate: GeckoSession.PromptDelegate? = null,
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -61,6 +62,7 @@ internal class GeckoTabEngine(
 
     init {
         checkMain()
+        session.promptDelegate = promptDelegate
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
                 update(GeckoLoadingState.start(snapshot, url))

@@ -2,6 +2,7 @@ package com.example.browser.gecko
 
 import android.content.Context
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.GeckoSession
 
 /** The caller owns snapshots and must not persist private-tab data. */
 internal class GeckoManagedTab(
@@ -11,8 +12,9 @@ internal class GeckoManagedTab(
     onChanged: (GeckoTabSnapshot) -> Unit,
     navigationPolicy: GeckoNavigationPolicy,
     onNavigationDecision: (GeckoNavigationDecision) -> Unit,
+    promptDelegate: GeckoSession.PromptDelegate? = null,
 ) : GeckoManagedSession<GeckoView> {
-    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision)
+    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)
