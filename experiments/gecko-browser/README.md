@@ -133,3 +133,7 @@ The experimental menu can request clearing selected history, site cookies/local 
 ## Experimental appearance and pop-up settings
 
 `GeckoBrowserSettings` restores the existing saved dark-webpage, webpage-text-size and popup preferences. The Gecko owner applies appearance before creating sessions, and its shell reapplies on system font-scale changes. A compact experimental menu panel persists those settings and warns that text-size changes require a page reload, which is not forced. Pop-up enforcement reads the same existing preference. Other settings and the original host Settings action are not migrated by this panel. Twenty-three focused fake-session, Robolectric and Compose tests passed in a restored isolated Gecko 159 / Media3 1.11.1 probe; no real Gecko runtime, hardware, actual sites, full settings or release app were validated.
+
+## Experimental find in page
+
+The experimental menu opens the existing find bar for the current Gecko tab. The session's native finder handles search/highlighting and previous/next; changing tabs or pages closes the bar, clears highlights and invalidates late results. Unknown counts are not fabricated. Thirty-six selected fake-session, Robolectric and Compose tests passed in the isolated probe; native Gecko matching, real sites, selection and device lifecycle remain unverified. The production browser is unchanged.
