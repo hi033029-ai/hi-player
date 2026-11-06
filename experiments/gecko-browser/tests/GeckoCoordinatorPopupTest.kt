@@ -12,6 +12,8 @@ class GeckoCoordinatorPopupTest {
         override fun readActiveId() = -1
         override fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int) { saved = tabs }
         override fun recordVisit(entry: OrbitBrowserEntry) = Unit
+        override fun clearHistory(completion: (Boolean) -> Unit) { completion(true) }
+        override fun removeHistory(url: String, completion: (Boolean) -> Unit) { completion(true) }
     }
     private class Session(val callback: (GeckoTabSnapshot) -> Unit) : GeckoManagedSession<Any> {
         override fun attach(view: Any) = Unit
@@ -33,10 +35,16 @@ class GeckoCoordinatorPopupTest {
         lateinit var child: GeckoTabRegistry.Tab
         val session = owner.reservePopup(opener) { tab, changed -> child = tab; Session(changed) } as Session
         assertTrue(child.privateTab)
+        assertTrue(owner.isPopup(child.id))
+        assertTrue(owner.isPopupSession(child.id, session))
         assertEquals(opener, owner.activeId)
         assertFalse(store.saved.any { it.id == child.id })
         session.callback(GeckoTabSnapshot(child.id, true, "https://example.org", loading = true))
         assertEquals(child.id, owner.activeId)
+        assertTrue(owner.isPopup(child.id))
+        assertTrue(owner.closeTab(child.id))
+        assertFalse(owner.isPopup(child.id))
+        assertFalse(owner.isPopupSession(child.id, session))
         owner.close()
     }
     @Test fun popupDoesNotStealFocusAfterUserChangesTabs() {

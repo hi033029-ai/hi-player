@@ -10,6 +10,8 @@ class GeckoBrowserCoordinatorTest {
         var writes = 0
         val visits = mutableListOf<OrbitBrowserEntry>()
         override fun recordVisit(entry: OrbitBrowserEntry) { visits += entry }
+        override fun clearHistory(completion: (Boolean) -> Unit) { visits.clear(); completion(true) }
+        override fun removeHistory(url: String, completion: (Boolean) -> Unit) { visits.removeAll { it.url == url }; completion(true) }
         override fun readTabs() = tabs
         override fun readActiveId() = active
         override fun writeTabs(tabs: List<OrbitSavedTab>, activeId: Int) { this.tabs = tabs; active = activeId; writes++ }
@@ -159,4 +161,37 @@ class GeckoBrowserCoordinatorTest {
         assertTrue(store.visits.isEmpty())
         coordinator.close()
     }
+    @Test fun clearHistorySuppressesLateCompletionAndTitleUntilNextLoad() {
+        val store = Store()
+        lateinit var session: Fake
+        val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, changed -> Fake(tab, changed).also { session = it } }
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", loading = true))
+        var completed = false
+        coordinator.clearHistory { completed = it }
+        assertTrue(completed)
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", "Late", progress = 100))
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", "Later", progress = 100))
+        assertTrue(store.visits.isEmpty())
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org/next", loading = true))
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org/next", "Next", progress = 100))
+        assertEquals(listOf(OrbitBrowserEntry("Next", "https://example.org/next")), store.visits)
+        coordinator.close()
+    }
+
+    @Test fun deletingCurrentHistoryEntrySuppressesLateTitleUntilNextLoad() {
+        val store = Store()
+        lateinit var session: Fake
+        val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, changed -> Fake(tab, changed).also { session = it } }
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", loading = true))
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", "First", progress = 100))
+        assertEquals(1, store.visits.size)
+        coordinator.removeHistory("https://example.org") { assertTrue(it) }
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", "Late", progress = 100))
+        assertTrue(store.visits.isEmpty())
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", loading = true))
+        session.callback(GeckoTabSnapshot(1, false, "https://example.org", "Returned", progress = 100))
+        assertEquals("Returned", store.visits.single().title)
+        coordinator.close()
+    }
+
 }

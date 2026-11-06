@@ -38,4 +38,19 @@ class GeckoTabStoreIntegrationTest {
         assertEquals(OrbitBrowserEntry("Example", "https://example.org/page"), store.history().first())
         store.clearHistory()
     }
+    @Test fun clearingRunsAfterPreviouslyQueuedVisits() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = OrbitBrowserStore(context)
+        store.clearHistory()
+        val work = mutableListOf<Runnable>()
+        val adapter = GeckoOrbitTabStore(store, Executor { work.add(it) })
+        adapter.recordVisit(OrbitBrowserEntry("old", "https://example.org/old"))
+        adapter.clearHistory { }
+        adapter.recordVisit(OrbitBrowserEntry("new", "https://example.org/new"))
+        assertEquals(3, work.size)
+        work.forEach { it.run() }
+        assertEquals(listOf(OrbitBrowserEntry("new", "https://example.org/new")), store.history())
+        store.clearHistory()
+    }
+
 }

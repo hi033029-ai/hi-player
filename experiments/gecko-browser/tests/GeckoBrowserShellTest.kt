@@ -2,6 +2,7 @@ package com.example.browser.gecko
 
 import android.content.Context
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
@@ -128,4 +129,35 @@ class GeckoBrowserShellTest {
         compose.onNodeWithText("Visited websites").assertDoesNotExist()
         compose.runOnIdle { coordinator.close(); store.clearHistory() }
     }
+    @Test fun historySuggestionsRefreshWhileAddressIsFocused() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = OrbitBrowserStore(context)
+        store.clearHistory()
+        store.addHistory(OrbitBrowserEntry("Previous page", "https://visited.example/page"))
+        val revision = mutableIntStateOf(0)
+        val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { _, _ ->
+            object : GeckoManagedSession<GeckoView> {
+                override fun attach(view: GeckoView) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) = Unit
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun exitFullScreen() = Unit
+                override fun setDesktop(enabled: Boolean) = Unit
+                override fun close() = Unit
+            }
+        }
+        compose.setContent { HiPlayerTheme {
+            GeckoBrowserShell(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {},
+                historyRevision = revision.intValue, pageContent = { Text("Gecko page") })
+        } }
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Previous page").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { store.clearHistory(); revision.intValue++ }
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Previous page").fetchSemanticsNodes().isEmpty() }
+        compose.runOnIdle { coordinator.close() }
+    }
+
 }
