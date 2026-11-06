@@ -83,6 +83,19 @@ class GeckoTabControllerTest {
         assertEquals(1, sessions.getValue(1).closeCount)
     }
 
+    @Test fun lateReleaseDoesNotDetachAReplacementView() {
+        val sessions = mutableMapOf<Int, FakeSession>()
+        val controller = GeckoTabController<Any> { tab -> FakeSession().also { sessions[tab.id] = it } }
+        val old = Any()
+        val replacement = Any()
+        controller.attach(old)
+        controller.attach(replacement)
+        controller.detach(old)
+        assertSame(replacement, sessions.getValue(1).view)
+        controller.close()
+        controller.detach(replacement)
+    }
+
     @Test fun failedCreationRestoresPreviouslySelectedTab() {
         val controller = GeckoTabController<Any> { tab ->
             if (tab.id != 1) error("creation failed") else FakeSession()

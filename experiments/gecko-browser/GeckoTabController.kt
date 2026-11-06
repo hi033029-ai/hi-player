@@ -38,8 +38,8 @@ internal class GeckoTabController<View : Any>(
         sessions.getValue(activeId).attach(newView)
     }
 
-    fun detach() {
-        check(!closed)
+    fun detach(expectedView: View? = null) {
+        if (closed || (expectedView != null && view !== expectedView)) return
         if (view != null) sessions.getValue(activeId).detach()
         view = null
     }

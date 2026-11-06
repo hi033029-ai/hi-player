@@ -45,7 +45,7 @@ internal fun geckoPickerMimeTypes(hints: Array<out String>?, extensionType: (Str
 }
 
 /**
- * Wire [launch] to the host's Activity Result launcher. It must deliver the callback once,
+ * Wire [launch] to GeckoFilePickerLauncher.launch. It must deliver the callback once,
  * including cancellations on the main thread; only one document picker is allowed at a time. The host owns this
  * delegate across tabs and calls close when the browser is destroyed. Not yet connected to UI.
  */
