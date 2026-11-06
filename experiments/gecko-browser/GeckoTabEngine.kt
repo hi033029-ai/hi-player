@@ -10,6 +10,7 @@ import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebResponse
 
 /** Experimental only: not wired to the production browser or included in its build. */
 internal object GeckoRuntimeHolder {
@@ -49,6 +50,7 @@ internal class GeckoTabEngine(
     private val openWhenCreated: Boolean = true,
     private val onPopupRequested: ((String) -> GeckoSession?)? = null,
     private val onCloseRequested: (() -> Unit)? = null,
+    private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -121,6 +123,12 @@ internal class GeckoTabEngine(
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onTitleChange(session: GeckoSession, title: String?) {
                 update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
+            }
+            override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                val offer = GeckoDownloadOffer(response)
+                if (onExternalResponse == null) runCatching { offer.close() } else {
+                    try { onExternalResponse.invoke(offer) } catch (_: Exception) { runCatching { offer.close() } }
+                }
             }
             override fun onCloseRequest(session: GeckoSession) { onCloseRequested?.invoke() }
             override fun onCrash(session: GeckoSession) {
