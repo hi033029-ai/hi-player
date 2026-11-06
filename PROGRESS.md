@@ -32,6 +32,8 @@
 
 - Added an experimental adapter between Gecko tab metadata and the existing browser tab store, plus controller restoration of saved URLs and desktop mode. It excludes private tabs, clears invalid openers, and refuses URLs with known credential parameters. In a temporary app copy, 25 tab registry/controller/persistence tests and one Robolectric store round-trip test passed. This does not guarantee detection of every sensitive URL, and it is not wired to the shipping browser or tested with real Gecko sessions.
 
+- In a disposable app copy, synthetic H.264/AAC and H.265/AAC MP4 extraction and seeking tests passed on the existing Media3 1.5.1 and on the 1.11.1 player candidate; the 1.11.1 flag-value test also passed. The candidate runtime dependency report resolved all 41 Media3 occurrences to 1.11.1. These are Robolectric parsing tests, not playback; they do not cover subtitles, HDR, fragmented MP4, editable/auxiliary tracks or real user media. The candidate remains unapplied. Reproduction is in `experiments/gecko-browser/player-extractor-probe/`.
+
 ## Blockers and risks
 - GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. The registration-only probe bridge crashes on real AV1 playback because of a JNI field-type mismatch. Matching dav1d and FFmpeg replacements were rebuilt and smoke-tested on x86_64 only. A candidate for the app API changes compiles against both Media3 versions but requires playback validation and review before integration, as do each shipped ABI and device playback.
 - GeckoView requires Android 26 or newer; API 24–25 need a safe tested fallback.
