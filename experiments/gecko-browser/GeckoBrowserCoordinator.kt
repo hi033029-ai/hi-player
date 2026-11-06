@@ -30,7 +30,7 @@ internal class GeckoOrbitTabStore(private val store: OrbitBrowserStore, private 
     override fun clearHistory(completion: (Boolean) -> Unit) {
         // FIFO executor ensures writes queued before the clear cannot resurrect old history.
         executor.execute {
-            val success = runCatching { store.clearHistory() }.isSuccess
+            val success = runCatching { store.clearHistoryAndWait() }.getOrDefault(false)
             Handler(Looper.getMainLooper()).post { completion(success) }
         }
     }

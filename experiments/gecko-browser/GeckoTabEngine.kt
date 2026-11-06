@@ -175,6 +175,7 @@ internal class GeckoTabEngine(
     @MainThread fun back() { checkMain(); if (!closed && snapshot.canGoBack) session.goBack() }
     @MainThread fun forward() { checkMain(); if (!closed && snapshot.canGoForward) session.goForward() }
     @MainThread fun exitFullScreen() { checkMain(); if (!closed) session.exitFullScreen() }
+    @MainThread fun purgeHistory() { checkMain(); check(!closed); if (session.isOpen) session.purgeHistory() }
     @MainThread fun setDesktop(enabled: Boolean) {
         checkMain(); if (closed) return
         session.settings.userAgentMode = if (enabled) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE

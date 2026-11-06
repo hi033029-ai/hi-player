@@ -48,6 +48,7 @@ internal class GeckoBrowserServices(
     var downloadNotice by mutableStateOf<String?>(null)
         private set
     val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
+    val clearData: GeckoClearDataController
     private var closed = false
 
     init {
@@ -60,6 +61,7 @@ internal class GeckoBrowserServices(
                 if (!downloads.offer(offer, recordInHistory = shouldRecordDownload(tabId))) downloadNotice = if (successfulResponse)
                     "Finish the current download and try again." else "The website did not provide the file. Please try again."
             }
+            clearData = createGeckoClearDataController(appContext, coordinator, worker)
         } catch (error: Exception) {
             closeServices()
             throw error
@@ -70,6 +72,7 @@ internal class GeckoBrowserServices(
     @MainThread override fun close() {
         if (closed) return
         closed = true
+        clearData.close()
         try { coordinator.close() } finally { closeServices() }
     }
     private fun closeServices() {
