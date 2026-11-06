@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import com.example.ui.screens.BrowserClearDataDialog
 import com.example.ui.screens.HiBrowserLibrary
 import com.example.ui.screens.HiBrowserMenuSheet
@@ -53,6 +54,7 @@ internal fun GeckoBrowserChrome(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showClearData by remember { mutableStateOf(false) }
+    var showAppearance by remember { mutableStateOf(false) }
     var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
     var libraryRevision by remember { mutableIntStateOf(0) }
     var clearing by remember { mutableStateOf(false) }
@@ -81,9 +83,12 @@ internal fun GeckoBrowserChrome(
         }
     }
     if (services != null) {
+        val fontScale = LocalConfiguration.current.fontScale
+        LaunchedEffect(services.settings, fontScale) { services.settings.applySystemScale(fontScale) }
         LaunchedEffect(services.clearData.state) {
             if (services.clearData.state == GeckoClearDataState.COMPLETE || services.clearData.state == GeckoClearDataState.FAILED) libraryRevision++
         }
+        if (showAppearance) GeckoAppearanceDialog(services.settings) { showAppearance = false }
         if (showClearData) BrowserClearDataDialog(
             onConfirm = { history, cookies, cache ->
                 showClearData = false
@@ -120,6 +125,7 @@ internal fun GeckoBrowserChrome(
             rows = listOf(
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
+                *if (services != null) arrayOf(HiMenuAction("Appearance and pop-ups", Icons.Default.Settings) { showAppearance = true }) else emptyArray(),
                 *if (services != null) arrayOf(HiMenuAction("Clear browsing data", Icons.Default.History) { showClearData = true }) else emptyArray(),
                 HiMenuAction("Close this tab", Icons.Default.Close) { coordinator.closeTab(coordinator.activeId) },
             ),

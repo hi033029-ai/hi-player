@@ -49,10 +49,12 @@ internal class GeckoBrowserServices(
         private set
     val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
     val clearData: GeckoClearDataController
+    val settings = createGeckoBrowserSettings(appContext, store)
     private var closed = false
 
     init {
         try {
+            settings.applySystemScale(context.resources.configuration.fontScale)
             coordinator = createGeckoBrowserCoordinator(
                 appContext, store, navigationPolicy, onNavigationDecision,
                 filePicker, permissionBroker, onCloseRequested,

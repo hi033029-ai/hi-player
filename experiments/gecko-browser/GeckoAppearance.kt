@@ -19,11 +19,11 @@ internal object GeckoAppearance {
      * the user rather than silently reloading pages containing unfinished forms.
      * Settings are runtime-wide, not per-tab. Reapply when system font scale changes.
      */
-    @MainThread fun apply(context: Context, darkMode: Boolean, textZoomPercent: Int) {
+    @MainThread fun apply(context: Context, darkMode: Boolean, textZoomPercent: Int, systemFontScale: Float = context.resources.configuration.fontScale) {
         check(Looper.myLooper() == Looper.getMainLooper())
         val settings = GeckoRuntimeHolder.get(context).settings
         settings.automaticFontSizeAdjustment = false
-        settings.fontSizeFactor = GeckoAppearancePolicy.fontScale(textZoomPercent, context.resources.configuration.fontScale)
+        settings.fontSizeFactor = GeckoAppearancePolicy.fontScale(textZoomPercent, systemFontScale)
         settings.preferredColorScheme = if (darkMode) GeckoRuntimeSettings.COLOR_SCHEME_DARK
             else GeckoRuntimeSettings.COLOR_SCHEME_LIGHT
     }
