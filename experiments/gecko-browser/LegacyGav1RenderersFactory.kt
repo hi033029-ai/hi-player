@@ -9,7 +9,7 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 
-/** Probe only: device decoding and native binary compatibility are not validated. */
+/** UNSAFE probe only: real decoding aborts on Media3 1.11 because the bundled JNI expects an int decoderPrivate field, now long. Never ship. */
 @UnstableApi
 internal class LegacyGav1RenderersFactory(context: Context) : DefaultRenderersFactory(context) {
     override fun buildVideoRenderers(

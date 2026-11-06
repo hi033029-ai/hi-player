@@ -20,11 +20,12 @@
 - In the isolated GeckoView 159 probe, 31 selected player, scanner and download-library unit tests passed after adapting a Robolectric storage fixture. This is not real playback or browser validation; the fixture change is not in the production branch.
 - The shared address-input extraction was tested in a separate copy but has not been applied to this branch.
 - A production-source-set regression test confirms the existing Media3 1.5.1 factory registers both bundled AV1 and FFmpeg audio renderers. The same test fails under the GeckoView 159 probe because AV1 is omitted.
-- A separate experimental Media3 1.11 bridge explicitly registers the existing Libgav1 renderer: three Robolectric tests pass for disabled, hardware-first, and software-preferred registration ordering. These tests do not decode media; ABI/native and actual playback compatibility remain unverified. The bridge is not included in the app build.
+- A real API 28 x86_64 emulator loaded a local HTML page using GeckoView 159. This is an isolated smoke test, not Hi Browser integration or website authentication.
+- The Media3 1.11 bridge passed three registration-only Robolectric tests but **crashed during real AV1 playback on the emulator**. The 1.5.1 JNI expects `VideoDecoderOutputBuffer.decoderPrivate` as `int`; Media3 1.11 uses `long`. The bridge must not be shipped. The probe is isolated from the app build.
 
 ## Blockers and risks
-- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. A probe bridge restores renderer registration, but upgrading without validating actual decoding or rebuilding/replacing the extension could regress the existing software AV1 fallback. FFmpeg binary compatibility also needs runtime validation.
+- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. The registration-only probe bridge crashes on real AV1 playback because of a JNI field-type mismatch. A compatible rebuilt or replacement decoder is required before upgrading. FFmpeg binary compatibility also needs runtime validation.
 - GeckoView requires Android 26 or newer; API 24–25 need a safe tested fallback.
-- No connected Android device is currently available for real runtime, sign-in, or playback checks.
+- An API 28 software emulator is available for limited runtime checks; no physical Android device is connected for hardware, sign-in or playback validation.
 - The experimental Gecko components are outside the app source set and the current shipping browser remains WebView.
 - The test probes do not prove decoder, Google sign-in, HLS or private-browsing behavior on devices; a safe browser cutover requires those checks and feature parity.
