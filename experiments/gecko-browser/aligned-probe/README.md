@@ -13,3 +13,6 @@ gradle :app:connectedDebugAndroidTest
 ```
 
 Requires Java 17+, Gradle 9.3.1, Android compile SDK 37.2 and an x86_64 API 26+ device/emulator. A separate 1.11.1 Gradle dependency report must be reviewed whenever dependencies change. An x86_64 API 28 software emulator passed all three tests; other ABIs were built but not runtime-tested.
+
+
+`PopupProbeTest` additionally verifies callback ordering for one user-activated `about:blank` popup in a standalone Gecko session. An API 28 x86_64 software emulator passed this case. The test uses touchscreen input with a shell-input fallback and allows time for slow software composition. This does not test the Hi Browser host, other popup forms, real websites or authentication.
