@@ -17,8 +17,9 @@ internal class GeckoManagedTab(
     onPopupRequested: ((String) -> GeckoSession?)? = null,
     onCloseRequested: (() -> Unit)? = null,
     onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
+    permissionDelegate: GeckoSession.PermissionDelegate? = null,
 ) : GeckoManagedSession<GeckoView> {
-    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, onCloseRequested, onExternalResponse)
+    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, onCloseRequested, onExternalResponse, permissionDelegate)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)
