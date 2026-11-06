@@ -106,3 +106,10 @@ The isolated GeckoView 159 instrumentation test in `aligned-probe` passed on an 
 ## Experimental menu, library and history clearing
 
 `GeckoBrowserChrome` wires the existing menu and library to normal/private tabs, back/forward, reload, desktop mode, bookmarks and history; settings, downloads and exit are host callbacks. It does not provide all the existing WebView browser's actions, and is not connected to the app route. Clear and delete operations are serialized with queued visit writes; existing page callbacks are suppressed until the next load, and history suggestions are refreshed when the library changes. URLs with known credential-bearing parameters are not saved as bookmarks. Thirty-six focused fake-session, Robolectric and Compose tests passed in an isolated app copy. They do not validate a real device, all sensitive URL formats, full browser behavior, or the main app build.
+
+
+## Experimental download lifecycle and services
+
+`GeckoBrowserServices` owns the coordinator, Activity Result picker, permission broker and in-memory download controller and closes them on disposal. The experimental Chrome can display download consent and transfer state. On Android 29+ the confirmed Gecko response stream is written directly into a new pending MediaStore Downloads entry; no cross-engine cookie or header copying occurs. The stream cannot resume and is cancelled when the owner closes. A second simultaneous offer and unsuccessful HTTP responses are declined; the user receives a notice. Twenty-four focused tests covering the controller, fake destination, picker, permission UI and Compose UI passed in the isolated app probe. These do not test a real Gecko download or Android MediaStore.
+
+This remains outside the production source set and is **not feature complete**: API 26–28, choosing a custom folder, the existing download queue, background persistence, pause/resume/retry, process death cleanup and actual provider/device testing remain open. Do not switch the shipping route or present this as the completed browser.
