@@ -46,6 +46,8 @@ internal object SecureWebSessions {
 
     // Only routing metadata is cleared here, never another browser's cookies.
     fun clearRouting(context: Context) { preferences(context).edit().clear().apply() }
+    /** Run off the main thread; returns whether routing metadata reached storage. */
+    fun clearRoutingAndWait(context: Context): Boolean = preferences(context).edit().clear().commit()
 
     fun open(context: Context, url: String, toolbarColor: Int): Result<Unit> = runCatching {
         require(validPage(url)) { "Secure sign-in needs an HTTPS website address." }

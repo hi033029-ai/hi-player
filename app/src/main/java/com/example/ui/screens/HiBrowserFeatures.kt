@@ -151,6 +151,11 @@ internal class OrbitBrowserStore(context: Context) {
     }
     fun removeHistory(url: String) = synchronized(historyLock) { write("history", history().filterNot { it.url == url }) }
     fun clearHistory() = synchronized(historyLock) { write("history", emptyList()) }
+    /** Run off the main thread when completion needs durable confirmation. */
+    fun clearHistoryAndWait(): Boolean = synchronized(historyLock) {
+        historyCache = emptyList()
+        prefs.edit().putString("history", "[]").commit()
+    }
 
     fun shortcuts(): List<OrbitBrowserEntry> =
         if (prefs.contains("shortcuts")) read("shortcuts") else ORBIT_DEFAULT_SHORTCUTS

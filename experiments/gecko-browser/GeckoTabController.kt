@@ -10,6 +10,7 @@ internal interface GeckoManagedSession<View : Any> : AutoCloseable {
     fun back()
     fun forward()
     fun exitFullScreen()
+    fun purgeHistory()
     fun setDesktop(enabled: Boolean)
 }
 
@@ -153,6 +154,16 @@ internal class GeckoTabController<View : Any>(
     fun forward() { check(!closed); sessions.getValue(activeId).forward() }
     fun exitFullScreen() { check(!closed); sessions.getValue(activeId).exitFullScreen() }
     fun setDesktop(enabled: Boolean) { check(!closed); sessions.getValue(activeId).setDesktop(enabled) }
+
+    /** Request history purge on every tab, including private and inactive tabs. */
+    fun purgeHistory(): Boolean {
+        check(!closed)
+        var succeeded = true
+        sessions.values.toList().forEach { session ->
+            if (runCatching { session.purgeHistory() }.isFailure) succeeded = false
+        }
+        return succeeded
+    }
 
     override fun close() {
         if (closed) return

@@ -152,6 +152,21 @@ internal object HiSiteIcons {
         _revision.value = _revision.value + 1
     }
 
+    /** Callback is delivered on the main thread after queued icon writes and deletion. */
+    fun clearSavedAndWait(context: Context, completion: (Boolean) -> Unit) {
+        memory.evictAll()
+        missing.clear()
+        _revision.value = _revision.value + 1
+        val appContext = context.applicationContext
+        writer.execute {
+            val success = runCatching {
+                val dir = directory(appContext)
+                !dir.exists() || dir.deleteRecursively()
+            }.getOrDefault(false)
+            android.os.Handler(android.os.Looper.getMainLooper()).post { completion(success) }
+        }
+    }
+
     private fun directory(context: Context) = File(context.applicationContext.filesDir, "hi_favicons")
 
     private fun fileName(host: String): String =
