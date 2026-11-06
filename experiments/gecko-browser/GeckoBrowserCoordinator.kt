@@ -127,6 +127,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
     fun stop() { check(!closed); controller.stop() }
     fun back() { check(!closed); controller.back() }
     fun forward() { check(!closed); controller.forward() }
+    fun exitFullScreen() { check(!closed); controller.exitFullScreen() }
     fun desktopMode(): Boolean = desktop[activeId] ?: false
     fun setDesktop(enabled: Boolean) {
         check(!closed)

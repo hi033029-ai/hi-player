@@ -27,6 +27,7 @@ internal class GeckoManagedTab(
     override fun stop() = engine.stop()
     override fun back() = engine.back()
     override fun forward() = engine.forward()
+    override fun exitFullScreen() = engine.exitFullScreen()
     override fun setDesktop(enabled: Boolean) = engine.setDesktop(enabled)
     override fun close() = engine.close()
 }

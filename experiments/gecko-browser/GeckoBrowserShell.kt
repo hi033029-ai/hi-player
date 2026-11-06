@@ -57,7 +57,9 @@ internal fun GeckoBrowserShell(
     var shortcutRevision by remember { mutableIntStateOf(0) }
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
     LaunchedEffect(snapshot.url, focused) { if (!focused) address = snapshot.url }
-    BackHandler(enabled = !home && snapshot.canGoBack) { coordinator.back() }
+    BackHandler(enabled = !home && (snapshot.fullscreen || snapshot.canGoBack)) {
+        if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
+    }
 
     fun navigate(text: String) {
         val url = normalizeAddress(text) ?: return
@@ -87,7 +89,7 @@ internal fun GeckoBrowserShell(
         } else {
             pageContent(coordinator.controller)
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        if (!snapshot.fullscreen) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             if (!home && snapshot.loading) {
                 LinearProgressIndicator(progress = { snapshot.progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp))
             }
@@ -97,7 +99,7 @@ internal fun GeckoBrowserShell(
                 onFocusChange = { focused = it },
                 onSubmit = ::navigate,
                 isPrivate = activeTab.privateTab,
-                isSecure = snapshot.url.startsWith("https://", ignoreCase = true),
+                isSecure = !home && snapshot.secure,
                 isLoading = snapshot.loading,
                 showReload = !home,
                 tabCount = coordinator.tabs.size,

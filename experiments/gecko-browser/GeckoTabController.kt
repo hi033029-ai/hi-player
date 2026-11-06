@@ -9,6 +9,7 @@ internal interface GeckoManagedSession<View : Any> : AutoCloseable {
     fun stop()
     fun back()
     fun forward()
+    fun exitFullScreen()
     fun setDesktop(enabled: Boolean)
 }
 
@@ -148,6 +149,7 @@ internal class GeckoTabController<View : Any>(
     fun stop() { check(!closed); sessions.getValue(activeId).stop() }
     fun back() { check(!closed); sessions.getValue(activeId).back() }
     fun forward() { check(!closed); sessions.getValue(activeId).forward() }
+    fun exitFullScreen() { check(!closed); sessions.getValue(activeId).exitFullScreen() }
     fun setDesktop(enabled: Boolean) { check(!closed); sessions.getValue(activeId).setDesktop(enabled) }
 
     override fun close() {
