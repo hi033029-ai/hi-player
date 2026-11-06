@@ -94,3 +94,10 @@ These components are not routed into the production app. The current manifest la
 ## Experimental history integration
 
 The coordinator records successfully completed non-private page visits through the existing `OrbitBrowserStore` on a background executor, and the shell displays existing local history suggestions when the regular-tab address field is focused. It filters known credential-bearing URLs, ignores failures and cancellations, and updates the entry when a completed page reports a later title. In an isolated Gecko 159 app probe, 25 targeted coordinator, persistence, loading, store and Compose shell tests passed. These use fakes/Robolectric, not a live Gecko page. Single-page navigation, redirect handling and coordination of queued writes with history clearing need further work and device testing. URL filtering is not exhaustive, and this code is not included in or routed from the shipping app.
+
+
+## Experimental popup ownership
+
+The coordinator can reserve an unopened child session, inheriting the opener's private mode, and selects it only when it begins loading and its opener is still selected. The engine gates popup requests using the popup preference and a single-use, five-second URI ticket. Nineteen focused fake-session, gate and Compose tests passed in a temporary Gecko 159 / Media3 1.11.1 app copy.
+
+The real-Gecko instrumentation test in `aligned-probe` compiled, but was not run because emulator installation/boot did not complete. Its purpose is to check callback ordering only, not end-to-end app integration. The gate assumes Gecko sends a matching new-window load request before `onNewSession`; until verified, it may prevent legitimate sign-in popups. Window-close handling remains host-supplied and abandoned child sessions need cleanup. The code is experimental, outside the production app, and does not establish website sign-in or feature parity.
