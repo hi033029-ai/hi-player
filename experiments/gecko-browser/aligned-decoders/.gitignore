@@ -1,0 +1,7 @@
+.gradle/
+build/
+av1/build/
+ffmpeg/build/
+aligned-decoder-output/
+.cxx/
+**/.cxx/
