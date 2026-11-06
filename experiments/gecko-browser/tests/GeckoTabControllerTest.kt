@@ -8,9 +8,15 @@ class GeckoTabControllerTest {
         var view: Any? = null
         var closeCount = 0
         val urls = mutableListOf<String>()
+        val commands = mutableListOf<String>()
         override fun attach(view: Any) { check(this.view == null); this.view = view }
         override fun detach() { view = null }
         override fun load(url: String) { urls += url }
+        override fun reload() { commands += "reload" }
+        override fun stop() { commands += "stop" }
+        override fun back() { commands += "back" }
+        override fun forward() { commands += "forward" }
+        override fun setDesktop(enabled: Boolean) { commands += "desktop:$enabled" }
         override fun close() { closeCount++ }
     }
 
@@ -31,6 +37,19 @@ class GeckoTabControllerTest {
         controller.close()
         assertEquals(1, sessions.getValue(1).closeCount)
         assertEquals(1, sessions.getValue(second.id).closeCount)
+    }
+
+    @Test fun navigationCommandsTargetOnlyTheSelectedTab() {
+        val sessions = mutableMapOf<Int, FakeSession>()
+        val controller = GeckoTabController<Any> { tab -> FakeSession().also { sessions[tab.id] = it } }
+        val second = controller.open(true)!!
+        controller.reload(); controller.stop(); controller.back(); controller.forward(); controller.setDesktop(true)
+        assertEquals(listOf("reload", "stop", "back", "forward", "desktop:true"), sessions.getValue(second.id).commands)
+        assertTrue(sessions.getValue(1).commands.isEmpty())
+        controller.select(1)
+        controller.back(); controller.setDesktop(false)
+        assertEquals(listOf("back", "desktop:false"), sessions.getValue(1).commands)
+        controller.close()
     }
 
     @Test fun closingActiveTabReturnsToOpenerAndClosesOnlyThatSession() {
@@ -113,6 +132,11 @@ class GeckoControllerRestoreTest {
         override fun attach(view: Any) { attached = true }
         override fun detach() { attached = false }
         override fun load(url: String) = Unit
+        override fun reload() = Unit
+        override fun stop() = Unit
+        override fun back() = Unit
+        override fun forward() = Unit
+        override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closes++ }
     }
     @Test fun createsSessionsForRestoredRegularTabsAndAttachesSelectedOne() {
@@ -144,6 +168,11 @@ class GeckoPopupReservationTest {
         override fun attach(view: Any) { attached = true }
         override fun detach() { attached = false }
         override fun load(url: String) = Unit
+        override fun reload() = Unit
+        override fun stop() = Unit
+        override fun back() = Unit
+        override fun forward() = Unit
+        override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closed = true }
     }
 

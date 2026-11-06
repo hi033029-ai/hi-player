@@ -1,0 +1,204 @@
+diff --git a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt b/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
+index 3758f7c..99a13e8 100644
+--- a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
++++ b/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
+@@ -80,8 +80,16 @@ object OptimizedPlayerBuilder {
+     /** Extractors factory tuned to avoid a full-file probe/sniff on huge containers. */
+     private fun extractorsFactory(): DefaultExtractorsFactory {
+         return DefaultExtractorsFactory().apply {
+-            // Skip the exhaustive index scan on large MP4/MOV; trust the moov atom.
+-            setMp4ExtractorFlags(Mp4Extractor.FLAG_READ_MOTION_PHOTO_METADATA.inv())
++            // Preserve the flags the old inverse mask enabled in Media3 1.5.1, without
++            // inadvertently enabling newly introduced flags when Media3 is upgraded.
++            setMp4ExtractorFlags(
++                Mp4Extractor.FLAG_WORKAROUND_IGNORE_EDIT_LISTS or
++                    Mp4Extractor.FLAG_READ_SEF_DATA or
++                    Mp4Extractor.FLAG_MARK_FIRST_VIDEO_TRACK_WITH_MAIN_ROLE or
++                    Mp4Extractor.FLAG_EMIT_RAW_SUBTITLE_DATA or
++                    Mp4Extractor.FLAG_READ_WITHIN_GOP_SAMPLE_DEPENDENCIES or
++                    (1 shl 6) // Media3 1.5 editable video tracks; 1.11 auxiliary tracks.
++            )
+             // Don't force constant-bitrate seeking heuristics on huge files — use the
+             // container's own index (fast) rather than scanning (slow on multi-GB files).
+             setConstantBitrateSeekingEnabled(false)
+diff --git a/app/src/main/java/com/example/player/SharpnessReductionEffect.kt b/app/src/main/java/com/example/player/SharpnessReductionEffect.kt
+index 8790e83..93736c4 100644
+--- a/app/src/main/java/com/example/player/SharpnessReductionEffect.kt
++++ b/app/src/main/java/com/example/player/SharpnessReductionEffect.kt
+@@ -1,43 +1,31 @@
+ package com.example.player
+ 
++import android.content.Context
++import android.opengl.GLES20
++import androidx.media3.common.VideoFrameProcessingException
++import androidx.media3.common.util.GlProgram
++import androidx.media3.common.util.GlUtil
+ import androidx.media3.common.util.Size
+ import androidx.media3.common.util.UnstableApi
++import androidx.media3.effect.BaseGlShaderProgram
+ import androidx.media3.effect.GlEffect
+ import androidx.media3.effect.GlShaderProgram
+-import androidx.media3.effect.SingleFrameGlShaderProgram
+-import android.content.Context
+-import android.opengl.GLES20
+ 
+-/**
+- * Media3's effect library has ready-made Builders for exposure (RgbAdjustment) and
+- * saturation (HslAdjustment), but no equivalent for sharpness — there's nothing to
+- * configure with a simple Builder call. This is a small custom GL effect instead: a
+- * 3x3 box blur blended with the original frame, which softens fine detail (the
+- * inverse of an unsharp mask) without fully blurring the image.
+- *
+- * `strength` is 0f (no change) to 1f (full blur, no original detail); 0.3–0.4 is a
+- * mild, natural-looking softening — enough to tone down over-sharpened HDR sources
+- * without looking blurry.
+- *
+- * NOTE ON API STABILITY: unlike RgbAdjustment/HslAdjustment (stable public Builders),
+- * this touches SingleFrameGlShaderProgram's constructor/method signatures directly,
+- * which move more across media3-effect versions than the simple effect Builders do.
+- * If this doesn't compile as-is, check SingleFrameGlShaderProgram's current
+- * constructor and drawFrame()/configure() signatures for your installed version —
+- * the shader logic itself (the GLSL below) will still be correct regardless.
+- */
++/** Optional 3×3 softening effect. The normal HDR player does not install it. */
+ @UnstableApi
+ class SharpnessReductionEffect(private val strength: Float = 0.35f) : GlEffect {
++    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
++        BoxBlurShaderProgram(useHdr, strength.coerceIn(0f, 1f))
+ 
+-    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram {
+-        return BoxBlurShaderProgram(useHdr, strength)
+-    }
+-
+-    private class BoxBlurShaderProgram(
+-        useHdr: Boolean,
+-        private val strength: Float,
+-    ) : SingleFrameGlShaderProgram(useHdr) {
+-
++    private class BoxBlurShaderProgram(useHdr: Boolean, private val strength: Float) :
++        BaseGlShaderProgram(useHdr, 1) {
++        private val program = try {
++            GlProgram(VERTEX_SHADER, FRAGMENT_SHADER).apply {
++                setBufferAttribute("aPosition", GlUtil.getNormalizedCoordinateBounds(), 4)
++            }
++        } catch (error: GlUtil.GlException) {
++            throw VideoFrameProcessingException(error)
++        }
+         private var texelWidth = 0f
+         private var texelHeight = 0f
+ 
+@@ -47,44 +35,56 @@ class SharpnessReductionEffect(private val strength: Float = 0.35f) : GlEffect {
+             return Size(inputWidth, inputHeight)
+         }
+ 
+-        // Fragment shader: samples a 3x3 neighborhood, averages it (box blur), then
+-        // mixes that blurred result with the original sample by `strength` — a
+-        // partial blur reads as "softer/less sharp" rather than fully out of focus.
+-        private val fragmentShader = """
+-            #extension GL_OES_EGL_image_external : require
+-            precision mediump float;
+-            uniform samplerExternalOES uTexSampler;
+-            uniform vec2 uTexelSize;
+-            uniform float uStrength;
+-            varying vec2 vTexSamplingCoord;
++        override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
++            try {
++                program.use()
++                program.setSamplerTexIdUniform("uTexture", inputTexId, 0)
++                program.setFloatsUniform("uTexel", floatArrayOf(texelWidth, texelHeight))
++                program.setFloatUniform("uStrength", strength)
++                program.bindAttributesAndUniforms()
++                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
++                GlUtil.checkGlError()
++            } catch (error: GlUtil.GlException) {
++                throw VideoFrameProcessingException(error, presentationTimeUs)
++            }
++        }
++
++        override fun release() {
++            try {
++                super.release()
++            } finally {
++                try { program.delete() } catch (error: GlUtil.GlException) {
++                    throw VideoFrameProcessingException(error)
++                }
++            }
++        }
++    }
+ 
++    private companion object {
++        const val VERTEX_SHADER = """
++            attribute vec4 aPosition;
++            varying vec2 vTexCoord;
+             void main() {
+-              vec4 original = texture2D(uTexSampler, vTexSamplingCoord);
++              gl_Position = aPosition;
++              vTexCoord = (aPosition.xy + 1.0) * 0.5;
++            }
++        """
++        const val FRAGMENT_SHADER = """
++            precision highp float;
++            uniform sampler2D uTexture;
++            uniform vec2 uTexel;
++            uniform float uStrength;
++            varying vec2 vTexCoord;
++            void main() {
++              vec4 original = texture2D(uTexture, vTexCoord);
+               vec4 sum = vec4(0.0);
+-              for (int dx = -1; dx <= 1; dx++) {
+-                for (int dy = -1; dy <= 1; dy++) {
+-                  vec2 offset = vec2(float(dx) * uTexelSize.x, float(dy) * uTexelSize.y);
+-                  sum += texture2D(uTexSampler, vTexSamplingCoord + offset);
++              for (int x = -1; x <= 1; ++x) {
++                for (int y = -1; y <= 1; ++y) {
++                  sum += texture2D(uTexture, vTexCoord + vec2(float(x), float(y)) * uTexel);
+                 }
+               }
+-              vec4 blurred = sum / 9.0;
+-              gl_FragColor = mix(original, blurred, uStrength);
++              gl_FragColor = mix(original, sum / 9.0, uStrength);
+             }
+-        """.trimIndent()
+-
+-        // NOTE: wiring this fragment shader into GlProgram/drawFrame() follows the
+-        // same pattern Media3's own built-in shader-based effects use internally
+-        // (compile via GlProgram, bind uTexelSize/uStrength as uniforms each frame,
+-        // draw a full-screen quad). Left as the one piece to fill in against your
+-        // exact media3-effect version's GlProgram helper API, since that binding
+-        // layer is exactly where method names have moved between releases.
+-        override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
+-            TODO(
+-                "Compile `fragmentShader` above via your media3-effect version's " +
+-                    "GlProgram helper, bind uTexelSize=($texelWidth,$texelHeight) and " +
+-                    "uStrength=$strength as uniforms, then draw the full-screen quad " +
+-                    "— same pattern as Media3's built-in shader effects."
+-            )
+-        }
++        """
+     }
+ }
+diff --git a/app/src/test/java/com/example/playback/OptimizedPlayerBuilderFlagsTest.kt b/app/src/test/java/com/example/playback/OptimizedPlayerBuilderFlagsTest.kt
+new file mode 100644
+index 0000000..396edd6
+--- /dev/null
++++ b/app/src/test/java/com/example/playback/OptimizedPlayerBuilderFlagsTest.kt
+@@ -0,0 +1,19 @@
++package com.example.playback
++
++import androidx.media3.common.util.UnstableApi
++import androidx.media3.extractor.DefaultExtractorsFactory
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++/** Guard the old 1.5.1 behavior without accidentally enabling newer flags. */
++@UnstableApi
++class OptimizedPlayerBuilderFlagsTest {
++    @Test fun mp4FlagsUseOnlyPreviouslyEnabledBits() {
++        val method = OptimizedPlayerBuilder::class.java.getDeclaredMethod("extractorsFactory")
++        method.isAccessible = true
++        val factory = method.invoke(OptimizedPlayerBuilder) as DefaultExtractorsFactory
++        val field = DefaultExtractorsFactory::class.java.getDeclaredField("mp4Flags")
++        field.isAccessible = true
++        assertEquals(0x7d, field.getInt(factory))
++    }
++}

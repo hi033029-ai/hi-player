@@ -23,5 +23,10 @@ internal class GeckoManagedTab(
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)
+    override fun reload() = engine.reload()
+    override fun stop() = engine.stop()
+    override fun back() = engine.back()
+    override fun forward() = engine.forward()
+    override fun setDesktop(enabled: Boolean) = engine.setDesktop(enabled)
     override fun close() = engine.close()
 }

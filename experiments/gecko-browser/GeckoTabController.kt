@@ -5,6 +5,11 @@ internal interface GeckoManagedSession<View : Any> : AutoCloseable {
     fun attach(view: View)
     fun detach()
     fun load(url: String)
+    fun reload()
+    fun stop()
+    fun back()
+    fun forward()
+    fun setDesktop(enabled: Boolean)
 }
 
 /** Experimental: a single displayed view and one independent session per open tab. */
@@ -107,6 +112,11 @@ internal class GeckoTabController<View : Any>(
     }
 
     fun load(url: String) { check(!closed); sessions.getValue(activeId).load(url) }
+    fun reload() { check(!closed); sessions.getValue(activeId).reload() }
+    fun stop() { check(!closed); sessions.getValue(activeId).stop() }
+    fun back() { check(!closed); sessions.getValue(activeId).back() }
+    fun forward() { check(!closed); sessions.getValue(activeId).forward() }
+    fun setDesktop(enabled: Boolean) { check(!closed); sessions.getValue(activeId).setDesktop(enabled) }
 
     override fun close() {
         if (closed) return

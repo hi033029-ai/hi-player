@@ -3,7 +3,7 @@
 ## Assumptions
 - The task is to migrate Hi Browser to GeckoView while preserving existing browser behavior, settings, and Android 24–25 compatibility; the existing browser remains available until parity is verified.
 - Work stays on the feature branch; website authentication remains independent of the app account and uses supported provider flows. No cookies or tokens are copied between engines.
-- Existing approved test/build access covers local verification. Do not publish an APK or merge to main without the approval required by project rules.
+- The user authorized a test APK after the migration is complete. Keep work on the feature branch; do not merge to main or claim a partial build contains the completed migration.
 
 ## Checklist
 1. [x] Inventory browser functionality, build constraints, and existing Gecko work.
@@ -27,8 +27,11 @@
 - On the API 28 x86_64 software emulator, isolated instrumentation tests successfully loaded Gecko HTML, decoded AV1 with dav1d and decoded E-AC-3 with FFmpeg. The other three ABIs were built, not runtime-tested. The pinned clean-fetch build script ran end to end, built both AARs in a fresh temporary project, and verified four-ABI packaging. A fresh isolated test APK compiled, but emulator installation failed twice while Android system_server was restarting under watchdog; these newly rebuilt AARs have not yet been runtime-tested.
 - A separate full-app compile against Media3 1.11.1 failed on removed MP4 and GL APIs. A diagnostic-only copy built and passed 31 selected tests after temporary source alterations; those alterations are not a validated production fix and are not applied to the app.
 
+- The experimental Gecko tab controller now routes reload, stop, back, forward and desktop-mode commands to the selected session. In a temporary app configured for GeckoView 159 and Media3 1.11.1, 23 registry/controller tests passed; these are fake-session unit tests, not browser UI/device validation.
+- `patches/media3-111-player-candidate.patch` replaces the removed shader base with a portable implementation and replaces the unsafe inverse MP4 flag mask with explicit flags. The app compiled against both Media3 1.5.1 and 1.11.1, and a flag-value test passed on both; three existing player tests passed on 1.5.1. This is an unapplied candidate: the shader has not been rendered on a device, MP4 playback/seek and the changed meaning of bit 6 in Media3 1.11.1 have not been verified. Do not treat compilation as playback validation.
+
 ## Blockers and risks
-- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. The registration-only probe bridge crashes on real AV1 playback because of a JNI field-type mismatch. Matching dav1d and FFmpeg replacements were rebuilt and smoke-tested on x86_64 only; integrating them safely requires resolving the app API changes and validating each shipped ABI and device playback.
+- GeckoView 159 resolves Media3 from 1.5.1 to 1.11.1. Inspection of the two Media3 renderer factories shows that 1.5.1 auto-loads the bundled `Libgav1VideoRenderer`, while 1.11.1 looks for `Libdav1dVideoRenderer` instead. The registration-only probe bridge crashes on real AV1 playback because of a JNI field-type mismatch. Matching dav1d and FFmpeg replacements were rebuilt and smoke-tested on x86_64 only. A candidate for the app API changes compiles against both Media3 versions but requires playback validation and review before integration, as do each shipped ABI and device playback.
 - GeckoView requires Android 26 or newer; API 24–25 need a safe tested fallback.
 - An API 28 software emulator was used for limited runtime checks in an earlier environment; no physical Android device is connected for hardware, sign-in or playback validation.
 - The experimental Gecko components are outside the app source set and the current shipping browser remains WebView.
