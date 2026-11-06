@@ -45,6 +45,7 @@ internal fun GeckoBrowserChrome(
     downloadsContent: @Composable (String) -> Unit,
     appNavigation: @Composable () -> Unit = {},
     permissionUi: GeckoPermissionUi? = null,
+    services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) },
 ) {
@@ -63,8 +64,19 @@ internal fun GeckoBrowserChrome(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch,
-        onMenu = { showMenu = true }, modifier = modifier, permissionUi = permissionUi, historyRevision = libraryRevision, pageContent = pageContent,
+        onMenu = { showMenu = true }, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, pageContent = pageContent,
     )
+    if (services != null) {
+        GeckoDownloadUi(services.downloads)
+        services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = services::dismissDownloadNotice,
+                title = { androidx.compose.material3.Text("Download unavailable") },
+                text = { androidx.compose.material3.Text(notice) },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = services::dismissDownloadNotice) { androidx.compose.material3.Text("OK") } },
+            )
+        }
+    }
     if (showMenu) {
         HiBrowserMenuSheet(
             tiles = listOf(

@@ -11,14 +11,14 @@ import java.io.OutputStream
  * client's cookie jar. Keep this in memory, never persist request URLs or response headers.
  * Until a user confirms a destination, call discard() if the prompt is closed.
  */
-internal class GeckoDownloadOffer(response: WebResponse) : Closeable {
+internal class GeckoDownloadOffer(response: WebResponse) : GeckoDownloadSource {
     private var body: InputStream? = response.body
-    val mimeType: String? = response.headers["content-type"]?.substringBefore(';')?.trim()
-    val contentDisposition: String? = response.headers["content-disposition"]
-    val contentLength: Long? = response.headers["content-length"]?.toLongOrNull()?.takeIf { it >= 0 }
-    val statusCode: Int = response.statusCode
+    override val mimeType: String? = response.headers["content-type"]?.substringBefore(';')?.trim()
+    override val contentDisposition: String? = response.headers["content-disposition"]
+    override val contentLength: Long? = response.headers["content-length"]?.toLongOrNull()?.takeIf { it >= 0 }
+    override val statusCode: Int = response.statusCode
 
-    @Synchronized fun takeBody(): InputStream? = body.also { body = null }
+    @Synchronized override fun takeBody(): InputStream? = body.also { body = null }
     @Synchronized override fun close() {
         val stream = body
         body = null
