@@ -15,6 +15,7 @@ class GeckoBrowserCoordinatorTest {
         val urls = mutableListOf<String>()
         var desktopEnabled = false
         var closed = false
+        var fullscreenExits = 0
         override fun attach(view: Any) = Unit
         override fun detach() = Unit
         override fun load(url: String) { urls += url; callback(GeckoTabSnapshot(tab.id, tab.privateTab, url)) }
@@ -22,6 +23,7 @@ class GeckoBrowserCoordinatorTest {
         override fun stop() = Unit
         override fun back() = Unit
         override fun forward() = Unit
+        override fun exitFullScreen() { fullscreenExits++ }
         override fun setDesktop(enabled: Boolean) { desktopEnabled = enabled }
         override fun close() { closed = true }
     }
@@ -107,6 +109,16 @@ class GeckoBrowserCoordinatorTest {
         val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, callback -> Fake(tab, callback) }
         coordinator.load("https://example.org/?access_token=secret")
         assertEquals("", store.tabs.single().url)
+        coordinator.close()
+    }
+    @Test fun exitsFullscreenOnTheSelectedSessionOnly() {
+        val sessions = mutableMapOf<Int, Fake>()
+        val coordinator = GeckoBrowserCoordinator<Any>(Store()) { tab, callback -> Fake(tab, callback).also { sessions[tab.id] = it } }
+        assertTrue(coordinator.open(false))
+        val active = coordinator.activeId
+        coordinator.exitFullScreen()
+        assertEquals(1, sessions.getValue(active).fullscreenExits)
+        assertEquals(0, sessions.filterKeys { it != active }.values.single().fullscreenExits)
         coordinator.close()
     }
 }

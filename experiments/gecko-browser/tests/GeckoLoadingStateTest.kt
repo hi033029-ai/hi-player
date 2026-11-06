@@ -49,4 +49,12 @@ class GeckoLoadingStateTest {
         assertTrue(stopped.loadFailed)
         assertEquals(GeckoPageError.CONTENT, stopped.error)
     }
+    @Test fun newNavigationAndErrorsClearVerifiedSecurity() {
+        val verified = initial.copy(url = "https://example.org", secure = true)
+        assertFalse(GeckoLoadingState.start(verified, "http://example.org").secure)
+        assertFalse(GeckoLoadingState.location(verified, "http://other.example").secure)
+        assertFalse(GeckoLoadingState.error(verified, GeckoPageError.SECURITY).secure)
+        assertFalse(GeckoLoadingState.stop(verified, false).secure)
+        assertTrue(GeckoLoadingState.location(verified, null).secure)
+    }
 }

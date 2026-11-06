@@ -63,6 +63,9 @@ internal class GeckoTabEngine(
             override fun onProgressChange(session: GeckoSession, progress: Int) {
                 update(GeckoLoadingState.progress(snapshot, progress))
             }
+            override fun onSecurityChange(session: GeckoSession, securityInfo: GeckoSession.ProgressDelegate.SecurityInformation) {
+                update(snapshot.copy(secure = securityInfo.isSecure && !securityInfo.isException))
+            }
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 update(GeckoLoadingState.stop(snapshot, success))
             }
@@ -109,6 +112,9 @@ internal class GeckoTabEngine(
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
+                update(snapshot.copy(fullscreen = fullScreen))
+            }
             override fun onTitleChange(session: GeckoSession, title: String?) {
                 update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
             }
@@ -152,6 +158,7 @@ internal class GeckoTabEngine(
     @MainThread fun stop() { checkMain(); if (!closed) session.stop() }
     @MainThread fun back() { checkMain(); if (!closed && snapshot.canGoBack) session.goBack() }
     @MainThread fun forward() { checkMain(); if (!closed && snapshot.canGoForward) session.goForward() }
+    @MainThread fun exitFullScreen() { checkMain(); if (!closed) session.exitFullScreen() }
     @MainThread fun setDesktop(enabled: Boolean) {
         checkMain(); if (closed) return
         session.settings.userAgentMode = if (enabled) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE

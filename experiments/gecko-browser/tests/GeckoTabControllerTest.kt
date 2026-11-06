@@ -16,6 +16,7 @@ class GeckoTabControllerTest {
         override fun stop() { commands += "stop" }
         override fun back() { commands += "back" }
         override fun forward() { commands += "forward" }
+        override fun exitFullScreen() = Unit
         override fun setDesktop(enabled: Boolean) { commands += "desktop:$enabled" }
         override fun close() { closeCount++ }
     }
@@ -168,6 +169,7 @@ class GeckoControllerRestoreTest {
         override fun stop() = Unit
         override fun back() = Unit
         override fun forward() = Unit
+        override fun exitFullScreen() = Unit
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closes++ }
     }
@@ -197,6 +199,7 @@ class GeckoControllerRestoreTest {
                 override fun stop() = Unit
                 override fun back() = Unit
                 override fun forward() = Unit
+        override fun exitFullScreen() = Unit
                 override fun setDesktop(enabled: Boolean) { events += "desktop:$enabled" }
                 override fun close() = Unit
             }
@@ -241,6 +244,7 @@ class GeckoPopupReservationTest {
         override fun stop() = Unit
         override fun back() = Unit
         override fun forward() = Unit
+        override fun exitFullScreen() = Unit
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() { closed = true }
     }

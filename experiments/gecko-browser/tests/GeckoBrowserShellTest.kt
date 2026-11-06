@@ -41,6 +41,7 @@ class GeckoBrowserShellTest {
                 override fun stop() = Unit
                 override fun back() = Unit
                 override fun forward() = Unit
+        override fun exitFullScreen() = Unit
                 override fun setDesktop(enabled: Boolean) = Unit
                 override fun close() = Unit
             }
@@ -57,5 +58,36 @@ class GeckoBrowserShellTest {
             assertEquals(1, reloads)
             coordinator.close()
         }
+    }
+    @Test fun fullscreenHidesBrowserToolbarAndRestoresItOnExit() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).edit().clear().commit()
+        val store = OrbitBrowserStore(context)
+        lateinit var update: (GeckoTabSnapshot) -> Unit
+        val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { _, changed ->
+            update = changed
+            object : GeckoManagedSession<GeckoView> {
+                override fun attach(view: GeckoView) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) = Unit
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun exitFullScreen() = Unit
+                override fun setDesktop(enabled: Boolean) = Unit
+                override fun close() = Unit
+            }
+        }
+        compose.setContent { HiPlayerTheme {
+            GeckoBrowserShell(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {},
+                pageContent = { Text("Gecko page") })
+        } }
+        compose.runOnIdle { update(GeckoTabSnapshot(1, false, "https://example.org", fullscreen = true)) }
+        compose.onNodeWithText("Gecko page").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Reload").assertDoesNotExist()
+        compose.runOnIdle { update(GeckoTabSnapshot(1, false, "https://example.org", fullscreen = false)) }
+        compose.onNodeWithContentDescription("Reload").assertIsDisplayed()
+        compose.runOnIdle { coordinator.close() }
     }
 }

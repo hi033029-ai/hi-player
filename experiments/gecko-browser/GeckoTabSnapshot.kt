@@ -10,6 +10,8 @@ internal data class GeckoTabSnapshot(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val error: GeckoPageError? = null,
+    val secure: Boolean = false,
+    val fullscreen: Boolean = false,
 ) {
     val loadFailed: Boolean get() = error != null
 }
