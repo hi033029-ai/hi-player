@@ -120,6 +120,29 @@ internal class GeckoTabController<View : Any>(
         return true
     }
 
+    /** Replace the active session with a fresh one, clearing its history for Home. */
+    fun resetActive() {
+        check(!closed)
+        val id = activeId
+        val tab = tabs.single { it.id == id }
+        val old = sessions.getValue(id)
+        val replacement = newSession(tab)
+        try {
+            if (view != null) {
+                old.detach()
+                try { replacement.attach(view!!) } catch (error: Exception) {
+                    runCatching { old.attach(view!!) }
+                    throw error
+                }
+            }
+        } catch (error: Exception) {
+            runCatching { replacement.close() }
+            throw error
+        }
+        sessions[id] = replacement
+        runCatching { old.close() }
+    }
+
     fun load(url: String) { check(!closed); sessions.getValue(activeId).load(url) }
     fun reload() { check(!closed); sessions.getValue(activeId).reload() }
     fun stop() { check(!closed); sessions.getValue(activeId).stop() }

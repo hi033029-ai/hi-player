@@ -39,6 +39,38 @@ class GeckoTabControllerTest {
         assertEquals(1, sessions.getValue(second.id).closeCount)
     }
 
+    @Test fun homeResetReplacesSessionAndReattachesView() {
+        val sessions = mutableListOf<FakeSession>()
+        val controller = GeckoTabController<Any> { FakeSession().also(sessions::add) }
+        val view = Any()
+        controller.attach(view)
+        val first = sessions.single()
+        controller.resetActive()
+        assertEquals(1, first.closeCount)
+        assertNull(first.view)
+        assertSame(view, sessions.last().view)
+        controller.close()
+    }
+
+    @Test fun failedReplacementAttachRestoresOldSession() {
+        var calls = 0
+        val first = FakeSession()
+        var replacementClosed = false
+        val controller = GeckoTabController<Any> {
+            if (++calls == 1) first else object : GeckoManagedSession<Any> by FakeSession() {
+                override fun attach(view: Any) { error("attach failed") }
+                override fun close() { replacementClosed = true }
+            }
+        }
+        val view = Any()
+        controller.attach(view)
+        try { controller.resetActive(); fail("expected failure") } catch (_: IllegalStateException) { }
+        assertSame(view, first.view)
+        assertEquals(0, first.closeCount)
+        assertTrue(replacementClosed)
+        controller.close()
+    }
+
     @Test fun navigationCommandsTargetOnlyTheSelectedTab() {
         val sessions = mutableMapOf<Int, FakeSession>()
         val controller = GeckoTabController<Any> { tab -> FakeSession().also { sessions[tab.id] = it } }

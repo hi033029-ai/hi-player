@@ -23,20 +23,6 @@ internal object GeckoRuntimeHolder {
     }
 }
 
-internal data class GeckoTabSnapshot(
-    val id: Int,
-    val privateTab: Boolean,
-    val url: String = "",
-    val title: String = "New tab",
-    val loading: Boolean = false,
-    val progress: Int = 0,
-    val canGoBack: Boolean = false,
-    val canGoForward: Boolean = false,
-    val error: GeckoPageError? = null,
-) {
-    val loadFailed: Boolean get() = error != null
-}
-
 /** One session per tab. Callers own tab ordering and persisted non-private metadata. */
 internal class GeckoTabEngine(
     context: Context,
