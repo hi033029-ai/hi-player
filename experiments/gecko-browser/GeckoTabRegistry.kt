@@ -35,12 +35,12 @@ internal class GeckoTabRegistry(restoredTabs: List<Tab> = emptyList(), restoredA
     }
 
     /** A new tab becomes active; null means the existing 12-tab limit was reached. */
-    fun open(privateTab: Boolean, openerId: Int? = activeId): Tab? {
+    fun open(privateTab: Boolean, openerId: Int? = activeId, selectNew: Boolean = true): Tab? {
         if (mutableTabs.size >= MAX_TABS) return null
         val validOpener = openerId?.takeIf { id -> mutableTabs.any { it.id == id } }
         val tab = Tab(allocateId(), privateTab, validOpener)
         mutableTabs += tab
-        select(tab.id)
+        if (selectNew) select(tab.id)
         return tab
     }
 

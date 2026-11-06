@@ -46,6 +46,9 @@ internal class GeckoTabEngine(
     private val navigationPolicy: GeckoNavigationPolicy,
     private val onNavigationDecision: (GeckoNavigationDecision) -> Unit,
     private val promptDelegate: GeckoSession.PromptDelegate? = null,
+    private val openWhenCreated: Boolean = true,
+    private val onPopupRequested: ((String) -> GeckoSession?)? = null,
+    private val onCloseRequested: (() -> Unit)? = null,
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -90,6 +93,13 @@ internal class GeckoTabEngine(
             ) {
                 update(GeckoLoadingState.location(snapshot, url))
             }
+            override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                // The host must apply popup and secure-origin policy first. Gecko, not
+                // this delegate, opens the returned new session after the callback.
+                val child = onPopupRequested?.invoke(uri) ?: return null
+                if (child === session || child.isOpen) return null
+                return GeckoResult.fromValue(child)
+            }
             override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
                 val kind = when (error.category) {
                     WebRequestError.ERROR_CATEGORY_NETWORK -> GeckoPageError.NETWORK
@@ -112,11 +122,12 @@ internal class GeckoTabEngine(
             override fun onTitleChange(session: GeckoSession, title: String?) {
                 update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
             }
+            override fun onCloseRequest(session: GeckoSession) { onCloseRequested?.invoke() }
             override fun onCrash(session: GeckoSession) {
                 update(GeckoLoadingState.error(snapshot, GeckoPageError.RENDERER))
             }
         }
-        session.open(runtime)
+        if (openWhenCreated) session.open(runtime)
     }
 
     @MainThread fun attach(view: GeckoView) {

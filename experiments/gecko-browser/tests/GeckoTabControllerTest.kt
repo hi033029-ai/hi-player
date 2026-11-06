@@ -123,3 +123,47 @@ class GeckoControllerRestoreTest {
         assertEquals(1, created.closes)
     }
 }
+
+class GeckoPopupReservationTest {
+    private class Fake : GeckoManagedSession<Any> {
+        var attached = false
+        var closed = false
+        override fun attach(view: Any) { attached = true }
+        override fun detach() { attached = false }
+        override fun load(url: String) = Unit
+        override fun close() { closed = true }
+    }
+
+    @Test fun popupInheritsPrivateModeAndStaysBackgroundUntilSelected() {
+        val sessions = mutableMapOf<Int, Fake>()
+        val controller = GeckoTabController<Any> { tab -> Fake().also { sessions[tab.id] = it } }
+        val privateTab = controller.open(true)!!
+        controller.attach(Any())
+        val (popup, child) = controller.reservePopup(privateTab.id) { tab -> Fake().also { sessions[tab.id] = it } }!!
+        assertTrue(popup.privateTab)
+        assertEquals(privateTab.id, popup.openerId)
+        assertEquals(privateTab.id, controller.activeId)
+        assertFalse((child as Fake).attached)
+        controller.select(popup.id)
+        assertTrue(child.attached)
+        controller.closeTab(popup.id)
+        assertTrue(child.closed)
+        assertEquals(privateTab.id, controller.activeId)
+    }
+
+    @Test fun failureOrUnknownOpenerDoesNotDisruptCurrentTab() {
+        val controller = GeckoTabController<Any> { Fake() }
+        assertNull(controller.reservePopup(999) { Fake() })
+        try { controller.reservePopup(1) { error("failure") }; fail() } catch (_: IllegalStateException) {}
+        assertEquals(1, controller.activeId)
+        assertEquals(1, controller.tabs.size)
+    }
+
+    @Test fun tabLimitBlocksPopupWithoutCreatingSession() {
+        val controller = GeckoTabController<Any> { Fake() }
+        repeat(11) { controller.open(false) }
+        var created = false
+        assertNull(controller.reservePopup(1) { created = true; Fake() })
+        assertFalse(created)
+    }
+}

@@ -62,6 +62,24 @@ internal class GeckoTabController<View : Any>(
         return tab
     }
 
+    /**
+     * Reserve a background child for Gecko onNewSession. The factory must create an
+     * UNOPENED session: Gecko opens it after the delegate returns. The caller keeps the
+     * returned session alive and can select the child after its first page starts.
+     * The host is responsible for deciding whether the popup is permitted.
+     */
+    fun reservePopup(openerId: Int, factory: (GeckoTabRegistry.Tab) -> GeckoManagedSession<View>): Pair<GeckoTabRegistry.Tab, GeckoManagedSession<View>>? {
+        check(!closed)
+        val opener = tabs.firstOrNull { it.id == openerId } ?: return null
+        val tab = registry.open(opener.privateTab, openerId, selectNew = false) ?: return null
+        val session = try { factory(tab) } catch (error: Throwable) {
+            registry.close(tab.id)
+            throw error
+        }
+        sessions[tab.id] = session
+        return tab to session
+    }
+
     fun select(id: Int): Boolean {
         check(!closed)
         if (id == activeId) return true

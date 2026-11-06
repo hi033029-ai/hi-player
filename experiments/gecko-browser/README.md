@@ -33,3 +33,6 @@ A separate source-only app compilation probe copied these experimental classes i
 
 
 An experimental Gecko file-upload prompt delegate now creates system document-picker intents for single, multiple and folder selection, normalizes accept hints and prevents late results from being delivered to a dismissed page. It is not wired to the production UI; host Activity Result integration, runtime/device tests, camera capture and full upload parity are still needed. The unit tests cover the single-request gate and MIME normalization only.
+
+
+Experimental popup-session support can reserve a background child tab that inherits its opener's private mode and supply a newly created, unopened session to Gecko. The host must enforce popup/security policy, connect the callback, select the child after Gecko opens it, handle cleanup, and test real websites; none is wired into the current browser. Controller unit tests use fake sessions and cannot validate Gecko's actual popup lifecycle.
