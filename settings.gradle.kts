@@ -12,7 +12,7 @@ pluginManagement {
   }
   resolutionStrategy {
     eachPlugin {
-      if (providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").orNull == "true") {
+      if (providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").orNull == "true" && requested.version != null) {
         when (requested.id.id) {
           "org.jetbrains.kotlin.plugin.compose" -> useVersion("2.4.20")
           "com.google.devtools.ksp" -> useVersion("2.3.13")
@@ -36,9 +36,12 @@ include(":app", ":webfilters")
 // Explicit opt-in until migration and device validation gates are green.
 // -PHI_PLAYER_GECKO_ENABLED=false always selects the unchanged legacy build.
 if (providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").orNull == "true") {
-  val preparation = ProcessBuilder("python3", "tools/prepare_gecko_build.py")
-    .directory(settingsDir).inheritIO().start()
-  check(preparation.waitFor() == 0) { "Gecko source preparation failed; original sources were not modified." }
+  val preparation = providers.exec {
+    workingDir(settingsDir)
+    commandLine("python3", "tools/prepare_gecko_build.py")
+  }
+  logger.lifecycle(preparation.standardOutput.asText.get())
+  preparation.result.get().assertNormalExitValue()
   rootProject.buildFileName = "build/generated/gecko/root.gradle.kts"
   project(":app").buildFileName = "../build/generated/gecko/app.gradle.kts"
 }

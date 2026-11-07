@@ -87,6 +87,8 @@ def prepare(files):
                      ('media3-av1-decoder-release.aar', 'media3-av1-1.11.1.aar')]:
         app = replace_once(app, 'implementation(files("libs/' + old + '"))',
             'implementation(files("$rootDir/build/gecko-decoders/' + new + '").builtBy("prepareGeckoDecoders"))', old)
+    app = replace_once(app, 'alias(libs.plugins.kotlin.compose)', 'id("org.jetbrains.kotlin.plugin.compose")', 'inherited Compose compiler plugin')
+    app = replace_once(app, 'alias(libs.plugins.google.devtools.ksp)', 'id("com.google.devtools.ksp")', 'inherited KSP plugin')
     app += '\n// Opt-in engine integration; the normal build file remains unchanged.\n'
     app += 'apply(from = rootProject.file("gradle/gecko-integration.gradle.kts"))\n'
     generated['app.gradle.kts'] = app
@@ -122,7 +124,9 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists() or path.read_text() != content:
             path.write_text(content)
-    print('Prepared opt-in Gecko inputs; minSdk, targetSdk and app version are unchanged.')
+    import hashlib
+    fingerprint = hashlib.sha256(''.join(name + '\0' + generated[name] for name in sorted(generated)).encode()).hexdigest()
+    print('Prepared Gecko inputs ' + fingerprint + '; minSdk, targetSdk and version unchanged.')
 
 if __name__ == '__main__':
     main()
