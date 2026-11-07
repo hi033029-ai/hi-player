@@ -14,7 +14,8 @@ jobs:
     environment: play-release
     timeout-minutes: 45
     env:
-      KEYSTORE_PATH: ${{ runner.temp }}/hi-player-upload.jks
+      # runner context is unavailable in job-level env. Each hosted job has its own /tmp.
+      KEYSTORE_PATH: /tmp/hi-player-upload.jks
       UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
       STORE_PASSWORD: ${{ secrets.UPLOAD_STORE_PASSWORD }}
       KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}

@@ -1,0 +1,67 @@
+name: Gecko migration validation
+
+on:
+  push:
+    branches: [ 'feat/geckoview-browser-migration' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gecko-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflows:
+    name: Validate workflow definitions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Validate GitHub Actions contexts and YAML
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes=
+
+  regression:
+    name: Compile app and run browser, auth, download and player regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - name: Use preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - name: Deterministic JavaScript regression fixtures
+        run: node tools/test_youtube_skipper.cjs
+      - name: Compile and run focused unit tests without packaging an APK
+        run: >-
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2
+          --tests 'com.example.auth.*'
+          --tests 'com.example.downloads.*'
+          --tests 'com.example.player.*'
+          --tests 'com.example.playback.*'
+          --tests 'com.example.ui.screens.Browser*'
+      - name: Upload validation reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gecko-migration-regression-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
