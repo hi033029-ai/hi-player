@@ -52,23 +52,44 @@ class GeckoPermissionUiTest {
         assertEquals(false, first)
         ui.close()
     }
-    @Test fun invalidOrUndeclaredMediaPermissionIsDenied() {
+    @Test fun invalidMediaSelectionIsDeniedWithoutAndroidPrompt() {
         val (ui, _, registry) = setup()
         var answer: Pair<Int?, Int?>? = null
         ui.requestMedia("https://example.org", listOf("camera"), emptyList()) { v, a -> answer = v to a }
         ui.allow(2, null)
         assertEquals(null to null, answer)
-        ui.requestMedia("https://example.org", listOf("camera"), emptyList()) { v, a -> answer = v to a }
-        ui.allow(0, null)
-        // The app currently does not declare CAMERA, so it must never prompt or grant it.
-        assertEquals(null to null, answer)
         assertEquals(0, registry.launches)
         ui.close()
     }
-    @Test fun missingAndroidPermissionIsDeniedWithoutPrompt() {
+    @Test fun websiteConsentCannotBypassAndroidCameraPermission() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context).denyPermissions(Manifest.permission.CAMERA)
+        val (ui, _, registry) = setup()
+        var answer: Pair<Int?, Int?>? = null
+        ui.requestMedia("https://example.org", listOf("camera"), emptyList()) { v, a -> answer = v to a }
+        ui.allow(0, null)
+        // CAMERA is now intentionally declared, but site consent alone grants nothing.
+        assertNull(answer)
+        assertEquals(1, registry.launches)
+        registry.dispatchResult(registry.codes.last(), mapOf(Manifest.permission.CAMERA to true))
+        // A forged or stale positive result cannot override the operating system.
+        assertEquals(null to null, answer)
+
+        answer = null
+        ui.requestMedia("https://example.org", listOf("camera"), emptyList()) { v, a -> answer = v to a }
+        ui.allow(0, null)
+        assertNull(answer)
+        assertEquals(2, registry.launches)
+        shadowOf(context).grantPermissions(Manifest.permission.CAMERA)
+        registry.dispatchResult(registry.codes.last(), mapOf(Manifest.permission.CAMERA to true))
+        assertEquals(0 to null, answer)
+        ui.close()
+    }
+    @Test fun undeclaredAndroidPermissionIsDeniedWithoutPrompt() {
         val (ui, launcher, registry) = setup()
         var answer: Boolean? = null
-        launcher.request(listOf("android.permission.CAMERA")) { answer = it }
+        // Contacts remains undeclared; CAMERA is a supported Gecko capability now.
+        launcher.request(listOf(Manifest.permission.READ_CONTACTS)) { answer = it }
         assertEquals(false, answer)
         assertEquals(0, registry.launches)
         ui.close()
