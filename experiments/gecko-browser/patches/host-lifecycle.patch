@@ -1,103 +1,25 @@
-diff --git a/experiments/gecko-browser/GeckoFilePickerLauncher.kt b/experiments/gecko-browser/GeckoFilePickerLauncher.kt
---- a/experiments/gecko-browser/GeckoFilePickerLauncher.kt
-+++ b/experiments/gecko-browser/GeckoFilePickerLauncher.kt
-@@ -25,13 +25,27 @@
-  * from being delivered to a new request. The browser host owns this alongside GeckoFilePicker
-  * and closes both on disposal. Register/unregister and callbacks must run on the main thread.
-  */
--internal class GeckoFilePickerLauncher(private val registry: ActivityResultRegistry) : AutoCloseable {
-+internal class GeckoFilePickerLauncher(registry: ActivityResultRegistry? = null) : AutoCloseable {
-     private data class Pending(val launcher: ActivityResultLauncher<Intent>, val callback: (List<Uri>?) -> Unit)
-     private val requests = mutableMapOf<String, Pending>()
-     private var closed = false
-+    private var registry: ActivityResultRegistry? = registry
-+
-+    @MainThread fun bind(value: ActivityResultRegistry) {
-+        check(!closed)
-+        if (registry === value) return
-+        cancelRequests()
-+        registry = value
+diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko-browser/GeckoBrowserChrome.kt
+--- a/experiments/gecko-browser/GeckoBrowserChrome.kt
++++ b/experiments/gecko-browser/GeckoBrowserChrome.kt
+@@ -51,4 +51,6 @@
+     downloadsContent: @Composable (String) -> Unit,
+     appNavigation: @Composable () -> Unit = {},
++    openDownloads: Boolean = false,
++    onDownloadsConsumed: () -> Unit = {},
+     permissionUi: GeckoPermissionUi? = null,
+     services: GeckoBrowserServices? = null,
+@@ -60,4 +62,7 @@
+     var showAppearance by remember { mutableStateOf(false) }
+     var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
++    LaunchedEffect(openDownloads) {
++        if (openDownloads) { librarySection = HiLibrarySection.DOWNLOADS; onDownloadsConsumed() }
 +    }
-+    @MainThread fun unbind(expected: ActivityResultRegistry) {
-+        if (registry !== expected) return
-+        registry = null
-+        cancelRequests()
-+    }
- 
-     @MainThread fun launch(intent: Intent, callback: (List<Uri>?) -> Unit) {
-         check(!closed)
-+        val registry = registry ?: run { callback(null); return }
-         val key = "hi-gecko-picker-${UUID.randomUUID()}"
-         val launcher = registry.register(key, ActivityResultContracts.StartActivityForResult()) { result ->
-             val request = requests.remove(key) ?: return@register
-@@ -49,6 +63,10 @@
-     @MainThread override fun close() {
-         if (closed) return
-         closed = true
-+        registry = null
-+        cancelRequests()
-+    }
-+    private fun cancelRequests() {
-         val pending = requests.values.toList()
-         requests.clear()
-         pending.forEach { request ->
-diff --git a/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt b/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
---- a/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
-+++ b/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
-@@ -11,12 +11,27 @@
- 
- /** Android permissions are requested only after a user accepts a site request. */
- internal class GeckoRuntimePermissionLauncher(
--    private val context: Context,
--    private val registry: ActivityResultRegistry,
-+    context: Context,
-+    registry: ActivityResultRegistry? = null,
- ) : AutoCloseable {
-     private data class Pending(val launcher: ActivityResultLauncher<Array<String>>, val complete: (Boolean) -> Unit)
-     private val pending = mutableMapOf<String, Pending>()
-     private var closed = false
-+    private var context = context.applicationContext
-+    private var registry: ActivityResultRegistry? = registry
-+
-+    @MainThread fun bind(context: Context, registry: ActivityResultRegistry) {
-+        check(!closed)
-+        this.context = context.applicationContext
-+        if (this.registry === registry) return
-+        cancelRequests()
-+        this.registry = registry
-+    }
-+    @MainThread fun unbind(expected: ActivityResultRegistry) {
-+        if (registry !== expected) return
-+        registry = null
-+        cancelRequests()
-+    }
- 
-     @MainThread fun request(permissions: List<String>, complete: (Boolean) -> Unit) {
-         if (closed) { complete(false); return }
-@@ -30,6 +45,7 @@
-         if (required.any { it !in declared }) { complete(false); return }
-         fun allGranted() = required.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
-         if (allGranted()) { complete(true); return }
-+        val registry = registry ?: run { complete(false); return }
-         val key = "hi-gecko-permission-${UUID.randomUUID()}"
-         val launcher = try {
-             registry.register(key, ActivityResultContracts.RequestMultiplePermissions()) { result ->
-@@ -48,6 +64,10 @@
-     @MainThread override fun close() {
-         if (closed) return
-         closed = true
-+        registry = null
-+        cancelRequests()
-+    }
-+    private fun cancelRequests() {
-         val requests = pending.values.toList()
-         pending.clear()
-         requests.forEach { request ->
+     var libraryRevision by remember { mutableIntStateOf(0) }
+     var clearing by remember { mutableStateOf(false) }
 diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gecko-browser/GeckoBrowserServices.kt
 --- a/experiments/gecko-browser/GeckoBrowserServices.kt
 +++ b/experiments/gecko-browser/GeckoBrowserServices.kt
-@@ -22,11 +22,13 @@
- /** Owns the experimental browser session and its permission, picker and download lifetimes. */
+@@ -23,9 +23,11 @@
  internal class GeckoBrowserServices(
      context: Context,
 -    registry: ActivityResultRegistry,
@@ -110,9 +32,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +    private var hostContext = if (registry != null) java.lang.ref.WeakReference(context) else null
      private val main = Handler(Looper.getMainLooper())
      private val worker = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-download").apply { isDaemon = true } }
-     private val pickerLauncher = GeckoFilePickerLauncher(registry)
-@@ -50,7 +52,8 @@
-     }
+@@ -51,5 +53,6 @@
      var downloadNotice by mutableStateOf<String?>(null)
          private set
 -    val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
@@ -120,9 +40,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        private set
      val clearData: GeckoClearDataController
      val secureRouting: GeckoSecureRouting
-     val contextActions: GeckoContextActions
-@@ -65,19 +68,19 @@
-                 prefers = { SecureWebSessions.prefersBrowser(appContext, it) },
+@@ -66,6 +69,6 @@
                  rememberOrigin = { SecureWebSessions.rememberBrowser(appContext, it) },
                  forgetOrigin = { SecureWebSessions.forgetBrowser(appContext, it) },
 -                openWebsite = { SecureWebSessions.open(context, it, android.graphics.Color.BLACK).isSuccess },
@@ -131,7 +49,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                openExternal = { url -> withHost { host -> host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true } },
              )
              contextActions = GeckoContextActions(
-                 activeTab = { coordinator.tabs.firstOrNull { it.id == coordinator.activeId }?.let { it.id to it.privateTab } },
+@@ -73,10 +76,10 @@
                  openTab = { privateTab, url -> if (coordinator.open(privateTab)) { coordinator.load(url); true } else false },
                  copy = { url ->
 -                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -144,13 +62,12 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                    withHost { host -> host.startActivity(Intent.createChooser(send, "Share link")); true }
                  },
              )
-             coordinator = createGeckoBrowserCoordinator(
-@@ -90,16 +93,39 @@
-                     "Finish the current download and try again." else "The website did not provide the file. Please try again."
+@@ -91,8 +94,31 @@
              })
              clearData = createGeckoClearDataController(appContext, coordinator, worker, secureRouting::clearPrivateRouting)
 -        } catch (error: Exception) {
 +        } catch (error: Throwable) {
++            if (::coordinator.isInitialized) runCatching { coordinator.close() }
              closeServices()
              throw error
          }
@@ -178,77 +95,154 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        contextActions.dismiss()
      }
      private fun shouldRecordDownload(tabId: Int): Boolean = coordinator.tabs.firstOrNull { it.id == tabId }?.privateTab == false
-     fun dismissDownloadNotice() { downloadNotice = null }
-     @MainThread override fun close() {
+@@ -101,4 +127,5 @@
          if (closed) return
          closed = true
 +        boundRegistry?.let(::unbind)
          clearData.close()
          try { coordinator.close() } finally { closeServices() }
-     }
+diff --git a/experiments/gecko-browser/GeckoFilePickerLauncher.kt b/experiments/gecko-browser/GeckoFilePickerLauncher.kt
+--- a/experiments/gecko-browser/GeckoFilePickerLauncher.kt
++++ b/experiments/gecko-browser/GeckoFilePickerLauncher.kt
+@@ -26,11 +26,25 @@
+  * and closes both on disposal. Register/unregister and callbacks must run on the main thread.
+  */
+-internal class GeckoFilePickerLauncher(private val registry: ActivityResultRegistry) : AutoCloseable {
++internal class GeckoFilePickerLauncher(registry: ActivityResultRegistry? = null) : AutoCloseable {
+     private data class Pending(val launcher: ActivityResultLauncher<Intent>, val callback: (List<Uri>?) -> Unit)
+     private val requests = mutableMapOf<String, Pending>()
+     private var closed = false
++    private var registry: ActivityResultRegistry? = registry
++
++    @MainThread fun bind(value: ActivityResultRegistry) {
++        check(!closed)
++        if (registry === value) return
++        cancelRequests()
++        registry = value
++    }
++    @MainThread fun unbind(expected: ActivityResultRegistry) {
++        if (registry !== expected) return
++        registry = null
++        cancelRequests()
++    }
+ 
+     @MainThread fun launch(intent: Intent, callback: (List<Uri>?) -> Unit) {
+         check(!closed)
++        val registry = registry ?: run { callback(null); return }
+         val key = "hi-gecko-picker-${UUID.randomUUID()}"
+         val launcher = registry.register(key, ActivityResultContracts.StartActivityForResult()) { result ->
+@@ -50,4 +64,8 @@
+         if (closed) return
+         closed = true
++        registry = null
++        cancelRequests()
++    }
++    private fun cancelRequests() {
+         val pending = requests.values.toList()
+         requests.clear()
+diff --git a/experiments/gecko-browser/GeckoManagedTab.kt b/experiments/gecko-browser/GeckoManagedTab.kt
+--- a/experiments/gecko-browser/GeckoManagedTab.kt
++++ b/experiments/gecko-browser/GeckoManagedTab.kt
+@@ -25,4 +25,5 @@
+     override fun attach(view: GeckoView) = engine.attach(view)
+     override fun detach() = engine.detach()
++    override fun setHostActive(active: Boolean) = engine.setHostActive(active)
+     override fun load(url: String) = engine.load(url)
+     override fun reload() = engine.reload()
+diff --git a/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt b/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
+--- a/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
++++ b/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt
+@@ -12,10 +12,25 @@
+ /** Android permissions are requested only after a user accepts a site request. */
+ internal class GeckoRuntimePermissionLauncher(
+-    private val context: Context,
+-    private val registry: ActivityResultRegistry,
++    context: Context,
++    registry: ActivityResultRegistry? = null,
+ ) : AutoCloseable {
+     private data class Pending(val launcher: ActivityResultLauncher<Array<String>>, val complete: (Boolean) -> Unit)
+     private val pending = mutableMapOf<String, Pending>()
+     private var closed = false
++    private var context = context.applicationContext
++    private var registry: ActivityResultRegistry? = registry
++
++    @MainThread fun bind(context: Context, registry: ActivityResultRegistry) {
++        check(!closed)
++        this.context = context.applicationContext
++        if (this.registry === registry) return
++        cancelRequests()
++        this.registry = registry
++    }
++    @MainThread fun unbind(expected: ActivityResultRegistry) {
++        if (registry !== expected) return
++        registry = null
++        cancelRequests()
++    }
+ 
+     @MainThread fun request(permissions: List<String>, complete: (Boolean) -> Unit) {
+@@ -31,4 +46,5 @@
+         fun allGranted() = required.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+         if (allGranted()) { complete(true); return }
++        val registry = registry ?: run { complete(false); return }
+         val key = "hi-gecko-permission-${UUID.randomUUID()}"
+         val launcher = try {
+@@ -49,4 +65,8 @@
+         if (closed) return
+         closed = true
++        registry = null
++        cancelRequests()
++    }
++    private fun cancelRequests() {
+         val requests = pending.values.toList()
+         pending.clear()
 diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko-browser/GeckoTabController.kt
 --- a/experiments/gecko-browser/GeckoTabController.kt
 +++ b/experiments/gecko-browser/GeckoTabController.kt
-@@ -4,6 +4,7 @@
- internal interface GeckoManagedSession<View : Any> : AutoCloseable {
+@@ -5,4 +5,5 @@
      fun attach(view: View)
      fun detach()
 +    fun setHostActive(active: Boolean) {}
      fun load(url: String)
      fun reload()
-     fun stop()
-@@ -25,6 +26,7 @@
-     private val sessions = mutableMapOf<Int, GeckoManagedSession<View>>()
+@@ -26,4 +27,5 @@
      private var view: View? = null
      private var closed = false
 +    private var hostActive = true
      val tabs: List<GeckoTabRegistry.Tab> get() = registry.tabs
      val activeId: Int get() = registry.activeId
- 
-@@ -52,6 +54,7 @@
-         sessions.getValue(activeId).detach()
+@@ -53,4 +55,5 @@
          view = newView
          sessions.getValue(activeId).attach(newView)
 +        sessions.getValue(activeId).setHostActive(hostActive)
      }
  
-     fun detach(expectedView: View? = null) {
-@@ -73,6 +76,7 @@
-         if (view != null) {
+@@ -74,4 +77,5 @@
              sessions.getValue(previousId).detach()
              session.attach(view!!)
 +            session.setHostActive(hostActive)
          }
          if (url.isNotBlank()) session.load(url)
-         return tab
-@@ -107,6 +111,7 @@
-         if (view != null) {
+@@ -108,4 +112,5 @@
              sessions.getValue(previousId).detach()
              sessions.getValue(id).attach(view!!)
 +            sessions.getValue(id).setHostActive(hostActive)
          }
          return true
-     }
-@@ -120,7 +125,7 @@
-         sessions.remove(id)
+@@ -121,5 +126,5 @@
          session.close()
          if (activeId !in sessions) sessions[activeId] = newSession(tabs.single { it.id == activeId })
 -        if (wasActive && view != null) sessions.getValue(activeId).attach(view!!)
 +        if (wasActive && view != null) { sessions.getValue(activeId).attach(view!!); sessions.getValue(activeId).setHostActive(hostActive) }
          return true
      }
- 
-@@ -134,7 +139,7 @@
-         try {
+@@ -135,5 +140,5 @@
              if (view != null) {
                  old.detach()
 -                try { replacement.attach(view!!) } catch (error: Exception) {
 +                try { replacement.attach(view!!); replacement.setHostActive(hostActive) } catch (error: Exception) {
                      runCatching { old.attach(view!!) }
                      throw error
-                 }
-@@ -147,6 +152,11 @@
-         runCatching { old.close() }
+@@ -148,4 +153,9 @@
      }
  
 +    fun setHostActive(active: Boolean) {
@@ -258,23 +252,10 @@ diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko
 +    }
      fun load(url: String) { check(!closed); sessions.getValue(activeId).load(url) }
      fun reload() { check(!closed); sessions.getValue(activeId).reload() }
-     fun stop() { check(!closed); sessions.getValue(activeId).stop() }
-diff --git a/experiments/gecko-browser/GeckoManagedTab.kt b/experiments/gecko-browser/GeckoManagedTab.kt
---- a/experiments/gecko-browser/GeckoManagedTab.kt
-+++ b/experiments/gecko-browser/GeckoManagedTab.kt
-@@ -24,6 +24,7 @@
-     val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, popupAllowed, onCloseRequested, onExternalResponse, permissionDelegate, onContextLink)
-     override fun attach(view: GeckoView) = engine.attach(view)
-     override fun detach() = engine.detach()
-+    override fun setHostActive(active: Boolean) = engine.setHostActive(active)
-     override fun load(url: String) = engine.load(url)
-     override fun reload() = engine.reload()
-     override fun stop() = engine.stop()
 diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-browser/GeckoTabEngine.kt
 --- a/experiments/gecko-browser/GeckoTabEngine.kt
 +++ b/experiments/gecko-browser/GeckoTabEngine.kt
-@@ -167,6 +167,10 @@
-         attachedView = null
+@@ -168,4 +168,8 @@
          if (!closed) session.setActive(false)
      }
 +    @MainThread fun setHostActive(active: Boolean) {
@@ -283,26 +264,3 @@ diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-bro
 +    }
      @MainThread fun load(url: String) {
          checkMain(); check(!closed)
-         update(GeckoLoadingState.start(snapshot, url))
-diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko-browser/GeckoBrowserChrome.kt
---- a/experiments/gecko-browser/GeckoBrowserChrome.kt
-+++ b/experiments/gecko-browser/GeckoBrowserChrome.kt
-@@ -50,6 +50,8 @@
-     onExit: () -> Unit,
-     downloadsContent: @Composable (String) -> Unit,
-     appNavigation: @Composable () -> Unit = {},
-+    openDownloads: Boolean = false,
-+    onDownloadsConsumed: () -> Unit = {},
-     permissionUi: GeckoPermissionUi? = null,
-     services: GeckoBrowserServices? = null,
-     modifier: Modifier = Modifier,
-@@ -59,6 +61,9 @@
-     var showClearData by remember { mutableStateOf(false) }
-     var showAppearance by remember { mutableStateOf(false) }
-     var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
-+    LaunchedEffect(openDownloads) {
-+        if (openDownloads) { librarySection = HiLibrarySection.DOWNLOADS; onDownloadsConsumed() }
-+    }
-     var libraryRevision by remember { mutableIntStateOf(0) }
-     var clearing by remember { mutableStateOf(false) }
-     var clearFailed by remember { mutableStateOf(false) }

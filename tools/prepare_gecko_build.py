@@ -113,7 +113,6 @@ def main():
     generated = prepare({name: (root / name).read_text() for name in needed})
     output = root / 'build/generated/gecko'
     output.mkdir(parents=True, exist_ok=True)
-    # This directory is exclusively generated; stale Kotlin sources must not survive.
     expected = set(generated)
     for path in output.rglob('*'):
         if path.is_file() and path.relative_to(output).as_posix() not in expected:
