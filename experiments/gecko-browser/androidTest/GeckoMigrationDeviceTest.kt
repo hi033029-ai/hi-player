@@ -12,6 +12,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.screens.OrbitBrowserFilterEngine
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.*
@@ -30,9 +32,10 @@ private class FixtureServer(private val context: Context) : AutoCloseable {
                 val client = try { socket.accept() } catch (_: Exception) { break }
                 client.soTimeout = 5000
                 pool.execute {
-                    client.use { connection ->
+                    try { client.use { connection ->
                         val reader = connection.getInputStream().bufferedReader()
-                        val path = reader.readLine().orEmpty().split(' ').getOrNull(1).orEmpty()
+                        val request = reader.readLine() ?: return@use
+                        val path = request.split(' ').getOrNull(1).orEmpty()
                         val headers = mutableMapOf<String,String>()
                         while (true) {
                             val line = reader.readLine() ?: break
@@ -56,6 +59,10 @@ private class FixtureServer(private val context: Context) : AutoCloseable {
                         val output = connection.getOutputStream()
                         output.write("HTTP/1.1 $status\r\nContent-Type: $mime\r\n${extra}Content-Length: ${content.size}\r\nConnection: close\r\n\r\n".toByteArray())
                         output.write(content); output.flush()
+                    } } catch (_: SocketTimeoutException) {
+                        // Normal browser preconnects may never send an HTTP request.
+                    } catch (_: SocketException) {
+                        // A cancelled navigation may close the fixture connection.
                     }
                 }
             }
@@ -66,89 +73,60 @@ private class FixtureServer(private val context: Context) : AutoCloseable {
 
 @RunWith(AndroidJUnit4::class)
 class GeckoMigrationDeviceTest {
-    private fun prepare(context: Context) {
-        context.filesDir.resolve("orbit-filters.txt").writeText("/adserver/\n")
-        OrbitBrowserFilterEngine.refreshPlayFilters(context)
-    }
+    private fun prepare(context: Context) { context.filesDir.resolve("orbit-filters.txt").writeText("/adserver/\n"); OrbitBrowserFilterEngine.refreshPlayFilters(context) }
     private fun await(scenario: ActivityScenario<GeckoMigrationTestActivity>, description: String, test: (GeckoMigrationTestActivity) -> Boolean) {
         val end = SystemClock.elapsedRealtime() + 90_000
-        while (SystemClock.elapsedRealtime() < end) {
-            var success = false
-            scenario.onActivity { success = test(it) }
-            if (success) return
-            SystemClock.sleep(150)
-        }
+        while (SystemClock.elapsedRealtime() < end) { var success = false; scenario.onActivity { success = test(it) }; if (success) return; SystemClock.sleep(150) }
         fail(description)
     }
     @Test fun integratedFilteringMediaAndReaderUseRealGecko() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        prepare(context)
-        FixtureServer(context).use { server ->
-            ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
-                activity.onActivity { it.services.coordinator.load(server.root + "/page") }
-                await(activity, "App Gecko page did not load") { it.services.coordinator.activeSnapshot.title == "Integrated Gecko ready" && !it.services.coordinator.activeSnapshot.loading }
-                await(activity, "Extension did not report HTML5 media") { it.services.coordinator.activeSnapshot.mediaUrl == server.root + "/video.mp4" }
-                assertEquals("Blocked script reached the server", 0, server.blockedHits.get())
-                var readerSent = false
-                activity.onActivity { val tab = it.services.coordinator.controller.activeSession() as GeckoManagedTab; readerSent = GeckoFeatureBridge.requestReader(tab.engine.session) }
-                assertTrue("Reader command port disconnected", readerSent)
-                await(activity, "Reader result did not return through native bridge") { it.services.coordinator.activeSnapshot.readerText.orEmpty().contains("Readable fixture text") }
-            }
-        }
+        val context = ApplicationProvider.getApplicationContext<Context>(); prepare(context)
+        FixtureServer(context).use { server -> ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
+            activity.onActivity { it.services.coordinator.load(server.root + "/page") }
+            await(activity, "App Gecko page did not load") { it.services.coordinator.activeSnapshot.title == "Integrated Gecko ready" && !it.services.coordinator.activeSnapshot.loading }
+            await(activity, "Extension did not report HTML5 media") { it.services.coordinator.activeSnapshot.mediaUrl == server.root + "/video.mp4" }
+            assertEquals("Blocked script reached the server", 0, server.blockedHits.get())
+            var readerSent = false
+            activity.onActivity { val tab = it.services.coordinator.controller.activeSession() as GeckoManagedTab; readerSent = GeckoFeatureBridge.requestReader(tab.engine.session) }
+            assertTrue("Reader command port disconnected", readerSent)
+            await(activity, "Reader result did not return through native bridge") { it.services.coordinator.activeSnapshot.readerText.orEmpty().contains("Readable fixture text") }
+        } }
     }
     @Test fun privateCookiesStaySeparateAndDownloadIsNotRefetched() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        prepare(context)
-        FixtureServer(context).use { server ->
-            ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
-                activity.onActivity { it.services.coordinator.load(server.root + "/set-cookie") }
-                await(activity, "Cookie setup failed") { it.services.coordinator.activeSnapshot.title == "Cookie set" }
-                activity.onActivity { it.services.coordinator.open(true); it.services.coordinator.load(server.root + "/check-cookie") }
-                await(activity, "Private tab received a regular cookie") { it.services.coordinator.activeSnapshot.title == "cookie:missing" }
-                activity.onActivity { it.services.coordinator.closeTab(it.services.coordinator.activeId); it.services.coordinator.load(server.root + "/check-cookie") }
-                await(activity, "Regular session lost its cookie") { it.services.coordinator.activeSnapshot.title == "cookie:present" }
-                activity.onActivity { it.services.coordinator.load(server.root + "/download") }
-                await(activity, "No native file-response offer") { it.services.downloads.state is GeckoDownloadState.Offer }
-                activity.onActivity { it.services.downloads.approve() }
-                await(activity, "Approved stream did not finish") { (it.services.downloads.state as? GeckoDownloadState.Finished)?.outcome is GeckoDownloadOutcome.Complete }
-                assertEquals("Source was re-fetched", 1, server.downloadHits.get())
-            }
-        }
+        val context = ApplicationProvider.getApplicationContext<Context>(); prepare(context)
+        FixtureServer(context).use { server -> ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
+            activity.onActivity { it.services.coordinator.load(server.root + "/set-cookie") }
+            await(activity, "Cookie setup failed") { it.services.coordinator.activeSnapshot.title == "Cookie set" }
+            activity.onActivity { it.services.coordinator.open(true); it.services.coordinator.load(server.root + "/check-cookie") }
+            await(activity, "Private tab received a regular cookie") { it.services.coordinator.activeSnapshot.title == "cookie:missing" }
+            activity.onActivity { it.services.coordinator.closeTab(it.services.coordinator.activeId); it.services.coordinator.load(server.root + "/check-cookie") }
+            await(activity, "Regular session lost its cookie") { it.services.coordinator.activeSnapshot.title == "cookie:present" }
+            activity.onActivity { it.services.coordinator.load(server.root + "/download") }
+            await(activity, "No native file-response offer") { it.services.downloads.state is GeckoDownloadState.Offer }
+            activity.onActivity { it.services.downloads.approve() }
+            await(activity, "Approved stream did not finish") { (it.services.downloads.state as? GeckoDownloadState.Finished)?.outcome is GeckoDownloadOutcome.Complete }
+            assertEquals("Source was re-fetched", 1, server.downloadHits.get())
+        } }
     }
     @Test fun googleAuthRequiresExplicitSecureBrowserConsent() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        prepare(context)
-        FixtureServer(context).use { server ->
-            ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
-                activity.onActivity { it.services.coordinator.load(server.root + "/google-route") }
-                await(activity, "Authentication was not routed to explicit consent") { it.services.secureRouting.pending != null }
-                activity.onActivity { assertFalse(it.services.secureRouting.pending!!.external) }
-            }
-        }
+        val context = ApplicationProvider.getApplicationContext<Context>(); prepare(context)
+        FixtureServer(context).use { server -> ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
+            activity.onActivity { it.services.coordinator.load(server.root + "/google-route") }
+            await(activity, "Authentication was not routed to explicit consent") { it.services.secureRouting.pending != null }
+            activity.onActivity { assertFalse(it.services.secureRouting.pending!!.external) }
+        } }
     }
 }
 
 @RunWith(AndroidJUnit4::class)
 class GeckoFallbackDeviceTest {
-    private fun findWebView(view: View): WebView? {
-        if (view is WebView) return view
-        if (view is ViewGroup) for (index in 0 until view.childCount) findWebView(view.getChildAt(index))?.let { return it }
-        return null
-    }
+    private fun findWebView(view: View): WebView? { if (view is WebView) return view; if (view is ViewGroup) for (index in 0 until view.childCount) findWebView(view.getChildAt(index))?.let { return it }; return null }
     @Test fun android7RunsTheActualWebViewFallback() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        FixtureServer(context).use { server ->
-            val intent = Intent(context, GeckoFallbackTestActivity::class.java).putExtra("url", server.root + "/page")
-            ActivityScenario.launch<GeckoFallbackTestActivity>(intent).use { activity ->
-                val end = SystemClock.elapsedRealtime() + 90_000
-                while (SystemClock.elapsedRealtime() < end) {
-                    var loaded = false
-                    activity.onActivity { loaded = findWebView(it.window.decorView)?.url?.startsWith(server.root) == true }
-                    if (loaded) return
-                    SystemClock.sleep(150)
-                }
-                fail("API 24 did not create and navigate the original WebView")
-            }
-        }
+        FixtureServer(context).use { server -> ActivityScenario.launch<GeckoFallbackTestActivity>(Intent(context, GeckoFallbackTestActivity::class.java).putExtra("url", server.root + "/page")).use { activity ->
+            val end = SystemClock.elapsedRealtime() + 90_000
+            while (SystemClock.elapsedRealtime() < end) { var loaded = false; activity.onActivity { loaded = findWebView(it.window.decorView)?.url?.startsWith(server.root) == true }; if (loaded) return; SystemClock.sleep(150) }
+            fail("API 24 did not create and navigate the original WebView")
+        } }
     }
 }

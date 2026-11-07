@@ -1,132 +1,64 @@
 name: Build APK
-
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
-
+    branches: [main]
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: main-apk-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
+  decoders:
+    uses: ./.github/workflows/gecko-decoders.yml
   build:
+    needs: decoders
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
-
-      # GitHub's Ubuntu runner already includes the Android SDK. The older
-      # setup-android v3 action now requests the removed legacy `tools`
-      # package and fails before Gradle has a chance to build the app.
-      - name: Configure preinstalled Android SDK
-        run: |
-          test -n "$ANDROID_HOME"
-          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" || test -x "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 9.3.1
-
-      # debug.keystore is checked into this repository so every APK
-      # remains signed with the same key and can update the previous APK.
-
-      - name: YouTube skipper deterministic regression fixtures
+          cache-read-only: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: gecko-matching-media3-decoders
+          path: build/gecko-decoders
+      - name: Deterministic browser script regression checks
         run: node tools/test_youtube_skipper.cjs
-
-      - name: Signed blocker and progress security regression tests
-        timeout-minutes: 10
+      - name: Browser, account, download and player regressions
         run: >-
-          gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
-          --tests 'com.example.ui.screens.BlockerPackageProtocolTest'
-          --tests 'com.example.ui.screens.BrowserFilterFileUpdaterTest'
-          --tests 'com.example.ui.components.BrowserProgressStateTest'
-
-      - name: Advanced tools regression tests
-        timeout-minutes: 10
-        run: >-
-          gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
-          --tests 'com.example.player.PlaybackQueueTest'
-          --tests 'com.example.audio.EqualizerCurvesTest'
-          --tests 'com.example.ui.components.MusicEqualizerDialogTest'
-          --tests 'com.example.ui.screens.MusicNowPlayingLayoutTest'
-          --tests 'com.example.lyrics.LyricsTimingTest'
-          --tests 'com.example.ui.components.PlayerDeviceStatusTest'
-          --tests 'com.example.player.PlayerStartupThreadTest'
-          --tests 'com.example.playback.FileDescriptorDataSourceTest'
-          --tests 'com.example.ui.screens.RootFileSectionsTest'
-          --tests 'com.example.ui.theme.ThemeTransitionContrastTest'
-          --tests 'com.example.viewmodel.LibraryRefreshFeedbackTest'
-          --tests 'com.example.player.SelectiveColourBandTest'
-          --tests 'com.example.ui.components.FirstUseExperienceTest'
-          --tests 'com.example.ui.screens.HiBrowserWelcomeTest'
-          --tests 'com.example.ui.screens.VideoLibraryHeaderControlsTest'
-          --tests 'com.example.ui.screens.FileManagerCleanBrowsingTest'
-          --tests 'com.example.audio.MusicEqualizerTest'
-          --tests 'com.example.data.NamedSettingsProfilesTest'
-          --tests 'com.example.data.LibraryAccessPolicyTest'
-          --tests 'com.example.ui.screens.BrowserTabBackPolicyTest'
-          --tests 'com.example.data.LastUsedPlaybackPreferencesTest'
-          --tests 'com.example.data.SystemThemeDefaultMigrationTest'
-          --tests 'com.example.ui.theme.SystemThemeContrastTest'
-          --tests 'com.example.data.NetworkMediaPolicyTest'
-          --tests 'com.example.connections.StoragePolicyTest'
-          --tests 'com.example.player.RemoteStreamHeadersRegistryTest'
-          --tests 'com.example.ui.screens.BrowserAdvancedRulesTest'
-
-      - name: Build APK with user-approved Drive testing
-        run: gradle assembleDebug -PHI_PLAYER_DRIVE_ENABLED=true
-
-      - name: Targeted lyrics, downloaded audio and theme regression tests
-        id: regression_tests
-        continue-on-error: true
-        timeout-minutes: 10
-        run: >-
-          gradle testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true
-          --tests 'com.example.lyrics.LyricsTextTest'
-          --tests 'com.example.lyrics.LyricsQueryTest'
-          --tests 'com.example.ui.components.AudioLyricsPanelTest'
-          --tests 'com.example.downloads.CompletedAudioLibraryTest'
-          --tests 'com.example.data.SystemThemeDefaultMigrationTest'
-          --tests 'com.example.ui.screens.BrowserVideoPolicyTest'
-          --tests 'com.example.ui.screens.OrbitBrowserFeaturesTest'
-          --tests 'com.example.ui.screens.BrowserAppearancePolicyTest'
-          --tests 'com.example.ui.feedback.UserFacingErrorsTest'
-          --tests 'com.example.ui.navigation.TabHistoryTest'
-          --tests 'com.example.auth.SecureWebsitePolicyTest'
-          --tests 'com.example.data.RecycleBinVisibilityTest'
-          --tests 'com.example.ui.screens.BrowserLoadingPolicyTest'
-
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2
+          -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true
+          --tests 'com.example.browser.gecko.*'
+          --tests 'com.example.auth.*'
+          --tests 'com.example.downloads.*'
+          --tests 'com.example.player.*'
+          --tests 'com.example.playback.*'
+          --tests 'com.example.ui.screens.Browser*'
+      - name: Build optimized APK using the existing signing key
+        run: gradle --no-daemon :app:assembleDebug -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
+      - name: Check native compatibility, bundled notices and APK size
+        run: python3 tools/check_gecko_apk.py
       - name: Upload regression reports
         if: always()
         uses: actions/upload-artifact@v4
-        continue-on-error: true
         with:
           name: regression-test-reports
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            build/gecko-apk-review.json
           if-no-files-found: ignore
-
-      - name: Upload APK artifact
+      - name: Upload installable APK
         uses: actions/upload-artifact@v4
-        continue-on-error: true
         with:
           name: hi-player-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-
-      - name: Publish APK release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-${{ github.run_id }}
-          name: Hi Player APK ${{ github.run_id }}
-          generate_release_notes: false
-          body: "Hi Player 1.0.90 (91), built from commit ${{ github.sha }}. Drive access is for testing: Google has not verified the restricted permission and may show a warning or block authorization."
-          files: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

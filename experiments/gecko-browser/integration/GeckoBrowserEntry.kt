@@ -65,12 +65,7 @@ internal class GeckoBrowserOwner(private val application: Application) : ViewMod
         } catch (_: Exception) { failed = true; null }
           catch (_: LinkageError) { failed = true; null }
     }
-    fun release() {
-        val services = owned
-        owned = null
-        failed = false
-        services?.close()
-    }
+    fun release() { val services = owned; owned = null; failed = false; services?.close() }
     override fun onCleared() {
         if (Looper.myLooper() == Looper.getMainLooper()) release()
         else Handler(Looper.getMainLooper()).post { release() }
@@ -91,10 +86,7 @@ private fun Context.browserActivity(): ComponentActivity? {
 internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: () -> Unit) {
     val context = LocalContext.current
     val activity = context.browserActivity()
-    if (activity == null) {
-        BrowserUnavailable(onUseWebView, arguments.onBack)
-        return
-    }
+    if (activity == null) { BrowserUnavailable(onUseWebView, arguments.onBack); return }
     val application = context.applicationContext as Application
     val factory = remember(application) { object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -102,34 +94,22 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     } }
     val owner: GeckoBrowserOwner = viewModel(viewModelStoreOwner = activity, factory = factory)
     val services = owner.acquire()
-    if (services == null) {
-        BrowserUnavailable(onUseWebView, arguments.onBack)
-        return
-    }
+    if (services == null) { BrowserUnavailable(onUseWebView, arguments.onBack); return }
     val coordinator = services.coordinator
     val latest by rememberUpdatedState(arguments)
     val downloads by BrowserDownloads.downloads.collectAsStateWithLifecycle()
     var provider by remember(owner) { mutableStateOf(BrowserSearchProvider.entries.firstOrNull { it.name == owner.store.searchProviderName } ?: BrowserSearchProvider.GOOGLE) }
     var showSettings by remember { mutableStateOf(false) }
-    var showFallback by remember { mutableStateOf(false) }
-    var showAppearance by remember { mutableStateOf(false) }
     var voiceUnavailable by remember { mutableStateOf(false) }
     val fullscreen = coordinator.activeSnapshot.fullscreen
-
     fun navigate(raw: String) {
         val url = normalizeBrowserInput(raw, provider) ?: return
         val media = StreamUrlClassifier.classify(url)
-        if (!com.example.ui.screens.isOrbitYoutube(url) && media.isPlayableInHiPlayer && !media.requiresWebResolution) {
-            latest.onPlayDirectMedia(url)
-        } else {
-            services.secureRouting.leaveTab(coordinator.activeId)
-            coordinator.load(url)
-        }
+        if (!com.example.ui.screens.isOrbitYoutube(url) && media.isPlayableInHiPlayer && !media.requiresWebResolution) latest.onPlayDirectMedia(url)
+        else { services.secureRouting.leaveTab(coordinator.activeId); coordinator.load(url) }
     }
     val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(::navigate)
-        }
+        if (result.resultCode == android.app.Activity.RESULT_OK) result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let(::navigate)
     }
     DisposableEffect(services, activity) {
         val registry = activity.activityResultRegistry
@@ -143,24 +123,15 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
         }
         activity.lifecycle.addObserver(observer)
         coordinator.controller.setHostActive(activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || latest.isInPictureInPicture)
-        onDispose {
-            activity.lifecycle.removeObserver(observer)
-            coordinator.controller.setHostActive(false)
-            services.unbind(registry)
-        }
+        onDispose { activity.lifecycle.removeObserver(observer); coordinator.controller.setHostActive(false); services.unbind(registry) }
     }
-    LaunchedEffect(arguments.isInPictureInPicture) {
-        coordinator.controller.setHostActive(activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || arguments.isInPictureInPicture)
-    }
+    LaunchedEffect(arguments.isInPictureInPicture) { coordinator.controller.setHostActive(activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || arguments.isInPictureInPicture) }
     DisposableEffect(fullscreen, activity) {
         val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
         if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars())
         onDispose { if (fullscreen) controller.show(WindowInsetsCompat.Type.systemBars()) }
     }
-    LaunchedEffect(arguments.externalUrl) {
-        arguments.externalUrl?.let { navigate(it); latest.onExternalUrlConsumed() }
-    }
-    // More specific find/fullscreen/tab-sheet handlers in the chrome are composed afterwards.
+    LaunchedEffect(arguments.externalUrl) { arguments.externalUrl?.let { navigate(it); latest.onExternalUrlConsumed() } }
     BackHandler {
         when {
             coordinator.tabs.size > 1 -> coordinator.closeTab(coordinator.activeId)
@@ -168,48 +139,27 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
             else -> latest.onBack()
         }
     }
-    BrowserNavigationHost(
-        modifier = arguments.modifier.fillMaxSize(),
-        enabled = !fullscreen && !arguments.isInPictureInPicture,
-        navigation = arguments.appNavigation,
-    ) {
+    BrowserNavigationHost(modifier = arguments.modifier.fillMaxSize(), enabled = !fullscreen && !arguments.isInPictureInPicture, navigation = arguments.appNavigation) {
         Box(Modifier.fillMaxSize().then(if (fullscreen || arguments.isInPictureInPicture) Modifier else Modifier.windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)))) {
             GeckoBrowserChrome(
                 coordinator = coordinator, store = owner.store,
-                providerNames = BrowserSearchProvider.entries.map { it.displayName },
-                selectedProvider = provider.displayName,
+                providerNames = BrowserSearchProvider.entries.map { it.displayName }, selectedProvider = provider.displayName,
                 onProviderSelect = { index -> BrowserSearchProvider.entries.getOrNull(index)?.let { provider = it; owner.store.searchProviderName = it.name } },
                 normalizeAddress = { normalizeBrowserInput(it, provider) },
                 onVoiceSearch = {
                     try { voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)) }
                     catch (_: Exception) { voiceUnavailable = true }
                 },
-                onSettings = { showSettings = true },
-                onExit = { owner.release(); latest.onBack() },
+                onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query) { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) } },
                 appNavigation = arguments.appNavigation, services = services,
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
         }
     }
-    if (showSettings) AlertDialog(
-        onDismissRequest = { showSettings = false }, title = { Text("Browser settings") },
-        text = { Text("Search provider is selected from the address bar. Website sign-ins stay separate from your Hi Player account. The original browser remains available for features still undergoing Gecko validation.") },
-        confirmButton = { TextButton(onClick = { showSettings = false; showAppearance = true }) { Text("Appearance and pop-ups") } },
-        dismissButton = { TextButton(onClick = { showSettings = false; showFallback = true }) { Text("Use original browser") } },
-    )
-    if (showAppearance) GeckoAppearanceDialog(services.settings) { showAppearance = false }
-    if (showFallback) AlertDialog(
-        onDismissRequest = { showFallback = false }, title = { Text("Switch to original browser?") },
-        text = { Text("Regular tabs and bookmarks are kept. Private tabs close and any active stream download is cancelled. Website cookies are not copied between browsers.") },
-        confirmButton = { TextButton(onClick = { showFallback = false; owner.release(); onUseWebView() }) { Text("Switch browser") } },
-        dismissButton = { TextButton(onClick = { showFallback = false }) { Text("Keep Gecko") } },
-    )
-    if (voiceUnavailable) AlertDialog(
-        onDismissRequest = { voiceUnavailable = false }, title = { Text("Voice search unavailable") },
-        text = { Text("Type your search in the address bar instead.") },
-        confirmButton = { TextButton(onClick = { voiceUnavailable = false }) { Text("OK") } },
-    )
+    if (showSettings) GeckoAppearanceDialog(services.settings) { showSettings = false }
+    if (voiceUnavailable) AlertDialog(onDismissRequest = { voiceUnavailable = false }, title = { Text("Voice search unavailable") },
+        text = { Text("Type your search in the address bar instead.") }, confirmButton = { TextButton(onClick = { voiceUnavailable = false }) { Text("OK") } })
 }
 
 @Composable
