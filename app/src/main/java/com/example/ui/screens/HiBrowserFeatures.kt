@@ -261,7 +261,8 @@ internal object OrbitBrowserFilterEngine {
             // reuse a sideloaded build's downloaded list after an upgrade.
             val reader = if (BuildConfig.PLAY_STORE_BUILD) {
                 val assets = runCatching { AssetPackManagerFactory.getInstance(context).getPackLocation("webfilters")?.assetsPath() }.getOrNull()
-                val delivered = assets?.let { File(it, "orbit_filters.txt") }
+                // This pack filename is distinct from the base module's offline fallback.
+                val delivered = assets?.let { File(it, "orbit_filters_pack.txt") }
                 if (delivered != null && delivered.isFile) delivered.bufferedReader()
                 else context.assets.open("orbit_filters.txt").bufferedReader()
             } else runCatching { AtomicFile(stored).openRead().bufferedReader() }
@@ -274,7 +275,7 @@ internal object OrbitBrowserFilterEngine {
     /** Re-read the installed fast-follow pack; fallback remains available offline. */
     fun refreshPlayFilters(context: Context): Boolean = synchronized(loadLock) {
         val installed = runCatching { AssetPackManagerFactory.getInstance(context).getPackLocation("webfilters")?.assetsPath() }
-            .getOrNull()?.let { File(it, "orbit_filters.txt").isFile } == true
+            .getOrNull()?.let { File(it, "orbit_filters_pack.txt").isFile } == true
         reload(context)
         installed
     }
