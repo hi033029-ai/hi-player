@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <activity android:name="com.example.browser.gecko.GeckoMigrationTestActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsPictureInPicture="true" android:resizeableActivity="true" />
+    <activity android:name="com.example.browser.gecko.GeckoFallbackTestActivity" android:exported="false" />
+  </application>
+</manifest>

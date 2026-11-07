@@ -1,0 +1,69 @@
+name: Gecko app device validation
+on:
+  push:
+    branches: [feat/geckoview-browser-migration]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gecko-app-device-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  decoders:
+    uses: ./.github/workflows/gecko-decoders.yml
+  device:
+    needs: decoders
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 30]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+          cache-read-only: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: gecko-matching-media3-decoders
+          path: build/gecko-decoders
+      - name: Generate deterministic test media
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          mkdir -p app/src/debug/assets
+          ffmpeg -f lavfi -i 'testsrc2=size=160x90:rate=8' -t 1 -c:v libx264 -profile:v baseline -pix_fmt yuv420p -movflags +faststart -an -y app/src/debug/assets/gecko_test.mp4
+      - name: Compile unpublished device-test APKs
+        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true --max-workers=2
+      - name: Review APK size and native packaging
+        run: python3 tools/check_gecko_apk.py
+      - name: Enable hardware virtualization
+        run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify real app engine and Android 7 fallback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest; fi; gradle --no-daemon :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
+      - name: Upload reports only, never APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gecko-app-device-${{ matrix.api }}
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            build/gecko-apk-review.json
+          if-no-files-found: ignore
+          retention-days: 3
