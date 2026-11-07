@@ -98,3 +98,8 @@
 -dontwarn java.beans.IntrospectionException
 -dontwarn java.beans.Introspector
 -dontwarn java.beans.PropertyDescriptor
+
+# Optional SMBJ/Mbassy paths reference Java SE APIs not present on Android. SMB
+# NTLM and normal event dispatch do not require these EL/Kerberos classes.
+-dontwarn javax.el.**
+-dontwarn org.ietf.jgss.**
