@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   workflows:
-    name: Validate workflow definitions
+    name: Validate workflow definitions and source preparation
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,9 +25,13 @@ jobs:
           cache: false
       - name: Validate GitHub Actions contexts and YAML
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes=
+      - name: Test context-checked source preparation
+        run: python3 -m unittest discover -s tools -p test_prepare_gecko_build.py
+      - name: Prepare integrated Gecko sources
+        run: python3 tools/prepare_gecko_build.py
 
   regression:
-    name: Compile app and run browser, auth, download and player regressions
+    name: Legacy compatibility regression checks
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -39,27 +43,68 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 9.3.1
-      - name: Use preinstalled Android SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
       - name: Deterministic JavaScript regression fixtures
         run: node tools/test_youtube_skipper.cjs
-      - name: Compile and run focused unit tests without packaging an APK
+      - name: Compile and run focused legacy tests without packaging an APK
         run: >-
-          gradle --no-daemon :app:testDebugUnitTest --max-workers=2
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2 -PHI_PLAYER_GECKO_ENABLED=false
           --tests 'com.example.auth.*'
           --tests 'com.example.downloads.*'
           --tests 'com.example.player.*'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
-      - name: Upload validation reports only
+      - name: Upload legacy validation reports only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gecko-migration-regression-reports
+          name: legacy-regression-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  gecko:
+    name: Compile integrated Gecko and matching player; run regression tests
+    needs: workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - uses: actions/cache@v4
+        id: decoders
+        with:
+          path: build/gecko-decoders
+          key: gecko-media3-1.11.1-ndk27.2-v1-${{ hashFiles('experiments/gecko-browser/aligned-decoders/**') }}
+      - name: Install native build prerequisites when no matching cache is present
+        if: steps.decoders.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y meson ninja-build nasm
+          sdkmanager 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36.1'
+      - name: Compile integrated browser and run migration and player regressions
+        run: >-
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2 -PHI_PLAYER_GECKO_ENABLED=true
+          --tests 'com.example.browser.gecko.*'
+          --tests 'com.example.ui.screens.GeckoEnginePolicyTest'
+          --tests 'com.example.ui.screens.BrowserAddressInputTest'
+          --tests 'com.example.auth.*'
+          --tests 'com.example.downloads.*'
+          --tests 'com.example.player.*'
+          --tests 'com.example.playback.*'
+          --tests 'com.example.ui.screens.Browser*'
+      - name: Upload Gecko validation reports only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrated-gecko-regression-reports
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
