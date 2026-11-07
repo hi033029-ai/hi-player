@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   workflows:
-    name: Validate workflow definitions and source preparation
+    name: Validate workflow definitions and source generation
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,13 +25,14 @@ jobs:
           cache: false
       - name: Validate GitHub Actions contexts and YAML
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes=
-      - name: Test context-checked source preparation
-        run: python3 -m unittest discover -s tools -p test_prepare_gecko_build.py
-      - name: Prepare integrated Gecko sources
-        run: python3 tools/prepare_gecko_build.py
+      - name: Test context-checked compatibility generation
+        run: |
+          python3 tools/test_prepare_gecko_build.py
+          python3 tools/prepare_gecko_build.py
+          git diff --exit-code
 
   regression:
-    name: Legacy compatibility regression checks
+    name: Legacy browser and player regressions
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -45,17 +46,17 @@ jobs:
           gradle-version: 9.3.1
       - name: Deterministic JavaScript regression fixtures
         run: node tools/test_youtube_skipper.cjs
-      - name: Compile and run focused legacy tests without packaging an APK
+      - name: Compile and test legacy rollback without packaging an APK
         run: >-
-          gradle --no-daemon :app:testDebugUnitTest --max-workers=2 -PHI_PLAYER_GECKO_ENABLED=false
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2
+          -PHI_PLAYER_GECKO_ENABLED=false
           --tests 'com.example.auth.*'
           --tests 'com.example.downloads.*'
           --tests 'com.example.player.*'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
-      - name: Upload legacy validation reports only
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: legacy-regression-reports
           path: |
@@ -64,11 +65,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  gecko:
-    name: Compile integrated Gecko and matching player; run regression tests
+  gecko-configuration:
+    name: Configure Gecko-enabled app and source roots
     needs: workflows
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -78,17 +79,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 9.3.1
-      - uses: actions/cache@v4
-        id: decoders
+      - run: gradle --no-daemon :app:tasks --all -PHI_PLAYER_GECKO_ENABLED=true --max-workers=2
+
+  decoders:
+    needs: gecko-configuration
+    uses: ./.github/workflows/gecko-decoders.yml
+
+  gecko:
+    name: Compile integrated Gecko browser and run migration regressions
+    needs: decoders
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: gecko-matching-media3-decoders
           path: build/gecko-decoders
-          key: gecko-media3-1.11.1-ndk27.2-v1-${{ hashFiles('experiments/gecko-browser/aligned-decoders/**') }}
-      - name: Install native build prerequisites when no matching cache is present
-        if: steps.decoders.outputs.cache-hit != 'true'
-        run: bash tools/install_gecko_prerequisites.sh
-      - name: Compile integrated browser and run migration and player regressions
+      - name: Compile browser, native registration, auth, downloads and player tests
         run: >-
-          gradle --no-daemon :app:testDebugUnitTest --max-workers=2 -PHI_PLAYER_GECKO_ENABLED=true
+          gradle --no-daemon :app:testDebugUnitTest --max-workers=2
+          -PHI_PLAYER_GECKO_ENABLED=true
           --tests 'com.example.browser.gecko.*'
           --tests 'com.example.ui.screens.GeckoEnginePolicyTest'
           --tests 'com.example.ui.screens.BrowserAddressInputTest'
@@ -97,11 +115,10 @@ jobs:
           --tests 'com.example.player.*'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
-      - name: Upload Gecko validation reports only
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: integrated-gecko-regression-reports
+          name: gecko-integrated-regression-reports
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
