@@ -42,6 +42,9 @@ if (releaseBuildRequested) {
     "Release builds may package arm64-v8a and armeabi-v7a only"
   }
 }
+val bundleBuildRequested = gradle.startParameter.taskNames.any {
+  it.substringAfterLast(':').startsWith("bundle", ignoreCase = true)
+}
 
 android {
   namespace = "com.example"
@@ -52,7 +55,9 @@ android {
     targetSdk = 36
     versionCode = 94
     versionName = "1.0.93"
-    ndk { abiFilters.addAll(packagedAbis) }
+    // AGP rejects NDK filters together with APK ABI split filters. Bundle tasks use
+    // NDK filters; APK tasks are restricted by the split configuration below.
+    if (bundleBuildRequested) ndk { abiFilters.addAll(packagedAbis) }
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
     buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$oneDriveClientId\"")
@@ -61,10 +66,12 @@ android {
   }
   splits {
     abi {
-      isEnable = true
-      reset()
-      include(*packagedAbis.toTypedArray())
-      isUniversalApk = false
+      isEnable = !bundleBuildRequested
+      if (!bundleBuildRequested) {
+        reset()
+        include(*packagedAbis.toTypedArray())
+        isUniversalApk = false
+      }
     }
   }
   bundle {
