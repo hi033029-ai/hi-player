@@ -1,0 +1,58 @@
+name: Gecko matching native decoders
+
+on:
+  push:
+    branches: [ 'feat/geckoview-browser-migration' ]
+    paths:
+      - '.github/workflows/gecko-decoders.yml'
+      - 'experiments/gecko-browser/aligned-decoders/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decoders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - uses: actions/cache@v4
+        id: decoders
+        with:
+          path: build/gecko-decoders
+          key: gecko-media3-1.11.1-ndk27.2-v1-${{ hashFiles('experiments/gecko-browser/aligned-decoders/**') }}
+      - name: Install native build prerequisites
+        if: steps.decoders.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y meson ninja-build nasm
+          sdkmanager 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36.1'
+      - name: Rebuild pinned matching AV1 and FFmpeg decoders
+        if: steps.decoders.outputs.cache-hit != 'true'
+        env:
+          OUT_DIR: ${{ github.workspace }}/build/gecko-decoders
+        run: bash experiments/gecko-browser/aligned-decoders/build.sh
+      - name: Verify four-ABI AARs
+        shell: python
+        run: |
+          import pathlib, zipfile
+          expected = {'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'}
+          for name, library in [('media3-av1-1.11.1.aar', 'libdav1dJNI.so'), ('media3-ffmpeg-1.11.1.aar', 'libffmpegJNI.so')]:
+              path = pathlib.Path('build/gecko-decoders') / name
+              with zipfile.ZipFile(path) as archive:
+                  actual = {n for n in archive.namelist() if n.startswith('jni/') and n.endswith('.so')}
+              assert actual == {f'jni/{abi}/{library}' for abi in expected}, (name, actual)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gecko-matching-media3-decoders
+          path: build/gecko-decoders/*.aar
+          if-no-files-found: error
+          retention-days: 7
