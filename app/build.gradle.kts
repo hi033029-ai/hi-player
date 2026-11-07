@@ -20,6 +20,7 @@ val oneDriveClientId = providers.gradleProperty("HI_PLAYER_ONEDRIVE_CLIENT_ID")
   .orElse(providers.environmentVariable("HI_PLAYER_ONEDRIVE_CLIENT_ID")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
 val dropboxAppKey = providers.gradleProperty("HI_PLAYER_DROPBOX_APP_KEY")
   .orElse(providers.environmentVariable("HI_PLAYER_DROPBOX_APP_KEY")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
+val arm64ApkOnly = providers.gradleProperty("HI_PLAYER_ARM64_ONLY").orNull == "true"
 
 android {
   namespace = "com.example"
@@ -30,6 +31,9 @@ android {
     targetSdk = 36
     versionCode = 94
     versionName = "1.0.93"
+    if (arm64ApkOnly) {
+      ndk { abiFilters.add("arm64-v8a") }
+    }
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
     buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$oneDriveClientId\"")

@@ -2,8 +2,8 @@ import com.android.build.api.dsl.ApplicationExtension
 
 val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
-android.defaultConfig.versionCode = 96
-android.defaultConfig.versionName = "1.0.95"
+android.defaultConfig.versionCode = 97
+android.defaultConfig.versionName = "1.0.96"
 android.sourceSets.getByName("main").apply {
     val directory = generated.get().dir("main").asFile.absolutePath
     java.directories.clear(); java.directories.add(directory)

@@ -1,12 +1,16 @@
-import json, struct, zipfile
+import json, os, struct, zipfile
 from pathlib import Path
 
 apk = next(Path('app/build/outputs/apk/debug').glob('*.apk'))
 report = {'apk_bytes': apk.stat().st_size, 'apk_mib': round(apk.stat().st_size / 1048576, 2), 'abis': [], 'native_load_alignment': {}}
+expected_abi = os.environ.get('HI_PLAYER_EXPECTED_APK_ABI', 'x86_64')
 with zipfile.ZipFile(apk) as archive:
     names = archive.namelist()
     report['abis'] = sorted({name.split('/')[1] for name in names if name.startswith('lib/') and name.endswith('.so')})
-    assert 'x86_64' in report['abis'], 'Device-test ABI missing'
+    assert expected_abi in report['abis'], f'Expected APK ABI missing: {expected_abi}'
+    if expected_abi == 'arm64-v8a':
+        assert report['abis'] == ['arm64-v8a'], f'APK unexpectedly contains extra ABIs: {report["abis"]}'
+        assert report['apk_bytes'] <= 250 * 1024 * 1024, 'Arm64-only APK exceeds 250 MiB size budget'
     assert not any(name.endswith('/libgav1JNI.so') for name in names), 'Unsafe legacy JNI bridge packaged'
     for name in names:
         if not name.startswith(('lib/arm64-v8a/', 'lib/x86_64/')) or not name.endswith('.so'): continue
