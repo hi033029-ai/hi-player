@@ -9,7 +9,6 @@ import java.io.Closeable
 import java.io.InputStream
 import java.util.concurrent.Executor
 
-/** An offer owns its response until approved or rejected; it must never be re-fetched. */
 internal interface GeckoDownloadSource : Closeable {
     val mimeType: String?
     val contentDisposition: String?
@@ -25,11 +24,7 @@ internal sealed interface GeckoDownloadState {
     data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null) : GeckoDownloadState
 }
 
-/**
- * One user-approved stream at a time. Calls and state updates are on the main thread; I/O is
- * on worker. A stream is non-resumable and must be cancelled when its owner is destroyed.
- * This controller intentionally does not persist authenticated URLs, headers or cookies.
- */
+/** One approved non-resumable stream; never re-fetch authenticated responses. */
 internal class GeckoDownloadController(
     private val worker: Executor,
     private val dispatchMain: (() -> Unit) -> Unit,
@@ -38,28 +33,22 @@ internal class GeckoDownloadController(
 ) : AutoCloseable {
     var state: GeckoDownloadState by mutableStateOf(GeckoDownloadState.Idle)
         private set
+    var onTransferStarted: ((() -> Unit) -> AutoCloseable)? = null
     private var offer: GeckoDownloadSource? = null
     private var cancellation: GeckoDownloadCancellation? = null
     private var generation = 0L
     private var closed = false
-
     @MainThread fun offer(source: GeckoDownloadSource, recordInHistory: Boolean = true): Boolean {
-        if (closed || offer != null || cancellation != null || source.statusCode !in 200..299) {
-            runCatching { source.close() }
-            return false
-        }
+        if (closed || offer != null || cancellation != null || source.statusCode !in 200..299) { runCatching { source.close() }; return false }
         val name = DownloadFileResolver.safeName(DownloadFileResolver.dispositionName(source.contentDisposition) ?: "download")
         offer = source
         state = GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory)
         return true
     }
-
     @MainThread fun reject() {
-        offer?.let { runCatching { it.close() } }
-        offer = null
+        offer?.let { runCatching { it.close() } }; offer = null
         if (!closed && cancellation == null) state = GeckoDownloadState.Idle
     }
-
     @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null) {
         val source = offer ?: return
         val pending = state as? GeckoDownloadState.Offer ?: return
@@ -72,6 +61,10 @@ internal class GeckoDownloadController(
         cancellation = cancel
         val id = ++generation
         state = GeckoDownloadState.Active(name, 0, pending.length)
+        val lease = try { onTransferStarted?.invoke { cancel.cancel() } } catch (_: Exception) {
+            runCatching { input.close() }; cancellation = null
+            state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location); return
+        }
         try {
             worker.execute {
                 var recorded: Boolean? = null
@@ -81,45 +74,29 @@ internal class GeckoDownloadController(
                     val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
                         if (bytes - lastReported >= 256 * 1024) {
                             lastReported = bytes
-                            dispatchMain {
-                                if (!closed && generation == id && cancellation === cancel) {
-                                    state = GeckoDownloadState.Active(name, bytes, pending.length)
-                                }
-                            }
+                            dispatchMain { if (!closed && generation == id && cancellation === cancel) state = GeckoDownloadState.Active(name, bytes, pending.length) }
                         }
                     }
                     val recorder = onPublished
-                    if (pending.recordInHistory && transferred is GeckoDownloadOutcome.Complete && target is GeckoPublishedDestination && recorder != null) {
-                        recorded = runCatching { recorder(target, name, source.mimeType, transferred.bytes, location) }.getOrDefault(false)
-                    }
+                    if (pending.recordInHistory && transferred is GeckoDownloadOutcome.Complete && target is GeckoPublishedDestination && recorder != null) recorded = runCatching { recorder(target, name, source.mimeType, transferred.bytes, location) }.getOrDefault(false)
                     transferred
                 } catch (_: Exception) {
                     runCatching { input.close() }
                     if (cancel.isCancelled()) GeckoDownloadOutcome.Cancelled else GeckoDownloadOutcome.Failed
-                }
+                } finally { runCatching { lease?.close() } }
                 dispatchMain {
-                    if (!closed && generation == id && cancellation === cancel) {
-                        cancellation = null
-                        state = GeckoDownloadState.Finished(name, outcome, location, recorded)
-                    }
+                    if (!closed && generation == id && cancellation === cancel) { cancellation = null; state = GeckoDownloadState.Finished(name, outcome, location, recorded) }
                 }
             }
         } catch (_: Exception) {
-            runCatching { input.close() }
-            cancellation = null
+            runCatching { input.close() }; runCatching { lease?.close() }; cancellation = null
             state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)
         }
     }
-
     @MainThread fun cancel() { cancellation?.cancel() }
     @MainThread fun dismissResult() { if (state is GeckoDownloadState.Finished) state = GeckoDownloadState.Idle }
     @MainThread override fun close() {
         if (closed) return
-        closed = true
-        generation++
-        reject()
-        cancellation?.cancel()
-        cancellation = null
-        state = GeckoDownloadState.Idle
+        closed = true; generation++; reject(); cancellation?.cancel(); cancellation = null; state = GeckoDownloadState.Idle
     }
 }
