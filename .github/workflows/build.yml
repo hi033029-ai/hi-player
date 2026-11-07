@@ -42,7 +42,7 @@ jobs:
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
       - name: Build optimized APK using the existing signing key
-        run: gradle --no-daemon :app:assembleDebug -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true -PHI_PLAYER_ARM64_ONLY=true --max-workers=2
+        run: gradle --no-daemon :app:assembleDebug -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true -PHI_PLAYER_GECKOVIEW_ABI=arm64-v8a -PHI_PLAYER_ABI_FILTERS=arm64-v8a --max-workers=2
       - name: Check native compatibility, bundled notices and APK size
         run: HI_PLAYER_EXPECTED_APK_ABI=arm64-v8a python3 tools/check_gecko_apk.py
       - name: Upload regression reports

@@ -1,13 +1,15 @@
 import json, os, struct, zipfile
 from pathlib import Path
 
-apk = next(Path('app/build/outputs/apk/debug').glob('*.apk'))
-report = {'apk_bytes': apk.stat().st_size, 'apk_mib': round(apk.stat().st_size / 1048576, 2), 'abis': [], 'native_load_alignment': {}}
+apk_path = os.environ.get('HI_PLAYER_APK_PATH')
+apk = Path(apk_path) if apk_path else next(Path('app/build/outputs/apk/debug').glob('*.apk'))
+assert apk.is_file(), f'APK not found: {apk}'
+report = {'apk_file': str(apk), 'apk_bytes': apk.stat().st_size, 'apk_mib': round(apk.stat().st_size / 1048576, 2), 'abis': [], 'native_load_alignment': {}}
 expected_abi = os.environ.get('HI_PLAYER_EXPECTED_APK_ABI', 'x86_64')
 with zipfile.ZipFile(apk) as archive:
     names = archive.namelist()
     report['abis'] = sorted({name.split('/')[1] for name in names if name.startswith('lib/') and name.endswith('.so')})
-    assert expected_abi in report['abis'], f'Expected APK ABI missing: {expected_abi}'
+    assert report['abis'] == [expected_abi], f'Expected only {expected_abi}, found {report["abis"]}'
     if expected_abi == 'arm64-v8a':
         assert report['abis'] == ['arm64-v8a'], f'APK unexpectedly contains extra ABIs: {report["abis"]}'
         assert report['apk_bytes'] <= 250 * 1024 * 1024, 'Arm64-only APK exceeds 250 MiB size budget'

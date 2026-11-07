@@ -48,7 +48,7 @@ jobs:
       - name: Run unit tests
         run: gradle --no-daemon testDebugUnitTest -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
       - name: Build release bundle with existing features
-        run: gradle --no-daemon bundleRelease -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
+        run: gradle --no-daemon bundleRelease -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKOVIEW_ABI=universal -PHI_PLAYER_ABI_FILTERS=arm64-v8a,armeabi-v7a -PHI_PLAYER_DRIVE_ENABLED=true --max-workers=2
       - name: Reject bundled YouTube skipper
         shell: bash
         run: |

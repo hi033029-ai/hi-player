@@ -17,7 +17,7 @@ The entire silhouette including detached pixels is centered. A 512px transparent
 - System splash and browser shortcut fallback: existing references inherit the replacement.
 - Media/download notification small icons: updated white alpha-only mark.
 
-Playback controls, media thumbnails, album art, website favicons and third-party service branding are intentionally unchanged. Historical unused `hi_player_logo.png` and density WebP resources remain in the repository, but active branding callers use the vector master and the supported platform resource selection prefers the anydpi/adaptive variants.
+Playback controls, media thumbnails, album art, website favicons and third-party service branding are intentionally unchanged. The historical unused 1920px `hi_player_logo.png` bitmap was removed; active branding callers use the vector master, while launcher density WebP fallbacks remain available for platform resource selection.
 
 ## Artwork checks, not runtime validation
 

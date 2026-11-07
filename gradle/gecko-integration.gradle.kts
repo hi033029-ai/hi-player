@@ -2,8 +2,25 @@ import com.android.build.api.dsl.ApplicationExtension
 
 val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
-android.defaultConfig.versionCode = 97
-android.defaultConfig.versionName = "1.0.96"
+android.defaultConfig.versionCode = 98
+android.defaultConfig.versionName = "1.0.97"
+val geckoAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
+val geckoArtifact = when (geckoAbi) {
+    "universal" -> "geckoview"
+    "arm64-v8a", "armeabi-v7a", "x86_64" -> "geckoview-$geckoAbi"
+    else -> error("Unsupported GeckoView ABI artifact: $geckoAbi")
+}
+val requestedAbis = providers.gradleProperty("HI_PLAYER_ABI_FILTERS").getOrElse("arm64-v8a")
+    .split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+if (geckoAbi == "universal") {
+    require(requestedAbis.isNotEmpty() && requestedAbis.all { it in setOf("arm64-v8a", "armeabi-v7a") }) {
+        "The universal GeckoView artifact may only be used for arm64-v8a and armeabi-v7a builds"
+    }
+} else {
+    require(requestedAbis == listOf(geckoAbi)) {
+        "The GeckoView artifact ABI ($geckoAbi) must match HI_PLAYER_ABI_FILTERS"
+    }
+}
 android.sourceSets.getByName("main").apply {
     val directory = generated.get().dir("main").asFile.absolutePath
     java.directories.clear(); java.directories.add(directory)
@@ -35,7 +52,7 @@ configurations.configureEach {
         if (requested.group == "androidx.media3") { useVersion("1.11.1"); because("GeckoView 159 requires matching Media3 Java and native decoder interfaces") }
     }
 }
-dependencies.add("implementation", "org.mozilla.geckoview:geckoview:159.0.20261102144711")
+dependencies.add("implementation", "org.mozilla.geckoview:$geckoArtifact:159.0.20261102144711")
 val prepareGeckoDecoders = tasks.register<Exec>("prepareGeckoDecoders") {
     workingDir(rootProject.projectDir)
     val output = rootProject.layout.buildDirectory.dir("gecko-decoders").get().asFile

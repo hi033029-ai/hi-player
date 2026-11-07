@@ -20,7 +20,28 @@ val oneDriveClientId = providers.gradleProperty("HI_PLAYER_ONEDRIVE_CLIENT_ID")
   .orElse(providers.environmentVariable("HI_PLAYER_ONEDRIVE_CLIENT_ID")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
 val dropboxAppKey = providers.gradleProperty("HI_PLAYER_DROPBOX_APP_KEY")
   .orElse(providers.environmentVariable("HI_PLAYER_DROPBOX_APP_KEY")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
-val arm64ApkOnly = providers.gradleProperty("HI_PLAYER_ARM64_ONLY").orNull == "true"
+val packagedAbis = providers.gradleProperty("HI_PLAYER_ABI_FILTERS").orNull
+  ?.split(',')
+  ?.map { it.trim() }
+  ?.filter { it.isNotEmpty() }
+  ?.distinct()
+  ?: listOf("arm64-v8a")
+require(packagedAbis.isNotEmpty()) { "HI_PLAYER_ABI_FILTERS must contain at least one ABI" }
+val geckoEnabled = providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").getOrElse("true") == "true"
+val geckoAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
+if (geckoEnabled && geckoAbi != "universal") {
+  require(packagedAbis == listOf(geckoAbi)) {
+    "A single-ABI GeckoView artifact ($geckoAbi) must be paired with the same ABI filter"
+  }
+}
+val releaseBuildRequested = gradle.startParameter.taskNames.any {
+  it.substringAfterLast(':').contains("Release", ignoreCase = true)
+}
+if (releaseBuildRequested) {
+  require(packagedAbis.all { it in setOf("arm64-v8a", "armeabi-v7a") }) {
+    "Release builds may package arm64-v8a and armeabi-v7a only"
+  }
+}
 
 android {
   namespace = "com.example"
@@ -31,14 +52,23 @@ android {
     targetSdk = 36
     versionCode = 94
     versionName = "1.0.93"
-    if (arm64ApkOnly) {
-      ndk { abiFilters.add("arm64-v8a") }
-    }
+    ndk { abiFilters.addAll(packagedAbis) }
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
     buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$oneDriveClientId\"")
     buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include(*packagedAbis.toTypedArray())
+      isUniversalApk = false
+    }
+  }
+  bundle {
+    abi { enableSplit = true }
   }
   signingConfigs {
     create("release") {
@@ -60,7 +90,8 @@ android {
     release {
       buildConfigField("boolean", "PLAY_STORE_BUILD", "true")
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
