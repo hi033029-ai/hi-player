@@ -1,0 +1,75 @@
+name: Gecko native runtime verification
+
+on:
+  push:
+    branches: [ 'feat/geckoview-browser-migration' ]
+    paths:
+      - '.github/workflows/gecko-runtime.yml'
+      - 'experiments/gecko-browser/aligned-probe/**'
+      - 'experiments/gecko-browser/aligned-decoders/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decoders:
+    uses: ./.github/workflows/gecko-decoders.yml
+
+  runtime:
+    name: Real Gecko HTML, popup, AV1 and E-AC-3 checks
+    needs: decoders
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.3.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: gecko-matching-media3-decoders
+          path: build/gecko-decoders
+      - name: Prepare deterministic media fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          mkdir -p experiments/gecko-browser/aligned-probe/app/libs experiments/gecko-browser/aligned-probe/app/src/main/assets
+          cp build/gecko-decoders/*.aar experiments/gecko-browser/aligned-probe/app/libs/
+          ffmpeg -f lavfi -i 'testsrc2=size=160x90:rate=8' -t 1.5 -c:v libaom-av1 -cpu-used 8 -crf 40 -an -y experiments/gecko-browser/aligned-probe/app/src/main/assets/test-av1.mp4
+          ffmpeg -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 1.5 -c:a eac3 -b:a 128k -y experiments/gecko-browser/aligned-probe/app/src/main/assets/test-eac3.mp4
+      - name: Enable emulator acceleration
+        shell: bash
+        run: |
+          if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
+      - name: Verify actual native decoding and Gecko callbacks
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            gradle -p experiments/gecko-browser/aligned-probe --no-daemon :app:connectedDebugAndroidTest --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.geckoprobe.RuntimeProbeTest
+            mkdir -p build/gecko-runtime-reports/playback
+            cp -r experiments/gecko-browser/aligned-probe/app/build/reports/androidTests build/gecko-runtime-reports/playback/
+            gradle -p experiments/gecko-browser/aligned-probe --no-daemon :app:connectedDebugAndroidTest --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class=com.example.geckoprobe.PopupProbeTest
+      - name: Upload test reports, not APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gecko-native-runtime-reports
+          path: |
+            build/gecko-runtime-reports/
+            experiments/gecko-browser/aligned-probe/app/build/reports/androidTests/
+            experiments/gecko-browser/aligned-probe/app/build/outputs/androidTest-results/
+          if-no-files-found: ignore
+          retention-days: 7
