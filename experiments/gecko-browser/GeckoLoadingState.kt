@@ -1,7 +1,7 @@
 package com.example.browser.gecko
 
 /** No backend response or exception text is exposed to the UI. */
-internal enum class GeckoPageError { NETWORK, SECURITY, CONTENT, RENDERER }
+internal enum class GeckoPageError { PROTECTION, NETWORK, SECURITY, CONTENT, RENDERER }
 
 internal object GeckoLoadingState {
     fun start(state: GeckoTabSnapshot, url: String): GeckoTabSnapshot =

@@ -12,7 +12,10 @@ internal data class GeckoTabSnapshot(
     val error: GeckoPageError? = null,
     val secure: Boolean = false,
     val fullscreen: Boolean = false,
+    val mediaUrl: String? = null,
+    val mediaMime: String? = null,
+    val mediaTitle: String? = null,
+    val readerText: String? = null,
 ) {
     val loadFailed: Boolean get() = error != null
 }
-
