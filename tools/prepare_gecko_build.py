@@ -89,8 +89,11 @@ def prepare(files):
             'implementation(files("$rootDir/build/gecko-decoders/' + new + '").builtBy("prepareGeckoDecoders"))', old)
     app = replace_once(app, 'alias(libs.plugins.kotlin.compose)', 'id("org.jetbrains.kotlin.plugin.compose")', 'inherited Compose compiler plugin')
     app = replace_once(app, 'alias(libs.plugins.google.devtools.ksp)', 'id("com.google.devtools.ksp")', 'inherited KSP plugin')
-    app += '\n// Opt-in engine integration; the normal build file remains unchanged.\n'
-    app += 'apply(from = rootProject.file("gradle/gecko-integration.gradle.kts"))\n'
+    app += '\n// Gecko engine configuration shares this script plugin classpath.\n'
+    integration = files['gradle/gecko-integration.gradle.kts']
+    integration = replace_once(integration, 'import com.android.build.api.dsl.ApplicationExtension\n\n', '', 'template Android import')
+    integration = replace_once(integration, 'val android = extensions.getByType<ApplicationExtension>()\n', '', 'template Android accessor')
+    app += integration
     generated['app.gradle.kts'] = app
     generated['root.gradle.kts'] = """buildscript {
     dependencies {
@@ -104,7 +107,7 @@ def prepare(files):
 def main():
     root = Path(__file__).resolve().parents[1]
     needed = [
-        'app/build.gradle.kts', 'build.gradle.kts', 'app/src/main/AndroidManifest.xml',
+        'app/build.gradle.kts', 'build.gradle.kts', 'app/src/main/AndroidManifest.xml', 'gradle/gecko-integration.gradle.kts',
         'app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt',
         'app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt',
         'app/src/main/java/com/example/player/SharpnessReductionEffect.kt',
