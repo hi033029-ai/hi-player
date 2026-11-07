@@ -14,7 +14,7 @@ jobs:
   build:
     needs: decoders
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -35,15 +35,16 @@ jobs:
         run: >-
           gradle --no-daemon :app:testDebugUnitTest --max-workers=2
           -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true
+          -PHI_PLAYER_GECKOVIEW_ABI=arm64-v8a -PHI_PLAYER_ABI_FILTERS=arm64-v8a
           --tests 'com.example.browser.gecko.*'
           --tests 'com.example.auth.*'
           --tests 'com.example.downloads.*'
           --tests 'com.example.player.*'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
-      - name: Build optimized APK using the existing signing key
+      - name: Build optimized arm64 debug APK
         run: gradle --no-daemon :app:assembleDebug -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true -PHI_PLAYER_GECKOVIEW_ABI=arm64-v8a -PHI_PLAYER_ABI_FILTERS=arm64-v8a --max-workers=2
-      - name: Check native compatibility, bundled notices and APK size
+      - name: Check debug APK native compatibility, notices and size
         run: HI_PLAYER_EXPECTED_APK_ABI=arm64-v8a python3 tools/check_gecko_apk.py
       - name: Upload regression reports
         if: always()
@@ -55,10 +56,72 @@ jobs:
             app/build/test-results/testDebugUnitTest/
             build/gecko-apk-review.json
           if-no-files-found: ignore
-      - name: Upload installable APK
+      - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
           name: hi-player-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Initialize release artifact directory
+        if: github.event_name == 'workflow_dispatch'
+        run: mkdir -p dist
+      - name: Build arm64-v8a release APK split (test-signed)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+          KEY_ALIAS: androiddebugkey
+        run: |
+          rm -rf app/build/outputs/apk/release
+          gradle --no-daemon --no-configuration-cache :app:assembleRelease --max-workers=2 \
+            -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true \
+            -PHI_PLAYER_GECKOVIEW_ABI=arm64-v8a -PHI_PLAYER_ABI_FILTERS=arm64-v8a
+          apk="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" dist/hi-player-arm64-v8a-release.apk
+      - name: Build armeabi-v7a release APK split (test-signed)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+          KEY_ALIAS: androiddebugkey
+        run: |
+          rm -rf app/build/outputs/apk/release
+          gradle --no-daemon --no-configuration-cache :app:assembleRelease --max-workers=2 \
+            -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true \
+            -PHI_PLAYER_GECKOVIEW_ABI=armeabi-v7a -PHI_PLAYER_ABI_FILTERS=armeabi-v7a
+          apk="$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" dist/hi-player-armeabi-v7a-release.apk
+      - name: Build two-ABI release App Bundle (test-signed)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
+          STORE_PASSWORD: android
+          KEY_PASSWORD: android
+          KEY_ALIAS: androiddebugkey
+        run: |
+          rm -rf app/build/outputs/bundle/release
+          gradle --no-daemon --no-configuration-cache :app:bundleRelease --max-workers=2 \
+            -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_DRIVE_ENABLED=true \
+            -PHI_PLAYER_GECKOVIEW_ABI=universal -PHI_PLAYER_ABI_FILTERS=arm64-v8a,armeabi-v7a
+          bundle="$(find app/build/outputs/bundle/release -type f -name '*.aab' -print -quit)"
+          test -n "$bundle"
+          cp "$bundle" dist/hi-player-release.aab
+      - name: Check release APK splits and AAB contents
+        if: github.event_name == 'workflow_dispatch'
+        run: python3 tools/check_gecko_release_outputs.py
+      - name: Upload test-signed release APKs, bundle and size report
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hi-player-gecko-release-test-signed
+          path: |
+            dist/*.apk
+            dist/*.aab
+            build/gecko-release-review.json
           if-no-files-found: error
           retention-days: 14
