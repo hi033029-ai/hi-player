@@ -4,22 +4,26 @@ val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
 android.sourceSets.getByName("main").apply {
     val directory = generated.get().dir("main").asFile.absolutePath
-    java.directories.clear()
-    java.directories.add(directory)
-    kotlin.directories.clear()
-    kotlin.directories.add(directory)
+    java.directories.clear(); java.directories.add(directory)
+    kotlin.directories.clear(); kotlin.directories.add(directory)
     assets.directories.add(rootProject.file("experiments/gecko-browser/assets").absolutePath)
     assets.directories.add(generated.get().dir("assets").asFile.absolutePath)
     manifest.srcFile(generated.map { it.file("AndroidManifest.xml") })
 }
 android.sourceSets.getByName("test").apply {
     val directory = generated.get().dir("test").asFile.absolutePath
-    java.directories.clear()
-    java.directories.add(directory)
-    kotlin.directories.clear()
-    kotlin.directories.add(directory)
+    java.directories.clear(); java.directories.add(directory)
+    kotlin.directories.clear(); kotlin.directories.add(directory)
 }
-
+android.sourceSets.getByName("debug").apply {
+    java.directories.add(rootProject.file("experiments/gecko-browser/debug").absolutePath)
+    kotlin.directories.add(rootProject.file("experiments/gecko-browser/debug").absolutePath)
+    manifest.srcFile(rootProject.file("experiments/gecko-browser/debug/AndroidManifest.xml"))
+}
+android.sourceSets.getByName("androidTest").apply {
+    java.directories.add(rootProject.file("experiments/gecko-browser/androidTest").absolutePath)
+    kotlin.directories.add(rootProject.file("experiments/gecko-browser/androidTest").absolutePath)
+}
 configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.group == "androidx.media3") {
@@ -29,7 +33,6 @@ configurations.configureEach {
     }
 }
 dependencies.add("implementation", "org.mozilla.geckoview:geckoview:159.0.20261102144711")
-
 val prepareGeckoDecoders = tasks.register<Exec>("prepareGeckoDecoders") {
     workingDir(rootProject.projectDir)
     val output = rootProject.layout.buildDirectory.dir("gecko-decoders").get().asFile
@@ -40,3 +43,4 @@ val prepareGeckoDecoders = tasks.register<Exec>("prepareGeckoDecoders") {
     outputs.files(output.resolve("media3-av1-1.11.1.aar"), output.resolve("media3-ffmpeg-1.11.1.aar"))
     onlyIf { !output.resolve("media3-av1-1.11.1.aar").isFile || !output.resolve("media3-ffmpeg-1.11.1.aar").isFile }
 }
+if (providers.gradleProperty("HI_PLAYER_GECKO_DEVICE_TEST").orNull == "true") android.buildTypes.getByName("debug").isDebuggable = true

@@ -7,7 +7,7 @@ android {
     defaultConfig {
         minSdk = 24
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
-        externalNativeBuild { cmake { targets.add("ffmpegJNI") } }
+        externalNativeBuild { cmake { arguments.add("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"); arguments.add("-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384"); targets.add("ffmpegJNI") } }
     }
     externalNativeBuild { cmake { path = file("${sourceRoot}/libraries/decoder_ffmpeg/src/main/jni/CMakeLists.txt"); version = "3.22.1" } }
     sourceSets { getByName("main") { manifest.srcFile("${sourceRoot}/libraries/decoder_ffmpeg/src/main/AndroidManifest.xml"); java.srcDir("${sourceRoot}/libraries/decoder_ffmpeg/src/main/java") } }
