@@ -2,28 +2,30 @@ import com.android.build.api.dsl.ApplicationExtension
 
 val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
+// AGP 9 exposes directories, not source-file exclude filters.
+// The generator retains all application sources, replacing only the entry
+// point and compatibility-sensitive classes with context-checked versions.
 android.sourceSets.getByName("main").apply {
-    java.srcDir(rootProject.file("experiments/gecko-browser"))
-    java.srcDir(rootProject.file("experiments/gecko-browser/integration"))
-    java.srcDir(generated.map { it.dir("main") })
-    java.exclude("tests/**", "integration/**", "integration-tests/**", "aligned-decoders/**", "aligned-probe/**", "runtime-probe/**", "player-extractor-probe/**")
-    java.exclude("LegacyGav1RenderersFactory.kt", "GeckoFilePickerLauncher.kt", "GeckoRuntimePermissionLauncher.kt", "GeckoBrowserServices.kt", "GeckoTabController.kt", "GeckoManagedTab.kt", "GeckoTabEngine.kt", "GeckoBrowserChrome.kt")
-    java.exclude("com/example/ui/screens/HiBrowserScreen.kt", "com/example/playback/OptimizedPlayerBuilder.kt", "com/example/player/SharpnessReductionEffect.kt")
+    val directory = generated.get().dir("main").asFile.absolutePath
+    java.directories.clear()
+    java.directories.add(directory)
+    kotlin.directories.clear()
+    kotlin.directories.add(directory)
     manifest.srcFile(generated.map { it.file("AndroidManifest.xml") })
 }
 android.sourceSets.getByName("test").apply {
-    java.srcDir(rootProject.file("experiments/gecko-browser/tests"))
-    java.srcDir(rootProject.file("experiments/gecko-browser/integration-tests"))
-    java.srcDir(generated.map { it.dir("test") })
-    java.exclude("LegacyGav1RegistrationTest.kt", "com/example/player/SoftwareDecoderRegistrationTest.kt")
+    val directory = generated.get().dir("test").asFile.absolutePath
+    java.directories.clear()
+    java.directories.add(directory)
+    kotlin.directories.clear()
+    kotlin.directories.add(directory)
 }
 
-// Gecko and all application player modules must use matching Java/JNI interfaces.
 configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.group == "androidx.media3") {
             useVersion("1.11.1")
-            because("GeckoView 159 requires Media3 1.11.1 and matching rebuilt native decoders")
+            because("GeckoView 159 requires matching Media3 Java and native decoder interfaces")
         }
     }
 }

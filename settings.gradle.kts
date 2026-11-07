@@ -33,12 +33,11 @@ dependencyResolutionManagement {
 rootProject.name = "Hi Player"
 include(":app", ":webfilters")
 
-// Explicit opt-in until migration and device validation gates are green.
-// -PHI_PLAYER_GECKO_ENABLED=false always selects the unchanged legacy build.
+// -PHI_PLAYER_GECKO_ENABLED=false retains the original legacy build.
 if (providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").orNull == "true") {
   val preparation = providers.exec {
     workingDir(settingsDir)
-    commandLine("python3", "tools/prepare_gecko_build.py")
+    commandLine("python3", "tools/prepare_gecko_overlay.py")
   }
   logger.lifecycle(preparation.standardOutput.asText.get())
   preparation.result.get().assertNormalExitValue()
