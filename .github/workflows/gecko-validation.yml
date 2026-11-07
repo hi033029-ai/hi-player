@@ -85,10 +85,7 @@ jobs:
           key: gecko-media3-1.11.1-ndk27.2-v1-${{ hashFiles('experiments/gecko-browser/aligned-decoders/**') }}
       - name: Install native build prerequisites when no matching cache is present
         if: steps.decoders.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y meson ninja-build nasm
-          sdkmanager 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36.1'
+        run: bash tools/install_gecko_prerequisites.sh
       - name: Compile integrated browser and run migration and player regressions
         run: >-
           gradle --no-daemon :app:testDebugUnitTest --max-workers=2 -PHI_PLAYER_GECKO_ENABLED=true
