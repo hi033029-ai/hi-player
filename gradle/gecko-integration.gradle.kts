@@ -4,21 +4,21 @@ val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
 android.defaultConfig.versionCode = 98
 android.defaultConfig.versionName = "1.0.97"
-val geckoAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
-val geckoArtifact = when (geckoAbi) {
+val geckoViewArtifactAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
+val geckoArtifact = when (geckoViewArtifactAbi) {
     "universal" -> "geckoview"
-    "arm64-v8a", "armeabi-v7a", "x86_64" -> "geckoview-$geckoAbi"
-    else -> error("Unsupported GeckoView ABI artifact: $geckoAbi")
+    "arm64-v8a", "armeabi-v7a", "x86_64" -> "geckoview-$geckoViewArtifactAbi"
+    else -> error("Unsupported GeckoView ABI artifact: $geckoViewArtifactAbi")
 }
 val requestedAbis = providers.gradleProperty("HI_PLAYER_ABI_FILTERS").getOrElse("arm64-v8a")
     .split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-if (geckoAbi == "universal") {
+if (geckoViewArtifactAbi == "universal") {
     require(requestedAbis.isNotEmpty() && requestedAbis.all { it in setOf("arm64-v8a", "armeabi-v7a") }) {
         "The universal GeckoView artifact may only be used for arm64-v8a and armeabi-v7a builds"
     }
 } else {
-    require(requestedAbis == listOf(geckoAbi)) {
-        "The GeckoView artifact ABI ($geckoAbi) must match HI_PLAYER_ABI_FILTERS"
+    require(requestedAbis == listOf(geckoViewArtifactAbi)) {
+        "The GeckoView artifact ABI ($geckoViewArtifactAbi) must match HI_PLAYER_ABI_FILTERS"
     }
 }
 android.sourceSets.getByName("main").apply {

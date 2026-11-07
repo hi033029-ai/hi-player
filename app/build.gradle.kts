@@ -28,10 +28,10 @@ val packagedAbis = providers.gradleProperty("HI_PLAYER_ABI_FILTERS").orNull
   ?: listOf("arm64-v8a")
 require(packagedAbis.isNotEmpty()) { "HI_PLAYER_ABI_FILTERS must contain at least one ABI" }
 val geckoEnabled = providers.gradleProperty("HI_PLAYER_GECKO_ENABLED").getOrElse("true") == "true"
-val geckoAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
-if (geckoEnabled && geckoAbi != "universal") {
-  require(packagedAbis == listOf(geckoAbi)) {
-    "A single-ABI GeckoView artifact ($geckoAbi) must be paired with the same ABI filter"
+val selectedAppGeckoAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
+if (geckoEnabled && selectedAppGeckoAbi != "universal") {
+  require(packagedAbis == listOf(selectedAppGeckoAbi)) {
+    "A single-ABI GeckoView artifact ($selectedAppGeckoAbi) must be paired with the same ABI filter"
   }
 }
 val releaseBuildRequested = gradle.startParameter.taskNames.any {
