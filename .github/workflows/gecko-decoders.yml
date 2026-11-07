@@ -6,7 +6,6 @@ on:
     paths:
       - '.github/workflows/gecko-decoders.yml'
       - 'experiments/gecko-browser/aligned-decoders/**'
-      - 'tools/install_gecko_prerequisites.sh'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +31,17 @@ jobs:
           key: gecko-media3-1.11.1-ndk27.2-v1-${{ hashFiles('experiments/gecko-browser/aligned-decoders/**') }}
       - name: Install native build prerequisites
         if: steps.decoders.outputs.cache-hit != 'true'
-        run: bash tools/install_gecko_prerequisites.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y meson ninja-build nasm
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager" ]]; then
+            sdkmanager=$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -type f -name sdkmanager | sort -V | tail -1)
+          fi
+          test -x "$sdkmanager"
+          "$sdkmanager" 'ndk;27.2.12479018' 'cmake;3.22.1' 'platforms;android-36.1'
       - name: Rebuild pinned matching AV1 and FFmpeg decoders
         if: steps.decoders.outputs.cache-hit != 'true'
         env:
