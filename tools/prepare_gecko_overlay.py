@@ -3,6 +3,7 @@
 import hashlib
 from pathlib import Path
 from prepare_gecko_build import PREFIX, prepare
+from gecko_features import augment
 
 MAIN_PREFIXES = ('app/src/main/java/', 'app/src/main/kotlin/')
 TEST_PREFIXES = ('app/src/test/java/', 'app/src/test/kotlin/')
@@ -63,7 +64,9 @@ def main():
     for name in ('tests', 'integration', 'integration-tests'):
         for path in (root / PREFIX / name).glob('*.kt'):
             files[path.relative_to(root).as_posix()] = path.read_text()
-    generated = materialize(files, prepare(files))
+    generated = augment(materialize(files, prepare(files)))
+    for script in ('orbit_adblock.js', 'orbit_page_skipper.js'):
+        generated['assets/hi-gecko/' + script] = (root / 'app/src/main/assets' / script).read_text()
     output = root / 'build/generated/gecko'
     output.mkdir(parents=True, exist_ok=True)
     for path in output.rglob('*'):

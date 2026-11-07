@@ -2,15 +2,14 @@ import com.android.build.api.dsl.ApplicationExtension
 
 val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
-// AGP 9 exposes directories, not source-file exclude filters.
-// The generator retains all application sources, replacing only the entry
-// point and compatibility-sensitive classes with context-checked versions.
 android.sourceSets.getByName("main").apply {
     val directory = generated.get().dir("main").asFile.absolutePath
     java.directories.clear()
     java.directories.add(directory)
     kotlin.directories.clear()
     kotlin.directories.add(directory)
+    assets.directories.add(rootProject.file("experiments/gecko-browser/assets").absolutePath)
+    assets.directories.add(generated.get().dir("assets").asFile.absolutePath)
     manifest.srcFile(generated.map { it.file("AndroidManifest.xml") })
 }
 android.sourceSets.getByName("test").apply {
