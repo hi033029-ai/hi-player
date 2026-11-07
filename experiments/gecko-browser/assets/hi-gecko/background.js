@@ -1,7 +1,9 @@
 "use strict";
 // Only local decisions and media addresses; cookies and authorization headers are not copied.
+const sendNative = message => browser.runtime.sendNativeMessage("hi_player", message).then(response =>
+  typeof response === "string" ? JSON.parse(response) : response);
 browser.webRequest.onBeforeRequest.addListener(details =>
-  browser.runtime.sendNativeMessage("hi_player", {kind:"request",url:details.url,page:details.documentUrl || details.originUrl || "",main:details.type === "main_frame"})
+  sendNative({kind:"request",url:details.url,page:details.documentUrl || details.originUrl || "",main:details.type === "main_frame"})
     .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:true})),
   {urls:["http://*/*","https://*/*"]}, ["blocking"]);
 browser.runtime.onMessage.addListener(async (message, sender) => {

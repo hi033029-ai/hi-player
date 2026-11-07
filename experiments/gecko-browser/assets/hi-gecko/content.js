@@ -1,7 +1,8 @@
 "use strict";
 (() => {
   if (document.contentType && document.contentType.toLowerCase() !== "text/html") return;
-  const send = value => browser.runtime.sendNativeMessage("hi_player", value);
+  const send = value => browser.runtime.sendNativeMessage("hi_player", value).then(response =>
+    typeof response === "string" ? JSON.parse(response) : response);
   send({kind:"bootstrap"}).then(settings => {
     if (settings && settings.css) {
       const apply = () => {

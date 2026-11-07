@@ -104,7 +104,9 @@ internal object GeckoFeatureBridge {
         waiting.clear()
         callbacks.forEach { it(ready) }
     }
-    private fun reply(value: JSONObject): GeckoResult<Any> = GeckoResult.fromValue<Any>(value)
+    // GeckoView's native-message callback accepts primitive replies; returning a JSONObject
+    // produces "Invalid event data for callback" and can leave blocking webRequest calls pending.
+    private fun reply(value: JSONObject): GeckoResult<Any> = GeckoResult.fromValue<Any>(value.toString())
     private val delegate = object : WebExtension.MessageDelegate {
         override fun onConnect(port: WebExtension.Port) {
             val sender = port.sender
