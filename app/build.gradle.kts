@@ -9,18 +9,13 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-// Optional public OAuth identifier override, not a client secret. Normally leave
-// unset: google-services.json supplies this project's real Web OAuth client.
+// Public OAuth identifiers only; google-services.json supplies the real client by default.
 val googleWebClientId = providers.gradleProperty("HI_PLAYER_GOOGLE_WEB_CLIENT_ID")
   .orElse(providers.environmentVariable("HI_PLAYER_GOOGLE_WEB_CLIENT_ID"))
   .orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
-
-// Keep restricted Drive consent off in production until OAuth review is ready.
 val googleDriveEnabled = providers.gradleProperty("HI_PLAYER_DRIVE_ENABLED")
   .orElse(providers.environmentVariable("HI_PLAYER_DRIVE_ENABLED"))
   .map { it.equals("true", ignoreCase = true) }.getOrElse(false)
-
-// Public native OAuth app identifiers only. Never embed provider client secrets.
 val oneDriveClientId = providers.gradleProperty("HI_PLAYER_ONEDRIVE_CLIENT_ID")
   .orElse(providers.environmentVariable("HI_PLAYER_ONEDRIVE_CLIENT_ID")).orNull.orEmpty().replace("\\", "\\\\").replace("\"", "\\\"")
 val dropboxAppKey = providers.gradleProperty("HI_PLAYER_DROPBOX_APP_KEY")
@@ -33,16 +28,14 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 93
-    versionName = "1.0.92"
-
+    versionCode = 94
+    versionName = "1.0.93"
     buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     buildConfigField("boolean", "GOOGLE_DRIVE_ENABLED", googleDriveEnabled.toString())
     buildConfigField("String", "ONEDRIVE_CLIENT_ID", "\"$oneDriveClientId\"")
     buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
-
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
@@ -58,7 +51,6 @@ android {
       keyPassword = "android"
     }
   }
-
   assetPacks += listOf(":webfilters")
   buildTypes {
     release {
@@ -71,9 +63,7 @@ android {
     debug {
       buildConfigField("boolean", "PLAY_STORE_BUILD", "false")
       signingConfig = signingConfigs.getByName("debugConfig")
-      // The shipped APK is the debug variant. A debuggable app runs Compose and
-      // WebView glue without ART's optimizations or baseline profiles, which is
-      // what made scrolling stutter, so the installable build is non-debuggable.
+      // Keep installable builds optimized; the device-test property alone enables debugging.
       isDebuggable = false
     }
   }
@@ -81,29 +71,17 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
-  buildFeatures {
-    compose = true
-    buildConfig = true
-  }
+  buildFeatures { compose = true; buildConfig = true }
   testOptions { unitTests { isIncludeAndroidResources = true } }
-  dependenciesInfo {
-    includeInApk = false
-    includeInBundle = true
-  }
+  dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
-
-// Configure the Secrets Gradle Plugin to use .env and .env.example files
-// to match the convention used in Web projects.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
-
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
-// Some unused dependencies are commented out below instead of being removed.
-// This makes it easy to add them back in the future if needed.
 dependencies {
   implementation("com.hierynomus:smbj:0.13.0")
   implementation(platform(libs.firebase.bom))
@@ -120,18 +98,13 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.10.1")
   implementation("com.google.android.play:asset-delivery:2.3.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
-  // Locally built Media3 FFmpeg fallback for TrueHD/E-AC-3 and other audio
-  // formats that may be unsupported by a device hardware decoder.
   implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))
-  // Official Media3 1.5.1 Libgav1 video renderer. DefaultRenderersFactory
-  // loads this automatically in EXTENSION_RENDERER_MODE_ON when hardware AV1
-  // decoding is unavailable on the device.
   implementation(files("libs/media3-av1-decoder-release.aar"))
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)
-    implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.reorderable)
+  implementation(libs.androidx.compose.material.icons.extended)
+  implementation(libs.reorderable)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.graphics)
