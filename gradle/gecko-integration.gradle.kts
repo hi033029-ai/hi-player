@@ -29,7 +29,6 @@ configurations.configureEach {
 }
 dependencies.add("implementation", "org.mozilla.geckoview:geckoview:159.0.20261102144711")
 
-// Generated file dependencies are built before Gradle transforms their AARs.
 val prepareGeckoDecoders = tasks.register<Exec>("prepareGeckoDecoders") {
     workingDir(rootProject.projectDir)
     val output = rootProject.layout.buildDirectory.dir("gecko-decoders").get().asFile

@@ -5,11 +5,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeckoEnginePolicyTest {
-    @Test fun androidSevenUsesLegacyWithoutInitializingGecko() {
+    @Test fun android7UsesWebViewWithoutInitializingGecko() {
         assertFalse(GeckoEnginePolicy.supported(24))
         assertFalse(GeckoEnginePolicy.supported(25))
     }
-    @Test fun supportedAndroidVersionsCanUseGecko() {
+    @Test fun android8AndNewerCanUseGecko() {
         assertTrue(GeckoEnginePolicy.supported(26))
         assertTrue(GeckoEnginePolicy.supported(35))
     }
