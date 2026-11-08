@@ -284,8 +284,8 @@ internal object BrowserDownloads {
     }
 
     private suspend fun runTransfer(context: Context, id: Long, transfer: HttpDownloadTransfer) {
-        var lastBytes = part(context, id).length()
-        var lastSample = System.nanoTime()
+        val speedMeter = DownloadSpeedMeter()
+        speedMeter.reset(part(context, id).length(), System.nanoTime())
         try {
             val cached = synchronized(lock) { find(id) }
             var completed = cached?.formatChecked == true && cached.totalBytes > 0 && part(context, id).length() == cached.totalBytes
@@ -308,11 +308,10 @@ internal object BrowserDownloads {
                                 persistLocked(context)
                             }
                         } },
-                        onProgress = { bytes, total -> synchronized(lock) {
+                        onProgress = { bytes, total ->
+                            val speed = speedMeter.sample(bytes, System.nanoTime())
+                            synchronized(lock) {
                             find(id)?.takeIf { it.status == BrowserDownloadStatus.RUNNING }?.let {
-                                val now = System.nanoTime()
-                                val speed = ((bytes - lastBytes).coerceAtLeast(0) * 1_000_000_000.0 / (now - lastSample).coerceAtLeast(1)).toLong()
-                                lastBytes = bytes; lastSample = now
                                 val resolved = if (bytes > 1024 && DownloadFileResolver.isGenericMime(it.mimeType)) runCatching {
                                     val prefix = ByteArray(minOf(bytes, 65536).toInt())
                                     part(context, id).inputStream().use { input -> input.read(prefix) }
@@ -324,7 +323,8 @@ internal object BrowserDownloads {
                                 replaceLocked(updated)
                                 if (System.currentTimeMillis() - lastPersist > 1500) persistLocked(context)
                             }
-                        } })
+                            }
+                        })
                     completed = true
                     break
                 } catch (e: IOException) {
@@ -333,11 +333,14 @@ internal object BrowserDownloads {
                     synchronized(lock) { find(id)?.let { replaceLocked(it.copy(speedBytesPerSecond = 0, retryCount = attempt + 1, error = "Connection interrupted — retrying ${attempt + 1}/3")) } }
                     // Short cancellable intervals make pause/cancel immediate during backoff.
                     repeat((1 shl attempt) * 10) { delay(100); transfer.checkActive() }
-                    lastBytes = part(context, id).length(); lastSample = System.nanoTime()
+                    speedMeter.reset(part(context, id).length(), System.nanoTime())
                 }
             }
             if (completed) {
                 val unfinished = synchronized(lock) { find(id) } ?: return
+                synchronized(lock) {
+                    if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(unfinished.copy(finalizing = true))
+                }
                 val info = DownloadMediaInspector.inspect(part(context, id), unfinished)
                 val current = synchronized(lock) { find(id) } ?: return
                 val finalName = if (current.customName && current.fileName != unfinished.fileName) current.fileName else info.resolved.fileName

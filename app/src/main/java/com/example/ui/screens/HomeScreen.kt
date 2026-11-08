@@ -185,24 +185,24 @@ fun HomeScreen(
     var selectionToolbar by remember { mutableStateOf<VideoSelectionToolbarState?>(null) }
     Column(modifier = modifier.fillMaxSize()) {
         if (selectedFolder == null && treePath == null) {
-            Box(Modifier.fillMaxWidth()) {
-            VideoLibraryHeaderControls(
-                modes = modes, selected = modes[pager.currentPage], folderCount = visibleFolders.size,
-                videoCount = visibleVideos.size, recentCount = if (canShow) recent.size else 0,
-                favoriteCount = favoriteCount, query = searchQuery,
-                onQueryChange = { if (!selectionActive) libraryViewModel.setSearchQuery(it) }, viewMode = viewMode,
-                onToggleView = { if (!selectionActive) libraryViewModel.toggleViewMode() },
-                onSort = { if (!selectionActive) libraryViewModel.setSortOption(it) },
-                onSelect = { mode -> if (!selectionActive) { libraryViewModel.selectFolder(null); scope.launch {
-                    pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0),
-                        animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
-                } } },
-            )
-            selectionToolbar?.let { state ->
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(LocalHiPalette.current.surface)) {
-                    VideoSelectionToolbar(state)
+            val activeSelection = selectionToolbar
+            if (activeSelection != null) {
+                Box(Modifier.fillMaxWidth().background(LocalHiPalette.current.surface)) {
+                    VideoSelectionToolbar(activeSelection)
                 }
-            }
+            } else {
+                VideoLibraryHeaderControls(
+                    modes = modes, selected = modes[pager.currentPage], folderCount = visibleFolders.size,
+                    videoCount = visibleVideos.size, recentCount = if (canShow) recent.size else 0,
+                    favoriteCount = favoriteCount, query = searchQuery,
+                    onQueryChange = { if (!selectionActive) libraryViewModel.setSearchQuery(it) }, viewMode = viewMode,
+                    onToggleView = { if (!selectionActive) libraryViewModel.toggleViewMode() },
+                    onSort = { if (!selectionActive) libraryViewModel.setSortOption(it) },
+                    onSelect = { mode -> if (!selectionActive) { libraryViewModel.selectFolder(null); scope.launch {
+                        pager.animateScrollToPage(modes.indexOf(mode).coerceAtLeast(0),
+                            animationSpec = androidx.compose.animation.core.tween(300, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                    } } },
+                )
             }
         }
     androidx.compose.foundation.pager.HorizontalPager(

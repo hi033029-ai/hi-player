@@ -1,10 +1,14 @@
 package com.example.browser.gecko
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -19,8 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import com.example.ui.components.BrowserLoadingIndicatorColor
 import com.example.ui.screens.BrowserFindBar
 import com.example.ui.screens.BrowserHistoryPolicy
 import com.example.ui.screens.BrowserHistorySuggestions
@@ -69,6 +77,17 @@ internal fun GeckoBrowserShell(
     var history by remember { mutableStateOf(emptyList<OrbitBrowserEntry>()) }
     val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
+    val scrollChrome = coordinator.controller.scrollChrome
+    var barHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val showBrowserBar = home || secureUrl != null || !scrollChrome.hidden || focused || find?.visible == true || snapshot.loading
+    val barHiddenFraction by animateFloatAsState(
+        targetValue = if (showBrowserBar) 0f else 1f,
+        animationSpec = tween(durationMillis = 220),
+        label = "gecko-browser-bar",
+    )
+    LaunchedEffect(activeId, snapshot.url, secureUrl) { scrollChrome.show() }
     LaunchedEffect(snapshot.url, secureUrl, focused) { if (!focused) address = secureUrl ?: snapshot.url }
     LaunchedEffect(focused, activeTab.privateTab, historyRevision) {
         history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
@@ -110,14 +129,23 @@ internal fun GeckoBrowserShell(
         } else {
             pageContent(coordinator.controller)
         }
-        if (!snapshot.fullscreen) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        if (!snapshot.fullscreen) Column(Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .graphicsLayer { translationY = barHiddenFraction * (barHeightPx + navBottomPx + 24.dp.toPx()) }
+            .onSizeChanged { barHeightPx = it.height }) {
             if (find?.visible == true) BrowserFindBar(
                 query = find.query, matchLabel = find.label,
                 onQueryChange = find::changeQuery, onPrevious = { find.next(true) },
                 onNext = { find.next(false) }, onClose = find::dismiss,
             )
             if (!home && secureUrl == null && snapshot.loading) {
-                LinearProgressIndicator(progress = { snapshot.progress.coerceIn(0, 100) / 100f }, modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp))
+                LinearProgressIndicator(
+                    progress = { snapshot.progress.coerceIn(0, 100) / 100f },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp),
+                    color = BrowserLoadingIndicatorColor,
+                    trackColor = BrowserLoadingIndicatorColor.copy(alpha = .2f),
+                )
             }
             if (focused && !activeTab.privateTab) {
                 BrowserHistorySuggestions(

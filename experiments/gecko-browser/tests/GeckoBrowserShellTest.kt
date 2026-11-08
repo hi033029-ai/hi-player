@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -92,6 +93,36 @@ class GeckoBrowserShellTest {
         compose.onNodeWithText("Gecko page").assertIsDisplayed()
         compose.onNodeWithContentDescription("Reload").assertDoesNotExist()
         compose.runOnIdle { update(GeckoTabSnapshot(1, false, "https://example.org", fullscreen = false)) }
+        compose.onNodeWithContentDescription("Reload").assertIsDisplayed()
+        compose.runOnIdle { coordinator.close() }
+    }
+    @Test fun pageScrollHidesAndRestoresBrowserControls() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = OrbitBrowserStore(context)
+        val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { tab, changed ->
+            object : GeckoManagedSession<GeckoView> {
+                override fun attach(view: GeckoView) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) { changed(GeckoTabSnapshot(tab.id, tab.privateTab, url)) }
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun exitFullScreen() = Unit
+                override fun purgeHistory() = Unit
+                override fun setDesktop(enabled: Boolean) = Unit
+                override fun close() = Unit
+            }
+        }
+        compose.setContent { HiPlayerTheme {
+            GeckoBrowserShell(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {},
+                pageContent = { Text("Gecko page") })
+        } }
+        compose.runOnIdle { coordinator.load("https://example.org") }
+        compose.onNodeWithContentDescription("Reload").assertIsDisplayed()
+        compose.runOnIdle { coordinator.controller.scrollChrome.onScroll(100f) }
+        compose.onNodeWithContentDescription("Reload").assertIsNotDisplayed()
+        compose.runOnIdle { coordinator.controller.scrollChrome.onScroll(-100f) }
         compose.onNodeWithContentDescription("Reload").assertIsDisplayed()
         compose.runOnIdle { coordinator.close() }
     }

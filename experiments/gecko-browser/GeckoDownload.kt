@@ -86,7 +86,7 @@ internal fun transferGeckoDownload(
             if (!cancellation.register(source)) return GeckoDownloadOutcome.Cancelled
             try {
                 destination.open().use { output ->
-                    val buffer = ByteArray(64 * 1024)
+                    val buffer = ByteArray(256 * 1024)
                     while (true) {
                         if (cancellation.isCancelled()) return GeckoDownloadOutcome.Cancelled
                         val read = source.read(buffer)

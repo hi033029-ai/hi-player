@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.SwitchDefaults
@@ -439,6 +440,7 @@ fun HiBrowserScreen(
     // Reserve room for the floating address bar only on pages that cannot scroll.
     var reserveBarSpace by remember { mutableStateOf(false) }
     var barHeightPx by remember { mutableIntStateOf(0) }
+    val scrollChrome = remember { BrowserScrollChromeState() }
     val mediaSniffer = HiBrowserSession.mediaSniffer
     val hostActivity = remember(context) { context.findHiActivity() }
     remember(hostActivity) {
@@ -525,8 +527,7 @@ fun HiBrowserScreen(
     val pipSession = remember { mutableStateOf(false) }
     val pipPinned = remember { mutableStateOf(false) }
     val pausedForPip = remember { mutableStateOf(false) }
-    // The bottom address bar slides away while the page scrolls down and returns on scroll up.
-    var browserBarHidden by remember { mutableStateOf(false) }
+    // The address/search bar and navigation controls stay fixed while page content scrolls.
 
     androidx.compose.runtime.SideEffect { mediaSniffer.activeTabId = activeTabId }
 
@@ -539,7 +540,7 @@ fun HiBrowserScreen(
         findBarVisible = false
         findQuery = ""
         findMatchLabel = ""
-        browserBarHidden = false
+        scrollChrome.show()
         reserveBarSpace = false
         if (pageError?.tabId != activeTabId) pageError = null
         // A restored tab (app reopened, or its page was released) shows the loader until it paints.
@@ -1306,9 +1307,8 @@ fun HiBrowserScreen(
     val density = LocalDensity.current
     val imeVisibleNow = hiImeVisible()
     val onPageNow = !showStartPage
-    val showBrowserBar = !onPageNow || !browserBarHidden || findBarVisible || imeVisibleNow || pendingFirstPaint || pixelComet.loading
-    // The address bar floats over the page and slides away by moving its layer,
-    // so the WebView is never resized while the page scrolls.
+    val showBrowserBar = !onPageNow || !scrollChrome.hidden || findBarVisible || imeVisibleNow || pendingFirstPaint || pixelComet.loading
+    // Hide all floating browser controls for content, without resizing the WebView.
     val barHiddenFraction by animateFloatAsState(
         targetValue = if (showBrowserBar) 0f else 1f,
         animationSpec = tween(durationMillis = 220),
@@ -1393,20 +1393,11 @@ fun HiBrowserScreen(
                         (view.parent as? ViewGroup)?.removeView(view)
                         view.apply {
                             val browserWebView = this
-                            var scrollTravel = 0
                             setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                                 if (activeTabId != tabId) return@setOnScrollChangeListener
                                 val dy = scrollY - oldScrollY
                                 if (dy != 0 && reserveBarSpace) reserveBarSpace = false
-                                if (scrollY <= 0) {
-                                    scrollTravel = 0
-                                    if (browserBarHidden) browserBarHidden = false
-                                    return@setOnScrollChangeListener
-                                }
-                                // Count travel in one direction so tiny jitters don't toggle the bar.
-                                scrollTravel = if (dy == 0 || (dy > 0) == (scrollTravel > 0)) scrollTravel + dy else dy
-                                if (scrollTravel > 40 && scrollY > 120 && !browserBarHidden) browserBarHidden = true
-                                else if (scrollTravel < -30 && browserBarHidden) browserBarHidden = false
+                                scrollChrome.onScroll(dy.toFloat(), atTop = scrollY <= 0)
                             }
                             CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
@@ -1551,7 +1542,7 @@ fun HiBrowserScreen(
                                         if (request.isForMainFrame && request.hasGesture() && !request.isRedirect &&
                                             activeTabId == tabId && view.url?.substringBefore('#') != uri.toString().substringBefore('#')) {
                                             pixelComet.start()
-                                            browserBarHidden = false
+                                            scrollChrome.show()
                                         }
                                         if (request.isForMainFrame && !activeTab.privateTab) {
                                             if (request.isRedirect) {
@@ -1583,7 +1574,7 @@ fun HiBrowserScreen(
                                         pixelComet.start()
                                         loadingProgress = maxOf(1, (pixelComet.value * 100).toInt())
                                         pendingFirstPaint = true
-                                        browserBarHidden = false
+                                        scrollChrome.show()
                                     }
                                 }
                                 override fun onPageCommitVisible(view: WebView, url: String) {
@@ -2564,7 +2555,11 @@ private fun BrowserSettingsDialog(
                         videoHandoff,
                         onVideoHandoffChange,
                     )
-                    if (videoHandoff) {
+                    AnimatedVisibility(
+                        visible = videoHandoff,
+                        enter = fadeIn() + slideInVertically { it / 4 },
+                        exit = fadeOut() + slideOutVertically { -it / 4 },
+                    ) {
                         BrowserSettingsSwitchRow(
                             "Auto-play in Hi Player",
                             "When you start a video on a page, it opens in Hi Player. Ads and short clips stay on the page",
@@ -2626,8 +2621,10 @@ private fun BrowserSettingsSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val palette = LocalHiPalette.current
+    val rowColor by animateColorAsState(if (checked) palette.primary.copy(alpha = .08f) else Color.Transparent, label = "setting-state")
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(rowColor)
+            .clickable { onCheckedChange(!checked) }.padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
@@ -2651,13 +2648,15 @@ private fun BrowserSettingsSwitchRow(
 @Composable
 private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled: Boolean = true) {
     val palette = LocalHiPalette.current
-    Text(
-        title,
-        color = palette.primary,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 14.dp),
-    )
+    val color by animateColorAsState(if (enabled) palette.primary else palette.textTertiary, label = "setting-action")
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 10.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, color = color, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = color)
+    }
 }
 
 private enum class BrowserSearchProvider(

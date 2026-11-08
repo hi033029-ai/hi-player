@@ -37,6 +37,18 @@ private tailrec fun Context.accountActivity(): Activity? = when (this) {
     else -> null
 }
 
+/** Android's own Google account screen: accounts added here are offered to every app's Google sign-in. */
+private fun openDeviceGoogleAccounts(context: Context): Boolean {
+    val add = android.content.Intent(android.provider.Settings.ACTION_ADD_ACCOUNT)
+        .putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+    val sync = android.content.Intent(android.provider.Settings.ACTION_SYNC_SETTINGS)
+    for (intent in listOf(add, sync)) {
+        if (context !is Activity) intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { context.startActivity(intent) }.isSuccess) return true
+    }
+    return false
+}
+
 @Composable
 internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -> Unit = {}, model: GoogleAccountViewModel = viewModel(),
     includeDriveConnection: Boolean = true) {
@@ -89,7 +101,10 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
                 OutlinedButton(enabled = !busy, onClick = model::signOut) { Text("Sign out of Hi Player") }
             }
             message?.let { Text(it, color = palette.textSecondary) }
-            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. Website sessions are separate and managed by your browser; sites choose which sign-in methods they support.", color = palette.textSecondary)
+            OutlinedButton(enabled = !busy, onClick = {
+                if (!openDeviceGoogleAccounts(context)) Toast.makeText(context, "Open Android Settings > Accounts to add a Google account.", Toast.LENGTH_LONG).show()
+            }) { Text("Add Google account to this phone (for other apps)") }
+            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. In Hi Browser, choose \"Sign in to Google for websites\" once and sites that offer Google sign-in can use that account. Other apps use the Google accounts added to Android.", color = palette.textSecondary)
             if (includeDriveConnection && profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
 
         }
@@ -123,7 +138,7 @@ internal fun GoogleAccountDialog(
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 GoogleAccountCard(onPlayDriveMedia = onPlayDriveMedia, model = model)
-                Text("This account is shared across Hi Player settings, browser controls and the player. Websites use their own sign-in sessions; authorizing the app does not sign you into Google websites.", color = palette.textSecondary)
+                Text("This account is shared across Hi Player settings, browser controls and the player. Websites keep their own sign-in: Google signs you in on its own pages, and Hi Player never copies passwords or tokens into websites.", color = palette.textSecondary)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },

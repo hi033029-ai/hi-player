@@ -84,7 +84,7 @@ internal class HttpDownloadTransfer {
                             var received = offset
                             var lastReport = System.nanoTime()
                             body.byteStream().use { input ->
-                                val buffer = ByteArray(64 * 1024)
+                                val buffer = ByteArray(256 * 1024)
                                 while (true) {
                                     checkActive()
                                     val count = input.read(buffer)
@@ -95,7 +95,8 @@ internal class HttpDownloadTransfer {
                                     if (now - lastReport >= 400_000_000L) { onProgress(received, total); lastReport = now }
                                 }
                             }
-                            output.fd.sync()
+                            // Closing flushes to the OS; publishing below performs the required destination write.
+                            // Avoid a second full-device fsync stall for every large video.
                             if (total > 0 && received != total) throw IOException("Connection ended before the file was complete")
                             checkActive()
                             onProgress(received, if (total > 0) total else received)

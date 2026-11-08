@@ -35,7 +35,7 @@ diff --git a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt b/app/s
 index a85e257..bc67244 100644
 --- a/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
 +++ b/app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt
-@@ -168,8 +168,6 @@ import kotlinx.coroutines.delay
+@@ -169,8 +169,6 @@ import kotlinx.coroutines.delay
  import kotlinx.coroutines.flow.MutableStateFlow
  import kotlinx.coroutines.flow.asStateFlow
  import java.io.ByteArrayInputStream
@@ -44,8 +44,8 @@ index a85e257..bc67244 100644
  import java.util.WeakHashMap
  import android.app.Activity
  import android.content.ActivityNotFoundException
-@@ -2660,27 +2658,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled
-     )
+@@ -2659,27 +2657,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled
+     }
  }
  
 -private enum class BrowserSearchProvider(

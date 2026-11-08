@@ -31,6 +31,7 @@ internal class GeckoSecureRouting(
         SecureWebSessions::entryForGoogleAuth,
         { url -> val origin = SecureWebsitePolicy.originKey(url); origin != null &&
             if (isPrivate) origin in privateOrigins else prefers(url) },
+        googleSignInInBrowser = true,
     )
 
     fun decision(tabId: Int, decision: GeckoNavigationDecision) {

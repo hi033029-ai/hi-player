@@ -198,51 +198,51 @@ diff --git a/experiments/gecko-browser/GeckoRuntimePermissionLauncher.kt b/exper
 diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko-browser/GeckoTabController.kt
 --- a/experiments/gecko-browser/GeckoTabController.kt
 +++ b/experiments/gecko-browser/GeckoTabController.kt
-@@ -5,4 +5,5 @@
+@@ -7,4 +7,5 @@
      fun attach(view: View)
      fun detach()
 +    fun setHostActive(active: Boolean) {}
      fun load(url: String)
      fun reload()
-@@ -26,4 +27,5 @@
+@@ -28,4 +29,5 @@
      private var view: View? = null
      private var closed = false
 +    private var hostActive = true
      val tabs: List<GeckoTabRegistry.Tab> get() = registry.tabs
      val activeId: Int get() = registry.activeId
-@@ -53,4 +55,5 @@
+@@ -56,4 +58,5 @@
          view = newView
          sessions.getValue(activeId).attach(newView)
 +        sessions.getValue(activeId).setHostActive(hostActive)
      }
  
-@@ -74,4 +77,5 @@
+@@ -77,4 +80,5 @@
              sessions.getValue(previousId).detach()
              session.attach(view!!)
 +            session.setHostActive(hostActive)
          }
          if (url.isNotBlank()) session.load(url)
-@@ -108,4 +112,5 @@
+@@ -111,4 +115,5 @@
              sessions.getValue(previousId).detach()
              sessions.getValue(id).attach(view!!)
 +            sessions.getValue(id).setHostActive(hostActive)
          }
          return true
-@@ -121,5 +126,5 @@
+@@ -124,5 +129,5 @@
          session.close()
          if (activeId !in sessions) sessions[activeId] = newSession(tabs.single { it.id == activeId })
 -        if (wasActive && view != null) sessions.getValue(activeId).attach(view!!)
 +        if (wasActive && view != null) { sessions.getValue(activeId).attach(view!!); sessions.getValue(activeId).setHostActive(hostActive) }
          return true
      }
-@@ -135,5 +140,5 @@
+@@ -138,5 +143,5 @@
              if (view != null) {
                  old.detach()
 -                try { replacement.attach(view!!) } catch (error: Exception) {
 +                try { replacement.attach(view!!); replacement.setHostActive(hostActive) } catch (error: Exception) {
                      runCatching { old.attach(view!!) }
                      throw error
-@@ -148,4 +153,9 @@
+@@ -151,4 +156,9 @@
      }
  
 +    fun setHostActive(active: Boolean) {

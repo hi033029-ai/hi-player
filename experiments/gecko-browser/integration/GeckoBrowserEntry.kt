@@ -39,8 +39,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.auth.GoogleAccountViewModel
 import com.example.downloads.BrowserDownloads
 import com.example.model.StreamUrlClassifier
+import com.example.ui.components.GoogleAccountDialog
 import com.example.ui.screens.BrowserDownloadsPanel
 import com.example.ui.screens.BrowserNavigationHost
 import com.example.ui.screens.BrowserSearchProvider
@@ -101,6 +103,11 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     var provider by remember(owner) { mutableStateOf(BrowserSearchProvider.entries.firstOrNull { it.name == owner.store.searchProviderName } ?: BrowserSearchProvider.GOOGLE) }
     var showSettings by remember { mutableStateOf(false) }
     var voiceUnavailable by remember { mutableStateOf(false) }
+    val accountModel: GoogleAccountViewModel = viewModel(viewModelStoreOwner = activity)
+    var showAccount by remember { mutableStateOf(false) }
+    val accountHooks = remember(accountModel) {
+        GeckoAccountHooks(email = { accountModel.profile.value?.email }, signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true })
+    }
     val fullscreen = coordinator.activeSnapshot.fullscreen
     fun navigate(raw: String) {
         val url = normalizeBrowserInput(raw, provider) ?: return
@@ -153,11 +160,17 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                 onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query) { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) } },
                 appNavigation = arguments.appNavigation, services = services,
+                account = accountHooks,
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
         }
     }
     if (showSettings) GeckoAppearanceDialog(services.settings) { showSettings = false }
+    if (showAccount) GoogleAccountDialog(
+        onDismiss = { showAccount = false },
+        onPlayDriveMedia = { video -> showAccount = false; latest.onPlayAccountMedia(video) },
+        model = accountModel,
+    )
     if (voiceUnavailable) AlertDialog(onDismissRequest = { voiceUnavailable = false }, title = { Text("Voice search unavailable") },
         text = { Text("Type your search in the address bar instead.") }, confirmButton = { TextButton(onClick = { voiceUnavailable = false }) { Text("OK") } })
 }

@@ -32,7 +32,6 @@ internal fun MusicLibraryToolbar(
     sort: String, onSort: (String) -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    var viewMenu by remember { mutableStateOf(false) }
     var sortMenu by remember { mutableStateOf(false) }
     val categories = remember { listOf("All Music", "Folders", "Playlists", "Albums", "Artists") }
     val categoryState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -61,17 +60,9 @@ internal fun MusicLibraryToolbar(
         }
         },
         actions = {
-        Box {
-            IconButton(onClick = { viewMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
-                Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                    if (grid) "Grid view; change layout" else "List view; change layout", tint = palette.textPrimary, modifier = Modifier.size(18.dp))
-            }
-            DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
-                listOf("List" to false, "Grid" to true).forEach { (name, value) ->
-                    DropdownMenuItem(text = { Text(if (grid == value) "$name ✓" else name, fontSize = 11.sp) },
-                        onClick = { onGridChange(value); viewMenu = false })
-                }
-            }
+        IconButton(onClick = { onGridChange(!grid) }, modifier = Modifier.size(48.dp).testTag("audio_view_button")) {
+            Icon(if (grid) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                if (grid) "Switch to list view" else "Switch to grid view", tint = palette.textPrimary, modifier = Modifier.size(18.dp))
         }
         Box {
             IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(48.dp).testTag("audio_sort_button")) {

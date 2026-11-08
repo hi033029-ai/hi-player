@@ -1,7 +1,7 @@
 package com.example.browser.gecko
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Add; import androidx.compose.material.icons.filled.AccountCircle; import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
@@ -53,7 +53,7 @@ internal fun GeckoBrowserChrome(
     permissionUi: GeckoPermissionUi? = null,
     services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
-    pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) },
+    pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showClearData by remember { mutableStateOf(false) }
@@ -62,6 +62,14 @@ internal fun GeckoBrowserChrome(
     var libraryRevision by remember { mutableIntStateOf(0) }
     var clearing by remember { mutableStateOf(false) }
     var clearFailed by remember { mutableStateOf(false) }
+    val googleSignIn = remember(coordinator) { GeckoGoogleSignInFlow() }
+    fun startGoogleSignIn() {
+        // A regular helper tab keeps the Google session in Hi Browser's shared profile.
+        val origin = coordinator.activeId
+        if (!coordinator.open(false)) return
+        googleSignIn.begin(origin, coordinator.activeId)
+        coordinator.load(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull()))
+    }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
     val current = coordinator.activeSnapshot
     val find = remember(coordinator) { GeckoFindController(coordinator.controller::find, coordinator.controller::clearFind) }
@@ -83,6 +91,23 @@ internal fun GeckoBrowserChrome(
         GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
         GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
+        LaunchedEffect(coordinator.revision) { googleSignIn.forgetMissing(coordinator.tabs.map { it.id }.toSet()) }
+        val signInTab = googleSignIn.signInTabId
+        val signInUrl = signInTab?.let { coordinator.snapshots[it]?.url }
+        LaunchedEffect(signInTab, signInUrl) {
+            val id = signInTab ?: return@LaunchedEffect
+            val back = googleSignIn.onUrl(id, signInUrl ?: return@LaunchedEffect) ?: return@LaunchedEffect
+            coordinator.closeTab(id)
+            if (coordinator.tabs.any { it.id == back } && coordinator.select(back) && coordinator.activeSnapshot.url.isNotBlank()) coordinator.reload()
+        }
+        googleSignIn.notice?.let { notice ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { googleSignIn.notice = null },
+                title = { androidx.compose.material3.Text("Google sign-in complete") },
+                text = { androidx.compose.material3.Text("$notice Private tabs stay signed out.") },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { googleSignIn.notice = null }) { androidx.compose.material3.Text("OK") } },
+            )
+        }
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = services::dismissDownloadNotice,
@@ -137,6 +162,8 @@ internal fun GeckoBrowserChrome(
                 HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) { coordinator.setDesktop(!coordinator.desktopMode()) },
             ),
             rows = listOf(
+                *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) "Hi Player account · signed in" else "Sign in to Hi Player with Google", Icons.Default.AccountCircle) { account.openAccount() }) else emptyArray(),
+                *if (services != null) arrayOf(HiMenuAction("Sign in to Google for websites", Icons.Default.Language) { startGoogleSignIn() }) else emptyArray(),
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
                 *if (services != null) arrayOf(HiMenuAction("Appearance and pop-ups", Icons.Default.Settings) { showAppearance = true }) else emptyArray(),

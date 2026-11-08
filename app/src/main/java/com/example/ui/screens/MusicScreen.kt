@@ -213,6 +213,7 @@ fun MusicScreen(
     }
     val audioGridGestureModifier = Modifier.transformable(
         state = audioGridTransformState,
+        canPan = { false },
         enabled = compactAudioView
     )
 

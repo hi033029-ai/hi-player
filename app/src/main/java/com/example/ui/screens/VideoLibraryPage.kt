@@ -168,6 +168,7 @@ internal fun VideoLibraryPage(
     }
     val pinchGridModifier = Modifier.transformable(
         state = gridTransformState,
+        canPan = { false },
         enabled = viewMode == LibraryViewMode.GRADLE_GRID
     )
     val treeCurrentPath by libraryViewModel.treeCurrentPath.collectAsStateWithLifecycle()

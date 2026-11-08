@@ -1,5 +1,7 @@
 package com.example.browser.gecko
 
+import com.example.ui.screens.BrowserScrollChromeState
+
 /** The session wrapper makes tab lifecycle independent of a particular Android view. */
 internal interface GeckoManagedSession<View : Any> : AutoCloseable {
     fun attach(view: View)
@@ -27,6 +29,7 @@ internal class GeckoTabController<View : Any>(
     private var closed = false
     val tabs: List<GeckoTabRegistry.Tab> get() = registry.tabs
     val activeId: Int get() = registry.activeId
+    val scrollChrome = BrowserScrollChromeState()
 
     init {
         try {

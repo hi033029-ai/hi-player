@@ -11,11 +11,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.example.ui.screens.BrowserPlaceholderLayout
 import com.example.ui.theme.LocalHiPalette
+
+val BrowserLoadingIndicatorColor = Color(0xFFFF8A80)
 
 /** Lifecycle mirrors WebView callbacks: redirects do not reset an active load. */
 class BrowserProgressState {
@@ -87,10 +90,10 @@ fun BrowserLoadingBar(state: BrowserProgressState, modifier: Modifier = Modifier
         .background(palette.surfaceBorder.copy(alpha = .25f * alpha.value))) {
         // The highlight keeps moving even while the network-reported value stalls.
         val width = maxWidth * fill.value
-        Box(Modifier.width(width).fillMaxHeight().background(palette.primary.copy(alpha = .6f * alpha.value)))
+        Box(Modifier.width(width).fillMaxHeight().background(BrowserLoadingIndicatorColor.copy(alpha = .6f * alpha.value)))
         val pixel = minOf(12.dp, maxWidth * .04f)
         Box(Modifier.offset(x = (maxWidth - pixel) * travel).width(pixel)
-            .fillMaxHeight().background(palette.primary.copy(alpha = alpha.value)))
+            .fillMaxHeight().background(BrowserLoadingIndicatorColor.copy(alpha = alpha.value)))
     }
 }
 
