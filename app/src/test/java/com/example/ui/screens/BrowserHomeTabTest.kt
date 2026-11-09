@@ -1,8 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.material3.Text
@@ -34,7 +34,7 @@ class BrowserHomeTabTest {
         }
 
         compose.onNodeWithText("Home").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Videos").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, compose.onAllNodesWithText("Videos").fetchSemanticsNodes().size) }
         compose.runOnIdle { assertEquals(NavTab.VIDEOS, selected) }
     }
 

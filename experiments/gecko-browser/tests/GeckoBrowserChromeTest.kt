@@ -3,7 +3,7 @@ package com.example.browser.gecko
 import android.content.Context
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -84,7 +84,7 @@ class GeckoBrowserChromeTest {
                 onPageTools = { openedPageTools = true })
         } }
 
-        compose.onNodeWithText("Page actions").assertDoesNotExist()
+        compose.runOnIdle { assertTrue(compose.onAllNodesWithText("Page actions").fetchSemanticsNodes().isEmpty()) }
         compose.onNodeWithContentDescription("Browser menu").performClick()
         compose.onNodeWithText("Page tools").performScrollTo().performClick()
         compose.runOnIdle {
