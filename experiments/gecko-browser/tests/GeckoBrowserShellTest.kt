@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -16,6 +17,7 @@ import com.example.ui.screens.OrbitBrowserEntry
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.theme.HiPlayerTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,7 +59,14 @@ class GeckoBrowserShellTest {
         } }
         compose.onNodeWithText("Example").performClick()
         compose.onNodeWithText("Gecko page").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Browser home").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Open tabs, 1 tab").assertIsDisplayed()
+        val addressBounds = compose.onNodeWithTag("browser_address_capsule").fetchSemanticsNode().boundsInRoot
+        val tabsBounds = compose.onNodeWithTag("browser_tabs_capsule").fetchSemanticsNode().boundsInRoot
+        assertTrue("Address and tab controls must have a visible gap", addressBounds.right < tabsBounds.left)
         compose.onNodeWithContentDescription("Reload").performClick()
+        compose.onNodeWithContentDescription("Browser home").performClick()
+        compose.onNodeWithText("Example").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals("https://example.org", loaded)
             assertEquals(1, reloads)

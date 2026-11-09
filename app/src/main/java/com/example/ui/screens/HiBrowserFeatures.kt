@@ -449,7 +449,9 @@ internal object OrbitBrowserFilterEngine {
             if (!ruleBody.startsWith("||")) {
                 // Generic URL fragments ("/adserver/", "-ad-banner."); anchored or regex rules are skipped.
                 if (exception || substringCount >= MAX_SUBSTRING_RULES) continue
-                if (ruleBody.startsWith('|') || (ruleBody.startsWith('/') && ruleBody.endsWith('/') && ruleBody.length > 2)) continue
+                val slashWrappedRegex = ruleBody.length > 2 && ruleBody.startsWith('/') && ruleBody.endsWith('/') &&
+                    ruleBody.substring(1, ruleBody.lastIndex).any { it in ".+?()[]{}\\^$|" }
+                if (ruleBody.startsWith('|') || slashWrappedRegex) continue
                 val separatorEnd = ruleBody.endsWith('^')
                 val pattern = ruleBody.trimEnd('^').lowercase()
                 if (pattern.length < 5 || pattern.length > 200 || pattern.contains('^') || pattern.contains('|')) continue

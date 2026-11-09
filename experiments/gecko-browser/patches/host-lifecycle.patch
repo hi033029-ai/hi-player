@@ -8,7 +8,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko
 +    onDownloadsConsumed: () -> Unit = {},
      permissionUi: GeckoPermissionUi? = null,
      services: GeckoBrowserServices? = null,
-@@ -60,4 +62,7 @@
+@@ -61,4 +63,7 @@
      var showAppearance by remember { mutableStateOf(false) }
      var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
 +    LaunchedEffect(openDownloads) {

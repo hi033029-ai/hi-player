@@ -74,6 +74,22 @@ class OrbitBrowserFeaturesTest {
     }
 
     @Test
+    fun slashDelimitedLiteralAdserverRuleBlocksOnlySubresources() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val installed = context.filesDir.resolve("orbit-filters.txt")
+        try {
+            installed.writeText("/adserver/\n")
+            OrbitBrowserFilterEngine.refreshPlayFilters(context)
+            val adScript = Uri.parse("http://127.0.0.1/adserver/blocked.js")
+            assertTrue(OrbitBrowserFilterEngine.shouldBlock(adScript, enabled = true, pageHost = "127.0.0.1", mainFrame = false))
+            assertFalse(OrbitBrowserFilterEngine.shouldBlock(adScript, enabled = true, pageHost = "127.0.0.1", mainFrame = true))
+        } finally {
+            installed.delete()
+            OrbitBrowserFilterEngine.refreshPlayFilters(context)
+        }
+    }
+
+    @Test
     fun cosmeticRulesAreValidSeparateCssRules() {
         OrbitBrowserFilterEngine.load(ApplicationProvider.getApplicationContext())
         val css = OrbitBrowserFilterEngine.cosmeticCss(host = null, enabled = true)

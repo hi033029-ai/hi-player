@@ -105,6 +105,7 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     var voiceUnavailable by remember { mutableStateOf(false) }
     val accountModel: GoogleAccountViewModel = viewModel(viewModelStoreOwner = activity)
     var showAccount by remember { mutableStateOf(false) }
+    var showPageTools by remember { mutableStateOf(false) }
     val accountHooks = remember(accountModel) {
         GeckoAccountHooks(email = { accountModel.profile.value?.email }, signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true })
     }
@@ -161,10 +162,12 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query) { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) } },
                 appNavigation = arguments.appNavigation, services = services,
                 account = accountHooks,
+                onPageTools = { showPageTools = true },
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
         }
     }
+    GeckoPageToolsSheet(arguments, services, owner.store, visible = showPageTools) { showPageTools = false }
     if (showSettings) GeckoAppearanceDialog(services.settings) { showSettings = false }
     if (showAccount) GoogleAccountDialog(
         onDismiss = { showAccount = false },

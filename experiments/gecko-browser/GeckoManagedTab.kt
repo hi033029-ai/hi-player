@@ -15,7 +15,7 @@ internal class GeckoManagedTab(
     promptDelegate: GeckoSession.PromptDelegate? = null,
     openWhenCreated: Boolean = true,
     onPopupRequested: ((String) -> GeckoSession?)? = null,
-    popupAllowed: (Boolean) -> Boolean = { it },
+    popupAllowed: (String, Boolean) -> Boolean = { _, gesture -> gesture },
     onCloseRequested: (() -> Unit)? = null,
     onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     permissionDelegate: GeckoSession.PermissionDelegate? = null,

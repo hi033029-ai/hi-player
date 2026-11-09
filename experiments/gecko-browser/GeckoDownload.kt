@@ -16,6 +16,7 @@ internal class GeckoDownloadOffer(response: WebResponse) : GeckoDownloadSource {
     private var body: InputStream? = response.body
     override val mimeType: String? = response.headers["content-type"]?.substringBefore(';')?.trim()
     override val contentDisposition: String? = response.headers["content-disposition"]
+    override val responseUrl: String? = response.uri
     override val contentLength: Long? = response.headers["content-length"]?.toLongOrNull()?.takeIf { it >= 0 }
     override val statusCode: Int = response.statusCode
 

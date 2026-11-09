@@ -43,7 +43,6 @@ def augment(result):
     key = 'main/integration/GeckoBrowserEntry.kt'
     t = result[key]
     t = replace_once(t, '            GeckoBrowserChrome(', '            if (arguments.isInPictureInPicture) GeckoBrowserSurface(coordinator.controller, Modifier.fillMaxSize()) else GeckoBrowserChrome(', 'PiP content-only rendering')
-    t = replace_once(t, '                openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,\n            )', '                openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,\n            )\n            if (!arguments.isInPictureInPicture) GeckoPageActions(arguments, services, owner.store)', 'real page actions')
     t = t.replace('coordinator.controller.setHostActive(latest.isInPictureInPicture)', 'coordinator.controller.setHostActive(activity.isInPictureInPictureMode || latest.isInPictureInPicture)')
     result[key] = t
     return result

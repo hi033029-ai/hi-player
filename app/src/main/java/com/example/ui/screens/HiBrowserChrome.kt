@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -93,6 +94,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -128,8 +131,7 @@ private fun HiTabCountBox(count: Int, color: Color) {
 }
 
 /**
- * Hi Browser's address bar, shown at the bottom of the screen:
- * home, search engine, address field, tab counter and menu.
+ * Hi Browser's bottom chrome: a dedicated address/search pill and a separate tab/menu pill.
  * The keyboard's Go/Search/Enter key opens what was typed.
  */
 @Composable
@@ -183,30 +185,31 @@ internal fun HiBrowserToolbar(
         if (text.isNotBlank()) onSubmit(text)
     }
 
-    // Transparent container: only the outlined, see-through pill is drawn, so the
-    // page (or start page) stays visible around and through the bar.
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+    // Keep the address field and tab controls as separate, independently legible controls.
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val shape = RoundedCornerShape(28.dp)
         Row(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(shape)
                 .background(palette.surface.copy(alpha = if (focused) 0.97f else 0.84f))
                 .border(1.dp, if (focused) palette.primary else palette.surfaceBorder, shape)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 4.dp)
+                .testTag("browser_address_capsule"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (!focused) {
                 Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onHome),
+                    modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onHome),
                     contentAlignment = Alignment.Center,
                 ) {
-                    HiPlayerLogoBadge(size = 32.dp)
+                    Icon(Icons.Default.Home, contentDescription = "Browser home", tint = palette.primary, modifier = Modifier.size(22.dp))
                 }
             } else {
                 Spacer(Modifier.width(8.dp))
@@ -309,16 +312,27 @@ internal fun HiBrowserToolbar(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onShowTabs),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    HiTabCountBox(tabCount, palette.textPrimary)
-                }
-                IconButton(onClick = onMenu) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
-                }
+        }
+        Row(
+            modifier = Modifier
+                .height(56.dp)
+                .clip(shape)
+                .background(palette.surface.copy(alpha = 0.92f))
+                .border(1.dp, palette.surfaceBorder, shape)
+                .padding(horizontal = 3.dp)
+                .testTag("browser_tabs_capsule"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.size(44.dp)
+                    .semantics { contentDescription = "Open tabs, $tabCount ${if (tabCount == 1) "tab" else "tabs"}" }
+                    .clip(CircleShape).clickable(onClick = onShowTabs),
+                contentAlignment = Alignment.Center,
+            ) {
+                HiTabCountBox(tabCount, palette.textPrimary)
+            }
+            IconButton(onClick = onMenu) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Browser menu", tint = palette.textPrimary)
             }
         }
     }
@@ -877,7 +891,7 @@ internal fun HiBrowserLibrary(
     var section by remember { mutableStateOf(initialSection) }
     var query by remember(section) { mutableStateOf("") }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BrowserNavigationHost(navigation = appNavigation) {
+        BrowserNavigationHost(revealButtonBottomInset = 12.dp, navigation = appNavigation) {
         Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),

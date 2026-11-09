@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
@@ -70,7 +71,7 @@ fun HiBottomNavigationBar(
     val palette = LocalHiPalette.current
     val tabs = remember {
         listOf(
-            TabSpec(NavTab.VIDEOS, "Videos", Icons.Default.Movie, "nav_item_videos"),
+            TabSpec(NavTab.VIDEOS, "Home", Icons.Default.Home, "nav_item_home"),
             TabSpec(NavTab.MUSIC, "Music", Icons.Default.MusicNote, "nav_item_music"),
             TabSpec(NavTab.BROWSER, "Browser", Icons.Default.Language, "nav_item_browser"),
             TabSpec(NavTab.FILE_MANAGER, "Files", Icons.Default.Folder, "nav_item_files"),

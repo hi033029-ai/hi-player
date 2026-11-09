@@ -53,6 +53,15 @@ class GeckoSecureRoutingTest {
         assertTrue(saved.isEmpty())
         assertNull(routing.route(1))
     }
+    @Test fun googleSignInIsAllowedOnlyInTheExplicitRegularHelperTab() {
+        val google = "https://accounts.google.com/AccountChooser"
+        assertTrue(routing.policy(false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+        routing.allowGoogleSignInInBrowser(1)
+        assertEquals(GeckoNavigationDecision.Allow, routing.policyForTab(1, false).decide(google, "https://example.org/", false))
+        assertTrue(routing.policyForTab(2, true).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+        routing.leaveTab(1)
+        assertTrue(routing.policyForTab(1, false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+    }
     @Test fun rejectsCredentialUrlsAndUnknownSchemes() {
         routing.decision(1, GeckoNavigationDecision.SecureSignIn("https://user:pass@example.org/"))
         assertNull(routing.pending)

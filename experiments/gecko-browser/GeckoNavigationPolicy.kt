@@ -17,13 +17,13 @@ internal class GeckoNavigationPolicy(
     private val isGoogleAuthentication: (String) -> Boolean,
     private val secureEntryFor: (String) -> String,
     private val prefersSecureSite: (String) -> Boolean,
-    /** Keep Google's sign-in pages in Hi Browser so the Google session is shared by its tabs. */
-    private val googleSignInInBrowser: Boolean = false,
+    /** Keep Google's sign-in pages in-browser only for a tab opened by the explicit user flow. */
+    private val googleSignInInBrowser: () -> Boolean = { false },
 ) {
     fun decide(url: String, currentUrl: String, userGesture: Boolean): GeckoNavigationDecision {
         val scheme = runCatching { URI(url).scheme?.lowercase(Locale.ROOT) }.getOrNull()
             ?: return GeckoNavigationDecision.Block
-        if (googleSignInInBrowser && scheme == "https" && isGoogleAuthentication(url)) {
+        if (googleSignInInBrowser() && scheme == "https" && isGoogleAuthentication(url)) {
             // Google's refusal page is the only case that needs the device browser.
             return if (GeckoGoogleSignIn.isRejected(url)) GeckoNavigationDecision.SecureSignIn(secureEntryFor(currentUrl))
             else GeckoNavigationDecision.Allow

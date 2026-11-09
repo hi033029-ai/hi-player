@@ -36,7 +36,7 @@ internal class GeckoTabEngine(
     private val promptDelegate: GeckoSession.PromptDelegate? = null,
     private val openWhenCreated: Boolean = true,
     private val onPopupRequested: ((String) -> GeckoSession?)? = null,
-    private val popupAllowed: (Boolean) -> Boolean = { it },
+    private val popupAllowed: (String, Boolean) -> Boolean = { _, gesture -> gesture },
     private val onCloseRequested: (() -> Unit)? = null,
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
@@ -78,7 +78,7 @@ internal class GeckoTabEngine(
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
                 val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
                 popupGate.clear()
-                if (newWindow && !runCatching { popupAllowed(request.hasUserGesture) }.getOrDefault(false)) {
+                if (newWindow && !runCatching { popupAllowed(request.uri, request.hasUserGesture) }.getOrDefault(false)) {
                     return GeckoResult.deny()
                 }
                 // A new blank child is needed by websites that create a window first and

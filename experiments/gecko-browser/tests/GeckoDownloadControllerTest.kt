@@ -10,14 +10,20 @@ import java.util.concurrent.Executor
 import java.util.concurrent.RejectedExecutionException
 
 class GeckoDownloadControllerTest {
-    private class Source(val data: ByteArray = byteArrayOf(1, 2, 3), override val statusCode: Int = 200) : GeckoDownloadSource {
-        override val mimeType = "application/octet-stream"
-        override val contentDisposition = "attachment; filename=\"../report.txt\""
+    private class Source(
+        val data: ByteArray = byteArrayOf(1, 2, 3),
+        override val statusCode: Int = 200,
+        override val contentDisposition: String? = "attachment; filename=\"../report.txt\"",
+        override val responseUrl: String? = null,
+        override val mimeType: String? = "application/octet-stream",
+    ) : GeckoDownloadSource {
         override val contentLength = data.size.toLong()
         var closed = false
         var inputClosed = false
+        var takeCalls = 0
         private var taken = false
         override fun takeBody(): InputStream? {
+            takeCalls++
             if (taken) return null
             taken = true
             return object : ByteArrayInputStream(data) { override fun close() { inputClosed = true; super.close() } }
@@ -35,6 +41,7 @@ class GeckoDownloadControllerTest {
     private class Tasks : Executor {
         val queue = mutableListOf<Runnable>()
         override fun execute(command: Runnable) { queue.add(command) }
+        fun runOne() { queue.removeAt(0).run() }
         fun run() { while (queue.isNotEmpty()) queue.removeAt(0).run() }
     }
     @Test fun approvalCopiesAndCommitsWithoutPersistingSource() {
@@ -48,7 +55,51 @@ class GeckoDownloadControllerTest {
         assertTrue(source.closed)
         worker.run(); ui.run()
         assertTrue(target.committed); assertArrayEquals(source.data, target.output.toByteArray()); assertTrue(source.inputClosed)
+        assertEquals(1, source.takeCalls)
         assertEquals(GeckoDownloadOutcome.Complete(3), (controller.state as GeckoDownloadState.Finished).outcome)
+    }
+    @Test fun contentDispositionTakesPrecedenceOverResponseUrl() {
+        val source = Source(contentDisposition = "attachment; filename=\"my report.txt\"", responseUrl = "https://example.test/url-name.mp4")
+        val controller = GeckoDownloadController(Tasks(), { it() }) { _, _ -> Target() }
+        assertTrue(controller.offer(source))
+        assertEquals("my report.txt", (controller.state as GeckoDownloadState.Offer).name)
+        controller.reject()
+    }
+    @Test fun urlQueryAndBasenameFallbacksAreSanitized() {
+        val controller = GeckoDownloadController(Tasks(), { it() }) { _, _ -> Target() }
+        assertTrue(controller.offer(Source(contentDisposition = null, responseUrl = "https://example.test/download?filename=quarter%20report.pdf")))
+        assertEquals("quarter report.pdf", (controller.state as GeckoDownloadState.Offer).name)
+        controller.reject()
+        assertTrue(controller.offer(Source(contentDisposition = null, responseUrl = "https://example.test/files/video%20clip.mp4?token=secret")))
+        assertEquals("video clip.mp4", (controller.state as GeckoDownloadState.Offer).name)
+        controller.reject()
+    }
+    @Test fun mimeTypeProvidesNameWhenDispositionAndUrlHaveNoFilename() {
+        val controller = GeckoDownloadController(Tasks(), { it() }) { _, _ -> Target() }
+        assertTrue(controller.offer(Source(contentDisposition = null, responseUrl = "https://example.test/download", mimeType = "application/pdf")))
+        assertEquals("download.pdf", (controller.state as GeckoDownloadState.Offer).name)
+        controller.reject()
+    }
+    @Test fun activeStateRetainsFilenameAndReportsDeterminateProgress() {
+        val data = ByteArray(600 * 1024) { 7 }
+        val worker = Tasks(); val ui = Tasks(); val source = Source(data, contentDisposition = "attachment; filename=\"archive.zip\"")
+        val controller = GeckoDownloadController(worker, { ui.execute(Runnable(it)) }) { _, _ -> Target() }
+        assertTrue(controller.offer(source))
+        controller.approve()
+        val initial = controller.state as GeckoDownloadState.Active
+        assertEquals("archive.zip", initial.name)
+        assertEquals(0L, initial.bytes)
+        assertEquals(data.size.toLong(), initial.length)
+        worker.run()
+        ui.runOne()
+        val progress = controller.state as GeckoDownloadState.Active
+        assertEquals("archive.zip", progress.name)
+        assertTrue(progress.bytes > 0)
+        assertTrue(progress.speedBytesPerSecond >= 0)
+        assertEquals(data.size.toLong(), progress.length)
+        ui.run()
+        assertEquals(GeckoDownloadOutcome.Complete(data.size.toLong()), (controller.state as GeckoDownloadState.Finished).outcome)
+        assertEquals(1, source.takeCalls)
     }
     @Test fun rejectAndBusyOffersCloseUnconsumedResponses() {
         val worker = Tasks(); val controller = GeckoDownloadController(worker, { it() }) { _, _ -> Target() }
@@ -62,6 +113,7 @@ class GeckoDownloadControllerTest {
         val controller = GeckoDownloadController(worker, { it() }) { _, _ -> target }
         controller.offer(source); controller.approve(); controller.cancel(); worker.run()
         assertFalse(target.committed); assertTrue(target.aborted); assertTrue(source.inputClosed)
+        assertEquals(1, source.takeCalls)
         assertEquals(GeckoDownloadOutcome.Cancelled, (controller.state as GeckoDownloadState.Finished).outcome)
     }
     @Test fun closeCancelsAndIgnoresLateCallbacks() {

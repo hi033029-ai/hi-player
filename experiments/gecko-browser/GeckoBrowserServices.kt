@@ -81,7 +81,7 @@ internal class GeckoBrowserServices(
                 },
             )
             coordinator = createGeckoBrowserCoordinator(
-                appContext, store, secureRouting::policy, secureRouting::decision,
+                appContext, store, secureRouting::policyForTab, secureRouting::decision,
                 filePicker, permissionBroker, onCloseRequested,
                 onContextLink = contextActions::offer,
                 onExternalResponse = { tabId, offer ->

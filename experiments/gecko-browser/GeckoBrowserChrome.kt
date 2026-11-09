@@ -54,6 +54,7 @@ internal fun GeckoBrowserChrome(
     services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
+    onPageTools: (() -> Unit)? = null,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showClearData by remember { mutableStateOf(false) }
@@ -67,7 +68,9 @@ internal fun GeckoBrowserChrome(
         // A regular helper tab keeps the Google session in Hi Browser's shared profile.
         val origin = coordinator.activeId
         if (!coordinator.open(false)) return
-        googleSignIn.begin(origin, coordinator.activeId)
+        val signInTab = coordinator.activeId
+        services?.secureRouting?.allowGoogleSignInInBrowser(signInTab)
+        googleSignIn.begin(origin, signInTab)
         coordinator.load(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull()))
     }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
@@ -97,6 +100,7 @@ internal fun GeckoBrowserChrome(
         LaunchedEffect(signInTab, signInUrl) {
             val id = signInTab ?: return@LaunchedEffect
             val back = googleSignIn.onUrl(id, signInUrl ?: return@LaunchedEffect) ?: return@LaunchedEffect
+            services.secureRouting.leaveTab(id)
             coordinator.closeTab(id)
             if (coordinator.tabs.any { it.id == back } && coordinator.select(back) && coordinator.activeSnapshot.url.isNotBlank()) coordinator.reload()
         }
@@ -159,14 +163,17 @@ internal fun GeckoBrowserChrome(
             tools = listOf(
                 HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage) { find.open(coordinator.activeId, current.url) },
                 *if (services != null) arrayOf(HiMenuAction("Share page", Icons.Default.Share, enabled = onPage) { services.contextActions.offer(coordinator.activeId, current.url, null) }) else emptyArray(),
-                HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) { coordinator.setDesktop(!coordinator.desktopMode()) },
+                *if (onPageTools != null) arrayOf(HiMenuAction("Page tools", Icons.Default.Settings, enabled = onPage) { onPageTools() }) else emptyArray(),
+                HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) {
+                    coordinator.setDesktop(!coordinator.desktopMode())
+                    coordinator.reload()
+                },
             ),
             rows = listOf(
                 *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) "Hi Player account · signed in" else "Sign in to Hi Player with Google", Icons.Default.AccountCircle) { account.openAccount() }) else emptyArray(),
                 *if (services != null) arrayOf(HiMenuAction("Sign in to Google for websites", Icons.Default.Language) { startGoogleSignIn() }) else emptyArray(),
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
-                *if (services != null) arrayOf(HiMenuAction("Appearance and pop-ups", Icons.Default.Settings) { showAppearance = true }) else emptyArray(),
                 *if (services != null) arrayOf(HiMenuAction("Clear browsing data", Icons.Default.History) { showClearData = true }) else emptyArray(),
                 HiMenuAction("Close this tab", Icons.Default.Close) { coordinator.closeTab(coordinator.activeId) },
             ),

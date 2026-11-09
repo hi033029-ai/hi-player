@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -78,7 +79,17 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text(state.name, maxLines = 1)
-                    Text("Downloaded ${Formatter.formatFileSize(context, state.bytes)}")
+                    val finalizing = state.length != null && state.length > 0 && state.bytes >= state.length
+                    Text(state.length?.takeIf { it > 0 }?.let {
+                        "${if (finalizing) "Saving file" else "Downloading"} · ${Formatter.formatFileSize(context, state.bytes)} of ${Formatter.formatFileSize(context, it)}"
+                    } ?: "Downloading · ${Formatter.formatFileSize(context, state.bytes)} received")
+                    Text(if (state.speedBytesPerSecond > 0) "${Formatter.formatFileSize(context, state.speedBytesPerSecond)}/s" else "Measuring download speed…")
+                    if (state.length != null && state.length > 0) {
+                        val progress = (state.bytes.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f)
+                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                    }
                 }
                 TextButton(onClick = controller::cancel) { Text("Cancel") }
             }

@@ -21,7 +21,7 @@ class GeckoNavigationPolicyTest {
         isGoogleAuthentication = { it.startsWith("https://accounts.google.com/") },
         secureEntryFor = { if (it.startsWith("https://example.org/")) it else "https://accounts.google.com/" },
         prefersSecureSite = { it.startsWith("https://accounts.google.com/") || it.startsWith("https://secure.example/") },
-        googleSignInInBrowser = true,
+        googleSignInInBrowser = { true },
     )
     @Test fun inBrowserGoogleSignInStaysInHiBrowserEvenForSavedOrigin() {
         assertEquals(GeckoNavigationDecision.Allow,

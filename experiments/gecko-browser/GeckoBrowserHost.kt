@@ -1,8 +1,10 @@
 package com.example.browser.gecko
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import com.example.ui.screens.OrbitBrowserFilterEngine
 import com.example.ui.screens.OrbitBrowserStore
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -11,7 +13,7 @@ import org.mozilla.geckoview.GeckoView
 internal fun createGeckoBrowserCoordinator(
     context: Context,
     store: OrbitBrowserStore,
-    navigationPolicy: (Boolean) -> GeckoNavigationPolicy,
+    navigationPolicy: (Int, Boolean) -> GeckoNavigationPolicy,
     onNavigationDecision: (Int, GeckoNavigationDecision) -> Unit,
     promptDelegate: GeckoSession.PromptDelegate,
     permissionDelegate: GeckoSession.PermissionDelegate,
@@ -27,7 +29,7 @@ internal fun createGeckoBrowserCoordinator(
             tab = tab,
             desktop = false,
             onChanged = changed,
-            navigationPolicy = navigationPolicy(tab.privateTab),
+            navigationPolicy = navigationPolicy(tab.id, tab.privateTab),
             onNavigationDecision = { decision ->
                 // Defer until construction finishes and reject callbacks from replaced/closed sessions.
                 Handler(Looper.getMainLooper()).post {
@@ -36,7 +38,13 @@ internal fun createGeckoBrowserCoordinator(
             },
             promptDelegate = promptDelegate,
             openWhenCreated = open,
-            popupAllowed = { userGesture -> !store.popupBlock || userGesture },
+            popupAllowed = { destination, userGesture ->
+                val pageHost = coordinator.snapshots[tab.id]?.url?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+                val blockedByProtection = store.adBlock && runCatching {
+                    OrbitBrowserFilterEngine.shouldBlock(Uri.parse(destination), enabled = true, pageHost = pageHost, mainFrame = true)
+                }.getOrDefault(false)
+                GeckoPopupPolicy.allows(store.popupBlock, userGesture, blockedByProtection)
+            },
             onPopupRequested = {
                 // Gecko itself opens the newly returned session. Keep it owned by the
                 // coordinator but do not attach or call loadUri before Gecko opens it.

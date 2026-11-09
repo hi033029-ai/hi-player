@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.BuildConfig
+import com.example.ui.screens.BrowserAdvancedRules
 import com.example.ui.screens.OrbitBrowserFilterEngine
 import com.example.ui.screens.OrbitBrowserStore
 import java.util.WeakHashMap
@@ -137,9 +138,12 @@ internal object GeckoFeatureBridge {
             val client = sender.session?.let { clients[it] } ?: return null
             when (message.optString("kind")) {
                 "bootstrap" -> {
-                    val css = OrbitBrowserFilterEngine.cosmeticCss(Uri.parse(sender.url).host, prefs.adBlock)
+                    val pageHost = Uri.parse(sender.url).host
+                    val protectionEnabled = prefs.adBlock && !BrowserAdvancedRules.paused(pageHost)
+                    val css = OrbitBrowserFilterEngine.cosmeticCss(pageHost, protectionEnabled)
                     return reply(JSONObject().put("css", css.takeIf { it.length <= 300_000 } ?: "")
-                        .put("adBlock", prefs.adBlock && !BuildConfig.PLAY_STORE_BUILD).put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD))
+                        .put("adBlock", protectionEnabled && !BuildConfig.PLAY_STORE_BUILD)
+                        .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD))
                 }
                 "reader" -> {
                     if (sender.url.substringBefore('#') != client.page().substringBefore('#')) return null

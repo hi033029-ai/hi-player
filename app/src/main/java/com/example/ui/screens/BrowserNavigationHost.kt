@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -14,10 +15,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -31,7 +33,7 @@ import kotlin.math.abs
 internal fun BrowserNavigationHost(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    revealButtonBottomInset: androidx.compose.ui.unit.Dp = 12.dp,
+    revealButtonBottomInset: androidx.compose.ui.unit.Dp = 88.dp,
     navigation: @Composable () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -79,13 +81,20 @@ internal fun BrowserNavigationHost(
     }) {
         content()
         if (available) {
-            // Accessible alternative to a gesture, also makes the hidden navigation discoverable.
-            if (!visible) IconButton(
-                onClick = { reveal() },
+            // A labeled affordance keeps Home and the app tabs discoverable while chrome is hidden.
+            if (!visible) Row(
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(end = 12.dp, bottom = revealButtonBottomInset).size(48.dp)
-                    .background(palette.surface.copy(alpha = .92f), RoundedCornerShape(16.dp)),
-            ) { Icon(Icons.Default.KeyboardArrowUp, "Show Videos, Music and app navigation", tint = palette.textSecondary) }
+                    .padding(end = 12.dp, bottom = revealButtonBottomInset)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(palette.surface.copy(alpha = .94f))
+                    .clickable(onClick = ::reveal)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, tint = palette.textSecondary)
+                Spacer(Modifier.width(4.dp))
+                Text("Home / tabs", color = palette.textSecondary)
+            }
             AnimatedVisibility(
                 visible = visible,
                 modifier = Modifier.align(Alignment.BottomCenter),

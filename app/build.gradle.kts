@@ -53,8 +53,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 95
-    versionName = "1.0.94"
+    versionCode = 96
+    versionName = "1.0.95"
     // AGP rejects NDK filters together with APK ABI split filters. Bundle tasks use
     // NDK filters; APK tasks are restricted by the split configuration below.
     if (bundleBuildRequested) ndk { abiFilters.addAll(packagedAbis) }
