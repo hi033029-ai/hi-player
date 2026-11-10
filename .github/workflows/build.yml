@@ -1,6 +1,11 @@
 name: Build APK
 on:
   workflow_dispatch:
+    inputs:
+      release_variants:
+        description: Also build test-signed Play variants and the app bundle
+        type: boolean
+        default: false
   push:
     branches: [main]
 permissions:
@@ -30,7 +35,9 @@ jobs:
           name: gecko-matching-media3-decoders
           path: build/gecko-decoders
       - name: Deterministic browser script regression checks
-        run: node tools/test_youtube_skipper.cjs
+        run: |
+          node tools/test_youtube_skipper.cjs
+          node tools/test_gecko_request_context.cjs
       - name: Browser, account, download and player regressions
         run: >-
           gradle --no-daemon :app:testDebugUnitTest --max-workers=2
@@ -64,10 +71,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Initialize release artifact directory
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         run: mkdir -p dist
       - name: Build arm64-v8a release APK split (test-signed)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
           STORE_PASSWORD: android
@@ -82,7 +89,7 @@ jobs:
           test -n "$apk"
           cp "$apk" dist/hi-player-arm64-v8a-release.apk
       - name: Build armeabi-v7a release APK split (test-signed)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
           STORE_PASSWORD: android
@@ -97,7 +104,7 @@ jobs:
           test -n "$apk"
           cp "$apk" dist/hi-player-armeabi-v7a-release.apk
       - name: Build two-ABI release App Bundle (test-signed)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
           STORE_PASSWORD: android
@@ -112,10 +119,10 @@ jobs:
           test -n "$bundle"
           cp "$bundle" dist/hi-player-release.aab
       - name: Check release APK splits and AAB contents
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         run: python3 tools/check_gecko_release_outputs.py
       - name: Upload test-signed release APKs, bundle and size report
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.release_variants
         uses: actions/upload-artifact@v4
         with:
           name: hi-player-gecko-release-test-signed
