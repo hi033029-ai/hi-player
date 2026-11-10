@@ -48,6 +48,11 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
             containerColor = palette.background,
         ) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Download file?", style = MaterialTheme.typography.titleLarge)
+                if (!state.recordInHistory) Text(
+                    "The file stays on your device, but will not appear in browser download history.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(54.dp).background(palette.primary.copy(alpha = .13f), CircleShape), contentAlignment = Alignment.Center) {
                         Icon(if (isVideo) Icons.Default.Movie else Icons.Default.InsertDriveFile, null, tint = palette.primary)
@@ -93,7 +98,6 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     }
                 }) { Icon(Icons.Default.Download, null); Text("Download") }
                 TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-                if (!state.recordInHistory) Text("This file will not be added to browser download history.", style = MaterialTheme.typography.bodySmall)
                 Text("This authenticated stream cannot resume after cancellation or browser exit.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(16.dp))
             }
