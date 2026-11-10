@@ -5,6 +5,7 @@ from pathlib import Path
 from prepare_gecko_build import PREFIX, prepare
 from gecko_features import augment
 from gecko_parity import augment_parity
+from gecko_advanced import augment_advanced
 from gecko_background import augment_background
 from prepare_gecko_notices import notices
 
@@ -53,7 +54,7 @@ def main():
             if path.is_file() and path.suffix in ('.kt', '.java'): files[path.relative_to(root).as_posix()] = path.read_text()
     for name in ('tests', 'integration', 'integration-tests'):
         for path in (root / PREFIX / name).glob('*.kt'): files[path.relative_to(root).as_posix()] = path.read_text()
-    generated = augment_background(augment_parity(augment(materialize(files, prepare(files)))))
+    generated = augment_background(augment_advanced(augment_parity(augment(materialize(files, prepare(files))))))
     generated['assets/gecko_component_licenses.txt'] = notices(root)
     for script in ('orbit_adblock.js', 'orbit_page_skipper.js'):
         generated['assets/hi-gecko/' + script] = (root / 'app/src/main/assets' / script).read_text()

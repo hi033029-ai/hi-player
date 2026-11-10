@@ -3,6 +3,9 @@
   if (document.contentType && document.contentType.toLowerCase() !== "text/html") return;
   const send = value => browser.runtime.sendNativeMessage("hi_player", value).then(response =>
     typeof response === "string" ? JSON.parse(response) : response);
+  const helperResult = ok => {
+    if (window.top === window) send({kind:"helper-status",page:location.href,ok}).catch(() => {});
+  };
   send({kind:"bootstrap"}).then(settings => {
     if (settings && settings.css) {
       const apply = () => {
@@ -11,8 +14,9 @@
       };
       if (document.documentElement) apply(); else document.addEventListener("DOMContentLoaded",apply,{once:true});
     }
-    browser.runtime.sendMessage({kind:"helpers",adBlock:!!(settings && settings.adBlock),pageSkipper:!!(settings && settings.pageSkipper),youtube:!!(settings && settings.youtube),skipSpeed:settings && settings.skipSpeed,autoContinue:!(settings && settings.autoContinue === false)}).catch(() => {});
-  }).catch(() => {});
+    browser.runtime.sendMessage({kind:"helpers",adBlock:!!(settings && settings.adBlock),pageSkipper:!!(settings && settings.pageSkipper),youtube:!!(settings && settings.youtube),skipSpeed:settings && settings.skipSpeed,autoContinue:!(settings && settings.autoContinue === false)})
+      .then(applied => helperResult(applied === true), () => helperResult(false));
+  }).catch(() => helperResult(false));
   if (window.top === window) {
     const port = browser.runtime.connectNative("hi_player");
     port.onMessage.addListener(message => {
