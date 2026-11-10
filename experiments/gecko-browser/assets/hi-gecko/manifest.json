@@ -1,10 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Hi Browser local protection and media bridge",
-  "version": "1.0.0",
+  "version": "1.0.102",
   "browser_specific_settings": {"gecko": {"id": "hi-browser@hi-player.local"}},
   "permissions": ["webRequest", "webRequestBlocking", "nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons", "scripting"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {"scripts": ["background.js"]},
-  "content_scripts": [{"matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "all_frames": true, "run_at": "document_start"}]
+  "content_scripts": [
+    {"matches": ["http://*/*", "https://*/*"], "js": ["early-timers.js"], "all_frames": false, "run_at": "document_start", "world": "MAIN"},
+    {"matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "all_frames": true, "run_at": "document_start"}
+  ]
 }

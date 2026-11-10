@@ -1,7 +1,8 @@
 package com.example.browser.gecko
 
-/** Popup setting blocks script-opened windows and lets normal tapped links proceed. */
+/** A borrowed click gesture does not authorize a script-created popup. */
 internal object GeckoPopupPolicy {
+    @Suppress("UNUSED_PARAMETER")
     fun allows(blockPopups: Boolean, hasUserGesture: Boolean, destinationBlockedByProtection: Boolean): Boolean =
-        !destinationBlockedByProtection && (!blockPopups || hasUserGesture)
+        !destinationBlockedByProtection && !blockPopups
 }

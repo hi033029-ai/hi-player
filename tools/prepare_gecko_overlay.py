@@ -7,6 +7,7 @@ from gecko_features import augment
 from gecko_parity import augment_parity
 from gecko_advanced import augment_advanced
 from gecko_background import augment_background
+from gecko_regressions import augment_regressions, patch_page_skipper
 from prepare_gecko_notices import notices
 
 MAIN_PREFIXES = ('app/src/main/java/', 'app/src/main/kotlin/')
@@ -54,10 +55,11 @@ def main():
             if path.is_file() and path.suffix in ('.kt', '.java'): files[path.relative_to(root).as_posix()] = path.read_text()
     for name in ('tests', 'integration', 'integration-tests'):
         for path in (root / PREFIX / name).glob('*.kt'): files[path.relative_to(root).as_posix()] = path.read_text()
-    generated = augment_background(augment_advanced(augment_parity(augment(materialize(files, prepare(files))))))
+    generated = augment_regressions(augment_background(augment_advanced(augment_parity(augment(materialize(files, prepare(files)))))))
     generated['assets/gecko_component_licenses.txt'] = notices(root)
     for script in ('orbit_adblock.js', 'orbit_page_skipper.js'):
-        generated['assets/hi-gecko/' + script] = (root / 'app/src/main/assets' / script).read_text()
+        value = (root / 'app/src/main/assets' / script).read_text()
+        generated['assets/hi-gecko/' + script] = patch_page_skipper(value) if script == 'orbit_page_skipper.js' else value
     generated['assets/hi-gecko/orbit_youtube.js'] = (root / 'app/src/debug/assets/orbit_youtube.js').read_text()
     output = root / 'build/generated/gecko'
     output.mkdir(parents=True, exist_ok=True)

@@ -1,9 +1,6 @@
 "use strict";
-// Local policy only. Cookies and authorization headers are not exported.
 const sendNative = message => browser.runtime.sendNativeMessage("hi_player", message).then(response =>
   typeof response === "string" ? JSON.parse(response) : response);
-// Classify embedded resources relative to the top site, not an advertising iframe.
-// Main navigation uses its destination so an opener's exception cannot leak to a new site.
 const requestPage = details => {
   if (details.type === "main_frame") return details.url;
   const top = (details.frameAncestors || []).find(frame => frame.frameId === 0);
@@ -19,8 +16,12 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
   if (message.adBlock === true) files.push("orbit_adblock.js");
   if (message.pageSkipper === true) files.push("orbit_page_skipper.js");
   if (message.youtube === true) files.push("orbit_youtube.js");
-  if (!files.length) return true;
   try {
+    if (message.pageSkipper !== true) await browser.scripting.executeScript({
+      target:{tabId:sender.tab.id,frameIds:[sender.frameId]},world:"MAIN",injectImmediately:true,
+      func: () => { if (window.__hiEarlyTimers) window.__hiEarlyTimers.disable(); }
+    });
+    if (!files.length) return true;
     if (message.pageSkipper === true) {
       const speed = [1,10,30,60].includes(message.skipSpeed) ? message.skipSpeed : 30;
       await browser.scripting.executeScript({
