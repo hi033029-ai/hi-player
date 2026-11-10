@@ -18,6 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.downloads.DownloadFileResolver
 import com.example.ui.theme.LocalHiPalette
@@ -43,15 +46,17 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
     }
     when (state) {
         is GeckoDownloadState.Offer -> ModalBottomSheet(
+            modifier = Modifier.testTag("gecko-download-offer"),
             onDismissRequest = controller::reject,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = palette.background,
         ) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Download file?", style = MaterialTheme.typography.titleLarge)
+                Text("Download file?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
                 if (!state.recordInHistory) Text(
                     "The file stays on your device, but will not appear in browser download history.",
                     style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("gecko-download-private-notice"),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(54.dp).background(palette.primary.copy(alpha = .13f), CircleShape), contentAlignment = Alignment.Center) {
@@ -60,7 +65,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     Spacer(Modifier.width(14.dp))
                     OutlinedTextField(value = fileName, onValueChange = { fileName = it.take(240) }, singleLine = true,
                         label = { Text("File name") }, trailingIcon = { Icon(Icons.Default.Edit, "Edit file name") },
-                        modifier = Modifier.weight(1f), isError = fileName.isBlank())
+                        modifier = Modifier.weight(1f).testTag("gecko-download-name"), isError = fileName.isBlank())
                 }
                 Text(state.length?.let { Formatter.formatFileSize(context, it) } ?: "Size unknown", style = MaterialTheme.typography.bodySmall)
                 Box {
@@ -86,7 +91,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     }
                     Text("Playback uses the media address only. Cookie-protected and DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall)
                 }
-                FilledTonalButton(modifier = Modifier.fillMaxWidth(), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), onClick = {
+                FilledTonalButton(modifier = Modifier.fillMaxWidth().testTag("gecko-download-confirm"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), onClick = {
                     val tree = selectedTree
                     val granted = tree == null || !state.recordInHistory || runCatching {
                         context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -97,7 +102,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                         controller.approve(name, if (tree == null) "Downloads" else "selected folder", target)
                     }
                 }) { Icon(Icons.Default.Download, null); Text("Download") }
-                TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+                TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel") }
                 Text("This authenticated stream cannot resume after cancellation or browser exit.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(16.dp))
             }
