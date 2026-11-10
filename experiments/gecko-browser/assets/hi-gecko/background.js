@@ -1,11 +1,11 @@
 "use strict";
-// Only local decisions and media addresses; cookies and authorization headers are not copied.
+// Local policy only. Cookies and authorization headers are not exported.
 const sendNative = message => browser.runtime.sendNativeMessage("hi_player", message).then(response =>
   typeof response === "string" ? JSON.parse(response) : response);
 browser.webRequest.onBeforeRequest.addListener(details =>
   sendNative({kind:"request",url:details.url,page:details.documentUrl || details.originUrl || "",main:details.type === "main_frame"})
     .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:true})),
-  {urls:["http://*/*","https://*/*"]}, ["blocking"]);
+  {urls:["http://*/*","https://*/*"]},["blocking"]);
 browser.runtime.onMessage.addListener(async (message, sender) => {
   if (sender.id !== browser.runtime.id || !sender.tab || message.kind !== "helpers") return false;
   const files = [];
@@ -14,6 +14,14 @@ browser.runtime.onMessage.addListener(async (message, sender) => {
   if (message.youtube === true) files.push("orbit_youtube.js");
   if (!files.length) return true;
   try {
+    if (message.pageSkipper === true) {
+      const speed = [1,10,30,60].includes(message.skipSpeed) ? message.skipSpeed : 30;
+      await browser.scripting.executeScript({
+        target:{tabId:sender.tab.id,frameIds:[sender.frameId]},world:"MAIN",injectImmediately:true,
+        func: options => { window.__hiSkipOptions = options; },
+        args:[{speed,autoContinue:message.autoContinue !== false}]
+      });
+    }
     await browser.scripting.executeScript({target:{tabId:sender.tab.id,frameIds:[sender.frameId]},files,world:"MAIN",injectImmediately:true});
     return true;
   } catch (_) { return false; }

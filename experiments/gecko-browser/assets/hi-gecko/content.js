@@ -11,7 +11,7 @@
       };
       if (document.documentElement) apply(); else document.addEventListener("DOMContentLoaded",apply,{once:true});
     }
-    browser.runtime.sendMessage({kind:"helpers",adBlock:!!(settings && settings.adBlock),pageSkipper:!!(settings && settings.pageSkipper),youtube:!!(settings && settings.youtube)}).catch(() => {});
+    browser.runtime.sendMessage({kind:"helpers",adBlock:!!(settings && settings.adBlock),pageSkipper:!!(settings && settings.pageSkipper),youtube:!!(settings && settings.youtube),skipSpeed:settings && settings.skipSpeed,autoContinue:!(settings && settings.autoContinue === false)}).catch(() => {});
   }).catch(() => {});
   if (window.top === window) {
     const port = browser.runtime.connectNative("hi_player");
