@@ -2,8 +2,15 @@
 // Local policy only. Cookies and authorization headers are not exported.
 const sendNative = message => browser.runtime.sendNativeMessage("hi_player", message).then(response =>
   typeof response === "string" ? JSON.parse(response) : response);
+// Classify embedded resources relative to the top site, not an advertising iframe.
+// Main navigation uses its destination so an opener's exception cannot leak to a new site.
+const requestPage = details => {
+  if (details.type === "main_frame") return details.url;
+  const top = (details.frameAncestors || []).find(frame => frame.frameId === 0);
+  return (top && /^https?:\/\//i.test(top.url || "") && top.url) || details.documentUrl || details.originUrl || "";
+};
 browser.webRequest.onBeforeRequest.addListener(details =>
-  sendNative({kind:"request",url:details.url,page:details.documentUrl || details.originUrl || "",main:details.type === "main_frame"})
+  sendNative({kind:"request",url:details.url,page:requestPage(details),main:details.type === "main_frame"})
     .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:true})),
   {urls:["http://*/*","https://*/*"]},["blocking"]);
 browser.runtime.onMessage.addListener(async (message, sender) => {
