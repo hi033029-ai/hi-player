@@ -58,11 +58,9 @@ def augment_parity(result):
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.ui.platform.LocalContext
-import com.example.ui.screens.HiBrowserTools
 import java.util.Locale
 import androidx.compose.material.icons.Icons''', 'shared platform tools imports')
-    result[key] = replace_once(result[key], '    var showMenu by remember', '''    val context = LocalContext.current
+    result[key] = replace_once(result[key], '    var showMenu by remember', '''
     var platformNotice by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
     var active by remember { mutableStateOf(true) }
