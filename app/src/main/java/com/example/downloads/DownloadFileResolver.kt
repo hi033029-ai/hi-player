@@ -43,6 +43,12 @@ internal object DownloadFileResolver {
         return if (isGenericMime(mime)) typeForExtension(extension(fileName))?.mime?.startsWith("audio/") == true
         else mime?.startsWith("audio/") == true
     }
+    /** Prefer an explicit server MIME; only infer video from known container extensions for generic MIME. */
+    fun isVideoFile(fileName: String, mimeType: String?): Boolean {
+        val mime = normalizeMime(mimeType)
+        return if (isGenericMime(mime)) typeForExtension(extension(fileName))?.mime?.startsWith("video/") == true
+        else mime?.startsWith("video/") == true
+    }
     fun resolve(
         fileName: String, sourceUrl: String, mimeType: String?, contentDisposition: String? = null,
         prefix: ByteArray = byteArrayOf(), detectedMime: String? = null,

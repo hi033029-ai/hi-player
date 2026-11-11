@@ -19,9 +19,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Single guarded owner of everything HDR-related for one player instance:
- *  - window.colorMode (fixes the color-distortion / black-flash issues)
- *  - the HDR display window mode
+ * Single guarded owner of the Activity HDR window mode for one player instance.
+ * Native HDR output follows the selected track; it is not gated by whether the
+ * user enabled optional color grading.
  *
  * GPU grading is intentionally not installed here. Some decoder/surface
  * combinations reject Media3 video effects and leave audio playing over a black
@@ -34,8 +34,9 @@ class HdrColorModeManager(private val activity: Activity) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val isApplying = AtomicBoolean(false)
     private var appliedHdr = false
+    @Volatile private var latestHdrRequest = false
     private var attachedPlayer: ExoPlayer? = null
-    private var userEnabled = false
+    private var trackListener: androidx.media3.common.Player.Listener? = null
 
     var isHdrActive by mutableStateOf(false)
         private set
@@ -44,12 +45,19 @@ class HdrColorModeManager(private val activity: Activity) {
 
     /** Attach once when the player is created/rebuilt. */
     fun attach(player: ExoPlayer) {
+        if (attachedPlayer === player) {
+            evaluateAndRequest(player.currentTracks)
+            return
+        }
+        attachedPlayer?.let { old -> trackListener?.let(old::removeListener) }
         attachedPlayer = player
-        player.addListener(object : androidx.media3.common.Player.Listener {
+        val listener = object : androidx.media3.common.Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 evaluateAndRequest(tracks)
             }
-        })
+        }
+        trackListener = listener
+        player.addListener(listener)
         // onTracksChanged only fires on FUTURE changes — if this player already selected
         // its tracks before attach() ran (e.g. media prepared before the UI composed),
         // the listener above never fires again and the HDR indicator/animation would
@@ -64,21 +72,7 @@ class HdrColorModeManager(private val activity: Activity) {
                     group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
             }
         }
-        requestColorMode(isHdr && userEnabled)
-    }
-
-    /** Set the user preference without rebuilding or touching the decoder. */
-    fun setUserEnabled(enabled: Boolean) {
-        userEnabled = enabled
-        attachedPlayer?.let { player ->
-            val hdrTrackSelected = player.currentTracks.groups.any { group ->
-                (0 until group.length).any { i ->
-                    group.isTrackSelected(i) &&
-                        group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
-                }
-            }
-            requestColorMode(hdrTrackSelected && enabled)
-        }
+        requestColorMode(isHdr)
     }
 
     private fun isHdrColorInfo(colorInfo: ColorInfo): Boolean {
@@ -86,18 +80,30 @@ class HdrColorModeManager(private val activity: Activity) {
             colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG
     }
 
-    /** The HDR button calls this too — same guarded path as the automatic track listener. */
     fun requestColorMode(hdrDesired: Boolean) {
-        if (hdrDesired == appliedHdr) return
-        if (!isApplying.compareAndSet(false, true)) return // switch already in flight — drop it
+        latestHdrRequest = hdrDesired
+        if (isApplying.get() || hdrDesired == appliedHdr) return
+        if (!isApplying.compareAndSet(false, true)) return
 
         isSwitching = true
         mainHandler.post {
-            applyColorModeInternal(hdrDesired)
-            appliedHdr = hdrDesired
-            isHdrActive = hdrDesired
-            isSwitching = false
-            isApplying.set(false)
+            try {
+                var desired = latestHdrRequest
+                while (true) {
+                    if (desired != appliedHdr) {
+                        applyColorModeInternal(desired)
+                        appliedHdr = desired
+                        isHdrActive = desired
+                    }
+                    val latest = latestHdrRequest
+                    if (latest == desired) break
+                    desired = latest
+                }
+            } finally {
+                isSwitching = false
+                isApplying.set(false)
+                if (latestHdrRequest != appliedHdr) requestColorMode(latestHdrRequest)
+            }
         }
     }
 
@@ -112,12 +118,15 @@ class HdrColorModeManager(private val activity: Activity) {
     }
 
     fun release() {
+        attachedPlayer?.let { player -> trackListener?.let(player::removeListener) }
+        mainHandler.removeCallbacksAndMessages(null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         }
         attachedPlayer = null
-        userEnabled = false
+        trackListener = null
         appliedHdr = false
+        latestHdrRequest = false
         isHdrActive = false
         isSwitching = false
         isApplying.set(false)

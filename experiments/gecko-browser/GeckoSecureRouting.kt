@@ -20,27 +20,21 @@ internal class GeckoSecureRouting(
 ) {
     internal data class Request(val tabId: Int, val url: String, val isPrivate: Boolean, val external: Boolean)
     private val privateOrigins = mutableSetOf<String>()
-    private val inBrowserGoogleTabs = mutableSetOf<Int>()
     private val routes = mutableStateMapOf<Int, String>()
     var pending by mutableStateOf<Request?>(null)
         private set
     var failure by mutableStateOf(false)
         private set
 
-    fun policy(isPrivate: Boolean) = createPolicy(isPrivate) { false }
-    fun policyForTab(tabId: Int, isPrivate: Boolean) = createPolicy(
-        isPrivate,
-    ) { !isPrivate && tabId in inBrowserGoogleTabs }
-    private fun createPolicy(isPrivate: Boolean, allowGoogleSignInInBrowser: () -> Boolean) = GeckoNavigationPolicy(
+    fun policy(isPrivate: Boolean) = createPolicy(isPrivate)
+    @Suppress("UNUSED_PARAMETER")
+    fun policyForTab(tabId: Int, isPrivate: Boolean) = createPolicy(isPrivate)
+    private fun createPolicy(isPrivate: Boolean) = GeckoNavigationPolicy(
         SecureWebSessions::isGoogleAuthentication,
         SecureWebSessions::entryForGoogleAuth,
         { url -> val origin = SecureWebsitePolicy.originKey(url); origin != null &&
             if (isPrivate) origin in privateOrigins else prefers(url) },
-        googleSignInInBrowser = allowGoogleSignInInBrowser,
     )
-    fun allowGoogleSignInInBrowser(tabId: Int) {
-        if (tabPrivacy(tabId) == false) inBrowserGoogleTabs.add(tabId)
-    }
 
     fun decision(tabId: Int, decision: GeckoNavigationDecision) {
         val isPrivate = tabPrivacy(tabId) ?: return
@@ -88,14 +82,12 @@ internal class GeckoSecureRouting(
     }
     fun leaveTab(tabId: Int) {
         routes.remove(tabId)
-        inBrowserGoogleTabs.remove(tabId)
         if (pending?.tabId == tabId) dismiss()
     }
     fun prune(validIds: Set<Int>) {
         routes.keys.toList().filter { it !in validIds }.forEach(routes::remove)
-        inBrowserGoogleTabs.retainAll(validIds)
         if (pending != null && pending?.tabId !in validIds) dismiss()
         if (validIds.none { tabPrivacy(it) == true }) privateOrigins.clear()
     }
-    fun clearPrivateRouting() { privateOrigins.clear(); routes.clear(); inBrowserGoogleTabs.clear(); dismiss() }
+    fun clearPrivateRouting() { privateOrigins.clear(); routes.clear(); dismiss() }
 }

@@ -14,7 +14,8 @@ import com.example.BuildConfig
 import com.example.ui.screens.BrowserAdvancedRules
 import com.example.ui.screens.BrowserSiteTools
 import com.example.ui.screens.GeckoBrowserArguments
-import com.example.ui.screens.OrbitBrowserStore
+import com.example.ui.screens.HiBrowserTools
+import java.util.Locale
 
 /** Real controls only: protected/blob media stays in Gecko; website cookies are not exported. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,35 +23,56 @@ import com.example.ui.screens.OrbitBrowserStore
 internal fun GeckoPageToolsSheet(
     args: GeckoBrowserArguments,
     services: GeckoBrowserServices,
-    store: OrbitBrowserStore,
     visible: Boolean,
     onDismiss: () -> Unit,
 ) {
     val current = services.coordinator.activeSnapshot
     val tab = services.coordinator.controller.activeSession() as? GeckoManagedTab
+    val settings = services.settings
     val context = LocalContext.current
+    val safePageUrl = remember(current.url) { GeckoTabPersistence.safeUrl(current.url) }
     val pageHost = remember(current.url) { BrowserAdvancedRules.host(Uri.parse(current.url).host.orEmpty()) }
     var reader by remember { mutableStateOf(false) }
     var confirmMedia by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
-    var blocking by remember { mutableStateOf(store.adBlock) }
-    var helper by remember { mutableStateOf(store.pageSkipper) }
-    var youtubeAds by remember { mutableStateOf(store.youtubeAdSkip) }
+    var blocking by remember { mutableStateOf(settings.adBlock) }
+    var helper by remember { mutableStateOf(settings.pageSkipper) }
+    var youtubeAds by remember { mutableStateOf(settings.youtubeAdSkip) }
     var sitePaused by remember(pageHost) { mutableStateOf(BrowserAdvancedRules.paused(pageHost)) }
-    LaunchedEffect(current.id, current.url, store.adBlock, store.pageSkipper, store.youtubeAdSkip) {
+    LaunchedEffect(current.id, current.url, settings.adBlock, settings.pageSkipper, settings.youtubeAdSkip) {
         reader = false
         confirmMedia = false
-        blocking = store.adBlock
-        helper = store.pageSkipper
-        youtubeAds = store.youtubeAdSkip
+        blocking = settings.adBlock
+        helper = settings.pageSkipper
+        youtubeAds = settings.youtubeAdSkip
         sitePaused = BrowserAdvancedRules.paused(pageHost)
     }
     if (visible) ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Page tools", style = MaterialTheme.typography.titleLarge)
+            TextButton(
+                enabled = safePageUrl.isNotEmpty() && !HiBrowserTools.isTranslatedPage(safePageUrl),
+                onClick = {
+                    onDismiss()
+                    services.secureRouting.leaveTab(current.id)
+                    services.coordinator.load(HiBrowserTools.translateUrl(
+                        safePageUrl,
+                        HiBrowserTools.translateTargetLanguage(Locale.getDefault()),
+                    ))
+                },
+            ) { Text(if (HiBrowserTools.isTranslatedPage(current.url)) "Already translated" else "Translate page") }
+            TextButton(enabled = safePageUrl.isNotEmpty(), onClick = {
+                onDismiss()
+                val requested = HiBrowserTools.pinPageShortcut(context, safePageUrl, current.title, null)
+                notice = if (requested) "Shortcut request sent to your launcher." else "Your launcher doesn't support pinned shortcuts."
+            }) { Text("Add to home screen") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Ad and tracker blocking", Modifier.weight(1f))
-                Switch(checked = blocking, onCheckedChange = { blocking = it; store.adBlock = it })
+                Switch(checked = blocking, onCheckedChange = {
+                    settings.changeAdBlock(it)
+                    blocking = settings.adBlock
+                    if (settings.failed) notice = "Could not save the ad-block preference."
+                })
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -74,7 +96,11 @@ internal fun GeckoPageToolsSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Compatible page helpers", Modifier.weight(1f))
                 Switch(checked = helper && !BuildConfig.PLAY_STORE_BUILD, enabled = !BuildConfig.PLAY_STORE_BUILD,
-                    onCheckedChange = { helper = it; store.pageSkipper = it })
+                    onCheckedChange = {
+                        settings.changePageSkipper(it)
+                        helper = settings.pageSkipper
+                        if (settings.failed) notice = "Could not save the page-helper preference."
+                    })
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -82,10 +108,14 @@ internal fun GeckoPageToolsSheet(
                     Text("Hides supported ad placements; creator sponsorship segments are not detected.", style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = youtubeAds && !BuildConfig.PLAY_STORE_BUILD, enabled = !BuildConfig.PLAY_STORE_BUILD,
-                    onCheckedChange = { youtubeAds = it; store.youtubeAdSkip = it })
+                    onCheckedChange = {
+                        settings.changeYoutubeAdSkip(it)
+                        youtubeAds = settings.youtubeAdSkip
+                        if (settings.failed) notice = "Could not save the YouTube helper preference."
+                    })
             }
             Text("Protection and helper changes apply when you reload. Helpers leave sign-in, checkout and security challenges alone.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { onDismiss(); services.coordinator.reload() }, enabled = current.url.isNotBlank()) { Text("Reload page") }
+            TextButton(onClick = { onDismiss(); settings.markContentApplied(); services.coordinator.reload() }, enabled = current.url.isNotBlank()) { Text("Reload page") }
             TextButton(enabled = current.mediaUrl != null, onClick = { onDismiss(); confirmMedia = true }) { Text("Play detected media in Hi Player") }
             TextButton(enabled = current.url.isNotBlank() && args.onEnterPictureInPicture != null, onClick = {
                 onDismiss()

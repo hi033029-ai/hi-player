@@ -42,4 +42,12 @@ class BrowserAdvancedRulesTest {
         assertTrue(BrowserAdvancedRules.wrap("orbit_youtube.js", "/* payload */").contains("if(p.pause)return"))
         assertEquals("unchanged", BrowserAdvancedRules.wrap("orbit_desktop_viewport.js", "unchanged"))
     }
+    @Test fun timerPreferencesAreScopedToTheConfiguredHost() {
+        BrowserAdvancedRules.save(context, BrowserRuleSnapshot(sites = mapOf(
+            "wait.example" to BrowserSiteTools(skipSpeed = 10, autoContinue = false),
+        )))
+        assertEquals(BrowserSiteTools(skipSpeed = 10, autoContinue = false), BrowserAdvancedRules.siteTools("WAIT.EXAMPLE."))
+        assertEquals(BrowserSiteTools(), BrowserAdvancedRules.siteTools("other.example"))
+        assertEquals(BrowserSiteTools(), BrowserAdvancedRules.siteTools(null))
+    }
 }

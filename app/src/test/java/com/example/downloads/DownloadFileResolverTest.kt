@@ -34,6 +34,11 @@ class DownloadFileResolverTest {
         assertEquals("Movie.mkv", result.fileName)
         assertEquals("video/x-matroska", result.mimeType)
     }
+    @Test fun genericMimeVideoFilenameRemainsPlayable() {
+        assertTrue(DownloadFileResolver.isVideoFile("Movie.MP4", "application/octet-stream"))
+        assertTrue(DownloadFileResolver.isVideoFile("clip.webm", null))
+        assertFalse(DownloadFileResolver.isVideoFile("notes.txt", "application/octet-stream"))
+    }
     @Test fun mkvAndWebmAreDistinguishedByDocType() {
         val ebml = byteArrayOf(0x1a, 0x45, 0xdf.toByte(), 0xa3.toByte())
         val mkv = DownloadFileResolver.resolve("movie.bin", "https://x.test/get", null, prefix = ebml + "matroska".toByteArray())

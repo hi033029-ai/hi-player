@@ -68,9 +68,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
+import androidx.media3.exoplayer.SeekParameters
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.player.findActivity
@@ -93,9 +95,12 @@ import com.example.ui.HdrPresetMenu
 import com.example.ui.HdrColor
 import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
+import com.example.ui.NativeHdrPlayerSurface
 import com.example.player.HdrColorModeManager
 import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
+import com.example.player.shouldUseNativeHdrOutput
+import com.example.player.isIdentityTransform
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
 import com.example.player.rememberSmoothSeekController
@@ -103,6 +108,7 @@ import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitCancellation
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -175,13 +181,17 @@ fun PlayerScreen(
     val hdrEnhanceActive by playerViewModel.hdrEnhanceActive.collectAsState()
     val hdrColorPreset by playerViewModel.engine.hdrColorPreset.collectAsState()
     val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
+    val useNativeHdrSurface = shouldUseNativeHdrOutput(
+        isHdrContent = isHdrContent,
+        enhancementEnabled = hdrEnhanceActive,
+        selectedPreset = hdrColorPreset,
+    )
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
-    // The window manager reports display HDR capability; the icon must reflect
-    // the user-controlled grading effect state so tapping it visibly changes
-    // exposure and saturation.
-    val managedHdrActive = hdrEnhanceActive
+    // The indicator reflects native HDR passthrough or an explicitly selected
+    // non-neutral grade; the user need not enable grading for accurate HDR output.
+    val managedHdrActive = isHdrContent || (hdrEnhanceActive && !hdrColorPreset.isIdentityTransform())
     val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
@@ -189,10 +199,6 @@ fun PlayerScreen(
     DisposableEffect(hdrColorModeManager, activePlayer) {
         hdrColorModeManager?.attach(activePlayer)
         onDispose { hdrColorModeManager?.release() }
-    }
-
-    LaunchedEffect(hdrColorModeManager, hdrEnhanceActive) {
-        hdrColorModeManager?.setUserEnabled(hdrEnhanceActive)
     }
 
     // HUD States
@@ -222,6 +228,7 @@ fun PlayerScreen(
     var showSpeedOverlay by remember { mutableStateOf(false) }
     var showZoomOverlay by remember { mutableStateOf(false) }
     var holdSeekSide by remember { mutableStateOf<HoldSeekSide?>(null) }
+    var nativeHoldSeekDirection by remember(activePlayer) { mutableStateOf(0) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(enabled = showHdrPresetMenu || showHdrCustomizer) {
@@ -511,6 +518,35 @@ fun PlayerScreen(
         }
     }
 
+    // Keep press-and-hold seek available when native HDR bypasses GlVideoSurface.
+    LaunchedEffect(activePlayer, nativeHoldSeekDirection) {
+        val direction = nativeHoldSeekDirection
+        if (direction == 0) return@LaunchedEffect
+
+        val wasPlaying = activePlayer.isPlaying
+        val previousParameters = activePlayer.playbackParameters
+        val previousSeekParameters = activePlayer.seekParameters
+        activePlayer.setSeekParameters(SeekParameters.EXACT)
+        if (direction > 0) {
+            activePlayer.playbackParameters = PlaybackParameters(4f)
+            activePlayer.play()
+        } else {
+            activePlayer.pause()
+        }
+        try {
+            while (direction < 0) {
+                delay(500L)
+                activePlayer.seekTo((activePlayer.currentPosition - 1_000L).coerceAtLeast(0L))
+            }
+            awaitCancellation()
+        } finally {
+            runCatching { activePlayer.playbackParameters = previousParameters }
+            runCatching { activePlayer.setSeekParameters(previousSeekParameters) }
+            if (wasPlaying) runCatching { activePlayer.play() }
+            else runCatching { activePlayer.pause() }
+        }
+    }
+
     LaunchedEffect(showAspectRatioIndicator, aspectRatioMode) {
         if (showAspectRatioIndicator) {
             delay(1400)
@@ -527,7 +563,8 @@ fun PlayerScreen(
             .onGloballyPositioned { guideRootOrigin = it.positionInWindow() },
         contentAlignment = Alignment.Center,
     ) {
-        // 1. GLSL video surface layer with the selected HDR color preset.
+        // 1. Use Media3's native SurfaceView for HDR passthrough. The GLES path
+        // remains available for SDR and explicitly selected non-neutral effects.
         val ratioScale = computeVideoRatioScale(
             containerSize,
             videoWidth,
@@ -536,35 +573,36 @@ fun PlayerScreen(
             videoPixelWidthHeightRatio,
             videoRotationDegrees,
         )
-        AndroidView(
-            factory = { ctx ->
-                GlVideoSurface(ctx).apply {
-                    glSurfaceRef = this
-                    configureGlSurface(this)
-                    setPlayer(activePlayer)
-                    setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
-                }
-            },
-            update = { videoSurface ->
-                glSurfaceRef = videoSurface
-                configureGlSurface(videoSurface)
-                videoSurface.setPlayer(activePlayer)
-                videoSurface.setColorPreset(if (hdrEnhanceActive) hdrColorPreset else ColorPresets.NEUTRAL)
-                videoSurface.invalidate()
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    // Keep the native SurfaceView at the stable container size.
-                    // Resizing a SurfaceView itself can move its buffer one frame
-                    // behind Compose on some devices, causing the video to jump
-                    // sideways or lose its center. A centered layer transform
-                    // preserves the same final geometry without relocating the
-                    // native surface.
-                    scaleX = ratioScale.first * videoScale
-                    scaleY = ratioScale.second * videoScale
-                }
-        )
+        val videoSurfaceModifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                // Keep the native surface at the stable container size. A centered
+                // transform preserves fit/crop/zoom geometry without resizing it.
+                scaleX = ratioScale.first * videoScale
+                scaleY = ratioScale.second * videoScale
+            }
+        if (useNativeHdrSurface) {
+            NativeHdrPlayerSurface(activePlayer, modifier = videoSurfaceModifier)
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    GlVideoSurface(ctx).apply {
+                        glSurfaceRef = this
+                        configureGlSurface(this)
+                        setPlayer(activePlayer)
+                        setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                    }
+                },
+                update = { videoSurface ->
+                    glSurfaceRef = videoSurface
+                    configureGlSurface(videoSurface)
+                    videoSurface.setPlayer(activePlayer)
+                    videoSurface.setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                    videoSurface.invalidate()
+                },
+                modifier = videoSurfaceModifier,
+            )
+        }
 
         val surfaceMaskAlpha by animateFloatAsState(
             targetValue = if (firstFrameRendered) 0f else 1f,
@@ -577,6 +615,61 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .alpha(surfaceMaskAlpha)
                     .background(Color.Black)
+            )
+        }
+
+        if (useNativeHdrSurface) {
+            com.example.ui.components.GestureOverlay(
+                isLocked = isScreenLocked,
+                onSingleTap = {
+                    if (isScreenLocked) showLockedUnlockControl = !showLockedUnlockControl
+                    else areControlsVisible = !areControlsVisible
+                },
+                onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) },
+                onDoubleTapCenter = { playerViewModel.togglePlayPause() },
+                onDoubleTapRight = { smoothSeekController.seekBy(10_000L) },
+                isPlaying = isPlaying,
+                onBrightnessDelta = { delta ->
+                    activity?.let { act ->
+                        val attributes = act.window.attributes
+                        attributes.screenBrightness = playerViewModel.onBrightnessGesture(
+                            delta,
+                            attributes.screenBrightness,
+                        )
+                        act.window.attributes = attributes
+                    }
+                },
+                onVolumeDelta = { delta -> playerViewModel.onVolumeGesture(delta) },
+                onScrubStart = { playerViewModel.onScrubStart() },
+                onScrubMove = { delta -> playerViewModel.onScrubMove(delta) },
+                onScrubEnd = { playerViewModel.onScrubEnd() },
+                brightnessLevel = brightnessLevel,
+                volumeLevel = volumeLevel,
+                // PlayerScreen already renders the shared seek-preview HUD.
+                scrubTimeMs = null,
+                scrubDeltaMs = 0L,
+                onPinchZoom = { zoomFactor ->
+                    playerViewModel.setVideoScale(videoScale * zoomFactor)
+                    showZoomOverlay = true
+                },
+                onLongPress = { x, width ->
+                    when {
+                        x < width / 3f -> {
+                            nativeHoldSeekDirection = -1
+                            holdSeekSide = HoldSeekSide.REWIND
+                        }
+                        x > width * 2f / 3f -> {
+                            nativeHoldSeekDirection = 1
+                            holdSeekSide = HoldSeekSide.FORWARD
+                        }
+                        else -> showAspectPicker = true
+                    }
+                },
+                onLongPressEnd = {
+                    nativeHoldSeekDirection = 0
+                    holdSeekSide = null
+                },
+                modifier = Modifier.fillMaxSize(),
             )
         }
 

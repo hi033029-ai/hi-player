@@ -1,8 +1,8 @@
-# Gecko browser migration — experimental foundation
+# Gecko browser integration — feature status
 
-Status: **not integrated and not a browser replacement**. An isolated Gecko HTML smoke test and matching decoder playback tests ran on an API 28 x86_64 emulator; the browser itself was not tested in the app. The session class compiled in an isolated Android project against the classes from GeckoView 159.0.20261102144711 (API 26, Java 17); this does not validate packaging or behavior. The shipping WebView browser is untouched. `GeckoTabEngine.kt` is outside the app source set and is not included in the APK.
+Status: **optional GeckoView browser integration**. The app's generated Gecko source set is built by `tools/prepare_gecko_build.py`; WebView remains the compatibility path on Android versions that cannot load GeckoView and a fallback where configured. Gecko is not a claim of one-for-one runtime parity with WebView. See [the current parity audit](../../docs/gecko-browser-parity.md) for implemented behavior, known gaps, and validation limits.
 
-The inspected stable Mozilla artifact `org.mozilla.geckoview:geckoview:159.0.20261102144711` is distributed from Mozilla's Maven repository. The matching ARM64 AAR manifest declares minimum Android API 26; Hi Player currently supports API 24. A production migration needs an explicit API 24–25 compatibility strategy and ABI coverage. Do not silently raise minSdk or ship ARM64-only. Mozilla's setup requires Java 17; Hi Player currently targets Java 11.
+The notes below are a chronological engineering record and include historical “not wired” findings from earlier stages; those point-in-time statements are not a description of the current integration. Current changes still require the repository's approved Gradle/device validation before being called build- or runtime-verified.
 
 ## Preserved existing behavior required before cutover
 

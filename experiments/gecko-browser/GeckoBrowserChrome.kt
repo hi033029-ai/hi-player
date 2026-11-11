@@ -10,7 +10,9 @@ import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -27,9 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import com.example.auth.SecureWebsitePolicy
 import com.example.ui.screens.BrowserClearDataDialog
 import com.example.ui.screens.HiBrowserLibrary
 import com.example.ui.screens.HiBrowserMenuSheet
+import com.example.ui.screens.HiBrowserTools
 import com.example.ui.screens.HiLibrarySection
 import com.example.ui.screens.HiMenuAction
 import com.example.ui.screens.OrbitBrowserEntry
@@ -56,6 +61,7 @@ internal fun GeckoBrowserChrome(
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
     onPageTools: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     var showClearData by remember { mutableStateOf(false) }
     var showAppearance by remember { mutableStateOf(false) }
@@ -63,15 +69,12 @@ internal fun GeckoBrowserChrome(
     var libraryRevision by remember { mutableIntStateOf(0) }
     var clearing by remember { mutableStateOf(false) }
     var clearFailed by remember { mutableStateOf(false) }
-    val googleSignIn = remember(coordinator) { GeckoGoogleSignInFlow() }
+    var qrNotice by remember { mutableStateOf<String?>(null) }
     fun startGoogleSignIn() {
-        // A regular helper tab keeps the Google session in Hi Browser's shared profile.
-        val origin = coordinator.activeId
-        if (!coordinator.open(false)) return
-        val signInTab = coordinator.activeId
-        services?.secureRouting?.allowGoogleSignInInBrowser(signInTab)
-        googleSignIn.begin(origin, signInTab)
-        coordinator.load(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull()))
+        services?.secureRouting?.decision(
+            coordinator.activeId,
+            GeckoNavigationDecision.SecureSignIn(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull())),
+        )
     }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
     val current = coordinator.activeSnapshot
@@ -94,24 +97,6 @@ internal fun GeckoBrowserChrome(
         GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
         GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
-        LaunchedEffect(coordinator.revision) { googleSignIn.forgetMissing(coordinator.tabs.map { it.id }.toSet()) }
-        val signInTab = googleSignIn.signInTabId
-        val signInUrl = signInTab?.let { coordinator.snapshots[it]?.url }
-        LaunchedEffect(signInTab, signInUrl) {
-            val id = signInTab ?: return@LaunchedEffect
-            val back = googleSignIn.onUrl(id, signInUrl ?: return@LaunchedEffect) ?: return@LaunchedEffect
-            services.secureRouting.leaveTab(id)
-            coordinator.closeTab(id)
-            if (coordinator.tabs.any { it.id == back } && coordinator.select(back) && coordinator.activeSnapshot.url.isNotBlank()) coordinator.reload()
-        }
-        googleSignIn.notice?.let { notice ->
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { googleSignIn.notice = null },
-                title = { androidx.compose.material3.Text("Google sign-in complete") },
-                text = { androidx.compose.material3.Text("$notice Private tabs stay signed out.") },
-                confirmButton = { androidx.compose.material3.TextButton(onClick = { googleSignIn.notice = null }) { androidx.compose.material3.Text("OK") } },
-            )
-        }
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = services::dismissDownloadNotice,
@@ -163,7 +148,23 @@ internal fun GeckoBrowserChrome(
             tools = listOf(
                 HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage) { find.open(coordinator.activeId, current.url) },
                 *if (services != null) arrayOf(HiMenuAction("Share page", Icons.Default.Share, enabled = onPage) { services.contextActions.offer(coordinator.activeId, current.url, null) }) else emptyArray(),
+                *if (services != null) arrayOf(HiMenuAction("Open in secure browser", Icons.Default.OpenInNew,
+                    enabled = onPage && SecureWebsitePolicy.originKey(current.url) != null) {
+                    services.secureRouting.decision(coordinator.activeId, GeckoNavigationDecision.SecureSite(current.url, userGesture = true))
+                }) else emptyArray(),
                 *if (onPageTools != null) arrayOf(HiMenuAction("Page tools", Icons.Default.Settings, enabled = onPage) { onPageTools() }) else emptyArray(),
+                HiMenuAction("Scan QR code", Icons.Default.QrCodeScanner) {
+                    showMenu = false
+                    HiBrowserTools.scanQrCode(
+                        context,
+                        onResult = { value ->
+                            val url = normalizeAddress(value)
+                            if (url == null) qrNotice = "That QR code doesn't contain a supported page or search."
+                            else { services?.secureRouting?.leaveTab(coordinator.activeId); coordinator.load(url) }
+                        },
+                        onError = { qrNotice = it },
+                    )
+                },
                 HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) {
                     coordinator.setDesktop(!coordinator.desktopMode())
                     coordinator.reload()
@@ -221,4 +222,10 @@ internal fun GeckoBrowserChrome(
         text = { androidx.compose.material3.Text("Please try again.") },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { clearFailed = false }) { androidx.compose.material3.Text("OK") } },
     )
+    qrNotice?.let { notice -> androidx.compose.material3.AlertDialog(
+        onDismissRequest = { qrNotice = null },
+        title = { androidx.compose.material3.Text("QR scanner") },
+        text = { androidx.compose.material3.Text(notice) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { qrNotice = null }) { androidx.compose.material3.Text("OK") } },
+    ) }
 }

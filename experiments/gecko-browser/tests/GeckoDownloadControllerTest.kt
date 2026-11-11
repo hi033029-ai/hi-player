@@ -101,6 +101,22 @@ class GeckoDownloadControllerTest {
         assertEquals(GeckoDownloadOutcome.Complete(data.size.toLong()), (controller.state as GeckoDownloadState.Finished).outcome)
         assertEquals(1, source.takeCalls)
     }
+    @Test fun lifecycleObserverSeesActiveProgressAndCompletionMetadata() {
+        val worker = Tasks(); val ui = Tasks(); val events = mutableListOf<GeckoDownloadState>()
+        val controller = GeckoDownloadController(worker, { ui.execute(Runnable(it)) }) { _, _ -> Target() }
+        controller.onStateChanged = events::add
+        assertTrue(controller.offer(Source(mimeType = "video/mp4"), recordInHistory = true))
+        controller.approve(location = "selected folder")
+        worker.run(); ui.run()
+
+        val active = events.filterIsInstance<GeckoDownloadState.Active>()
+        assertTrue(active.isNotEmpty())
+        assertTrue(active.all { it.recordInHistory })
+        assertTrue(active.all { it.mimeType == "video/mp4" && it.location == "selected folder" })
+        assertTrue(active.any { it.bytes > 0 })
+        val finished = events.filterIsInstance<GeckoDownloadState.Finished>().last()
+        assertEquals(GeckoDownloadOutcome.Complete(3), finished.outcome)
+    }
     @Test fun rejectAndBusyOffersCloseUnconsumedResponses() {
         val worker = Tasks(); val controller = GeckoDownloadController(worker, { it() }) { _, _ -> Target() }
         val first = Source(); val second = Source()

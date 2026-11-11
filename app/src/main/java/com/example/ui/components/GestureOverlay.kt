@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +76,8 @@ fun GestureOverlay(
     scrubTimeMs: Long?,
     scrubDeltaMs: Long,
     onPinchZoom: (Float) -> Unit = {},
+    onLongPress: (x: Float, width: Float) -> Unit = { _, _ -> },
+    onLongPressEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
     // The top control bar (back, bg-play, PiP, aspect-ratio buttons) sits
     // visually above this overlay, but this overlay still spans the full
@@ -89,43 +92,66 @@ fun GestureOverlay(
     val coroutineScope = rememberCoroutineScope()
     var doubleTapSide by remember { mutableStateOf<String?>(null) } // "left" or "right"
     val doubleTapAnim = remember { Animatable(0f) }
+    val currentOnSingleTap by rememberUpdatedState(onSingleTap)
+    val currentOnDoubleTapLeft by rememberUpdatedState(onDoubleTapLeft)
+    val currentOnDoubleTapCenter by rememberUpdatedState(onDoubleTapCenter)
+    val currentOnDoubleTapRight by rememberUpdatedState(onDoubleTapRight)
+    val currentOnBrightnessDelta by rememberUpdatedState(onBrightnessDelta)
+    val currentOnVolumeDelta by rememberUpdatedState(onVolumeDelta)
+    val currentOnScrubStart by rememberUpdatedState(onScrubStart)
+    val currentOnScrubMove by rememberUpdatedState(onScrubMove)
+    val currentOnScrubEnd by rememberUpdatedState(onScrubEnd)
+    val currentOnPinchZoom by rememberUpdatedState(onPinchZoom)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentOnLongPressEnd by rememberUpdatedState(onLongPressEnd)
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .pointerInput(isLocked) {
                 val topExclusionPx = topExclusionDp.toPx()
-                if (isLocked) {
-                    detectTapGestures(onTap = { offset ->
-                        if (offset.y >= topExclusionPx) onSingleTap()
-                    })
-                } else {
-                    detectTapGestures(
-                        onTap = { offset ->
-                            if (offset.y >= topExclusionPx) onSingleTap()
-                        },
-                        onDoubleTap = { offset ->
-                            if (offset.y < topExclusionPx) return@detectTapGestures
-                            val isLeft = offset.x < size.width / 3
-                            val isRight = offset.x > size.width * 2 / 3
-                            if (isLeft) {
-                                onDoubleTapLeft()
-                                doubleTapSide = "left"
-                            } else if (isRight) {
-                                onDoubleTapRight()
-                                doubleTapSide = "right"
-                            } else {
-                                onDoubleTapCenter()
-                                doubleTapSide = "center"
-                            }
-                            coroutineScope.launch {
-                                doubleTapAnim.snapTo(0.8f)
-                                doubleTapAnim.animateTo(1.3f, tween(350))
-                                doubleTapSide = null
+                var longPressStarted = false
+                detectTapGestures(
+                    onPress = {
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            if (longPressStarted) {
+                                longPressStarted = false
+                                currentOnLongPressEnd()
                             }
                         }
-                    )
-                }
+                    },
+                    onTap = { offset ->
+                        if (offset.y >= topExclusionPx) currentOnSingleTap()
+                    },
+                    onDoubleTap = { offset ->
+                        if (isLocked || offset.y < topExclusionPx) return@detectTapGestures
+                        val isLeft = offset.x < size.width / 3
+                        val isRight = offset.x > size.width * 2 / 3
+                        if (isLeft) {
+                            currentOnDoubleTapLeft()
+                            doubleTapSide = "left"
+                        } else if (isRight) {
+                            currentOnDoubleTapRight()
+                            doubleTapSide = "right"
+                        } else {
+                            currentOnDoubleTapCenter()
+                            doubleTapSide = "center"
+                        }
+                        coroutineScope.launch {
+                            doubleTapAnim.snapTo(0.8f)
+                            doubleTapAnim.animateTo(1.3f, tween(350))
+                            doubleTapSide = null
+                        }
+                    },
+                    onLongPress = { offset ->
+                        if (!isLocked && offset.y >= topExclusionPx) {
+                            longPressStarted = true
+                            currentOnLongPress(offset.x, size.width.toFloat())
+                        }
+                    },
+                )
             }
             .pointerInput(isLocked) {
                 val topExclusionPx = topExclusionDp.toPx()
@@ -155,7 +181,7 @@ fun GestureOverlay(
                             if (!isHorizontal && !isVertical) {
                                 if (Math.abs(totalDragX) > 25f && Math.abs(totalDragX) > Math.abs(totalDragY)) {
                                     isHorizontal = true
-                                    onScrubStart()
+                                    currentOnScrubStart()
                                 } else if (Math.abs(totalDragY) > 25f) {
                                     isVertical = true
                                 }
@@ -164,26 +190,26 @@ fun GestureOverlay(
                             if (isHorizontal) {
                                 // 1 pixel = 150ms of scrub
                                 val seekDeltaMs = (totalDragX * 120).toLong()
-                                onScrubMove(seekDeltaMs)
+                                currentOnScrubMove(seekDeltaMs)
                             } else if (isVertical) {
                                 val delta = -dragAmount.y / size.height.toFloat()
                                 if (isLeft) {
-                                    onBrightnessDelta(delta)
+                                    currentOnBrightnessDelta(delta)
                                 } else {
-                                    onVolumeDelta(delta)
+                                    currentOnVolumeDelta(delta)
                                 }
                             }
                         },
                         onDragEnd = {
                             if (isHorizontal) {
-                                onScrubEnd()
+                                currentOnScrubEnd()
                             }
                             isHorizontal = false
                             isVertical = false
                         },
                         onDragCancel = {
                             if (isHorizontal) {
-                                onScrubEnd()
+                                currentOnScrubEnd()
                             }
                             isHorizontal = false
                             isVertical = false
@@ -195,7 +221,7 @@ fun GestureOverlay(
                 if (!isLocked) {
                     detectTransformGestures { _, _, zoom, _ ->
                         if (zoom.isFinite() && zoom != 1f) {
-                            onPinchZoom(zoom)
+                            currentOnPinchZoom(zoom)
                         }
                     }
                 }

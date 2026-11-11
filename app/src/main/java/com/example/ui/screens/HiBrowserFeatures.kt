@@ -526,8 +526,8 @@ internal fun isOrbitYoutube(url: String): Boolean = runCatching {
 }.getOrDefault(false)
 
 internal val ORBIT_DEFAULT_SHORTCUTS = listOf(
-    OrbitBrowserEntry("Google", "https://www.google.com"),
     OrbitBrowserEntry("YouTube", "https://m.youtube.com"),
-    OrbitBrowserEntry("Wikipedia", "https://www.wikipedia.org"),
-    OrbitBrowserEntry("X", "https://x.com"),
+    OrbitBrowserEntry("Facebook", "https://www.facebook.com/"),
+    OrbitBrowserEntry("TikTok", "https://www.tiktok.com/"),
+    OrbitBrowserEntry("Google", "https://www.google.com"),
 )

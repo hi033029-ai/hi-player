@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SelectiveColourBandTest {
+    @Test fun neutralAndOffPresetsAreIdentityTransforms() {
+        assertTrue(ColorPresets.NEUTRAL.isIdentityTransform())
+        assertTrue(ColorPresets.HDR_DISABLED.isIdentityTransform())
+        assertFalse(ColorPresets.NATURAL_HDR.isIdentityTransform())
+    }
+
+    @Test fun hdrUsesNativeSurfaceUnlessNonNeutralEnhancementWasExplicitlySelected() {
+        assertTrue(shouldUseNativeHdrOutput(true, false, ColorPresets.NATURAL_HDR))
+        assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.HDR_DISABLED))
+        assertFalse(shouldUseNativeHdrOutput(true, true, ColorPresets.NATURAL_HDR))
+        assertFalse(shouldUseNativeHdrOutput(false, false, ColorPresets.HDR_DISABLED))
+    }
+
     @Test fun neutralMidpointAddsNoColourAdjustment() {
         assertNull(selectiveExposureAdjustment(0f, 0.5f))
     }

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -44,17 +45,18 @@ internal val POPULAR_WEBSITES = listOf(
 internal fun PopularWebsiteShortcuts(onVisit: (String) -> Unit) {
     val palette = LocalHiPalette.current
     Column(Modifier.fillMaxWidth()) {
-        Text("Popular websites", color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
+        Text("Popular websites", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             POPULAR_WEBSITES.forEach { (name, url) ->
-                Column(Modifier.width(76.dp).clip(RoundedCornerShape(14.dp))
+                Column(Modifier.width(82.dp).clip(RoundedCornerShape(16.dp))
                     .clickable { onVisit(url) }.padding(vertical = 6.dp)
                     .testTag("popular_site_${name.lowercase()}"),
                     horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
-                        .background(palette.surface), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(58.dp).clip(RoundedCornerShape(18.dp))
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
                         HiSiteIcon(url, name, 40.dp, rounded = true)
                     }
                     Spacer(Modifier.height(6.dp))

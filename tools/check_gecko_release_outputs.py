@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the test-signed Gecko release APK splits and multi-ABI AAB."""
+"""Validate the test-signed arm64-only Gecko release APK and AAB."""
 import hashlib
 import json
 import struct
@@ -8,9 +8,8 @@ from pathlib import Path
 
 APK_PATHS = {
     "arm64-v8a": Path("dist/hi-player-arm64-v8a-release.apk"),
-    "armeabi-v7a": Path("dist/hi-player-armeabi-v7a-release.apk"),
 }
-BUNDLE_PATH = Path("dist/hi-player-release.aab")
+BUNDLE_PATH = Path("dist/hi-player-arm64-v8a-release.aab")
 EXPECTED_ABIS = sorted(APK_PATHS)
 MAX_APK_BYTES = 250 * 1024 * 1024
 

@@ -3,21 +3,10 @@ from prepare_gecko_build import replace_once
 
 def augment_regressions(result):
     result = dict(result)
-    k = 'main/application/com/example/ui/screens/HiBrowserChrome.kt'
-    result[k] = replace_once(result[k], 'import androidx.compose.foundation.layout.Arrangement\nimport androidx.compose.foundation.layout.Box\n', 'import androidx.compose.foundation.layout.Arrangement\nimport androidx.compose.foundation.layout.heightIn\nimport androidx.compose.foundation.layout.Box\n', 'home sizing')
-    result[k] = replace_once(result[k], '    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,\n) {', '    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,\n    inlineWelcome: Boolean = false,\n) {', 'inline welcome')
-    result[k] = replace_once(result[k], '            Spacer(Modifier.height(96.dp))', '''            if (inlineWelcome) Box(Modifier.fillMaxWidth().heightIn(min = 180.dp).padding(top = 24.dp), contentAlignment = Alignment.Center) {
-                if (showWelcome) HiBrowserWelcome(isPrivate = isPrivate)
-                else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    HiPlayerLogoBadge(size = 64.dp)
-                    Spacer(Modifier.height(12.dp))
-                    Text(if (isPrivate) "Private browsing" else "Hi Browser", color = palette.textPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                }
-            } else Spacer(Modifier.height(96.dp))''', 'permanent browser brand')
-    result[k] = replace_once(result[k], '            visible = showWelcome,', '            visible = showWelcome && !inlineWelcome,', 'nonblocking welcome')
+    # The shared HiBrowserHome now owns its persistent logo/title and saved-bookmarks state.
+    # Avoid layering a second transient welcome banner into the Gecko start page.
     k = 'main/engine/GeckoBrowserShell.kt'
     result[k] = replace_once(result[k], 'val home = snapshot.url.isBlank() && secureUrl == null', 'val home = (snapshot.url.isBlank() || snapshot.url.substringBefore(\'#\') == "about:blank") && secureUrl == null', 'native blank page Home')
-    result[k] = replace_once(result[k], '                bottomInset = 72.dp,', '                bottomInset = 72.dp,\n                inlineWelcome = true,', 'welcome and shortcuts')
     k = 'main/engine/GeckoFeatureBridge.kt'
     result[k] = replace_once(result[k], '    private val clients = WeakHashMap<GeckoSession, Client>()', '''    private val clients = WeakHashMap<GeckoSession, Client>()
     private val userNavigation = WeakHashMap<GeckoSession, (String) -> Unit>()

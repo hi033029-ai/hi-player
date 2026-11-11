@@ -15,6 +15,18 @@
   window.__orbitSkipper = true;
 
   var OPTIONS = window.__hiSkipOptions || {};
+  // Gecko delivers per-site settings through a one-use DOM attribute before
+  // injecting this file into the page's main world.
+  if (!window.__hiSkipOptions) {
+    try {
+      var optionsNode = document.documentElement;
+      var encodedOptions = optionsNode && optionsNode.getAttribute('data-hi-skip-options');
+      if (encodedOptions) {
+        OPTIONS = JSON.parse(encodedOptions);
+        optionsNode.removeAttribute('data-hi-skip-options');
+      }
+    } catch (e) {}
+  }
   var SPEED = [1, 10, 30, 60].indexOf(OPTIONS.speed) >= 0 ? OPTIONS.speed : 30; // countdown speed-up factor on wait pages
   var SAFE = /(^|\.)(youtube|google|gstatic|github|gitlab|wikipedia|wikimedia|facebook|instagram|reddit|netflix|twitch|spotify|whatsapp|microsoft|live|office|apple|icloud|amazon|paypal|stripe|linkedin|stackoverflow|duckduckgo|bing|yahoo|x|twitter|tiktok|telegram|discord|anthropic|claude|openai|chatgpt)\./i;
   if (SAFE.test(location.hostname + '.')) return;
@@ -28,24 +40,51 @@
   function realNow() { return _dateNow.call(NativeDate); }
 
   // ---- Wait-page detection. Runs only from the throttled scan below (never
-  // inside timers), skips big pages cheaply, and never treats pages with
+  // inside timers), bounds the text sampled from large pages, and never treats pages with
   // forms (sign-in, codes, checkout) as wait pages.
-  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?) (left|remaining)|count ?down|generating (your |the )?link|get (the |your )?link|link is (being )?generat|skip (ad|in)\b)/i;
+  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?)\s*(left|remaining)\b|(wait|continue|redirect|skip|link).{0,25}\b\d{1,2}:\d{2}\b|count ?down|generating (your |the )?link|get (the |your )?link|link is (being )?generat|skip (ad|in)\b)/i;
+  var WAIT_CONTEXT = /\b(wait|continue|redirect|skip|link|download|file|destination|generat|ready)\b/i;
+  var TIMER_WIDGET = /^(?:\d{1,3}|\d{1,2}:\d{2})(?:\s*(?:s|sec|secs|seconds?))?$/i;
   var isWaitPage = false;
   var decided = false;
   var checks = 0;
 
-  function hasUserForm() {
-    return !!document.querySelector('input[type=password],input[autocomplete="one-time-code"],input[type=email],input[type=tel],input[type=number],textarea,select,input[name*="card" i],input[name*="otp" i]');
+  function hasSensitiveStep() {
+    if (document.querySelector('input[type=password],input[autocomplete="one-time-code"],input[autocomplete^="cc-" i],input[type=tel],input[name*="card" i],input[name*="otp" i],iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i],[class*="turnstile" i],[id*="turnstile" i]')) return true;
+    var headings = document.querySelectorAll('h1,h2,[role="heading"]');
+    var headingText = String(document.title || '');
+    for (var h = 0; h < Math.min(headings.length, 10); h++) headingText += ' ' + (headings[h].innerText || headings[h].textContent || '');
+    if (/(consent|checkout|payment|security check|verify.*human|sign in|log in|create account|privacy choices)/i.test(headingText)) return true;
+    // A newsletter/search email field alone is not a reason to disable the
+    // helper; an authentication form containing its own login/verification CTA is.
+    var forms = document.forms || [];
+    for (var i = 0; i < Math.min(forms.length, 30); i++) {
+      var form = forms[i];
+      if (form.querySelector('input[type=email]') && /(sign in|log in|verify|send (a )?(code|link)|continue with email)/i.test(form.innerText || form.textContent || '')) return true;
+    }
+    var dialogs = document.querySelectorAll('[role="dialog"],[aria-modal="true"]');
+    for (var j = 0; j < Math.min(dialogs.length, 20); j++) {
+      var dialog = dialogs[j];
+      if (visible(dialog) && /(consent|accept (all )?cookies|cookie preferences|checkout|payment|security check|verify.*human|sign in|log in)/i.test(dialog.innerText || dialog.textContent || '')) return true;
+    }
+    return false;
   }
   function evaluateWait() {
     var b = document.body;
     if (!b) return false;
-    if (document.getElementsByTagName('*').length > 2500) return false;
-    if (hasUserForm() || document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]')) return false;
-    if (/verify (you are|you're) human|security check|checking your browser|consent|checkout|sign in|log in/i.test(b.innerText || '')) return false;
+    if (hasSensitiveStep()) return false;
     var txt = b.innerText || '';
-    return txt.length < 6000 && WAIT.test(txt);
+    if (txt.length > 18000) txt = txt.slice(0, 9000) + ' ' + txt.slice(-9000);
+    if (WAIT.test(txt)) return true;
+    if (!WAIT_CONTEXT.test(txt)) return false;
+    // Some sites expose a bare timer widget (for example, "15" or "00:15")
+    // without putting the word "seconds" beside it.
+    var widgets = document.querySelectorAll('#countdown,[id*="countdown" i],[class*="countdown" i],[data-countdown],[data-timer],[aria-label*="countdown" i]');
+    for (var i = 0; i < Math.min(widgets.length, 20); i++) {
+      var widget = widgets[i];
+      if (visible(widget) && TIMER_WIDGET.test((widget.innerText || widget.textContent || '').trim())) return true;
+    }
+    return false;
   }
 
   // ---- 1. Skip the time.
@@ -239,7 +278,7 @@
     try { return new URL(h, location.href).hostname === location.hostname; } catch (e) { return false; }
   }
   function handleButtons() {
-    if (OPTIONS.autoContinue === false || hasUserForm()) return;
+    if (OPTIONS.autoContinue === false || hasSensitiveStep()) return;
     var els = document.querySelectorAll('a,button,input[type=button],input[type=submit],div[role=button]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i], txt = (el.innerText || el.value || '').trim();
@@ -276,8 +315,7 @@
     checks++;
     lastScan = realNow();
     if (document.body) decided = true;
-    if (hasUserForm() || document.querySelector('iframe[src*="captcha" i],iframe[src*="challenge" i],[class*="captcha" i],[id*="captcha" i]') ||
-        /verify (you are|you're) human|security check|checking your browser|consent|checkout|sign in|log in/i.test((document.body && document.body.innerText) || '')) {
+    if (hasSensitiveStep()) {
       restoreTiming();
       stop();
       return;
@@ -288,7 +326,7 @@
     if (isWaitPage && !wasWaitPage) onWaitPageDetected();
     if (!isWaitPage) {
       // Big pages are never wait pages: stop watching them at once.
-      if (document.getElementsByTagName('*').length > 2500 || checks > 120) stop();
+      if (checks > 480) stop();
       return;
     }
     styleWaitPage();
@@ -310,10 +348,10 @@
   }
   try {
     observer = new MutationObserver(schedule);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   } catch (e) {}
   document.addEventListener('DOMContentLoaded', function () { try { scan(); } catch (e) {} });
   document.addEventListener('readystatechange', function () { if (document.readyState === 'interactive') schedule(); });
   window.addEventListener('load', schedule);
-  _st.call(window, stop, 60000);
+  _st.call(window, stop, 120000);
 })();

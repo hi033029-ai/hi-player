@@ -43,6 +43,13 @@ class GeckoLoadingStateTest {
         assertFalse(state.loading)
         assertNull(state.error)
     }
+    @Test fun explicitStopRemainsCancelledWhenGeckoReportsAnUnsuccessfulPageStop() {
+        val loading = GeckoLoadingState.start(initial, "https://example.org")
+        val stopped = GeckoLoadingState.stop(loading, success = false, userCancelled = true)
+        assertFalse(stopped.loading)
+        assertFalse(stopped.loadFailed)
+        assertNull(stopped.error)
+    }
     @Test fun stopWithoutSpecificFailureIsNotReportedAsSuccess() {
         val stopped = GeckoLoadingState.stop(GeckoLoadingState.start(initial, "https://example.org"), false)
         assertFalse(stopped.loading)

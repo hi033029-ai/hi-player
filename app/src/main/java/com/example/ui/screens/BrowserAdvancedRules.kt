@@ -41,6 +41,8 @@ internal object BrowserAdvancedRules {
         initialized = true
     }
     fun snapshot() = state
+    fun siteTools(pageHost: String?): BrowserSiteTools =
+        pageHost?.let(::host)?.let { state.sites[it] } ?: BrowserSiteTools()
     private fun matches(host: String, rule: String) = host == rule || host.endsWith(".$rule")
     fun paused(pageHost: String?) = state.sites[pageHost?.lowercase(Locale.ROOT)?.trimEnd('.')]?.pauseBlocking == true
     fun decision(requestHost: String?, pageHost: String?): Boolean? {

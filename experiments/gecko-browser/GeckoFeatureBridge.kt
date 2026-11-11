@@ -139,11 +139,14 @@ internal object GeckoFeatureBridge {
             when (message.optString("kind")) {
                 "bootstrap" -> {
                     val pageHost = Uri.parse(sender.url).host
+                    val siteTools = BrowserAdvancedRules.siteTools(pageHost)
                     val protectionEnabled = prefs.adBlock && !BrowserAdvancedRules.paused(pageHost)
                     val css = OrbitBrowserFilterEngine.cosmeticCss(pageHost, protectionEnabled)
                     return reply(JSONObject().put("css", css.takeIf { it.length <= 300_000 } ?: "")
                         .put("adBlock", protectionEnabled && !BuildConfig.PLAY_STORE_BUILD)
-                        .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD))
+                        .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD)
+                        .put("skipSpeed", siteTools.skipSpeed)
+                        .put("autoContinue", siteTools.autoContinue))
                 }
                 "reader" -> {
                     if (sender.url.substringBefore('#') != client.page().substringBefore('#')) return null

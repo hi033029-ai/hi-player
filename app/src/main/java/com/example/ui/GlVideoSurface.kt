@@ -26,6 +26,7 @@ import androidx.media3.exoplayer.SeekParameters
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
 import com.example.player.SelectiveColourBand
+import com.example.player.isIdentityTransform
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -600,7 +601,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         private var targetRedsHandle = 0
         private var targetGreensHandle = 0
         private var targetBluesHandle = 0
-        private var preset = ColorPresets.NATURAL_HDR
+        private var passThroughHandle = 0
+        private var preset = ColorPresets.NEUTRAL
         var surface: Surface? = null
             private set
         private var surfaceTexture: SurfaceTexture? = null
@@ -628,6 +630,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             targetRedsHandle = GLES20.glGetUniformLocation(program, "uTargetReds[0]")
             targetGreensHandle = GLES20.glGetUniformLocation(program, "uTargetGreens[0]")
             targetBluesHandle = GLES20.glGetUniformLocation(program, "uTargetBlues[0]")
+            passThroughHandle = GLES20.glGetUniformLocation(program, "uPassThrough")
 
             val ids = IntArray(1)
             GLES20.glGenTextures(1, ids, 0)
@@ -668,6 +671,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
             GLES20.glUniformMatrix4fv(matrixHandle, 1, false, textureMatrix, 0)
+            GLES20.glUniform1i(passThroughHandle, if (preset.isIdentityTransform()) 1 else 0)
             GLES20.glUniform1f(brightnessHandle, preset.brightness)
             GLES20.glUniform1f(contrastHandle, preset.contrast)
             GLES20.glUniform1f(saturationHandle, preset.saturation)
@@ -747,7 +751,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             """
             private const val FRAGMENT_SHADER = """
                 #extension GL_OES_EGL_image_external : require
+                #ifdef GL_FRAGMENT_PRECISION_HIGH
+                precision highp float;
+                #else
                 precision mediump float;
+                #endif
                 uniform samplerExternalOES uTexture;
                 uniform float uBrightness;
                 uniform float uContrast;
@@ -763,9 +771,14 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 uniform float uTargetReds[8];
                 uniform float uTargetGreens[8];
                 uniform float uTargetBlues[8];
+                uniform int uPassThrough;
                 varying vec2 vTexCoord;
                 void main() {
                     vec4 tex = texture2D(uTexture, vTexCoord);
+                    if (uPassThrough == 1) {
+                        gl_FragColor = tex;
+                        return;
+                    }
                     vec3 color = tex.rgb * uBrightness;
                     color = (color - 0.5) * uContrast + 0.5;
                     // Classify the ORIGINAL pixel, not globally graded/previously adjusted colour.

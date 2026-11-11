@@ -5,7 +5,15 @@ from prepare_gecko_build import replace_once
 def augment_parity(result):
     result = dict(result)
     key = 'main/integration/GeckoBrowserEntry.kt'
-    result[key] = replace_once(result[key], 'if (showSettings) GeckoAppearanceDialog(services.settings) { showSettings = false }', 'if (showSettings) GeckoSettingsPanel(arguments, services, owner.store, onAccount = { showAccount = true }, onDismiss = { showSettings = false })', 'full Gecko settings')
+    result[key] = replace_once(result[key], '''    if (showSettings) GeckoAppearanceDialog(
+        services.settings,
+        canReloadCurrentPage = coordinator.activeSnapshot.url.isNotBlank(),
+        onReloadCurrentPage = { coordinator.reload() },
+    ) { showSettings = false }''', '''    if (showSettings) GeckoSettingsPanel(
+        arguments, services, owner.store,
+        onAccount = { showAccount = true },
+        onDismiss = { showSettings = false },
+    )''', 'full Gecko settings')
     key = 'main/engine/GeckoFeatureBridge.kt'
     result[key] = replace_once(result[key], '    private val delegate = object : WebExtension.MessageDelegate {', '''    private fun policyReply(compute: () -> JSONObject): GeckoResult<Any> {
         val result = GeckoResult<Any>()
@@ -26,11 +34,14 @@ def augment_parity(result):
                     JSONObject().put("blocked", blocked)
                 }''', 'background request filtering')
     result[key] = replace_once(result[key], '''                    val pageHost = Uri.parse(sender.url).host
+                    val siteTools = BrowserAdvancedRules.siteTools(pageHost)
                     val protectionEnabled = prefs.adBlock && !BrowserAdvancedRules.paused(pageHost)
                     val css = OrbitBrowserFilterEngine.cosmeticCss(pageHost, protectionEnabled)
                     return reply(JSONObject().put("css", css.takeIf { it.length <= 300_000 } ?: "")
                         .put("adBlock", protectionEnabled && !BuildConfig.PLAY_STORE_BUILD)
-                        .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD))''', '''                    val pageHost = Uri.parse(client.page().takeIf(::validWebUrl) ?: sender.url).host
+                        .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD)
+                        .put("skipSpeed", siteTools.skipSpeed)
+                        .put("autoContinue", siteTools.autoContinue))''', '''                    val pageHost = Uri.parse(client.page().takeIf(::validWebUrl) ?: sender.url).host
                     val enabled = prefs.adBlock
                     return policyReply {
                         val site = BrowserAdvancedRules.snapshot().sites[pageHost?.lowercase()?.trimEnd('.')]

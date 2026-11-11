@@ -514,6 +514,7 @@ fun HiBrowserScreen(
     val thumbnails = remember { mutableStateMapOf<Int, ImageBitmap>() }
     var shortcutsVersion by remember { mutableIntStateOf(0) }
     val shortcuts = remember(shortcutsVersion) { store.shortcuts().map { it.title to it.url } }
+    val homeBookmarks = remember(entriesVersion) { store.bookmarks().map { it.title to it.url } }
     var defaultBrowserCheck by remember { mutableIntStateOf(0) }
     val isDefaultBrowser = remember(defaultBrowserCheck) {
         runCatching {
@@ -1756,6 +1757,7 @@ fun HiBrowserScreen(
             HiBrowserHome(
                 isPrivate = activeTab?.privateTab == true,
                 shortcuts = shortcuts,
+                bookmarks = homeBookmarks,
                 adBlockEnabled = adBlockEnabled,
                 onVisit = { loadAddress(it) },
                 onAddShortcut = { name, url ->

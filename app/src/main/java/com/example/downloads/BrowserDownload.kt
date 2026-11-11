@@ -27,10 +27,12 @@ internal data class BrowserDownload(
     val destinationTreeUri: String? = null,
     val customName: Boolean = false,
     val finalizing: Boolean = false,
+    /** Gecko transfers are visible in-session but are not resumable journal entries until published. */
+    val ephemeral: Boolean = false,
 ) {
     val isCompletedAudio get() = status == BrowserDownloadStatus.COMPLETED && savedUri != null &&
         DownloadFileResolver.isAudioFile(fileName, mimeType)
-    val isVideo get() = mimeType?.startsWith("video/") == true
+    val isVideo get() = DownloadFileResolver.isVideoFile(fileName, mimeType)
     val isActive get() = status in setOf(BrowserDownloadStatus.QUEUED, BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.PAUSED)
     val needsService get() = status == BrowserDownloadStatus.QUEUED || status == BrowserDownloadStatus.RUNNING
     val etaSeconds: Long? get() = if (totalBytes > downloadedBytes && speedBytesPerSecond > 0) (totalBytes - downloadedBytes) / speedBytesPerSecond else null

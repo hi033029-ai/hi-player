@@ -13,7 +13,8 @@ internal object GeckoLoadingState {
     fun cancel(state: GeckoTabSnapshot): GeckoTabSnapshot = state.copy(loading = false, progress = 0)
     fun error(state: GeckoTabSnapshot, error: GeckoPageError): GeckoTabSnapshot =
         state.copy(loading = false, error = error, secure = false)
-    fun stop(state: GeckoTabSnapshot, success: Boolean): GeckoTabSnapshot = when {
+    fun stop(state: GeckoTabSnapshot, success: Boolean, userCancelled: Boolean = false): GeckoTabSnapshot = when {
+        userCancelled -> cancel(state)
         success && state.error == null -> state.copy(loading = false, progress = 100)
         success -> state.copy(loading = false)
         else -> state.copy(loading = false, error = state.error ?: GeckoPageError.CONTENT, secure = false)

@@ -17,21 +17,14 @@ class GeckoNavigationPolicyTest {
         assertEquals(GeckoNavigationDecision.SecureSignIn("https://example.org/page"),
             policy.decide("https://accounts.google.com/signin", "https://example.org/page", true))
     }
-    private val inBrowser = GeckoNavigationPolicy(
+    private val googleSitePreferred = GeckoNavigationPolicy(
         isGoogleAuthentication = { it.startsWith("https://accounts.google.com/") },
         secureEntryFor = { if (it.startsWith("https://example.org/")) it else "https://accounts.google.com/" },
         prefersSecureSite = { it.startsWith("https://accounts.google.com/") || it.startsWith("https://secure.example/") },
-        googleSignInInBrowser = { true },
     )
-    @Test fun inBrowserGoogleSignInStaysInHiBrowserEvenForSavedOrigin() {
-        assertEquals(GeckoNavigationDecision.Allow,
-            inBrowser.decide("https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "https://example.org/page", false))
-        assertEquals(GeckoNavigationDecision.SecureSite("https://secure.example/a", true),
-            inBrowser.decide("https://secure.example/a", "", true))
-    }
-    @Test fun googleRejectionFallsBackToDeviceBrowser() {
+    @Test fun googleWebsiteAuthenticationAlwaysUsesSecureSignInRoute() {
         assertEquals(GeckoNavigationDecision.SecureSignIn("https://example.org/page"),
-            inBrowser.decide("https://accounts.google.com/v3/signin/rejected?TL=x", "https://example.org/page", false))
+            googleSitePreferred.decide("https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "https://example.org/page", false))
     }
     @Test fun savedSecureSiteRequiresUserGestureBeforeExternalLaunch() {
         assertEquals(GeckoNavigationDecision.SecureSite("https://secure.example/a", false),

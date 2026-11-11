@@ -26,7 +26,7 @@ internal interface GeckoDownloadSource : Closeable {
 internal sealed interface GeckoDownloadState {
     data object Idle : GeckoDownloadState
     data class Offer(val name: String, val length: Long?, val mimeType: String? = null, val recordInHistory: Boolean = true) : GeckoDownloadState
-    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0) : GeckoDownloadState
+    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0, val recordInHistory: Boolean = true, val mimeType: String? = null, val location: String = "Downloads") : GeckoDownloadState
     data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null) : GeckoDownloadState
 }
 /** Approved response ownership only; no refetch, persisted credentials or fake progress. */
@@ -38,6 +38,7 @@ internal class GeckoDownloadController(
 ) : AutoCloseable {
     var state: GeckoDownloadState by mutableStateOf(GeckoDownloadState.Idle)
         private set
+    var onStateChanged: ((GeckoDownloadState) -> Unit)? = null
     var onTransferStarted: ((() -> Unit) -> AutoCloseable)? = null
     private val activeLease = AtomicReference<AutoCloseable?>(null)
     private var offer: GeckoDownloadSource? = null
@@ -49,12 +50,12 @@ internal class GeckoDownloadController(
         if (closed || offer != null || cancellation != null || source.statusCode !in 200..299) { runCatching { source.close() }; return false }
         val name = suggestedDownloadName(source)
         offer = source
-        state = GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory)
+        publishState(GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory))
         return true
     }
     @MainThread fun reject() {
         offer?.let { runCatching { it.close() } }; offer = null
-        if (!closed && cancellation == null) state = GeckoDownloadState.Idle
+        if (!closed && cancellation == null) publishState(GeckoDownloadState.Idle)
     }
     @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null) {
         val source = offer ?: return
@@ -63,16 +64,17 @@ internal class GeckoDownloadController(
         val name = DownloadFileResolver.safeName(fileName ?: pending.name)
         val input = try { source.takeBody() } catch (_: Exception) { null }
         runCatching { source.close() }
-        if (input == null) { state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location); return }
+        if (input == null) { publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return }
         val cancel = GeckoDownloadCancellation()
         cancel.register(input)
         cancellation = cancel
         val id = ++generation
         speedMeter.reset(0, System.nanoTime())
-        state = GeckoDownloadState.Active(name, 0, pending.length)
+        publishState(GeckoDownloadState.Active(name, 0, pending.length,
+            recordInHistory = pending.recordInHistory, mimeType = pending.mimeType, location = location))
         val rawLease = try { onTransferStarted?.invoke { cancel.cancel() } } catch (_: Exception) {
             cancel.cancel(); cancellation = null
-            state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location); return
+            publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return
         }
         val once = AtomicBoolean(false)
         val lease = rawLease?.let { value -> AutoCloseable { if (once.compareAndSet(false, true)) value.close() } }
@@ -84,7 +86,8 @@ internal class GeckoDownloadController(
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
                     val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
                         val speed = speedMeter.sample(bytes, System.nanoTime())
-                        dispatchMain { if (!closed && generation == id && cancellation === cancel) state = GeckoDownloadState.Active(name, bytes, pending.length, speed) }
+                        dispatchMain { if (!closed && generation == id && cancellation === cancel) publishState(
+                            GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location)) }
                     }
                     val recorder = onPublished
                     if (pending.recordInHistory && transferred is GeckoDownloadOutcome.Complete && target is GeckoPublishedDestination && recorder != null) recorded = runCatching { recorder(target, name, source.mimeType, transferred.bytes, location) }.getOrDefault(false)
@@ -93,18 +96,23 @@ internal class GeckoDownloadController(
                     runCatching { input.close() }
                     if (cancel.isCancelled()) GeckoDownloadOutcome.Cancelled else GeckoDownloadOutcome.Failed
                 } finally { runCatching { lease?.close() }; activeLease.compareAndSet(lease, null) }
-                dispatchMain { if (!closed && generation == id && cancellation === cancel) { cancellation = null; state = GeckoDownloadState.Finished(name, outcome, location, recorded) } }
+                dispatchMain { if (!closed && generation == id && cancellation === cancel) { cancellation = null; publishState(GeckoDownloadState.Finished(name, outcome, location, recorded)) } }
             }
         } catch (_: Exception) {
             cancel.cancel(); runCatching { activeLease.getAndSet(null)?.close() }; cancellation = null
-            state = GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)
+            publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location))
         }
     }
     @MainThread fun cancel() { cancellation?.cancel(); runCatching { activeLease.getAndSet(null)?.close() } }
-    @MainThread fun dismissResult() { if (state is GeckoDownloadState.Finished) state = GeckoDownloadState.Idle }
+    @MainThread fun dismissResult() { if (state is GeckoDownloadState.Finished) publishState(GeckoDownloadState.Idle) }
     @MainThread override fun close() {
         if (closed) return
-        closed = true; generation++; reject(); cancel(); cancellation = null; state = GeckoDownloadState.Idle
+        closed = true; generation++; reject(); cancel(); cancellation = null; publishState(GeckoDownloadState.Idle)
+    }
+
+    private fun publishState(next: GeckoDownloadState) {
+        state = next
+        runCatching { onStateChanged?.invoke(next) }
     }
 
     private fun suggestedDownloadName(source: GeckoDownloadSource): String {

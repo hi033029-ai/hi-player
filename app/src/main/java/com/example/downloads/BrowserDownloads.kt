@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -105,7 +106,7 @@ internal object BrowserDownloads {
 
     private fun persistLocked(context: Context): Boolean {
         val json = JSONArray()
-        _downloads.value.forEach { d ->
+        _downloads.value.filterNot { it.ephemeral }.forEach { d ->
             json.put(JSONObject().apply {
                 put("id", d.id); put("name", d.fileName); put("url", d.sourceUrl); put("mime", d.mimeType.orEmpty())
                 put("ua", d.userAgent); put("cookie", d.cookie); put("referer", d.referer)
@@ -149,21 +150,74 @@ internal object BrowserDownloads {
     }
     internal fun safeFileName(raw: String): String = DownloadFileResolver.safeName(raw)
 
+    /** Add a non-resumable Gecko transfer to the live list without writing it to the resume journal. */
+    internal fun beginGeckoTransfer(context: Context, fileName: String, mimeType: String?, totalBytes: Long?, location: String): Long {
+        val app = context.applicationContext
+        return synchronized(lock) {
+            restoreLocked(app)
+            val id = ++lastId
+            val resolved = DownloadFileResolver.resolve(fileName, "", mimeType)
+            val entry = BrowserDownload(id, resolved.fileName, "", resolved.mimeType,
+                totalBytes = totalBytes?.coerceAtLeast(0) ?: 0, status = BrowserDownloadStatus.RUNNING,
+                saveLocation = location.take(200), ephemeral = true)
+            _downloads.value = listOf(entry) + _downloads.value
+            id
+        }
+    }
+
+    /** Update only a live Gecko row; it is intentionally not persisted until the published URI is recorded. */
+    internal fun updateGeckoTransfer(id: Long, fileName: String, mimeType: String?, bytes: Long, totalBytes: Long?, speed: Long) {
+        synchronized(lock) {
+            find(id)?.takeIf { it.ephemeral }?.let { old ->
+                val resolved = DownloadFileResolver.resolve(fileName, "", mimeType)
+                replaceLocked(old.copy(fileName = resolved.fileName, mimeType = resolved.mimeType,
+                    downloadedBytes = bytes.coerceAtLeast(0), totalBytes = totalBytes?.coerceAtLeast(0) ?: old.totalBytes,
+                    speedBytesPerSecond = speed.coerceAtLeast(0),
+                    finalizing = totalBytes != null && totalBytes > 0 && bytes >= totalBytes))
+            }
+        }
+    }
+
+    /** Keep a failed/cancelled Gecko row visible for this session; no resumable source URL is retained. */
+    internal fun finishGeckoTransfer(id: Long, status: BrowserDownloadStatus, error: String? = null) {
+        require(status == BrowserDownloadStatus.FAILED || status == BrowserDownloadStatus.CANCELLED)
+        synchronized(lock) {
+            find(id)?.takeIf { it.ephemeral }?.let { old ->
+                replaceLocked(old.copy(status = status, speedBytesPerSecond = 0, finalizing = false, error = error))
+            }
+        }
+    }
+
     /** Record an already-published stream without saving its URL, cookies or headers. Call on IO. */
-    internal fun recordPublishedStream(context: Context, uri: Uri, treeUri: Uri?, fileName: String, mimeType: String?, bytes: Long, location: String): Boolean {
+    internal fun recordPublishedStream(context: Context, uri: Uri, treeUri: Uri?, fileName: String, mimeType: String?, bytes: Long, location: String, transferId: Long? = null): Boolean {
         if (uri.scheme != "content" || uri.authority.isNullOrBlank() || bytes < 0 || (treeUri != null && treeUri.scheme != "content")) return false
         val app = context.applicationContext
+        val prefix = runCatching {
+            val output = ByteArrayOutputStream(65_536)
+            val buffer = ByteArray(8_192)
+            app.contentResolver.openInputStream(uri)?.use { input ->
+                while (output.size() < 65_536) {
+                    val count = input.read(buffer, 0, minOf(buffer.size, 65_536 - output.size()))
+                    if (count <= 0) break
+                    output.write(buffer, 0, count)
+                }
+            }
+            output.toByteArray()
+        }.getOrDefault(byteArrayOf())
+        val resolved = DownloadFileResolver.resolve(fileName, "", mimeType, prefix = prefix)
         return synchronized(lock) {
             restoreLocked(app)
             if (_downloads.value.any { it.status == BrowserDownloadStatus.COMPLETED && it.savedUri == uri.toString() }) return@synchronized true
             val previous = _downloads.value
+            val existing = transferId?.let(::find)?.takeIf { it.ephemeral }
             val entry = BrowserDownload(
-                id = ++lastId, fileName = DownloadFileResolver.safeName(fileName), sourceUrl = "",
-                mimeType = DownloadFileResolver.normalizeMime(mimeType), downloadedBytes = bytes, totalBytes = bytes,
+                id = existing?.id ?: ++lastId, fileName = resolved.fileName, sourceUrl = "",
+                mimeType = resolved.mimeType, downloadedBytes = bytes, totalBytes = bytes,
                 status = BrowserDownloadStatus.COMPLETED, savedUri = uri.toString(),
                 destinationTreeUri = treeUri?.toString(), saveLocation = location.take(200), formatChecked = true,
+                ephemeral = false,
             )
-            _downloads.value = listOf(entry) + previous
+            _downloads.value = if (existing == null) listOf(entry) + previous else previous.map { if (it.id == entry.id) entry else it }
             val saved = runCatching {
                 if (!persistLocked(app)) false else {
                     val array = journal(app).openRead().bufferedReader().use { JSONArray(it.readText()) }

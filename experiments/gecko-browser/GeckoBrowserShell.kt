@@ -77,6 +77,7 @@ internal fun GeckoBrowserShell(
     var history by remember { mutableStateOf(emptyList<OrbitBrowserEntry>()) }
     val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
+    val bookmarks = remember(historyRevision) { store.bookmarks().map { it.title to it.url } }
     val scrollChrome = coordinator.controller.scrollChrome
     var barHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -113,8 +114,8 @@ internal fun GeckoBrowserShell(
             HiBrowserHome(
                 isPrivate = activeTab.privateTab,
                 shortcuts = shortcuts,
-                // Filtering is not connected to Gecko yet; do not claim it is enabled.
-                adBlockEnabled = false,
+                bookmarks = bookmarks,
+                adBlockEnabled = store.adBlock,
                 onVisit = ::navigate,
                 onAddShortcut = { name, url ->
                     store.saveShortcuts(store.shortcuts() + OrbitBrowserEntry(name, url))

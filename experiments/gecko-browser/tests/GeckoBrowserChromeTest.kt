@@ -3,6 +3,7 @@ package com.example.browser.gecko
 import android.content.Context
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -48,6 +49,9 @@ class GeckoBrowserChromeTest {
                 downloadsContent = { Text("Downloads") }, pageContent = { Text("Gecko page") })
         } }
         compose.onNodeWithContentDescription("Browser menu").performClick()
+        compose.onNodeWithText("Sign in to Google for websites").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Scan QR code").performScrollTo()
+        compose.onNodeWithText("Scan QR code").assertIsDisplayed()
         compose.onNodeWithText("New private tab").performScrollTo().performClick()
         compose.runOnIdle {
             assertTrue(coordinator.tabs.single { it.id == coordinator.activeId }.privateTab)

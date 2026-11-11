@@ -46,6 +46,7 @@ import com.example.ui.components.GoogleAccountDialog
 import com.example.ui.screens.BrowserDownloadsPanel
 import com.example.ui.screens.BrowserNavigationHost
 import com.example.ui.screens.BrowserSearchProvider
+import com.example.ui.screens.BrowserTabBackPolicy
 import com.example.ui.screens.GeckoBrowserArguments
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.screens.normalizeBrowserInput
@@ -141,10 +142,18 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     }
     LaunchedEffect(arguments.externalUrl) { arguments.externalUrl?.let { navigate(it); latest.onExternalUrlConsumed() } }
     BackHandler {
-        when {
-            coordinator.tabs.size > 1 -> coordinator.closeTab(coordinator.activeId)
-            coordinator.activeSnapshot.url.isNotBlank() -> coordinator.home()
-            else -> latest.onBack()
+        val activeId = coordinator.activeId
+        val snapshot = coordinator.activeSnapshot
+        when (BrowserTabBackPolicy.backAction(
+            showingHome = snapshot.url.isBlank() && services.secureRouting.route(activeId) == null,
+            canGoBack = snapshot.canGoBack,
+        )) {
+            BrowserTabBackPolicy.BackAction.PAGE_HISTORY -> coordinator.back()
+            BrowserTabBackPolicy.BackAction.HOME -> {
+                services.secureRouting.leaveTab(activeId)
+                coordinator.home()
+            }
+            BrowserTabBackPolicy.BackAction.EXIT_BROWSER -> latest.onBack()
         }
     }
     BrowserNavigationHost(modifier = arguments.modifier.fillMaxSize(), enabled = !fullscreen && !arguments.isInPictureInPicture, navigation = arguments.appNavigation) {
@@ -159,7 +168,9 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     catch (_: Exception) { voiceUnavailable = true }
                 },
                 onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
-                downloadsContent = { query -> BrowserDownloadsPanel(downloads, query) { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) } },
+                downloadsContent = { query -> BrowserDownloadsPanel(downloads, query,
+                    onPlay = { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) },
+                    onCancelGecko = services::cancelDownload) },
                 appNavigation = arguments.appNavigation, services = services,
                 account = accountHooks,
                 onPageTools = { showPageTools = true },
@@ -167,8 +178,12 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
             )
         }
     }
-    GeckoPageToolsSheet(arguments, services, owner.store, visible = showPageTools) { showPageTools = false }
-    if (showSettings) GeckoAppearanceDialog(services.settings) { showSettings = false }
+    GeckoPageToolsSheet(arguments, services, visible = showPageTools) { showPageTools = false }
+    if (showSettings) GeckoAppearanceDialog(
+        services.settings,
+        canReloadCurrentPage = coordinator.activeSnapshot.url.isNotBlank(),
+        onReloadCurrentPage = { coordinator.reload() },
+    ) { showSettings = false }
     if (showAccount) GoogleAccountDialog(
         onDismiss = { showAccount = false },
         onPlayDriveMedia = { video -> showAccount = false; latest.onPlayAccountMedia(video) },

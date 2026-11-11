@@ -18,16 +18,33 @@ class GeckoBrowserSettingsTest {
         fun create() = GeckoBrowserSettings(store.darkMode, store.textZoom, store.popupBlock,
             { dark, zoom, scale -> applied = Triple(dark, zoom, scale) },
             { dark, zoom -> store.darkMode = dark; store.textZoom = zoom },
-            { store.popupBlock = it })
+            { store.popupBlock = it },
+            initialAdBlock = store.adBlock,
+            initialPageSkipper = store.pageSkipper,
+            initialYoutubeAdSkip = store.youtubeAdSkip,
+            initialVideoHandoff = store.videoHandoff,
+            saveContentPreferences = { adBlock, pageSkipper, youtube, handoff ->
+                store.adBlock = adBlock; store.pageSkipper = pageSkipper
+                store.youtubeAdSkip = youtube; store.videoHandoff = handoff
+            })
         val settings = create()
         settings.applySystemScale(1.3f)
         assertEquals(Triple(false, 100, 1.3f), applied)
         settings.setAppearance(true, 150)
         settings.changePopupBlock(false)
+        settings.changeAdBlock(false)
+        settings.changePageSkipper(false)
+        settings.changeYoutubeAdSkip(false)
+        settings.changeVideoHandoff(false)
+        assertTrue(settings.contentNeedsReload)
+        settings.markContentApplied()
+        assertFalse(settings.contentNeedsReload)
         val restored = create()
         restored.applySystemScale(1.5f)
         assertEquals(Triple(true, 150, 1.5f), applied)
         assertTrue(restored.dark); assertEquals(150, restored.zoom); assertFalse(restored.popupBlock)
+        assertFalse(restored.adBlock); assertFalse(restored.pageSkipper)
+        assertFalse(restored.youtubeAdSkip); assertFalse(restored.videoHandoff)
     }
     @Test fun failedApplyDoesNotSaveAndRestoresPriorAppearance() {
         val calls = mutableListOf<Pair<Boolean, Int>>()

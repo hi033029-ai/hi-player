@@ -44,7 +44,7 @@ index a85e257..bc67244 100644
  import java.util.WeakHashMap
  import android.app.Activity
  import android.content.ActivityNotFoundException
-@@ -2660,27 +2658,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled
+@@ -2662,27 +2660,6 @@ private fun BrowserSettingsActionRow(title: String, onClick: () -> Unit, enabled
      }
  }
  

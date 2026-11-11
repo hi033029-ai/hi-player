@@ -21,6 +21,17 @@ data class ColorPreset(
     val targetAdjustments: List<ColorTargetAdjustment> = emptyList(),
 )
 
+internal fun ColorPreset.isIdentityTransform(): Boolean =
+    brightness == 1f && contrast == 1f && saturation == 1f &&
+        red == 1f && green == 1f && blue == 1f && vibrance == 1f &&
+        sharpness == 0f && targetHue < 0f && targetAdjustments.isEmpty()
+
+internal fun shouldUseNativeHdrOutput(
+    isHdrContent: Boolean,
+    enhancementEnabled: Boolean,
+    selectedPreset: ColorPreset,
+): Boolean = isHdrContent && (!enhancementEnabled || selectedPreset.isIdentityTransform())
+
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
     val HDR_DISABLED = ColorPreset("Off", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)

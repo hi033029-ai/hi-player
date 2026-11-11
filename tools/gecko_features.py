@@ -26,8 +26,27 @@ def augment(result):
             }
         }'''
     t = replace_once(t, old, new, 'protected load')
-    t = replace_once(t, '@MainThread fun reload() { checkMain(); if (!closed) session.reload() }', '@MainThread fun reload() { checkMain(); if (!closed) { if (snapshot.error != null || !session.isOpen) load(snapshot.url) else session.reload() } }', 'recoverable reload')
-    t = replace_once(t, '@MainThread fun stop() { checkMain(); if (!closed) session.stop() }', '@MainThread fun stop() { checkMain(); if (!closed) { loadGeneration++; GeckoFeatureBridge.cancel(session); if (session.isOpen) session.stop(); update(GeckoLoadingState.cancel(snapshot)) } }', 'cancel pending load')
+    old_stop = '''    @MainThread fun stop() {
+        checkMain()
+        if (!closed) {
+            if (snapshot.loading) {
+                userRequestedStop = true
+                update(GeckoLoadingState.cancel(snapshot))
+            }
+            session.stop()
+        }
+    }'''
+    new_stop = '''    @MainThread fun stop() {
+        checkMain()
+        if (!closed) {
+            loadGeneration++
+            GeckoFeatureBridge.cancel(session)
+            if (snapshot.loading) userRequestedStop = true
+            if (session.isOpen) session.stop()
+            update(GeckoLoadingState.cancel(snapshot))
+        }
+    }'''
+    t = replace_once(t, old_stop, new_stop, 'cancel pending load')
     t = replace_once(t, '        detach(); closed = true; popupGate.clear(); session.close()', '        loadGeneration++; GeckoFeatureBridge.unbind(session)\n        detach(); closed = true; popupGate.clear(); session.close()', 'bridge lifetime')
     t = replace_once(t, '                // Prefer a linked address; only use image sources for image elements.', '''                if (element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_VIDEO || element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_AUDIO) {
                     element.srcUri?.takeIf(GeckoFeatureBridge::validWebUrl)?.let { update(snapshot.copy(mediaUrl = it, mediaMime = null, mediaTitle = element.title)) }

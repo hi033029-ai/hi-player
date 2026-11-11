@@ -1,4 +1,5 @@
 "use strict";
+// Only URL decisions and media addresses are shared; cookies and auth headers are not copied.
 const sendNative = message => browser.runtime.sendNativeMessage("hi_player", message).then(response =>
   typeof response === "string" ? JSON.parse(response) : response);
 const requestPage = details => {

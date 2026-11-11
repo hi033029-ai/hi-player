@@ -54,6 +54,7 @@ internal class GeckoTabEngine(
         private set
     private var attachedView: GeckoView? = null
     private var closed = false
+    private var userRequestedStop = false
     private val popupGate = GeckoPopupGate(SystemClock::elapsedRealtime)
 
     init {
@@ -62,6 +63,7 @@ internal class GeckoTabEngine(
         session.permissionDelegate = permissionDelegate
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                userRequestedStop = false
                 update(GeckoLoadingState.start(snapshot, url))
             }
             override fun onProgressChange(session: GeckoSession, progress: Int) {
@@ -71,7 +73,7 @@ internal class GeckoTabEngine(
                 update(snapshot.copy(secure = securityInfo.isSecure && !securityInfo.isException))
             }
             override fun onPageStop(session: GeckoSession, success: Boolean) {
-                update(GeckoLoadingState.stop(snapshot, success))
+                update(GeckoLoadingState.stop(snapshot, success, userCancelled = userRequestedStop))
             }
         }
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
@@ -116,7 +118,7 @@ internal class GeckoTabEngine(
                     WebRequestError.ERROR_CATEGORY_SECURITY, WebRequestError.ERROR_CATEGORY_SAFEBROWSING -> GeckoPageError.SECURITY
                     else -> GeckoPageError.CONTENT
                 }
-                update(GeckoLoadingState.error(snapshot, kind))
+                update(if (userRequestedStop) GeckoLoadingState.cancel(snapshot) else GeckoLoadingState.error(snapshot, kind))
                 // Null halts the failed load; the UI must display a safe recovery state.
                 // Never ignore certificate errors.
                 return null
@@ -169,14 +171,36 @@ internal class GeckoTabEngine(
     }
     @MainThread fun load(url: String) {
         checkMain(); check(!closed)
+        userRequestedStop = false
         update(GeckoLoadingState.start(snapshot, url))
         try { session.loadUri(url) } catch (error: Exception) {
             update(GeckoLoadingState.error(snapshot, GeckoPageError.CONTENT))
             throw error
         }
     }
-    @MainThread fun reload() { checkMain(); if (!closed) session.reload() }
-    @MainThread fun stop() { checkMain(); if (!closed) session.stop() }
+    @MainThread fun reload() {
+        checkMain()
+        if (!closed) {
+            if (snapshot.url.isBlank()) return
+            if (snapshot.error != null || !session.isOpen) {
+                load(snapshot.url)
+                return
+            }
+            userRequestedStop = false
+            update(GeckoLoadingState.start(snapshot, snapshot.url))
+            session.reload()
+        }
+    }
+    @MainThread fun stop() {
+        checkMain()
+        if (!closed) {
+            if (snapshot.loading) {
+                userRequestedStop = true
+                update(GeckoLoadingState.cancel(snapshot))
+            }
+            session.stop()
+        }
+    }
     @MainThread fun back() { checkMain(); if (!closed && snapshot.canGoBack) session.goBack() }
     @MainThread fun forward() { checkMain(); if (!closed && snapshot.canGoForward) session.goForward() }
     @MainThread fun exitFullScreen() { checkMain(); if (!closed) session.exitFullScreen() }

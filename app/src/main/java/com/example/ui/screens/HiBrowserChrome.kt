@@ -2,10 +2,12 @@ package com.example.ui.screens
 
 import com.example.ui.theme.hiContainerBorder
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.horizontalScroll
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -188,17 +190,18 @@ internal fun HiBrowserToolbar(
     // Keep the address field and tab controls as separate, independently legible controls.
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val shape = RoundedCornerShape(28.dp)
+        val shape = RoundedCornerShape(24.dp)
+        val tabsShape = RoundedCornerShape(18.dp)
         Row(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(shape)
-                .background(palette.surface.copy(alpha = if (focused) 0.97f else 0.84f))
+                .background(palette.surface)
                 .border(1.dp, if (focused) palette.primary else palette.surfaceBorder, shape)
                 .padding(horizontal = 4.dp)
                 .testTag("browser_address_capsule"),
@@ -316,9 +319,9 @@ internal fun HiBrowserToolbar(
         Row(
             modifier = Modifier
                 .height(56.dp)
-                .clip(shape)
-                .background(palette.surface.copy(alpha = 0.92f))
-                .border(1.dp, palette.surfaceBorder, shape)
+                .clip(tabsShape)
+                .background(palette.surfaceElevated)
+                .border(1.dp, palette.surfaceBorder, tabsShape)
                 .padding(horizontal = 3.dp)
                 .testTag("browser_tabs_capsule"),
             verticalAlignment = Alignment.CenterVertically,
@@ -658,11 +661,12 @@ private fun HiBrowserTabCardView(
     }
 }
 
-/** Start page: logo and editable shortcut tiles. Searching happens in the bottom address bar. */
+/** Start page: browser identity, saved bookmarks, and editable quick links. */
 @Composable
 internal fun HiBrowserHome(
     isPrivate: Boolean,
     shortcuts: List<Pair<String, String>>,
+    bookmarks: List<Pair<String, String>> = emptyList(),
     adBlockEnabled: Boolean,
     onVisit: (String) -> Unit,
     onAddShortcut: (String, String) -> Unit,
@@ -671,105 +675,167 @@ internal fun HiBrowserHome(
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val palette = LocalHiPalette.current
+    val cardShape = RoundedCornerShape(24.dp)
     var editing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
-    var showWelcome by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(1_650)
-        showWelcome = false
-    }
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(palette.background)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-            ) {},
+            .background(palette.background),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(96.dp))
-            if (isPrivate) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Pages you open in private tabs aren't saved to history.",
-                    color = palette.textSecondary,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
-            Spacer(Modifier.height(40.dp))
-            val cells: List<Pair<String, String>?> = buildList {
-                addAll(shortcuts)
-                if (shortcuts.size < 12) add(null)
-            }
-            cells.chunked(4).forEach { row ->
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    row.forEach { cell ->
-                        if (cell == null) {
-                            HiShortcutTile("Add", null, false, Modifier.weight(1f)) { adding = true }
-                        } else {
-                            HiShortcutTile(cell.first, cell.second, editing, Modifier.weight(1f)) {
-                                if (editing) onRemoveShortcut(cell.second) else onVisit(cell.second)
-                            }
+            Spacer(Modifier.height(20.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .clip(cardShape)
+                    .background(palette.surface)
+                    .border(1.dp, palette.surfaceBorder, cardShape)
+                    .padding(18.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HiPlayerLogoBadge(size = 58.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Text("Hi Browser", color = palette.textPrimary, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(2.dp))
+                        Text("Your web, ready when you are", color = palette.textSecondary, fontSize = 13.sp)
+                    }
+                }
+                if (isPrivate) {
+                    Spacer(Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(palette.primary.copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = palette.primary, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text("Private browsing", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Pages you open here aren't saved to history", color = palette.textSecondary, fontSize = 11.sp)
                         }
                     }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                Spacer(Modifier.height(14.dp))
             }
-            if (editing) {
-                Text("Tap a shortcut to remove it", color = palette.textTertiary, fontSize = 12.sp)
+            Spacer(Modifier.height(14.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(cardShape)
+                    .background(palette.surface)
+                    .border(1.dp, palette.surfaceBorder, cardShape)
+                    .padding(14.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Bookmark, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Saved bookmarks", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    if (bookmarks.isNotEmpty()) {
+                        Text(bookmarks.size.toString(), color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                if (bookmarks.isEmpty()) {
+                    Text(
+                        "Bookmark a page from the browser menu and it will appear here.",
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                            .background(palette.surfaceElevated).padding(12.dp),
+                        color = palette.textTertiary,
+                        fontSize = 13.sp,
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        bookmarks.take(12).forEachIndexed { index, (title, url) ->
+                            HiBrowserBookmarkTile(title, url, index, onVisit)
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(14.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(cardShape)
+                    .background(palette.surface)
+                    .border(1.dp, palette.surfaceBorder, cardShape)
+                    .animateContentSize(animationSpec = tween(durationMillis = 180))
+                    .padding(14.dp),
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Quick links", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Row(
+                        modifier = Modifier.clip(RoundedCornerShape(50))
+                            .background(palette.surfaceElevated)
+                            .clickable { editing = !editing }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (editing) Icons.Default.Check else Icons.Default.Edit,
+                            contentDescription = if (editing) "Done editing" else "Edit shortcuts",
+                            tint = palette.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(if (editing) "Done" else "Edit", color = palette.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                val cells: List<Pair<String, String>?> = buildList {
+                    addAll(shortcuts)
+                    if (shortcuts.size < 12) add(null)
+                }
+                cells.chunked(4).forEach { row ->
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { cell ->
+                            if (cell == null) {
+                                HiShortcutTile("Add", null, false, Modifier.weight(1f)) { adding = true }
+                            } else {
+                                HiShortcutTile(cell.first, cell.second, editing, Modifier.weight(1f)) {
+                                    if (editing) onRemoveShortcut(cell.second) else onVisit(cell.second)
+                                }
+                            }
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                AnimatedVisibility(
+                    visible = editing,
+                    enter = fadeIn(animationSpec = tween(150)),
+                    exit = fadeOut(animationSpec = tween(100)),
+                ) {
+                    Text("Tap a shortcut to remove it", color = palette.textTertiary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+            Spacer(Modifier.height(14.dp))
             PopularWebsiteShortcuts(onVisit = onVisit)
-            Spacer(Modifier.height(32.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.clip(RoundedCornerShape(50.dp)).background(palette.surface)
+                    .border(1.dp, palette.surfaceBorder, RoundedCornerShape(50.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Icon(
                     Icons.Default.Shield,
                     contentDescription = null,
-                    tint = if (adBlockEnabled) Color(0xFF22A06B) else palette.textTertiary,
+                    tint = if (adBlockEnabled) palette.primary else palette.textTertiary,
                     modifier = Modifier.size(16.dp),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    if (adBlockEnabled) "Ad blocking is on" else "Ad blocking is off",
-                    color = palette.textTertiary,
+                    if (adBlockEnabled) "Ad blocking on" else "Ad blocking off",
+                    color = palette.textSecondary,
                     fontSize = 12.sp,
                 )
             }
             Spacer(Modifier.height(bottomInset + 24.dp))
-        }
-        IconButton(
-            onClick = { editing = !editing },
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-        ) {
-            Icon(
-                if (editing) Icons.Default.Check else Icons.Default.Edit,
-                contentDescription = if (editing) "Done editing" else "Edit shortcuts",
-                tint = palette.textPrimary,
-            )
-        }
-        AnimatedVisibility(
-            visible = showWelcome,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(palette.background),
-                contentAlignment = Alignment.Center,
-            ) {
-                HiBrowserWelcome(isPrivate = isPrivate)
-            }
         }
     }
     if (adding) {
@@ -780,6 +846,35 @@ internal fun HiBrowserHome(
             },
             onDismiss = { adding = false },
         )
+    }
+}
+
+@Composable
+private fun HiBrowserBookmarkTile(
+    title: String,
+    url: String,
+    index: Int,
+    onVisit: (String) -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    Column(
+        modifier = Modifier.width(82.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onVisit(url) }
+            .testTag("browser_bookmark_$index")
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier.size(58.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(palette.surfaceElevated),
+            contentAlignment = Alignment.Center,
+        ) {
+            HiSiteIcon(url, title, 40.dp, rounded = true)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(title, color = palette.textPrimary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -796,13 +891,13 @@ private fun HiShortcutTile(
         modifier = modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(modifier = Modifier.size(64.dp)) {
+        Box(modifier = Modifier.size(66.dp)) {
             if (url == null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(18.dp))
-                        .background(palette.surface)
+                        .background(palette.surfaceElevated)
                         .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -813,7 +908,7 @@ private fun HiShortcutTile(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(18.dp))
-                        .background(palette.surface)
+                        .background(palette.surfaceElevated)
                         .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
                     contentAlignment = Alignment.Center,
                 ) {

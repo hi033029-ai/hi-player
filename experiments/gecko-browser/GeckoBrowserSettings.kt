@@ -56,12 +56,27 @@ internal class GeckoBrowserSettings(
     private val applyAppearance: (Boolean, Int, Float) -> Unit,
     private val saveAppearance: (Boolean, Int) -> Unit,
     private val savePopupBlock: (Boolean) -> Unit,
+    initialAdBlock: Boolean = true,
+    initialPageSkipper: Boolean = true,
+    initialYoutubeAdSkip: Boolean = true,
+    initialVideoHandoff: Boolean = true,
+    private val saveContentPreferences: (Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _ -> },
 ) {
     var dark by mutableStateOf(initialDark)
         private set
     var zoom by mutableIntStateOf(initialZoom.coerceIn(80, 200))
         private set
     var popupBlock by mutableStateOf(initialPopupBlock)
+        private set
+    var adBlock by mutableStateOf(initialAdBlock)
+        private set
+    var pageSkipper by mutableStateOf(initialPageSkipper)
+        private set
+    var youtubeAdSkip by mutableStateOf(initialYoutubeAdSkip)
+        private set
+    var videoHandoff by mutableStateOf(initialVideoHandoff)
+        private set
+    var contentNeedsReload by mutableStateOf(false)
         private set
     var failed by mutableStateOf(false)
         private set
@@ -92,6 +107,23 @@ internal class GeckoBrowserSettings(
         try { savePopupBlock(value); popupBlock = value; failed = false }
         catch (_: Exception) { failed = true }
     }
+    @MainThread fun changeAdBlock(value: Boolean) = updateContent(value, pageSkipper, youtubeAdSkip, videoHandoff, requiresReload = true)
+    @MainThread fun changePageSkipper(value: Boolean) = updateContent(adBlock, value, youtubeAdSkip, videoHandoff, requiresReload = true)
+    @MainThread fun changeYoutubeAdSkip(value: Boolean) = updateContent(adBlock, pageSkipper, value, videoHandoff, requiresReload = true)
+    @MainThread fun changeVideoHandoff(value: Boolean) = updateContent(adBlock, pageSkipper, youtubeAdSkip, value, requiresReload = false)
+    @MainThread fun markContentApplied() { contentNeedsReload = false }
+
+    private fun updateContent(adBlock: Boolean, pageSkipper: Boolean, youtubeAdSkip: Boolean, videoHandoff: Boolean, requiresReload: Boolean) {
+        try {
+            saveContentPreferences(adBlock, pageSkipper, youtubeAdSkip, videoHandoff)
+            this.adBlock = adBlock
+            this.pageSkipper = pageSkipper
+            this.youtubeAdSkip = youtubeAdSkip
+            this.videoHandoff = videoHandoff
+            if (requiresReload) contentNeedsReload = true
+            failed = false
+        } catch (_: Exception) { failed = true }
+    }
 }
 
 internal fun createGeckoBrowserSettings(context: Context, store: OrbitBrowserStore): GeckoBrowserSettings =
@@ -99,21 +131,36 @@ internal fun createGeckoBrowserSettings(context: Context, store: OrbitBrowserSto
         applyAppearance = { dark, zoom, scale -> GeckoAppearance.apply(context, dark, zoom, scale) },
         saveAppearance = { dark, zoom -> store.darkMode = dark; store.textZoom = zoom },
         savePopupBlock = { store.popupBlock = it },
+        initialAdBlock = store.adBlock,
+        initialPageSkipper = store.pageSkipper,
+        initialYoutubeAdSkip = store.youtubeAdSkip,
+        initialVideoHandoff = store.videoHandoff,
+        saveContentPreferences = { adBlock, pageSkipper, youtubeAdSkip, videoHandoff ->
+            store.adBlock = adBlock
+            store.pageSkipper = pageSkipper
+            store.youtubeAdSkip = youtubeAdSkip
+            store.videoHandoff = videoHandoff
+        },
     )
 
 /** A compact panel for supported settings; other browser settings remain host-owned. */
 @Composable
-internal fun GeckoAppearanceDialog(settings: GeckoBrowserSettings, onDismiss: () -> Unit) {
+internal fun GeckoAppearanceDialog(
+    settings: GeckoBrowserSettings,
+    canReloadCurrentPage: Boolean = true,
+    onReloadCurrentPage: () -> Unit = {},
+    onDismiss: () -> Unit,
+) {
     var preview by remember(settings, settings.zoom) { mutableIntStateOf(settings.zoom) }
     val palette = LocalHiPalette.current
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
         containerColor = palette.surface,
-        title = { Text("Appearance and pop-ups", color = palette.textPrimary) },
+        title = { Text("Browser settings", color = palette.textPrimary) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Changes save automatically and apply to all tabs.", color = palette.textSecondary)
+                Text("Appearance and pop-up choices apply immediately. Content changes save automatically.", color = palette.textSecondary)
                 GeckoSettingSwitchRow("Dark web pages", "Use a dark color scheme on compatible sites", Icons.Default.DarkMode,
                     settings.dark, "Dark web pages") { settings.setAppearance(it, settings.zoom) }
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated.copy(alpha = .45f)).padding(14.dp)) {
@@ -135,6 +182,22 @@ internal fun GeckoAppearanceDialog(settings: GeckoBrowserSettings, onDismiss: ()
                 Text("Reload pages to apply text size. Unsent input may be lost when reloading.", color = palette.textSecondary)
                 GeckoSettingSwitchRow("Block pop-ups", "Allow new windows only after you tap a link", Icons.Default.Block,
                     settings.popupBlock, "Block pop-ups", settings::changePopupBlock)
+                Text("Privacy and content", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+                GeckoSettingSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", Icons.Default.Block,
+                    settings.adBlock, "Ad and tracker blocking", settings::changeAdBlock)
+                GeckoSettingSwitchRow("Skip page transitions", "Try to continue through supported pages", Icons.Default.Refresh,
+                    settings.pageSkipper, "Skip page transitions", settings::changePageSkipper)
+                if (!com.example.BuildConfig.PLAY_STORE_BUILD) GeckoSettingSwitchRow(
+                    "YouTube ad skip", "Mute, fast-forward and skip YouTube ads", Icons.Default.Refresh,
+                    settings.youtubeAdSkip, "YouTube ad skip", settings::changeYoutubeAdSkip,
+                )
+                Text("Videos", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+                GeckoSettingSwitchRow("Detect website videos", "Find supported videos for Play in Hi Player", Icons.Default.TextFields,
+                    settings.videoHandoff, "Detect website videos", settings::changeVideoHandoff)
+                if (settings.contentNeedsReload) {
+                    Text("Reload the current page to apply blocking and script changes. Unsent page input may be lost.", color = palette.textSecondary)
+                    TextButton(enabled = canReloadCurrentPage, onClick = { settings.markContentApplied(); onReloadCurrentPage() }) { Text("Reload current page") }
+                }
                 AnimatedVisibility(visible = settings.failed, enter = fadeIn() + slideInVertically { it / 3 }, exit = fadeOut() + slideOutVertically { -it / 3 }) {
                     Text("Could not apply that setting. Your previous setting was restored.", color = com.example.ui.theme.HiErrorRed)
                 }

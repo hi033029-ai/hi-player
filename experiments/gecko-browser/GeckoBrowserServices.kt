@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import com.example.downloads.BrowserDownloads
+import com.example.downloads.BrowserDownloadStatus
 import androidx.activity.result.ActivityResultRegistry
 import androidx.annotation.MainThread
 import androidx.compose.runtime.getValue
@@ -18,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.ui.screens.OrbitBrowserStore
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /** Owns the experimental browser session and its permission, picker and download lifetimes. */
 internal class GeckoBrowserServices(
@@ -29,6 +31,7 @@ internal class GeckoBrowserServices(
     private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-download").apply { isDaemon = true } }
+    private val activeHistoryId = AtomicReference<Long?>(null)
     private val pickerLauncher = GeckoFilePickerLauncher(registry)
     private val filePicker = GeckoFilePicker(appContext, pickerLauncher::launch)
     private val androidPermissions = GeckoRuntimePermissionLauncher(context, registry)
@@ -42,7 +45,7 @@ internal class GeckoBrowserServices(
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
             }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
-            BrowserDownloads.recordPublishedStream(appContext, uri, target.treeUri, name, mime, bytes, location)
+            BrowserDownloads.recordPublishedStream(appContext, uri, target.treeUri, name, mime, bytes, location, activeHistoryId.get())
         }
     }) { name, mime ->
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
@@ -59,6 +62,34 @@ internal class GeckoBrowserServices(
 
     init {
         try {
+            downloads.onStateChanged = { state ->
+                when (state) {
+                    is GeckoDownloadState.Active -> if (state.recordInHistory) {
+                        val id = activeHistoryId.get() ?: synchronized(activeHistoryId) {
+                            activeHistoryId.get() ?: BrowserDownloads.beginGeckoTransfer(
+                                appContext, state.name, state.mimeType, state.length, state.location,
+                            ).also(activeHistoryId::set)
+                        }
+                        BrowserDownloads.updateGeckoTransfer(id, state.name, state.mimeType,
+                            state.bytes, state.length, state.speedBytesPerSecond)
+                    }
+                    is GeckoDownloadState.Finished -> activeHistoryId.getAndSet(null)?.let { id ->
+                        when {
+                            state.outcome is GeckoDownloadOutcome.Complete && state.recorded == true -> Unit
+                            state.outcome is GeckoDownloadOutcome.Complete -> BrowserDownloads.finishGeckoTransfer(
+                                id, BrowserDownloadStatus.FAILED, "Saved, but could not be added to download history.")
+                            state.outcome == GeckoDownloadOutcome.Cancelled -> BrowserDownloads.finishGeckoTransfer(id, BrowserDownloadStatus.CANCELLED)
+                            else -> BrowserDownloads.finishGeckoTransfer(
+                                id, BrowserDownloadStatus.FAILED, "Download failed. Try again from the website.")
+                        }
+                    }
+                    GeckoDownloadState.Idle -> activeHistoryId.getAndSet(null)?.let { id ->
+                        BrowserDownloads.finishGeckoTransfer(
+                            id, BrowserDownloadStatus.CANCELLED, "Browser closed before download finished.")
+                    }
+                    is GeckoDownloadState.Offer -> Unit
+                }
+            }
             settings.applySystemScale(context.resources.configuration.fontScale)
             secureRouting = GeckoSecureRouting(
                 tabPrivacy = { id -> coordinator.tabs.firstOrNull { it.id == id }?.privateTab },
@@ -96,6 +127,9 @@ internal class GeckoBrowserServices(
         }
     }
     private fun shouldRecordDownload(tabId: Int): Boolean = coordinator.tabs.firstOrNull { it.id == tabId }?.privateTab == false
+    fun cancelDownload(id: Long) {
+        if (activeHistoryId.get() == id) downloads.cancel() else BrowserDownloads.cancel(appContext, id)
+    }
     fun dismissDownloadNotice() { downloadNotice = null }
     @MainThread override fun close() {
         if (closed) return
