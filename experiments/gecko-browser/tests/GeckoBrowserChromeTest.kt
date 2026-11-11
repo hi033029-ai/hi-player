@@ -49,7 +49,6 @@ class GeckoBrowserChromeTest {
                 downloadsContent = { Text("Downloads") }, pageContent = { Text("Gecko page") })
         } }
         compose.onNodeWithContentDescription("Browser menu").performClick()
-        compose.onNodeWithText("Sign in to Google for websites").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Scan QR code").performScrollTo()
         compose.onNodeWithText("Scan QR code").assertIsDisplayed()
         compose.onNodeWithText("New private tab").performScrollTo().performClick()

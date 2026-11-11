@@ -23,11 +23,11 @@ class GeckoAppearanceDialogTest {
         val settings = GeckoBrowserSettings(false, 100, true, { _, _, _ -> appearanceChanges++ }, { _, _ -> }, { popup = it })
         var dismissed = false
         compose.setContent { HiPlayerTheme { GeckoAppearanceDialog(settings) { dismissed = true } } }
-        compose.onNodeWithContentDescription("Ad and tracker blocking").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Skip page transitions").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Detect website videos").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Dark web pages").performClick()
-        compose.onNodeWithContentDescription("Block pop-ups").performClick()
+        compose.onNodeWithContentDescription("Ad and tracker blocking").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Skip page transitions").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Detect website videos").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Dark web pages").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Block pop-ups").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(settings.dark); assertFalse(popup); assertEquals(1, appearanceChanges) }
         compose.onNodeWithText("Done").performClick()
         compose.runOnIdle { assertTrue(dismissed) }
