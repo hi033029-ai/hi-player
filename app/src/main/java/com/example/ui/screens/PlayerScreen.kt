@@ -132,7 +132,7 @@ fun PlayerScreen(
     val hdrColorModeManager = remember(activity, activePlayer) {
         activity?.let { HdrColorModeManager(it) }
     }
-    val smoothSeekController = rememberSmoothSeekController(activePlayer)
+    val smoothSeekController = rememberSmoothSeekController(activePlayer, playerViewModel.engine)
 
     // Immersive playback: hide the status bar (battery/network/notification
     // icons) and nav bar while the player is on screen so nothing but the
@@ -158,6 +158,8 @@ fun PlayerScreen(
     val currentPositionMs by playerViewModel.engine.currentPositionMs.collectAsState()
     val durationMs by playerViewModel.engine.durationMs.collectAsState()
     val bufferedPositionMs by playerViewModel.engine.bufferedPositionMs.collectAsState()
+    val growingSeekLimitMs by playerViewModel.engine.growingSeekLimitMs.collectAsState()
+    val growingSeekable by playerViewModel.engine.growingSeekable.collectAsState()
     val aspectRatioMode by playerViewModel.engine.aspectRatioMode.collectAsState()
     val playbackSpeed by playerViewModel.engine.playbackSpeed.collectAsState()
     val isScreenLocked by playerViewModel.engine.isScreenLocked.collectAsState()
@@ -852,6 +854,8 @@ fun PlayerScreen(
             currentPositionMs = currentPositionMs,
             durationMs = durationMs,
             bufferedPositionMs = bufferedPositionMs,
+            growingSeekLimitMs = growingSeekLimitMs,
+            growingSeekable = growingSeekable,
             video = currentVideo,
             aspectRatioMode = aspectRatioMode,
             playbackSpeed = playbackSpeed,

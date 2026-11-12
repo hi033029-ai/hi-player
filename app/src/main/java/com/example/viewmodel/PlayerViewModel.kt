@@ -717,9 +717,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onScrubMove(deltaMs: Long) {
-        val total = engine.durationMs.value
-        val target = (scrubOriginMs + deltaMs).coerceIn(0L, total)
-        _scrubDeltaMs.value = deltaMs
+        val target = engine.clampSeekPosition(scrubOriginMs + deltaMs)
+        _scrubDeltaMs.value = target - scrubOriginMs
         _scrubTimeMs.value = target
     }
 

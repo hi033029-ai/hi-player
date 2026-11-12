@@ -142,6 +142,13 @@ class HiPlayerEngine(
     private val _bufferedPositionMs = MutableStateFlow(0L)
     val bufferedPositionMs = _bufferedPositionMs.asStateFlow()
 
+    // Null means ordinary playback; otherwise the furthest verified buffered time.
+    private val _growingSeekLimitMs = MutableStateFlow<Long?>(null)
+    val growingSeekLimitMs = _growingSeekLimitMs.asStateFlow()
+    private val _growingSeekable = MutableStateFlow(true)
+    val growingSeekable = _growingSeekable.asStateFlow()
+    private val growingSeekWindow = GrowingSeekWindow()
+
     private val _aspectRatioMode = MutableStateFlow(AspectRatioMode.FIT)
     val aspectRatioMode = _aspectRatioMode.asStateFlow()
 
@@ -786,6 +793,9 @@ class HiPlayerEngine(
             growingRetryJob = null
             growingRetryAttempts = 0
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
+            growingSeekWindow.reset()
+            _growingSeekLimitMs.value = if (activeGrowingUri != null) 0L else null
+            _growingSeekable.value = activeGrowingUri == null
             growingPlaybackReachedReady = false
             growingPlaybackGraceUntilMs = if (activeGrowingUri != null) {
                 System.currentTimeMillis() + GROWING_INITIAL_GRACE_MS
@@ -962,6 +972,9 @@ class HiPlayerEngine(
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
+        growingSeekWindow.reset()
+        _growingSeekLimitMs.value = null
+        _growingSeekable.value = true
         growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
@@ -981,13 +994,24 @@ class HiPlayerEngine(
         }
     }
 
-    fun seekTo(positionMs: Long) {
-        val player = exoPlayer ?: return
-        // Clamp only to a known duration. Before the duration is published (and
-        // for live streams) the old clamp to 0..0 sent every skip back to the start.
+    private fun isActiveDownload(): Boolean = activeGrowingUri?.let {
+        DownloadingFilesRegistry.isDownloading(downloadRegistryKey(it))
+    } == true
+
+    fun clampSeekPosition(positionMs: Long): Long {
+        val player = exoPlayer ?: return 0L
         val known = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
             ?: _durationMs.value.takeIf { it > 0L }
-        val clamped = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
+        return growingSeekWindow.clamp(positionMs, known, isActiveDownload(),
+            player.isCurrentMediaItemSeekable, player.currentPosition)
+    }
+
+    fun seekTo(positionMs: Long) {
+        val player = exoPlayer ?: return
+        // Some incomplete containers have no usable index yet. Seeking them can
+        // jump to byte zero; keep playing until the extractor exposes a seek map.
+        if (isActiveDownload() && !player.isCurrentMediaItemSeekable) return
+        val clamped = clampSeekPosition(positionMs)
         player.seekTo(clamped)
         _currentPositionMs.value = clamped
     }
@@ -1344,6 +1368,11 @@ class HiPlayerEngine(
                     _currentPositionMs.value = pos
                     _bufferedPositionMs.value = player.bufferedPosition.coerceAtLeast(0L)
                     _durationMs.value = player.duration.coerceAtLeast(0L)
+                    val growing = isActiveDownload()
+                    val seekable = player.isCurrentMediaItemSeekable
+                    growingSeekWindow.observe(pos, player.bufferedPosition, growing && player.playbackState == Player.STATE_READY, seekable)
+                    _growingSeekable.value = !growing || seekable
+                    _growingSeekLimitMs.value = if (growing) growingSeekWindow.bufferedThroughMs else null
 
                     // Check A-B loop repeat
                     val a = _abRepeatA.value
@@ -1362,6 +1391,9 @@ class HiPlayerEngine(
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
+        growingSeekWindow.reset()
+        _growingSeekLimitMs.value = null
+        _growingSeekable.value = true
         growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L

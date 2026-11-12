@@ -23,6 +23,8 @@ import kotlinx.coroutines.launch
 class SmoothSeekController(
     private val player: ExoPlayer,
     private val scope: CoroutineScope,
+    private val clampTarget: (Long) -> Long = { it },
+    private val performSeek: (Long) -> Unit = { player.seekTo(it) },
 ) {
     /** Accumulated offset of the current tap burst — drives the on-screen "+20s" indicator. */
     var pendingOffsetMs by mutableStateOf(0L)
@@ -39,10 +41,11 @@ class SmoothSeekController(
         val base = burstTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         var target = (base + deltaMs).coerceAtLeast(0L)
         if (duration != null) target = target.coerceAtMost(duration)
+        target = clampTarget(target)
         burstTargetMs = target
-        pendingOffsetMs += deltaMs
+        pendingOffsetMs += target - base
         isPending = true
-        player.seekTo(target)
+        performSeek(target)
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(BURST_WINDOW_MS)
@@ -62,14 +65,14 @@ class SmoothSeekController(
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(150)
-            player.seekTo(targetMs)
+            performSeek(clampTarget(targetMs))
         }
     }
 
     fun commitFinalSeek(targetMs: Long) {
         debounceJob?.cancel()
         burstTargetMs = null
-        player.seekTo(targetMs)
+        performSeek(clampTarget(targetMs))
     }
 
     private companion object {
@@ -79,7 +82,7 @@ class SmoothSeekController(
 
 @UnstableApi
 @Composable
-fun rememberSmoothSeekController(player: ExoPlayer): SmoothSeekController {
+fun rememberSmoothSeekController(player: ExoPlayer, engine: HiPlayerEngine): SmoothSeekController {
     val scope = rememberCoroutineScope()
-    return remember(player) { SmoothSeekController(player, scope) }
+    return remember(player, engine) { SmoothSeekController(player, scope, engine::clampSeekPosition, engine::seekTo) }
 }

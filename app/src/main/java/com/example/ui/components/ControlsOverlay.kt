@@ -97,6 +97,8 @@ fun ControlsOverlay(
     currentPositionMs: Long,
     durationMs: Long,
     bufferedPositionMs: Long,
+    growingSeekLimitMs: Long? = null,
+    growingSeekable: Boolean = true,
     video: VideoItem?,
     aspectRatioMode: AspectRatioMode,
     playbackSpeed: Float,
@@ -296,6 +298,8 @@ fun ControlsOverlay(
                             currentPositionMs = currentPositionMs,
                             durationMs = durationMs,
                             bufferedPositionMs = bufferedPositionMs,
+                            seekLimitMs = growingSeekLimitMs,
+                            seekingEnabled = growingSeekable,
                             onSeekTo = onSeekTo,
                             modifier = Modifier
                                 .weight(1f)
@@ -312,6 +316,12 @@ fun ControlsOverlay(
                         )
                     }
 
+                    if (growingSeekLimitMs != null) {
+                        Text(
+                            text = if (growingSeekable) "Seeking limited to buffered video while downloading" else "Seeking will be available when this video has an index",
+                            color = Color.White.copy(alpha = 0.75f), fontSize = 10.sp,
+                        )
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
 
                     // Attached reference grouping: left utility, centered transport,
@@ -353,6 +363,8 @@ private fun HiVideoSeekBar(
     currentPositionMs: Long,
     durationMs: Long,
     bufferedPositionMs: Long,
+    seekLimitMs: Long?,
+    seekingEnabled: Boolean,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -365,6 +377,7 @@ private fun HiVideoSeekBar(
 
     val playedFraction = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
     val bufferedFraction = if (durationMs > 0) (bufferedPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val maxSeekFraction = if (durationMs > 0 && seekLimitMs != null) (seekLimitMs.toFloat() / durationMs).coerceIn(0f, 1f) else 1f
     val displayFraction = if (dragFraction >= 0f) dragFraction else playedFraction
 
     Column(modifier = modifier) {
@@ -381,18 +394,18 @@ private fun HiVideoSeekBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(28.dp)
-                .pointerInput(durationMs) {
-                    if (durationMs <= 0) return@pointerInput
+                .pointerInput(durationMs, maxSeekFraction, seekingEnabled) {
+                    if (durationMs <= 0 || !seekingEnabled) return@pointerInput
                     detectTapGestures { offset ->
-                        val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, maxSeekFraction)
                         onSeekTo((fraction * durationMs).toLong())
                     }
                 }
-                .pointerInput(durationMs) {
-                    if (durationMs <= 0) return@pointerInput
+                .pointerInput(durationMs, maxSeekFraction, seekingEnabled) {
+                    if (durationMs <= 0 || !seekingEnabled) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragStart = { offset ->
-                            dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, maxSeekFraction)
                         },
                         onDragEnd = {
                             if (dragFraction >= 0f) {
@@ -402,7 +415,7 @@ private fun HiVideoSeekBar(
                         },
                         onDragCancel = { dragFraction = -1f },
                         onHorizontalDrag = { change, _ ->
-                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, maxSeekFraction)
                             dragFraction = fraction
                         }
                     )

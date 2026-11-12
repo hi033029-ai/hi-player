@@ -30,7 +30,9 @@ internal fun shouldUseNativeHdrOutput(
     isHdrContent: Boolean,
     enhancementEnabled: Boolean,
     selectedPreset: ColorPreset,
-): Boolean = isHdrContent // 8-bit GLES grading would tone-map HDR as SDR and wash it out.
+): Boolean = isHdrContent || !enhancementEnabled || selectedPreset.isIdentityTransform()
+// Use native colour-managed playback for ungraded video. GLES is used only for
+// explicitly requested SDR grading; 8-bit GLES can wash out HDR.
 
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)

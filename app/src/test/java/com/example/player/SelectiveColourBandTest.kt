@@ -15,7 +15,9 @@ class SelectiveColourBandTest {
         assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.HDR_DISABLED))
         // HDR keeps native output even with grading on; GLES grading would wash it out.
         assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.NATURAL_HDR))
-        assertFalse(shouldUseNativeHdrOutput(false, false, ColorPresets.HDR_DISABLED))
+        assertTrue(shouldUseNativeHdrOutput(false, false, ColorPresets.HDR_DISABLED))
+        assertTrue(shouldUseNativeHdrOutput(false, true, ColorPresets.NEUTRAL))
+        assertFalse(shouldUseNativeHdrOutput(false, true, ColorPresets.NATURAL_HDR))
     }
 
     @Test fun neutralMidpointAddsNoColourAdjustment() {
