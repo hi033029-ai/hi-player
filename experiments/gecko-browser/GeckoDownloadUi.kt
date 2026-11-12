@@ -102,11 +102,24 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                 if (pickerFailed) Text("Could not open the folder picker.", color = HiTextSecondary)
                 if (permissionFailed) Text("Could not retain access to this folder. Choose another folder.", color = HiTextSecondary)
                 HorizontalDivider(color = HiSurfaceBorder)
-                if (isVideo && state.playUrl != null && onPlay != null) {
-                    TextButton(onClick = { val url = state.playUrl; controller.reject(); onPlay(url, state.mimeType, DownloadFileResolver.safeName(fileName)) }) {
-                        Icon(Icons.Default.PlayArrow, null, tint = HiPrimaryCyan); Text("Play now in Hi Player", color = HiPrimaryCyan)
+                if (isVideo && onPlay != null) {
+                    // Play the local file Gecko is writing, not the website address: a re-fetch
+                    // would lose the site's session and fail with a source error.
+                    TextButton(modifier = Modifier.testTag("gecko-download-play"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), onClick = {
+                        val tree = selectedTree
+                        val granted = tree == null || !state.recordInHistory || runCatching {
+                            context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                        }.isSuccess
+                        if (!granted) permissionFailed = true else {
+                            val name = DownloadFileResolver.safeName(fileName)
+                            val mime = state.mimeType
+                            val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, name, mime) } }
+                            controller.approve(name, if (tree == null) "Downloads" else "selected folder", target) { local -> onPlay(local, mime, name) }
+                        }
+                    }) {
+                        Icon(Icons.Default.PlayArrow, null, tint = HiPrimaryCyan); Text("Download and play while downloading", color = HiPrimaryCyan)
                     }
-                    Text("Playback uses the media address only. Cookie-protected and DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                    Text("Playback starts from the saved file after the first part arrives. Some MP4 files need the end of the file first.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
                 }
                 FilledTonalButton(modifier = Modifier.fillMaxWidth().testTag("gecko-download-confirm"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), colors = ButtonDefaults.filledTonalButtonColors(containerColor = HiSurfaceDark, contentColor = HiPrimaryCyan), onClick = {
                     val tree = selectedTree
@@ -120,7 +133,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     }
                 }) { Icon(Icons.Default.Download, null, tint = HiPrimaryCyan); Text("Download", color = HiPrimaryCyan) }
                 TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel", color = HiTextSecondary) }
-                Text("This authenticated stream cannot resume after cancellation or browser exit.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                Text("This browser stream cannot be paused or resumed; cancelling or leaving the browser stops it.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
                 Spacer(Modifier.height(16.dp))
             }
         }

@@ -37,16 +37,13 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
     val current = services.coordinator.activeSnapshot
     val host = remember(current.url) { Uri.parse(current.url).host }
     var appearance by remember { mutableStateOf(false) }
-    var blocking by remember { mutableStateOf(store.adBlock) }
-    var skipper by remember { mutableStateOf(store.pageSkipper) }
-    var youtube by remember { mutableStateOf(store.youtubeAdSkip) }
-    var detection by remember { mutableStateOf(store.videoHandoff) }
     var textSize by remember(args.appTextSizeSp) { mutableIntStateOf(args.appTextSizeSp.coerceIn(12, 24)) }
     var updating by remember { mutableStateOf(false) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(palette.background).safeDrawingPadding()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = palette.background, contentColor = palette.textPrimary) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onDismiss) { Text("Back") }
                 Text("Browser settings", style = MaterialTheme.typography.titleLarge, color = palette.textPrimary)
@@ -64,13 +61,14 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                     modifier = Modifier.semantics { contentDescription = "App text size" })
                 TextButton(enabled = textSize != 14, onClick = { textSize = 14; args.onAppTextSizeChange(14) }) { Text("Reset app text to 14sp") }
                 Text("Privacy and content", style = MaterialTheme.typography.titleMedium)
-                GeckoFeatureSwitch("Ad and tracker blocking", blocking) { blocking = it; store.adBlock = it }
-                GeckoFeatureSwitch("Skip supported wait pages", skipper, !BuildConfig.PLAY_STORE_BUILD) { skipper = it; store.pageSkipper = it }
-                GeckoFeatureSwitch("Skip supported YouTube ads", youtube, !BuildConfig.PLAY_STORE_BUILD) { youtube = it; store.youtubeAdSkip = it }
+                GeckoFeatureSwitch("Ad and tracker blocking", services.settings.adBlock, change = services.settings::changeAdBlock)
+                GeckoFeatureSwitch("Skip supported wait pages", services.settings.pageSkipper, !BuildConfig.PLAY_STORE_BUILD, services.settings::changePageSkipper)
+                GeckoFeatureSwitch("Skip supported YouTube ads", services.settings.youtubeAdSkip, !BuildConfig.PLAY_STORE_BUILD, services.settings::changeYoutubeAdSkip)
                 Text("Helpers apply on the next page load. They do not bypass sign-in, consent, CAPTCHA, checkout or server-enforced waits.", style = MaterialTheme.typography.bodySmall)
+                if (services.settings.failed) Text("Could not save that setting. Your previous setting was restored.", color = com.example.ui.theme.HiErrorRed)
                 BrowserAdvancedTools(host) { feedback = "Site rules saved. Reload to apply page helpers; unsent page input is not reloaded automatically." }
                 Text("Videos", style = MaterialTheme.typography.titleMedium)
-                GeckoFeatureSwitch("Detect website videos", detection) { detection = it; store.videoHandoff = it }
+                GeckoFeatureSwitch("Detect website videos", services.settings.videoHandoff, change = services.settings::changeVideoHandoff)
                 Text("Use Page tools to open detected media in Hi Player. Website cookies and protected/blob media stay in Gecko.", style = MaterialTheme.typography.bodySmall)
                 Text("This tab", style = MaterialTheme.typography.titleMedium)
                 GeckoFeatureSwitch("Desktop site", services.coordinator.desktopMode(), current.url.isNotBlank()) {
@@ -106,6 +104,7 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
     }
     if (appearance) GeckoAppearanceDialog(services.settings) { appearance = false }
 }

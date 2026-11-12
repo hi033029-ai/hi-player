@@ -44,10 +44,18 @@ fun HdrPresetMenu(
     onColorSelected: (HdrColor) -> Unit = {},
     onColorIntensityChange: (Float) -> Unit = {},
     onClose: () -> Unit = {},
+    nativeHdr: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
     val palette = LocalHiPalette.current
+    if (nativeHdr) {
+        Column(modifier.background(Color.Black.copy(alpha = 0.85f)).padding(12.dp)) {
+            Text("Native HDR output preserves the video's dynamic range. Colour presets are unavailable for HDR playback.", color = Color.White)
+            TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+        }
+        return
+    }
 
     if (customizing) {
         Column(

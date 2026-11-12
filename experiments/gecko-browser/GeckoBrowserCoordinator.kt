@@ -70,7 +70,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
     val controller: GeckoTabController<View>
     val tabs get() = controller.tabs
     val activeId get() = controller.activeId
-    val activeSnapshot get() = snapshots[activeId] ?: GeckoTabSnapshot(activeId, tabs.single { it.id == activeId }.privateTab)
+    val activeSnapshot get() = snapshots[activeId] ?: GeckoTabSnapshot(activeId, tabs.firstOrNull { it.id == activeId }?.privateTab ?: false)
 
     init {
         val restored = GeckoTabPersistence.restore(store.readTabs(), store.readActiveId())

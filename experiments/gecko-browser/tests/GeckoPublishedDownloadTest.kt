@@ -1,6 +1,7 @@
 package com.example.browser.gecko
 
 import android.net.Uri
+import com.example.player.DownloadingFilesRegistry
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,4 +51,44 @@ class GeckoPublishedDownloadTest {
         val result = controller.state as GeckoDownloadState.Finished
         assertEquals(GeckoDownloadOutcome.Complete(3), result.outcome); assertEquals(false, result.recorded)
     }
+    @Test fun localGrowingUriIsOfferedOnceAndClearedAfterPublish() {
+        val uri = Uri.parse("content://test/growing-item")
+        val target = object : GeckoPublishedDestination {
+            override val treeUri: Uri? = null
+            override var publishedUri: Uri? = null
+            override val writingUri: Uri get() = uri
+            override fun open() = ByteArrayOutputStream()
+            override fun commit() { publishedUri = uri }
+            override fun abort() = Unit
+        }
+        val source = object : GeckoDownloadSource {
+            override val mimeType = "video/mp4"
+            override val contentDisposition = "attachment; filename=movie.mp4"
+            override val contentLength = 3L * 1024 * 1024
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(ByteArray(contentLength.toInt()))
+            override fun close() = Unit
+        }
+        var calls = 0
+        var sawGrowing = false
+        val controller = GeckoDownloadController(Executor { it.run() }, { it() }) { _, _ -> target }
+        controller.offer(source)
+        controller.approve(onPlayable = { local ->
+            calls++
+            assertEquals(uri.toString(), local)
+            sawGrowing = DownloadingFilesRegistry.isDownloading(local)
+        })
+        assertEquals(1, calls)
+        assertTrue(sawGrowing)
+        assertFalse(DownloadingFilesRegistry.isDownloading(uri.toString()))
+        assertEquals(uri.toString(), (controller.state as GeckoDownloadState.Finished).publishedUri)
+    }
+    @Test fun smallFilePlaysAfterPublication() {
+        val controller = GeckoDownloadController(Executor { it.run() }, { it() }) { _, _ -> Published() }
+        var local: String? = null
+        controller.offer(source())
+        controller.approve(onPlayable = { local = it })
+        assertEquals("content://test/item", local)
+    }
+
 }

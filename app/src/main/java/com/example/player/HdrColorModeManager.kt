@@ -11,8 +11,6 @@ import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.media3.common.C
-import androidx.media3.common.ColorInfo
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -69,15 +67,11 @@ class HdrColorModeManager(private val activity: Activity) {
         val isHdr = tracks.groups.any { group ->
             (0 until group.length).any { i ->
                 group.isTrackSelected(i) &&
-                    group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
+                    // Includes Dolby Vision streams whose ColorInfo has no HDR transfer.
+                    HdrFormat.of(group.getTrackFormat(i)).isHdr
             }
         }
         requestColorMode(isHdr)
-    }
-
-    private fun isHdrColorInfo(colorInfo: ColorInfo): Boolean {
-        return colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
-            colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG
     }
 
     fun requestColorMode(hdrDesired: Boolean) {

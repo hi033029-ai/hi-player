@@ -44,6 +44,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     private var lockedTouchMoved = false
     private val lockedTapSlopPx = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private var lastX = 0f
+    private var scrubStartX = 0f
+    private var gestureWidth = 1
+    private var gestureHeight = 1
     private var lastY = 0f
     private var horizontalScrub = false
     private var scrubDeltaMs = 0L
@@ -77,8 +80,8 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
             when {
-                e.x < width / 3f -> onDoubleTapLeft?.invoke()
-                e.x > width * 2f / 3f -> onDoubleTapRight?.invoke()
+                e.x < gestureWidth / 3f -> onDoubleTapLeft?.invoke()
+                e.x > gestureWidth * 2f / 3f -> onDoubleTapRight?.invoke()
                 else -> onDoubleTapCenter?.invoke()
             }
             return true
@@ -86,9 +89,9 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
 
         override fun onLongPress(e: MotionEvent) {
             longPressHandled = true
-            if (e.x < width / 3f) {
+            if (e.x < gestureWidth / 3f) {
                 beginHoldSeek(-1)
-            } else if (e.x > width * 2f / 3f) {
+            } else if (e.x > gestureWidth * 2f / 3f) {
                 beginHoldSeek(1)
             } else {
                 onLongPressVideo?.invoke()
@@ -147,7 +150,19 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         }
     }
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
+    override fun onTouchEvent(event: MotionEvent): Boolean = handlePlayerTouch(event, width, height)
+
+    /**
+     * Gesture entry point for a full-screen, untransformed touch layer. The video view may be
+     * scaled to letterbox or zoom; measuring gestures against the whole player area keeps
+     * taps, seek, volume and brightness consistent in portrait and landscape, including over
+     * the black bars outside the picture.
+     */
+    fun handlePlayerTouch(event: MotionEvent, areaWidth: Int, areaHeight: Int): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            gestureWidth = areaWidth.coerceAtLeast(1)
+            gestureHeight = areaHeight.coerceAtLeast(1)
+        }
         if (isInteractionLocked?.invoke() == true) {
             // Keep lock mode inert, except for a genuine single tap used to
             // reveal or hide the compact Compose unlock icon. Do not feed the
@@ -185,7 +200,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 horizontalScrub = false
                 verticalControl = false
                 longPressHandled = false
-                leftSide = event.x < width / 2f
+                leftSide = event.x < gestureWidth / 2f
                 scrubDeltaMs = 0L
                 // Capture the real baseline at the beginning of every swipe;
                 // never restart a gesture from the hardcoded 100% default.
@@ -201,6 +216,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     pinchActive = true
                     suppressSingleFingerAfterPinch = false
                     onPinchStart?.invoke()
+                    if (horizontalScrub) onScrubEnd?.invoke()
                     horizontalScrub = false
                     verticalControl = false
                 }
@@ -231,22 +247,30 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 val dx = event.x - downX
                 val dy = event.y - downY
                 if (!horizontalScrub && !verticalControl) {
-                    if (kotlin.math.abs(dx) > 25f && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                    // Density-aware slop: a fixed pixel threshold is too small on
+                    // high-density screens and steals taps as accidental swipes.
+                    if (kotlin.math.abs(dx) > lockedTapSlopPx && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
                         horizontalScrub = true
+                        scrubStartX = event.x
                         scrubDeltaMs = 0L
                         onScrubStart?.invoke()
-                    } else if (kotlin.math.abs(dy) > 25f) {
+                    } else if (kotlin.math.abs(dy) > lockedTapSlopPx && kotlin.math.abs(dy) >= kotlin.math.abs(dx)) {
                         verticalControl = true
+                        // Start from the current level at the slop boundary so the
+                        // first visible change is smooth rather than a jump.
+                        downY = event.y
                     }
                 }
                 if (horizontalScrub) {
-                    scrubDeltaMs += ((event.x - lastX) * 120L).toLong()
+                    // Width-relative scrubbing gives the same feel in portrait and landscape.
+                    scrubDeltaMs = ((event.x - scrubStartX) / gestureWidth.toFloat() * FULL_WIDTH_SCRUB_MS).toLong()
                     onScrubMove?.invoke(scrubDeltaMs)
-                } else if (verticalControl && height > 0) {
+                } else if (verticalControl && gestureHeight > 0) {
                     // Base the entire gesture on the level at ACTION_DOWN.
                     // Reading the system value on every MOVE causes a visible
                     // jump when a new swipe begins or changes direction.
-                    val totalDelta = -(event.y - downY) / height.toFloat()
+                    // A swipe across ~70% of the player covers the full range.
+                    val totalDelta = -(event.y - downY) / (gestureHeight * VERTICAL_RANGE_FRACTION)
                     if (leftSide) {
                         brightnessLevel = (gestureStartBrightness + totalDelta).coerceIn(0f, 1f)
                         onBrightnessLevel?.invoke(brightnessLevel)
@@ -850,3 +874,6 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         }
     }
 }
+
+private const val FULL_WIDTH_SCRUB_MS = 120_000f
+private const val VERTICAL_RANGE_FRACTION = 0.7f

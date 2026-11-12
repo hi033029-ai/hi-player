@@ -27,13 +27,11 @@ def augment_regressions(result):
     result[k] = replace_once(result[k], '        GeckoDownloadUi(services.downloads)', '        GeckoDownloadUi(services.downloads, onPlay = onPlayDownload)', 'download play action')
     k = 'main/integration/GeckoBrowserEntry.kt'
     result[k] = replace_once(result[k], '                onPageTools = { showPageTools = true },', '''                onPageTools = { showPageTools = true },
-                onPlayDownload = { url, mime, title ->
-                    val play = latest.onPlayBrowserVideo
-                    if (play != null) play(url, mime, title) else latest.onPlayDirectMedia(url)
+                onPlayDownload = { localUri, _, _ ->
+                    // Always the app-owned local document; the host resolves partial-download state.
+                    latest.onPlayDirectMedia(localUri)
                 },''', 'real player action')
-    k = 'main/engine/GeckoDownloadController.kt'
-    result[k] = replace_once(result[k], 'val recordInHistory: Boolean = true) : GeckoDownloadState', 'val recordInHistory: Boolean = true, val playUrl: String? = null) : GeckoDownloadState', 'optional sanitized media address')
-    result[k] = replace_once(result[k], 'GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory)', 'GeckoDownloadState.Offer(name, source.contentLength, source.mimeType, recordInHistory, if (recordInHistory) source.responseUrl?.let(GeckoTabPersistence::safeUrl)?.takeIf { it.isNotBlank() } else null)', 'private media remains private')
+    # Download playback uses the local file Gecko writes; never re-fetch the response URL without the site's session.
     return result
 
 

@@ -34,6 +34,12 @@ class GeckoBrowserCoordinatorTest {
         override fun close() { closed = true }
     }
 
+    @Test fun snapshotIsSafeAfterClosingCoordinator() {
+        val coordinator = GeckoBrowserCoordinator<Any>(Store()) { tab, callback -> Fake(tab, callback) }
+        coordinator.close()
+        assertEquals("", coordinator.activeSnapshot.url)
+    }
+
     @Test fun restoresTabsAndPersistsRegularUpdatesWithoutPrivateUrls() {
         val store = Store(listOf(OrbitSavedTab(4, "https://example.org", "Example", true)), 4)
         val sessions = mutableMapOf<Int, Fake>()

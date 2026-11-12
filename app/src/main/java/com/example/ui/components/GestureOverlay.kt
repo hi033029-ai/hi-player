@@ -8,9 +8,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -153,76 +154,60 @@ fun GestureOverlay(
                     },
                 )
             }
-            .pointerInput(isLocked) {
+            .pointerInput(isLocked, topExclusionDp) {
                 val topExclusionPx = topExclusionDp.toPx()
-                if (!isLocked) {
-                    var isHorizontal = false
-                    var isVertical = false
-                    var isLeft = false
-                    var totalDragX = 0f
-                    var totalDragY = 0f
-                    var suppressed = false
-
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            suppressed = offset.y < topExclusionPx
-                            isLeft = offset.x < size.width / 2
-                            isHorizontal = false
-                            isVertical = false
-                            totalDragX = 0f
-                            totalDragY = 0f
-                        },
-                        onDrag = { change, dragAmount ->
-                            if (suppressed) return@detectDragGestures
-                            change.consume()
-                            totalDragX += dragAmount.x
-                            totalDragY += dragAmount.y
-
-                            if (!isHorizontal && !isVertical) {
-                                if (Math.abs(totalDragX) > 25f && Math.abs(totalDragX) > Math.abs(totalDragY)) {
-                                    isHorizontal = true
-                                    currentOnScrubStart()
-                                } else if (Math.abs(totalDragY) > 25f) {
-                                    isVertical = true
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var horizontal = false
+                    var vertical = false
+                    var pinched = false
+                    var previous = down.position
+                    var totalX = 0f
+                    var totalY = 0f
+                    val left = down.position.x < size.width / 2f
+                    val suppressed = isLocked || down.position.y < topExclusionPx
+                    try {
+                        var anyPressed: Boolean
+                        do {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.filter { it.pressed }
+                            if (!suppressed && pressed.size >= 2) {
+                                if (horizontal) { currentOnScrubEnd(); horizontal = false }
+                                vertical = false
+                                pinched = true
+                                val zoom = event.calculateZoom()
+                                if (zoom.isFinite() && zoom != 1f) currentOnPinchZoom(zoom)
+                                event.changes.forEach { it.consume() }
+                            } else if (!suppressed && !pinched && pressed.size == 1) {
+                                val change = pressed.first()
+                                val delta = change.position - previous
+                                previous = change.position
+                                if (!change.isConsumed) {
+                                    totalX += delta.x
+                                    totalY += delta.y
+                                    if (!horizontal && !vertical && maxOf(kotlin.math.abs(totalX), kotlin.math.abs(totalY)) > viewConfiguration.touchSlop) {
+                                        if (kotlin.math.abs(totalX) > kotlin.math.abs(totalY)) {
+                                            horizontal = true
+                                            totalX = 0f
+                                            currentOnScrubStart()
+                                        } else {
+                                            vertical = true
+                                        }
+                                    }
+                                    if (horizontal) {
+                                        currentOnScrubMove((totalX / size.width.coerceAtLeast(1) * 120_000f).toLong())
+                                        change.consume()
+                                    } else if (vertical) {
+                                        val amount = -delta.y / (size.height.coerceAtLeast(1) * .7f)
+                                        if (left) currentOnBrightnessDelta(amount) else currentOnVolumeDelta(amount)
+                                        change.consume()
+                                    }
                                 }
                             }
-
-                            if (isHorizontal) {
-                                // 1 pixel = 150ms of scrub
-                                val seekDeltaMs = (totalDragX * 120).toLong()
-                                currentOnScrubMove(seekDeltaMs)
-                            } else if (isVertical) {
-                                val delta = -dragAmount.y / size.height.toFloat()
-                                if (isLeft) {
-                                    currentOnBrightnessDelta(delta)
-                                } else {
-                                    currentOnVolumeDelta(delta)
-                                }
-                            }
-                        },
-                        onDragEnd = {
-                            if (isHorizontal) {
-                                currentOnScrubEnd()
-                            }
-                            isHorizontal = false
-                            isVertical = false
-                        },
-                        onDragCancel = {
-                            if (isHorizontal) {
-                                currentOnScrubEnd()
-                            }
-                            isHorizontal = false
-                            isVertical = false
-                        }
-                    )
-                }
-            }
-            .pointerInput(isLocked) {
-                if (!isLocked) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom.isFinite() && zoom != 1f) {
-                            currentOnPinchZoom(zoom)
-                        }
+                            anyPressed = event.changes.any { it.pressed }
+                        } while (anyPressed)
+                    } finally {
+                        if (horizontal) currentOnScrubEnd()
                     }
                 }
             }

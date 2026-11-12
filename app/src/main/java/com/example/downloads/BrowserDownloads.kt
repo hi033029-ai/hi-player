@@ -166,11 +166,13 @@ internal object BrowserDownloads {
     }
 
     /** Update only a live Gecko row; it is intentionally not persisted until the published URI is recorded. */
-    internal fun updateGeckoTransfer(id: Long, fileName: String, mimeType: String?, bytes: Long, totalBytes: Long?, speed: Long) {
+    internal fun updateGeckoTransfer(id: Long, fileName: String, mimeType: String?, bytes: Long, totalBytes: Long?, speed: Long, liveUri: String? = null) {
         synchronized(lock) {
             find(id)?.takeIf { it.ephemeral }?.let { old ->
                 val resolved = DownloadFileResolver.resolve(fileName, "", mimeType)
-                replaceLocked(old.copy(fileName = resolved.fileName, mimeType = resolved.mimeType,
+                // The live URI is the app-owned local document being written, never a website URL.
+                val local = liveUri?.takeIf { Uri.parse(it).scheme == "content" } ?: old.savedUri
+                replaceLocked(old.copy(fileName = resolved.fileName, mimeType = resolved.mimeType, savedUri = local,
                     downloadedBytes = bytes.coerceAtLeast(0), totalBytes = totalBytes?.coerceAtLeast(0) ?: old.totalBytes,
                     speedBytesPerSecond = speed.coerceAtLeast(0),
                     finalizing = totalBytes != null && totalBytes > 0 && bytes >= totalBytes))
@@ -183,7 +185,8 @@ internal object BrowserDownloads {
         require(status == BrowserDownloadStatus.FAILED || status == BrowserDownloadStatus.CANCELLED)
         synchronized(lock) {
             find(id)?.takeIf { it.ephemeral }?.let { old ->
-                replaceLocked(old.copy(status = status, speedBytesPerSecond = 0, finalizing = false, error = error))
+                // A failed or cancelled Gecko document is removed, so drop its local play target.
+                replaceLocked(old.copy(status = status, speedBytesPerSecond = 0, finalizing = false, error = error, savedUri = null))
             }
         }
     }
@@ -573,6 +576,10 @@ internal object BrowserDownloads {
             _downloads.value.filter { it.isVideo && it.status != BrowserDownloadStatus.CANCELLED }
         }
         entries.mapNotNull { entry -> runCatching {
+            if (entry.status != BrowserDownloadStatus.COMPLETED && entry.ephemeral) {
+                val live = entry.savedUri?.takeIf { entry.status == BrowserDownloadStatus.RUNNING && entry.downloadedBytes > 0 } ?: return@runCatching null
+                return@runCatching partialItem(context, entry, Uri.parse(live))
+            }
             if (entry.status != BrowserDownloadStatus.COMPLETED) {
                 val file = part(context, entry.id)
                 if (!file.isFile || file.length() <= 0) return@runCatching null
@@ -596,7 +603,14 @@ internal object BrowserDownloads {
         }.getOrNull() }
     }
 
-    private fun partialItem(context: Context, entry: BrowserDownload): VideoItem {
+    private fun partialItem(context: Context, entry: BrowserDownload, liveUri: Uri? = null): VideoItem {
+        if (liveUri != null) {
+            // Gecko writes straight into its pending local document; there is no private .part file.
+            return VideoItem(id = entry.id, uri = liveUri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*",
+                sizeBytes = entry.downloadedBytes, path = liveUri.toString(), folderName = entry.saveLocation.substringAfterLast('/'), dateAdded = entry.id / 1000,
+                isPartialDownload = true, downloadedBytes = entry.downloadedBytes, downloadTotalBytes = entry.totalBytes,
+                downloadSpeedBytesPerSecond = entry.speedBytesPerSecond, width = 0, height = 0, isNewVideo = true, codec = entry.status.name.lowercase())
+        }
         val file = part(context, entry.id)
         return VideoItem(id = entry.id, uri = Uri.fromFile(file), title = entry.fileName, mimeType = entry.mimeType ?: "video/*",
             sizeBytes = file.length(), path = file.absolutePath, folderName = "Download", dateAdded = entry.id / 1000,
@@ -606,26 +620,31 @@ internal object BrowserDownloads {
     fun playbackItem(context: Context, uri: Uri): VideoItem? = downloads.value.firstOrNull {
         uri.toString() == it.savedUri || (uri.scheme == "file" && uri.path == part(context, it.id).absolutePath)
     }?.let { entry -> if (entry.status == BrowserDownloadStatus.COMPLETED) VideoItem(uri = uri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*", path = uri.toString(), folderName = entry.saveLocation)
-        else partialItem(context, entry) }
+        else partialItem(context, entry, uri.takeIf { entry.ephemeral && it.toString() == entry.savedUri }) }
 
     private fun deletePublished(context: Context, uri: Uri) { runCatching { context.contentResolver.delete(uri, null, null) } }
 
     fun playInPlayer(context: Context, id: Long, onPlay: (String) -> Unit) {
         val entry = find(id)
         val uri = entry?.savedUri?.takeIf { entry.status == BrowserDownloadStatus.COMPLETED }?.let(Uri::parse)
-            ?: entry?.let { part(context, id).takeIf { f -> f.isFile && f.length() > 0 }?.let { f ->
+            ?: entry?.takeIf { it.ephemeral && it.status == BrowserDownloadStatus.RUNNING && it.downloadedBytes > 0 && it.savedUri != null }?.let { live ->
+                // The controller owns the registry entry and clears it when the transfer ends.
+                Uri.parse(live.savedUri.orEmpty())
+            }
+            ?: entry?.takeUnless { it.ephemeral }?.let { part(context, id).takeIf { f -> f.isFile && f.length() > 0 }?.let { f ->
                 DownloadingFilesRegistry.markOwnedDownloading(f.absolutePath, f.length()); Uri.fromFile(f)
             } }
         if (uri == null) toast(context, "The downloaded file is not available") else onPlay(uri.toString())
     }
     fun open(context: Context, id: Long) {
-        val entry = find(id) ?: return
+        // An unfinished Gecko document is pending and cannot be opened by other apps yet.
+        val entry = find(id)?.takeIf { it.status == BrowserDownloadStatus.COMPLETED } ?: return
         val uri = entry.savedUri?.let(Uri::parse) ?: return
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, entry.mimeType ?: "application/octet-stream").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)) }
             .onFailure { toast(context, "No installed app can open this file") }
     }
     fun share(context: Context, id: Long) {
-        val entry = find(id) ?: return
+        val entry = find(id)?.takeIf { it.status == BrowserDownloadStatus.COMPLETED } ?: return
         val uri = entry.savedUri?.let(Uri::parse) ?: return
         runCatching {
             val send = Intent(Intent.ACTION_SEND).setType(entry.mimeType ?: "application/octet-stream").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

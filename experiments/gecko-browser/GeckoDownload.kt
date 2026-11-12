@@ -39,6 +39,8 @@ internal interface GeckoDownloadDestination {
 internal interface GeckoPublishedDestination : GeckoDownloadDestination {
     val publishedUri: Uri?
     val treeUri: Uri?
+    /** The app-readable document currently being written, used only for local growing playback. */
+    val writingUri: Uri? get() = null
 }
 
 internal sealed interface GeckoDownloadOutcome {

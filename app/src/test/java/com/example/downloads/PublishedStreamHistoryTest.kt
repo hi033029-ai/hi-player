@@ -57,4 +57,17 @@ class PublishedStreamHistoryTest {
         val saved = (0 until json.length()).map { json.getJSONObject(it) }.single { it.optString("savedUri") == uri.toString() }
         assertEquals("", saved.getString("url")); assertEquals("", saved.getString("cookie")); assertEquals("", saved.getString("ua"))
     }
+    @Test fun activeGeckoRowPlaysLocalUriAndFailureClearsIt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val id = BrowserDownloads.beginGeckoTransfer(context, "live.mp4", "video/mp4", 100, "Downloads")
+        val local = "content://example.test/live-item"
+        BrowserDownloads.updateGeckoTransfer(id, "live.mp4", "video/mp4", 60, 100, 10, local)
+        var opened: String? = null
+        BrowserDownloads.playInPlayer(context, id) { opened = it }
+        assertEquals(local, opened)
+        assertEquals(local, BrowserDownloads.playbackItem(context, Uri.parse(local))?.uri.toString())
+        BrowserDownloads.finishGeckoTransfer(id, BrowserDownloadStatus.FAILED)
+        assertNull(BrowserDownloads.downloads.value.first { it.id == id }.savedUri)
+    }
+
 }

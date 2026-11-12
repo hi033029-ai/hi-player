@@ -63,7 +63,7 @@ fun VideoInfoDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "4K Remux Engine Telemetry",
+                    text = "Playback details",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = HiTextPrimary
@@ -87,42 +87,16 @@ fun VideoInfoDialog(
 
                 TelemetryRow(label = "Video Codec", value = telemetry.codecName)
                 TelemetryRow(label = "Resolution", value = telemetry.resolution)
-                TelemetryRow(label = "Frame Rate", value = String.format("%.2f fps", telemetry.fps))
-                TelemetryRow(label = "Bitrate", value = String.format("%.1f Mbps", telemetry.bitrateMbps))
+                TelemetryRow(label = "Frame Rate", value = if (telemetry.fps > 0) String.format("%.2f fps", telemetry.fps) else "Unknown")
+                TelemetryRow(label = "Bitrate", value = if (telemetry.bitrateMbps > 0) String.format("%.1f Mbps", telemetry.bitrateMbps) else "Unknown")
                 TelemetryRow(label = "Color Space / HDR", value = telemetry.colorSpace)
                 TelemetryRow(label = "Audio Stream", value = telemetry.audioFormat)
                 TelemetryRow(
                     label = "Dropped Frames",
-                    value = "${telemetry.droppedFrames} (0.00%)",
+                    value = "${telemetry.droppedFrames}",
                     valueColor = if (telemetry.droppedFrames == 0) Color(0xFF00E676) else HiAccentAmber
                 )
-                TelemetryRow(label = "Hardware Decoder", value = "MediaCodec Direct Surface", valueColor = Color(0xFF00E676))
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                        .background(HiSurfaceElevated)
-                        .padding(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF00E676),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Ultra Buffer Cache Active: 128MB Remux Mode",
-                            fontSize = 11.sp,
-                            color = Color(0xFFE2E8F0),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
             }
         },
         confirmButton = {

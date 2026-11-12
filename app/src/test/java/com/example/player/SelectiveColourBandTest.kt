@@ -10,10 +10,11 @@ class SelectiveColourBandTest {
         assertFalse(ColorPresets.NATURAL_HDR.isIdentityTransform())
     }
 
-    @Test fun hdrUsesNativeSurfaceUnlessNonNeutralEnhancementWasExplicitlySelected() {
+    @Test fun hdrAlwaysUsesNativeSurfaceSoGradingCannotWashItOut() {
         assertTrue(shouldUseNativeHdrOutput(true, false, ColorPresets.NATURAL_HDR))
         assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.HDR_DISABLED))
-        assertFalse(shouldUseNativeHdrOutput(true, true, ColorPresets.NATURAL_HDR))
+        // HDR keeps native output even with grading on; GLES grading would wash it out.
+        assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.NATURAL_HDR))
         assertFalse(shouldUseNativeHdrOutput(false, false, ColorPresets.HDR_DISABLED))
     }
 

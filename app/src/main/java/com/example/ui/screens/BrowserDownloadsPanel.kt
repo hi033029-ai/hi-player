@@ -72,7 +72,7 @@ internal fun BrowserDownloadsPanel(downloads: List<BrowserDownload>, query: Stri
                 Text("Type: ${d.mimeType ?: "Detecting"}")
                 if (d.sourceUrl.isNotBlank()) Text("Server: ${runCatching { java.net.URI(d.sourceUrl).host }.getOrDefault("")}")
                 d.error?.let { Text(it) }
-                if (d.status != BrowserDownloadStatus.COMPLETED && d.isVideo) Text(if (d.ephemeral) "Play becomes available after Gecko finishes saving this file." else "Play while downloading depends on the container. Some MP4 files need the end of the file first.")
+                if (d.status != BrowserDownloadStatus.COMPLETED && d.isVideo) Text(if (d.ephemeral) "You can play while downloading. This browser stream cannot be paused or resumed; cancelling removes the partial file. Some MP4 files need the end of the file first." else "Play while downloading depends on the container. Some MP4 files need the end of the file first.")
             } }, confirmButton = { TextButton(onClick = { details = null }) { Text("Done", color = HiPrimaryCyan) } },
             containerColor = HiSurfaceElevated, titleContentColor = HiTextPrimary, textContentColor = HiTextSecondary)
     }
@@ -112,7 +112,7 @@ private fun DownloadProgressRow(download: BrowserDownload, onPlay: () -> Unit, o
             Box(Modifier.padding(start = 6.dp)) {
                 IconButton(modifier = Modifier.size(48.dp).border(1.dp, HiSurfaceBorder, RoundedCornerShape(12.dp)), onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Options for ${download.fileName}", tint = HiTextPrimary) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = Modifier.background(HiSurfaceElevated, RoundedCornerShape(12.dp))) {
-                    if (download.isVideo && download.downloadedBytes > 0 && (download.status == BrowserDownloadStatus.COMPLETED || !download.ephemeral)) DropdownMenuItem(text = { Text(if (download.status == BrowserDownloadStatus.COMPLETED) "Play in Hi Player" else "Play while downloading", color = HiTextPrimary) }, onClick = { menu = false; onPlay() })
+                    if (download.isVideo && download.downloadedBytes > 0 && (download.status == BrowserDownloadStatus.COMPLETED || !download.ephemeral || (download.status == BrowserDownloadStatus.RUNNING && download.savedUri != null))) DropdownMenuItem(text = { Text(if (download.status == BrowserDownloadStatus.COMPLETED) "Play in Hi Player" else "Play while downloading", color = HiTextPrimary) }, onClick = { menu = false; onPlay() })
                     if (download.status == BrowserDownloadStatus.COMPLETED) {
                         DropdownMenuItem(text = { Text("Open with…", color = HiTextPrimary) }, onClick = { menu = false; BrowserDownloads.open(context, download.id) })
                         DropdownMenuItem(text = { Text("Share", color = HiTextPrimary) }, onClick = { menu = false; BrowserDownloads.share(context, download.id) })

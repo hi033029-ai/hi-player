@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.downloads.DownloadFileResolver
 import com.example.downloads.DownloadSpeedMeter
+import com.example.player.DownloadingFilesRegistry
 import java.net.URI
 import java.net.URLDecoder
 import java.io.Closeable
@@ -26,8 +27,8 @@ internal interface GeckoDownloadSource : Closeable {
 internal sealed interface GeckoDownloadState {
     data object Idle : GeckoDownloadState
     data class Offer(val name: String, val length: Long?, val mimeType: String? = null, val recordInHistory: Boolean = true) : GeckoDownloadState
-    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0, val recordInHistory: Boolean = true, val mimeType: String? = null, val location: String = "Downloads") : GeckoDownloadState
-    data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null) : GeckoDownloadState
+    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0, val recordInHistory: Boolean = true, val mimeType: String? = null, val location: String = "Downloads", val playableUri: String? = null) : GeckoDownloadState
+    data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null, val publishedUri: String? = null) : GeckoDownloadState
 }
 /** Approved response ownership only; no refetch, persisted credentials or fake progress. */
 internal class GeckoDownloadController(
@@ -57,7 +58,11 @@ internal class GeckoDownloadController(
         offer?.let { runCatching { it.close() } }; offer = null
         if (!closed && cancellation == null) publishState(GeckoDownloadState.Idle)
     }
-    @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null) {
+    /**
+     * [onPlayable] receives the local document being written once enough data exists for an
+     * extractor to start, or the completed file for very small downloads. It is never a website URL.
+     */
+    @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null, onPlayable: ((String) -> Unit)? = null) {
         val source = offer ?: return
         val pending = state as? GeckoDownloadState.Offer ?: return
         offer = null
@@ -82,13 +87,24 @@ internal class GeckoDownloadController(
         try {
             worker.execute {
                 var recorded: Boolean? = null
+                var liveKey: String? = null
+                var published: String? = null
+                var playOffered = false
                 val outcome = try {
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
                     val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
                         val speed = speedMeter.sample(bytes, System.nanoTime())
-                        dispatchMain { if (!closed && generation == id && cancellation === cancel) publishState(
-                            GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location)) }
+                        // Register the real local document so the player waits at its growing EOF.
+                        val live = (target as? GeckoPublishedDestination)?.writingUri?.toString()
+                        if (live != null) { liveKey = live; DownloadingFilesRegistry.markOwnedDownloading(live, bytes) }
+                        val offerPlay = live != null && onPlayable != null && !playOffered && bytes >= PLAYABLE_PREFIX_BYTES
+                        if (offerPlay) playOffered = true
+                        dispatchMain { if (!closed && generation == id && cancellation === cancel) {
+                            publishState(GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location, live))
+                            if (offerPlay && live != null) runCatching { onPlayable?.invoke(live) }
+                        } }
                     }
+                    published = (target as? GeckoPublishedDestination)?.publishedUri?.toString()
                     val recorder = onPublished
                     if (pending.recordInHistory && transferred is GeckoDownloadOutcome.Complete && target is GeckoPublishedDestination && recorder != null) recorded = runCatching { recorder(target, name, source.mimeType, transferred.bytes, location) }.getOrDefault(false)
                     transferred
@@ -96,7 +112,17 @@ internal class GeckoDownloadController(
                     runCatching { input.close() }
                     if (cancel.isCancelled()) GeckoDownloadOutcome.Cancelled else GeckoDownloadOutcome.Failed
                 } finally { runCatching { lease?.close() }; activeLease.compareAndSet(lease, null) }
-                dispatchMain { if (!closed && generation == id && cancellation === cancel) { cancellation = null; publishState(GeckoDownloadState.Finished(name, outcome, location, recorded)) } }
+                val finalPublished = published?.takeIf { outcome is GeckoDownloadOutcome.Complete }
+                // Complete or abandon the growing entry so playback never waits on a removed file.
+                liveKey?.let { key -> DownloadingFilesRegistry.completeOwned(key, finalPublished) }
+                dispatchMain {
+                    if (!closed && generation == id && cancellation === cancel) {
+                        cancellation = null
+                        publishState(GeckoDownloadState.Finished(name, outcome, location, recorded, finalPublished))
+                        // A file smaller than the playback prefix becomes playable only once complete.
+                        if (!playOffered && finalPublished != null) runCatching { onPlayable?.invoke(finalPublished) }
+                    }
+                }
             }
         } catch (_: Exception) {
             cancel.cancel(); runCatching { activeLease.getAndSet(null)?.close() }; cancellation = null
@@ -108,6 +134,11 @@ internal class GeckoDownloadController(
     @MainThread override fun close() {
         if (closed) return
         closed = true; generation++; reject(); cancel(); cancellation = null; publishState(GeckoDownloadState.Idle)
+    }
+
+    private companion object {
+        /** Enough for typical MP4/Matroska headers; the player keeps waiting for later bytes. */
+        const val PLAYABLE_PREFIX_BYTES = 2L * 1024 * 1024
     }
 
     private fun publishState(next: GeckoDownloadState) {

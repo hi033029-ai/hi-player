@@ -166,9 +166,7 @@ internal fun GeckoAppearanceDialog(
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated.copy(alpha = .45f)).padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.TextFields, null, tint = palette.primary, modifier = Modifier.size(22.dp))
-                        AnimatedContent(targetState = preview, label = "webpage-text-preview") { value ->
-                            Text("  Webpage text · $value%", color = palette.textPrimary)
-                        }
+                        Text("  Webpage text · $preview%", color = palette.textPrimary)
                     }
                     Slider(value = preview.toFloat(), valueRange = 80f..200f, steps = 11,
                         onValueChange = { preview = ((it / 10f).roundToInt() * 10).coerceIn(80, 200) },

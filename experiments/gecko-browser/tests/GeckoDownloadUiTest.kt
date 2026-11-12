@@ -93,4 +93,30 @@ class GeckoDownloadUiTest {
         compose.onNodeWithTag("gecko-download-cancel").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(closed); assertFalse(bodyTaken); assertEquals(GeckoDownloadState.Idle, controller.state); controller.close() }
     }
+    @Test fun playOfferStartsDownloadAndUsesPublishedLocalFile() {
+        var played: String? = null
+        val uri = android.net.Uri.parse("content://test/finished-video")
+        val controller = GeckoDownloadController(Executor { it.run() }, { it() }) { _, _ ->
+            object : GeckoPublishedDestination {
+                override val treeUri: android.net.Uri? = null
+                override var publishedUri: android.net.Uri? = null
+                override fun open() = ByteArrayOutputStream()
+                override fun commit() { publishedUri = uri }
+                override fun abort() = Unit
+            }
+        }
+        val video = object : GeckoDownloadSource {
+            override val mimeType = "video/mp4"
+            override val contentDisposition = "attachment; filename=movie.mp4"
+            override val contentLength = 3L
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(byteArrayOf(1, 2, 3))
+            override fun close() = Unit
+        }
+        compose.setContent { HiPlayerTheme { GeckoDownloadUi(controller, onPlay = { local, _, _ -> played = local }) } }
+        compose.runOnIdle { controller.offer(video) }
+        compose.onNodeWithTag("gecko-download-play").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(uri.toString(), played); controller.close() }
+    }
+
 }

@@ -143,7 +143,7 @@ class GeckoDownloadControllerTest {
         val controller = GeckoDownloadController(worker, { it() }) { _, _ -> error("default destination used") }
         controller.offer(Source())
         assertEquals(0, factoryCalls)
-        controller.approve("../chosen.txt", "selected folder") { factoryCalls++; target }
+        controller.approve("../chosen.txt", "selected folder", destinationOverride = { factoryCalls++; target })
         assertEquals(0, factoryCalls)
         worker.run()
         assertEquals(1, factoryCalls); assertTrue(target.committed)

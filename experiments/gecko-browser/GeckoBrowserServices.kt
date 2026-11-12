@@ -71,7 +71,7 @@ internal class GeckoBrowserServices(
                             ).also(activeHistoryId::set)
                         }
                         BrowserDownloads.updateGeckoTransfer(id, state.name, state.mimeType,
-                            state.bytes, state.length, state.speedBytesPerSecond)
+                            state.bytes, state.length, state.speedBytesPerSecond, state.playableUri)
                     }
                     is GeckoDownloadState.Finished -> activeHistoryId.getAndSet(null)?.let { id ->
                         when {

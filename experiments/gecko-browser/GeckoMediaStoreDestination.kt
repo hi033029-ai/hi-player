@@ -32,6 +32,8 @@ internal class GeckoMediaStoreDestination(
     override val treeUri: Uri? = null
     override var publishedUri: Uri? = null
         private set
+    // The owning app may read its own pending MediaStore item while it is written.
+    override val writingUri: Uri? get() = pending ?: publishedUri
     private var started = false
 
     override fun open(): OutputStream {

@@ -29,6 +29,7 @@ internal class GeckoDocumentTreeDestination(
     private var started = false
     override var publishedUri: Uri? = null
         private set
+    override val writingUri: Uri? get() = created ?: publishedUri
 
     override fun open(): OutputStream {
         check(!started) { "Destination already used" }

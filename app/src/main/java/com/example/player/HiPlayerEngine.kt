@@ -49,13 +49,13 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 data class DecoderTelemetry(
-    val codecName: String = "HEVC (H.265 HW)",
-    val resolution: String = "3840x2160 (4K UHD)",
-    val fps: Float = 60.0f,
-    val bitrateMbps: Float = 65.0f,
+    val codecName: String = "Unknown",
+    val resolution: String = "Unknown",
+    val fps: Float = 0f,
+    val bitrateMbps: Float = 0f,
     val droppedFrames: Int = 0,
-    val colorSpace: String = "BT.2020 / HDR10",
-    val audioFormat: String = "DTS-HD MA 7.1 / TrueHD"
+    val colorSpace: String = "Unknown",
+    val audioFormat: String = "Unknown"
 )
 
 private fun displayTrackLanguage(language: String?, formatLabel: String?, fallback: String): String {
@@ -172,6 +172,9 @@ class HiPlayerEngine(
     /** True when the video decoder reports an HDR transfer function (HLG/PQ). */
     private val _isHdrContent = MutableStateFlow(false)
     val isHdrContent = _isHdrContent.asStateFlow()
+    private val _hdrFormat = MutableStateFlow(HdrFormat.SDR)
+    /** The dynamic-range family signalled by the selected video track. */
+    val hdrFormat = _hdrFormat.asStateFlow()
 
     /** True when the selected video stream is UHD 4K or larger. */
     private val _is4kContent = MutableStateFlow(false)
@@ -426,6 +429,22 @@ class HiPlayerEngine(
                 }
                 return
             }
+            // After playback has started, a growing file can still reach its current
+            // end before the writer appends more bytes. Treat that as buffering while
+            // the download is registered instead of surfacing a fatal "Source error".
+            val growingMidPlayback = retryUri != null && activeGrowingUri == retryUri && growingPlaybackReachedReady &&
+                error.errorCode in 2000..3002 && DownloadingFilesRegistry.isDownloading(downloadRegistryKey(retryUri))
+            if (growingMidPlayback && retryUri != null) {
+                val retryPosition = exoPlayer?.currentPosition ?: 0L
+                val resumePlaying = exoPlayer?.playWhenReady == true
+                _isBuffering.value = true
+                growingRetryJob?.cancel()
+                growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
+                    delay(1500L)
+                    prepareMedia(retryUri, retryPosition, autoPlay = resumePlaying, resetDecoderRetry = false)
+                }
+                return
+            }
             if (retryUri != null && activeGrowingUri == retryUri && !growingPlaybackReachedReady) {
                 // Do not reject MP4/other containers immediately: if their
                 // metadata is at the beginning, they can play while growing;
@@ -448,13 +467,7 @@ class HiPlayerEngine(
                 _playerError.value = incompleteDownloadMessage(retryUri)
                 return
             }
-            val cause = error.cause
-            val msg = if (cause is HttpDataSource.InvalidResponseCodeException) {
-                "HTTP ${cause.responseCode} Forbidden: Video source requires explicit permissions or updated URL."
-            } else {
-                error.localizedMessage ?: "Playback source error."
-            }
-            _playerError.value = msg
+            _playerError.value = PlaybackErrorCopy.messageFor(error.errorCode, error.cause)
         }
     }
 
@@ -787,6 +800,7 @@ class HiPlayerEngine(
         _availableAudioTracks.value = emptyList()
         _availableSubtitleTracks.value = emptyList()
         _isHdrContent.value = false
+        _hdrFormat.value = HdrFormat.SDR
         _is4kContent.value = false
         val title = mediaTitle ?: exoPlayer?.currentMediaItem
             ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
@@ -1281,7 +1295,9 @@ class HiPlayerEngine(
 
     private fun updateVideoOutputInfo() {
         val format = exoPlayer?.videoFormat
-        _isHdrContent.value = ColorInfo.isTransferHdr(format?.colorInfo)
+        val hdr = HdrFormat.of(format)
+        _hdrFormat.value = hdr
+        _isHdrContent.value = hdr.isHdr
         _is4kContent.value = (format?.width ?: 0) >= 3840 || (format?.height ?: 0) >= 2160
     }
 
@@ -1289,28 +1305,33 @@ class HiPlayerEngine(
         val player = exoPlayer ?: return
         val videoFormat = player.videoFormat
 
-        val width = videoFormat?.width ?: 3840
-        val height = videoFormat?.height ?: 2160
-        val fps = if (videoFormat?.frameRate != null && videoFormat.frameRate > 0) videoFormat.frameRate else 60.0f
-        val bitrate = if (videoFormat?.bitrate != null && videoFormat.bitrate > 0) videoFormat.bitrate / 1_000_000f else 65.0f
-        val mime = videoFormat?.sampleMimeType ?: "video/hevc"
+        val width = videoFormat?.width ?: 0
+        val height = videoFormat?.height ?: 0
+        val fps = videoFormat?.frameRate?.takeIf { it > 0 } ?: 0f
+        val bitrate = videoFormat?.bitrate?.takeIf { it > 0 }?.div(1_000_000f) ?: 0f
+        val mime = videoFormat?.sampleMimeType
         val dropped = player.videoDecoderCounters?.droppedBufferCount ?: 0
-
         val codecName = when {
-            mime.contains("hevc") || mime.contains("h265") -> "HEVC (H.265 HW)"
-            mime.contains("av01") || mime.contains("av1") -> "AV1 (Hardware)"
-            mime.contains("vp9") -> "VP9 HDR Profile 2"
-            else -> "AVC / MediaCodec HW"
+            mime == null -> "Unknown"
+            mime.contains("dolby-vision") -> "Dolby Vision"
+            mime.contains("hevc") -> "HEVC (H.265)"
+            mime.contains("av01") || mime.contains("av1") -> "AV1"
+            mime.contains("vp9") -> "VP9"
+            mime.contains("avc") -> "AVC (H.264)"
+            else -> mime
         }
 
         _telemetry.value = DecoderTelemetry(
             codecName = codecName,
-            resolution = "${width}x${height} (${if (width >= 3840 || height >= 2160) "4K UHD" else "FHD"})",
+            resolution = if (width > 0 && height > 0) "${width}x${height}" else "Unknown",
             fps = fps,
             bitrateMbps = bitrate,
             droppedFrames = dropped,
-            colorSpace = if (width >= 3840) "BT.2020 / HDR10+" else "Rec.709 / SDR",
-            audioFormat = "DTS:X / TrueHD 7.1 Passthrough"
+            colorSpace = videoFormat?.let { HdrFormat.of(it).label } ?: "Unknown",
+            audioFormat = player.audioFormat?.let { audio ->
+                listOfNotNull(audio.sampleMimeType?.substringAfter('/')?.uppercase(), audio.channelCount.takeIf { it > 0 }?.let { "$it ch" })
+                    .joinToString(" · ").ifBlank { "Unknown" }
+            } ?: "Unknown"
         )
     }
 

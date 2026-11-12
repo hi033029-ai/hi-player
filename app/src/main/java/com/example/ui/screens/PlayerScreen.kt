@@ -590,14 +590,14 @@ fun PlayerScreen(
                         glSurfaceRef = this
                         configureGlSurface(this)
                         setPlayer(activePlayer)
-                        setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                        setColorPreset(if (hdrEnhanceActive && !isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
                     }
                 },
                 update = { videoSurface ->
                     glSurfaceRef = videoSurface
                     configureGlSurface(videoSurface)
                     videoSurface.setPlayer(activePlayer)
-                    videoSurface.setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                    videoSurface.setColorPreset(if (hdrEnhanceActive && !isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
                     videoSurface.invalidate()
                 },
                 modifier = videoSurfaceModifier,
@@ -618,6 +618,26 @@ fun PlayerScreen(
             )
         }
 
+        if (!useNativeHdrSurface) {
+            // The transformed video can leave black bars outside its hit rectangle.
+            // Keep the input layer untransformed and beneath the Compose controls.
+            AndroidView(
+                factory = { context ->
+                    object : android.view.View(context) {
+                        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                            super.onSizeChanged(w, h, oldw, oldh)
+                            if (android.os.Build.VERSION.SDK_INT >= 29 && w > 0 && h > 0) {
+                                val edge = (160f * resources.displayMetrics.density).toInt()
+                                systemGestureExclusionRects = listOf(android.graphics.Rect(0, (h - edge).coerceAtLeast(0), w, h))
+                            }
+                        }
+                    }.apply { setOnTouchListener { view, event ->
+                        glSurfaceRef?.handlePlayerTouch(event, view.width, view.height) ?: false
+                    } }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (useNativeHdrSurface) {
             com.example.ui.components.GestureOverlay(
                 isLocked = isScreenLocked,
@@ -724,6 +744,7 @@ fun PlayerScreen(
         HdrPresetMenu(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
+            nativeHdr = isHdrContent,
             selected = hdrColorPreset,
             customPreset = customHdrPreset,
             customizing = showHdrCustomizer,

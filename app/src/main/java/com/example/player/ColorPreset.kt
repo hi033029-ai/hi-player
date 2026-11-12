@@ -30,7 +30,7 @@ internal fun shouldUseNativeHdrOutput(
     isHdrContent: Boolean,
     enhancementEnabled: Boolean,
     selectedPreset: ColorPreset,
-): Boolean = isHdrContent && (!enhancementEnabled || selectedPreset.isIdentityTransform())
+): Boolean = isHdrContent // 8-bit GLES grading would tone-map HDR as SDR and wash it out.
 
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
