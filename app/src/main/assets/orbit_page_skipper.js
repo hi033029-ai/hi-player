@@ -296,6 +296,32 @@
     }
   }
 
+  // Recognise a single, explicitly labelled link-generation control on a page
+  // that describes a file. Never guess between multiple candidates, directly
+  // open an off-site anchor, select a form control, or assume the label proves authenticity.
+  // Gecko still applies its ordinary popup, navigation and download policies.
+  var generatedOnce = false;
+  function advanceDownloadGenerator() {
+    if (generatedOnce || OPTIONS.autoContinue === false || hasSensitiveStep() || !document.body) return;
+    var text = (document.body.innerText || '').slice(0, 18000);
+    if (!/\bfile\s*size\b/i.test(text) || !/\bfile\s*type\b/i.test(text)) return;
+    var controls = document.querySelectorAll('a,button,input[type=button],[role=button]');
+    var eligible = [];
+    for (var i = 0; i < Math.min(controls.length, 250); i++) {
+      var el = controls[i], label = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
+      if (!/^generate (?:a |the )?(?:direct )?download link\s*[»>→]*$/i.test(label)) continue;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true' || !visible(el) || !sameSiteOrScript(el)) continue;
+      // Don't operate inside forms or areas labelled as advertisements.
+      if (el.closest('form, [id*="advert" i], [class*="advert" i], [id*="sponsor" i], [class*="sponsor" i], [id*="ads" i], [class*="ads" i]')) continue;
+      eligible.push(el);
+    }
+    if (eligible.length !== 1) return;
+    generatedOnce = true;
+    // This is a best-effort step, not proof of a trustworthy download. The
+    // normal confirmation remains required before saving any response.
+    eligible[0].click();
+  }
+
   var observer = null;
   var stopped = false;
   function stop() {
@@ -320,6 +346,7 @@
       stop();
       return;
     }
+    advanceDownloadGenerator();
     var wasWaitPage = isWaitPage;
     // Once a page is recognised it stays a wait page (its text changes as it counts down).
     isWaitPage = wasWaitPage || evaluateWait();
