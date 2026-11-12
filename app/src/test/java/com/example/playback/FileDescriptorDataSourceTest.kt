@@ -19,6 +19,33 @@ import java.io.FileOutputStream
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class FileDescriptorDataSourceTest {
+    @org.junit.Test fun ownedReadNeverCrossesTheWrittenPrefix() {
+        org.junit.Assert.assertEquals(0, ownedReadLength(4096, 1000, 1000))
+        org.junit.Assert.assertEquals(24, ownedReadLength(4096, 1000, 1024))
+        org.junit.Assert.assertEquals(64, ownedReadLength(64, 1000, 1024 + 4096))
+        org.junit.Assert.assertEquals(0, ownedReadLength(64, 2048, 1024))
+    }
+
+    @Test
+    fun `preallocated owned file exposes only bytes actually written`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("preallocated", ".mkv", context.cacheDir)
+        file.writeBytes(byteArrayOf(1, 2, 3, 4, 0, 0, 0, 0))
+        DownloadingFilesRegistry.markOwnedDownloading(file.absolutePath, 4L)
+        val source = FileDescriptorDataSource(context, waitForGrowth = true)
+        try {
+            source.open(DataSpec.Builder().setUri(Uri.fromFile(file)).build())
+            val buffer = ByteArray(8)
+            assertEquals(4, source.read(buffer, 0, buffer.size))
+            assertArrayEquals(byteArrayOf(1, 2, 3, 4), buffer.copyOf(4))
+            DownloadingFilesRegistry.completeOwned(file.absolutePath)
+            assertEquals(C.RESULT_END_OF_INPUT, source.read(buffer, 0, buffer.size))
+        } finally {
+            source.close()
+            DownloadingFilesRegistry.completeOwned(file.absolutePath)
+            file.delete()
+        }
+    }
 
     @Test
     fun `owned byte count handles unknown stale and preallocated provider sizes`() {

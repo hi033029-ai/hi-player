@@ -39,6 +39,7 @@ class FileDescriptorDataSource(
     private var growingDownloadKey: String? = null
     private var bytesRemaining: Long = 0L
     private var openedAsGrowingFile = false
+    private var ownedWrittenLimit: Long? = null
     private var keepWaitingUntilMs = 0L
     private var lastObservedLength = 0L
     private var lastObservedModifiedMs = 0L
@@ -56,6 +57,8 @@ class FileDescriptorDataSource(
             )
         growingDownloadKey = downloadKey.takeIf { activeGrowingFile }
         openedAsGrowingFile = activeGrowingFile
+        ownedWrittenLimit = if (DownloadingFilesRegistry.isOwnedDownloading(downloadKey))
+            DownloadingFilesRegistry.progress(downloadKey)?.downloadedBytes ?: 0L else null
         keepWaitingUntilMs = if (activeGrowingFile) {
             SystemClock.elapsedRealtime() + GROWING_IDLE_GRACE_MS
         } else {
@@ -123,13 +126,34 @@ class FileDescriptorDataSource(
             minOf(length.toLong(), bytesRemaining).toInt()
         }
 
-        var read = input?.read(buffer, offset, bytesToRead) ?: -1
-        while (read == -1 && waitForGrowth && openedAsGrowingFile && !closed) {
-            if (waitForAppendedBytes()) {
-                read = input?.read(buffer, offset, bytesToRead) ?: -1
-            } else if (!shouldKeepWaitingForGrowth()) {
-                break
+        // Some providers preallocate the final size. Never feed unwritten zeroes
+        // to the extractor; the transfer owner's sequential byte count is authoritative.
+        var read: Int
+        while (true) {
+            var allowed = bytesToRead
+            val key = growingDownloadKey
+            while (waitForGrowth && openedAsGrowingFile && key != null &&
+                DownloadingFilesRegistry.isOwnedDownloading(key) && !closed) {
+                val position = input?.channel?.position() ?: return C.RESULT_END_OF_INPUT
+                val written = DownloadingFilesRegistry.progress(key)?.downloadedBytes ?: ownedWrittenLimit ?: 0L
+                ownedWrittenLimit = written
+                allowed = ownedReadLength(bytesToRead, position, written)
+                if (allowed > 0) break
+                if (Thread.currentThread().isInterrupted) throw java.io.InterruptedIOException("Growing-file read interrupted")
+                sleepForGrowthPoll()
             }
+            if (closed) return C.RESULT_END_OF_INPUT
+            if (key != null && !DownloadingFilesRegistry.isOwnedDownloading(key)) {
+                val stoppedAt = ownedWrittenLimit
+                allowed = if (stoppedAt != null && DownloadingFilesRegistry.completedUri(key) == null) {
+                    val position = input?.channel?.position() ?: return C.RESULT_END_OF_INPUT
+                    ownedReadLength(bytesToRead, position, stoppedAt)
+                } else bytesToRead
+                if (allowed == 0) return C.RESULT_END_OF_INPUT
+            }
+            read = input?.read(buffer, offset, allowed) ?: -1
+            if (read != -1 || !waitForGrowth || !openedAsGrowingFile || closed) break
+            if (!waitForAppendedBytes() && !shouldKeepWaitingForGrowth()) break
         }
         if (read == -1) {
             if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining > 0) {
@@ -279,6 +303,7 @@ class FileDescriptorDataSource(
         } finally {
             growingDownloadKey = null
             openedAsGrowingFile = false
+            ownedWrittenLimit = null
             keepWaitingUntilMs = 0L
             lastObservedLength = 0L
             lastObservedModifiedMs = 0L
@@ -317,3 +342,7 @@ class FileDescriptorDataSource(
 /** A provider's advertised size is not a downloaded-byte count. */
 internal fun contentLengthForPlayback(descriptorLength: Long, ownedWrittenBytes: Long?): Long =
     (ownedWrittenBytes ?: descriptorLength).coerceAtLeast(0L)
+
+/** Bound reads to the sequential prefix actually written by an active transfer. */
+internal fun ownedReadLength(requested: Int, position: Long, written: Long): Int =
+    minOf(requested.toLong(), (written - position).coerceAtLeast(0L)).toInt()
