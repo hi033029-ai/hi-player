@@ -46,6 +46,7 @@ internal class GeckoDownloadController(
     private val activeLease = AtomicReference<AutoCloseable?>(null)
     private var offer: GeckoDownloadSource? = null
     private var cancellation: GeckoDownloadCancellation? = null
+    private var pendingPlayCallback: ((String) -> Unit)? = null
     private val speedMeter = DownloadSpeedMeter()
     private var generation = 0L
     private var closed = false
@@ -67,11 +68,13 @@ internal class GeckoDownloadController(
     @MainThread fun approve(fileName: String? = null, location: String = "Downloads", destinationOverride: (() -> GeckoDownloadDestination)? = null, onPlayable: ((String) -> Unit)? = null) {
         val source = offer ?: return
         val pending = state as? GeckoDownloadState.Offer ?: return
+        pendingPlayCallback = onPlayable
+        val wantsPlay = onPlayable != null
         offer = null
         val name = DownloadFileResolver.safeName(fileName ?: pending.name)
         val input = try { source.takeBody() } catch (_: Exception) { null }
         runCatching { source.close() }
-        if (input == null) { publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return }
+        if (input == null) { pendingPlayCallback = null; publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return }
         val cancel = GeckoDownloadCancellation()
         cancel.register(input)
         cancellation = cancel
@@ -80,7 +83,7 @@ internal class GeckoDownloadController(
         publishState(GeckoDownloadState.Active(name, 0, pending.length,
             recordInHistory = pending.recordInHistory, mimeType = pending.mimeType, location = location))
         val rawLease = try { onTransferStarted?.invoke { cancel.cancel() } } catch (_: Exception) {
-            cancel.cancel(); cancellation = null
+            cancel.cancel(); cancellation = null; pendingPlayCallback = null
             publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return
         }
         val once = AtomicBoolean(false)
@@ -101,13 +104,14 @@ internal class GeckoDownloadController(
                         // Register the real local document so the player waits at its growing EOF.
                         val live = (target as? GeckoPublishedDestination)?.writingUri?.toString()
                         if (live != null) { liveKey = live; DownloadingFilesRegistry.markOwnedDownloading(live, bytes) }
-                        val offerPlay = live != null && onPlayable != null && !playOffered && bytes >= PLAYABLE_PREFIX_BYTES
+                        val offerPlay = live != null && wantsPlay && !playOffered && bytes >= PLAYABLE_PREFIX_BYTES
                         if (offerPlay) playOffered = true
                         dispatchMain { if (!closed && generation == id && cancellation === cancel) {
                             publishState(GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location, live))
                             if (offerPlay && live != null && DownloadingFilesRegistry.isOwnedDownloading(live)) {
                                 playDelivered = true
-                                runCatching { onPlayable?.invoke(live) }
+                                val callback = pendingPlayCallback; pendingPlayCallback = null
+                                runCatching { callback?.invoke(live) }
                             }
                         } }
                     }
@@ -127,16 +131,18 @@ internal class GeckoDownloadController(
                         cancellation = null
                         publishState(GeckoDownloadState.Finished(name, outcome, location, recorded, finalPublished))
                         // A file smaller than the playback prefix becomes playable only once complete.
-                        if (!playDelivered && finalPublished != null) runCatching { onPlayable?.invoke(finalPublished) }
+                        val callback = pendingPlayCallback; pendingPlayCallback = null
+                        if (!playDelivered && finalPublished != null) runCatching { callback?.invoke(finalPublished) }
                     }
                 }
             }
         } catch (_: Exception) {
-            cancel.cancel(); runCatching { activeLease.getAndSet(null)?.close() }; cancellation = null
+            cancel.cancel(); runCatching { activeLease.getAndSet(null)?.close() }; cancellation = null; pendingPlayCallback = null
             publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location))
         }
     }
-    @MainThread fun cancel() { cancellation?.cancel(); runCatching { activeLease.getAndSet(null)?.close() } }
+    @MainThread fun clearPendingPlayback() { pendingPlayCallback = null }
+    @MainThread fun cancel() { pendingPlayCallback = null; cancellation?.cancel(); runCatching { activeLease.getAndSet(null)?.close() } }
     @MainThread fun dismissResult() { if (state is GeckoDownloadState.Finished) publishState(GeckoDownloadState.Idle) }
     @MainThread override fun close() {
         if (closed) return

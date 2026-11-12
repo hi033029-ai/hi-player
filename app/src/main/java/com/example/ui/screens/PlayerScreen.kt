@@ -285,6 +285,18 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
+    // Some codecs render their first frame before the screen listener attaches.
+    // Once this same video has dimensions and its playback position has advanced,
+    // do not leave an opaque mask over the surface indefinitely.
+    LaunchedEffect(currentVideo?.uri, currentPositionMs, firstFrameRendered, activePlayer) {
+        if (!firstFrameRendered && currentVideo != null && currentPositionMs >= 1_500L &&
+            activePlayer.currentMediaItem?.localConfiguration?.uri == currentVideo?.uri &&
+            activePlayer.videoSize.width > 0 && activePlayer.videoSize.height > 0 &&
+            activePlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+            firstFrameRendered = true
+        }
+    }
+
     // Safety valve for finished media whose device codec skips the first-frame
     // callback after a surface hand-off. A growing file must not use this
     // timeout: lifting its mask without a decoded frame made a still-loading

@@ -81,6 +81,10 @@ object MediaScanner {
                     val mime = cursor.getString(mimeCol) ?: "video/mp4"
                     val dateAdded = cursor.getLong(dateCol)
                     val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
+                    // Never open MediaStore's hidden pending on-disk filename as a separate video.
+                    // App-owned active downloads are added below with their canonical content URI.
+                    if (PendingDownloadFormat.isMediaStorePendingName(name) ||
+                        PendingDownloadFormat.isMediaStorePendingName(File(dataPath).name)) continue
                     val contentUri = ContentUris.withAppendedId(collection, id)
                     val lastModifiedMs = cursor.getLong(modifiedCol).coerceAtLeast(0L) * 1000L
                     val growthKey = dataPath.ifBlank { contentUri.toString() }
@@ -308,6 +312,7 @@ object MediaScanner {
                 .flatMap { it.walkTopDown().maxDepth(3) }
                 .filter(File::isFile)
                 .mapNotNull { file ->
+                    if (PendingDownloadFormat.isMediaStorePendingName(file.name)) return@mapNotNull null
                     val lowerName = file.name.lowercase()
                     val suffix = PendingDownloadFormat.suffixFor(lowerName) ?: return@mapNotNull null
                     val originalName = PendingDownloadFormat.originalName(file.name)
@@ -369,7 +374,7 @@ object MediaScanner {
                 .flatMap { it.walkTopDown().maxDepth(3) }
                 .filter(File::isFile)
                 .mapNotNull { file ->
-                    if (PendingDownloadFormat.isPending(file.name)) return@mapNotNull null
+                    if (PendingDownloadFormat.isPending(file.name) || PendingDownloadFormat.isMediaStorePendingName(file.name)) return@mapNotNull null
                     // A MediaStore row is already watching this path above. Do
                     // not recreate its registry state via the raw scanner.
                     if (file.absolutePath in indexedVideoPaths) return@mapNotNull null

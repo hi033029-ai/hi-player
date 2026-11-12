@@ -113,7 +113,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                         if (!granted) permissionFailed = true else {
                             val name = DownloadFileResolver.safeName(fileName)
                             val mime = state.mimeType
-                            val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, name, mime) } }
+                            val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context.applicationContext, uri, name, mime) } }
                             controller.approve(name, if (tree == null) "Downloads" else "selected folder", target) { local -> onPlay(local, mime, name) }
                         }
                     }) {
@@ -128,12 +128,12 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     }.isSuccess
                     if (!granted) permissionFailed = true else {
                         val name = DownloadFileResolver.safeName(fileName)
-                        val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, name, state.mimeType) } }
+                        val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context.applicationContext, uri, name, state.mimeType) } }
                         controller.approve(name, if (tree == null) "Downloads" else "selected folder", target)
                     }
                 }) { Icon(Icons.Default.Download, null, tint = HiPrimaryCyan); Text("Download", color = HiPrimaryCyan) }
                 TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel", color = HiTextSecondary) }
-                Text("This browser stream cannot be paused or resumed; cancelling or leaving the browser stops it.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                Text("This browser stream cannot be paused or resumed. It continues in the background while the app and transfer remain active; cancelling stops it.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
                 Spacer(Modifier.height(16.dp))
             }
         }

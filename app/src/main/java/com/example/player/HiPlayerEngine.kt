@@ -1365,6 +1365,22 @@ class HiPlayerEngine(
             while (isActive) {
                 exoPlayer?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
+                    // The growing Matroska extractor may deliberately defer Cues.
+                    // On confirmed publication, reopen the completed file once so
+                    // the normal extractor can load its index and enable seeking.
+                    val growingUri = activeGrowingUri
+                    val currentItem = player.currentMediaItem
+                    val completed = growingUri?.let { DownloadingFilesRegistry.completedUri(downloadRegistryKey(it)) }
+                    if (growingUri != null && completed != null && currentItem != null &&
+                        currentItem.localConfiguration?.uri == growingUri && !isActiveDownload()) {
+                        val configuration = currentItem.localConfiguration
+                        val subtitle = configuration?.subtitleConfigurations?.firstOrNull()
+                        activeGrowingUri = null
+                        prepareMedia(Uri.parse(completed), pos, player.playWhenReady,
+                            externalSubtitleUri = subtitle?.uri, externalSubtitleMimeType = subtitle?.mimeType,
+                            mediaMimeType = configuration?.mimeType, mediaTitle = currentItem.mediaMetadata.title?.toString())
+                        return@let
+                    }
                     _currentPositionMs.value = pos
                     _bufferedPositionMs.value = player.bufferedPosition.coerceAtLeast(0L)
                     _durationMs.value = player.duration.coerceAtLeast(0L)

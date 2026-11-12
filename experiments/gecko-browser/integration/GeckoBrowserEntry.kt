@@ -51,24 +51,59 @@ import com.example.ui.screens.GeckoBrowserArguments
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.screens.normalizeBrowserInput
 
+/** A detached approved transfer must outlive its browser UI while its foreground lease runs. */
+private data class RetainedGeckoBrowser(val services: GeckoBrowserServices, val store: OrbitBrowserStore)
+private object RetainedGeckoBrowsers {
+    private val transfers = GeckoDetachedTransfers<RetainedGeckoBrowser>()
+    fun retain(value: RetainedGeckoBrowser) = transfers.retain(value)
+    fun take(): RetainedGeckoBrowser? = transfers.take()
+    fun finish(services: GeckoBrowserServices) {
+        transfers.removeFirst { it.services === services }?.services?.close()
+    }
+}
+
 /** Application-only owner; Activities and result registries are rebound, never retained. */
 internal class GeckoBrowserOwner(private val application: Application) : ViewModel() {
-    val store = OrbitBrowserStore(application)
+    var store = OrbitBrowserStore(application)
+        private set
     private var owned: GeckoBrowserServices? = null
     var failed by mutableStateOf(false)
         private set
     fun acquire(): GeckoBrowserServices? {
         if (failed) return null
         owned?.let { return it }
+        RetainedGeckoBrowsers.take()?.let { retained ->
+            store = retained.store
+            owned = retained.services
+            return retained.services
+        }
         return try {
             lateinit var services: GeckoBrowserServices
             services = GeckoBrowserServices(application, null, store, onCloseRequested = { id -> services.coordinator.closeTab(id) })
+            val priorStateChanged = services.downloads.onStateChanged
+            services.downloads.onStateChanged = { state ->
+                priorStateChanged?.invoke(state)
+                if (state is GeckoDownloadState.Finished || state is GeckoDownloadState.Idle) {
+                    // Close only if it remains detached; a reopened browser may have reclaimed it.
+                    Handler(Looper.getMainLooper()).post { RetainedGeckoBrowsers.finish(services) }
+                }
+            }
             owned = services
             services
         } catch (_: Exception) { failed = true; null }
           catch (_: LinkageError) { failed = true; null }
     }
-    fun release() { val services = owned; owned = null; failed = false; services?.close() }
+    fun release() {
+        val services = owned
+        owned = null
+        failed = false
+        if (services == null) return
+        if (services.downloads.state is GeckoDownloadState.Active) {
+            // Do not retain a UI callback or reopen the player after the user exits.
+            services.downloads.clearPendingPlayback()
+            RetainedGeckoBrowsers.retain(RetainedGeckoBrowser(services, store))
+        } else services.close()
+    }
     override fun onCleared() {
         if (Looper.myLooper() == Looper.getMainLooper()) release()
         else Handler(Looper.getMainLooper()).post { release() }

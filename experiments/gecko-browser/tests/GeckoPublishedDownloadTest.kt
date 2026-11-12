@@ -149,4 +149,34 @@ class GeckoPublishedDownloadTest {
         assertEquals(GeckoDownloadOutcome.Complete(3L * 1024 * 1024), (controller.state as GeckoDownloadState.Finished).outcome)
     }
 
+    @Test fun leavingBrowserClearsPlaybackCallbackWithoutCancellingTransfer() {
+        val uri = Uri.parse("content://test/background")
+        val target = object : GeckoPublishedDestination {
+            override val treeUri: Uri? = null
+            override val writingUri: Uri get() = uri
+            override var publishedUri: Uri? = null
+            override fun open() = ByteArrayOutputStream()
+            override fun commit() { publishedUri = uri }
+            override fun abort() = Unit
+        }
+        val source = object : GeckoDownloadSource {
+            override val mimeType = "video/x-matroska"
+            override val contentDisposition = "attachment; filename=movie.mkv"
+            override val contentLength = 3L * 1024 * 1024
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(ByteArray(contentLength.toInt()))
+            override fun close() = Unit
+        }
+        val tasks = mutableListOf<Runnable>()
+        var played = false
+        val controller = GeckoDownloadController(Executor { tasks.add(it) }, { it() }) { _, _ -> target }
+        controller.offer(source)
+        controller.approve(onPlayable = { played = true })
+        controller.clearPendingPlayback()
+        tasks.single().run()
+        assertFalse(played)
+        assertEquals(uri, target.publishedUri)
+        assertEquals(GeckoDownloadOutcome.Complete(3L * 1024 * 1024), (controller.state as GeckoDownloadState.Finished).outcome)
+    }
+
 }
