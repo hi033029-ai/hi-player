@@ -153,12 +153,24 @@ class GrowingPlaybackDeviceTest {
                         } catch (error: AssertionError) {
                             val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
                             try {
-                                context.getExternalFilesDir(null)?.resolve("growing-screen-diagnostic.png")
-                                    ?.outputStream()?.use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                                val buffer = java.io.ByteArrayOutputStream()
+                                image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, buffer)
+                                val encoded = android.util.Base64.encodeToString(buffer.toByteArray(), android.util.Base64.NO_WRAP)
+                                encoded.chunked(2500).forEachIndexed { index, part ->
+                                    android.util.Log.i("GrowingScreenImage", "$index:$part")
+                                }
                             } finally { image.recycle() }
-                            activity.onActivity {
+                            activity.onActivity { host ->
                                 val player = model!!.engine.getPlayer()
                                 android.util.Log.i("GrowingScreenTest", "state=${player.playbackState} playing=${player.isPlaying} position=${player.currentPosition} videoSize=${player.videoSize.width}x${player.videoSize.height} rendered=${player.videoDecoderCounters?.renderedOutputBufferCount}")
+                                fun inspect(view: android.view.View) {
+                                    if (view is androidx.media3.ui.PlayerView) {
+                                        val surface = view.videoSurfaceView as? SurfaceView
+                                        android.util.Log.i("GrowingScreenTest", "PlayerView attached=${view.isAttachedToWindow} visible=${view.isShown} bound=${view.player === player} surfaceValid=${surface?.holder?.surface?.isValid} size=${view.width}x${view.height}")
+                                    }
+                                    if (view is android.view.ViewGroup) for (i in 0 until view.childCount) inspect(view.getChildAt(i))
+                                }
+                                inspect(host.window.decorView)
                             }
                             throw error
                         }
