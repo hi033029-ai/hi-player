@@ -23,6 +23,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,14 +46,25 @@ fun HdrPresetMenu(
     onColorIntensityChange: (Float) -> Unit = {},
     onClose: () -> Unit = {},
     nativeHdr: Boolean = false,
+    displayBrightness: Float = 0.5f,
+    onDisplayBrightnessChange: (Float) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
     val palette = LocalHiPalette.current
     if (nativeHdr) {
-        Column(modifier.background(Color.Black.copy(alpha = 0.85f)).padding(12.dp)) {
-            Text("Native HDR output preserves the video's dynamic range. Colour presets are unavailable for HDR playback.", color = Color.White)
-            TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+        Column(modifier.fillMaxWidth(0.76f).widthIn(max = 320.dp)
+            .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(12.dp)).padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Native HDR", color = Color.White)
+                TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+            }
+            Text("Display brightness", color = Color.White)
+            Slider(value = displayBrightness.coerceIn(0.01f, 1f), onValueChange = onDisplayBrightnessChange,
+                valueRange = 0.01f..1f, modifier = Modifier.fillMaxWidth().testTag("native_hdr_brightness"),
+                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.38f)))
         }
         return
     }

@@ -759,6 +759,10 @@ fun PlayerScreen(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             nativeHdr = isHdrContent,
+            displayBrightness = rememberedPlayerBrightness
+                ?: activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f }
+                ?: 0.5f,
+            onDisplayBrightnessChange = { level -> playerViewModel.onBrightnessGestureLevel(level) },
             selected = hdrColorPreset,
             customPreset = customHdrPreset,
             customizing = showHdrCustomizer,

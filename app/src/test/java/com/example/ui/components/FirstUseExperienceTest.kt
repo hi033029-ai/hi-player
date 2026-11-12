@@ -153,6 +153,19 @@ class FirstUseExperienceTest {
         compose.onNodeWithText("Got it").performClick()
         compose.onNodeWithText("Whole picture").assertIsDisplayed()
     }
+    @Test fun nativeHdrUsesBrightnessControlWithoutSelectingAColourPreset() {
+        val brightness = mutableStateOf(0.5f)
+        var presetSelected = false
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            com.example.ui.HdrPresetMenu(visible = true, selected = com.example.player.ColorPresets.NEUTRAL,
+                onSelect = { presetSelected = true }, nativeHdr = true,
+                displayBrightness = brightness.value, onDisplayBrightnessChange = { brightness.value = it })
+        } } }
+        compose.onNodeWithText("Native HDR").assertIsDisplayed()
+        compose.onNodeWithText("Colour presets are unavailable", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("native_hdr_brightness").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.SetProgress) { it(0.8f) }
+        compose.runOnIdle { assertEquals(0.8f, brightness.value, 0.01f); assertFalse(presetSelected) }
+    }
     @Test fun skippingPermissionsFinishesSetupWithoutAnotherSetupPage() {
         var finished = 0
         compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> finished++ }) } }
