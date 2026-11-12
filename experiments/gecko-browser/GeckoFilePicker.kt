@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.annotation.MainThread
+import androidx.compose.runtime.mutableStateMapOf
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 
@@ -47,7 +48,8 @@ internal fun geckoPickerMimeTypes(hints: Array<out String>?, extensionType: (Str
 /**
  * Wire [launch] to GeckoFilePickerLauncher.launch. It must deliver the callback once,
  * including cancellations on the main thread; only one document picker is allowed at a time. The host owns this
- * delegate across tabs and calls close when the browser is destroyed. Not yet connected to UI.
+ * delegate across tabs and calls close when the browser is destroyed. Website dialogs
+ * are tracked per session and shown only for the selected tab.
  */
 internal class GeckoFilePicker(
     context: Context,
@@ -62,6 +64,51 @@ internal class GeckoFilePicker(
     )
     private var pending: Pending? = null
     private var closed = false
+
+    internal data class WebsitePrompt(
+        val session: GeckoSession,
+        val message: String,
+        val isConfirm: Boolean,
+        val prompt: GeckoSession.PromptDelegate.BasePrompt,
+        val result: GeckoResult<GeckoSession.PromptDelegate.PromptResponse>,
+    )
+    private val websitePrompts = mutableStateMapOf<GeckoSession, WebsitePrompt>()
+    fun websitePromptFor(session: GeckoSession?): WebsitePrompt? = session?.let { websitePrompts[it] }
+
+    @MainThread override fun onAlertPrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.AlertPrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> =
+        offerWebsitePrompt(session, prompt, prompt.message, false)
+
+    @MainThread override fun onButtonPrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.ButtonPrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> =
+        offerWebsitePrompt(session, prompt, prompt.message, true)
+
+    private fun offerWebsitePrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.BasePrompt,
+        message: String?, confirm: Boolean): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
+        if (closed || websitePrompts.containsKey(session) || websitePrompts.size >= 8) return GeckoResult.fromValue(prompt.dismiss())
+        val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
+        val request = WebsitePrompt(session, message.orEmpty().take(4000), confirm, prompt, result)
+        websitePrompts[session] = request
+        prompt.setDelegate(object : GeckoSession.PromptDelegate.PromptInstanceDelegate {
+            override fun onPromptDismiss(prompt: GeckoSession.PromptDelegate.BasePrompt) {
+                if (websitePrompts[session] === request) {
+                    websitePrompts.remove(session)
+                    result.complete(null)
+                }
+            }
+        })
+        return result
+    }
+
+    @MainThread fun answerWebsitePrompt(request: WebsitePrompt, accept: Boolean) {
+        if (websitePrompts[request.session] !== request) return
+        websitePrompts.remove(request.session)
+        val prompt = request.prompt
+        val response = runCatching {
+            if (prompt.isComplete) null else if (request.isConfirm && prompt is GeckoSession.PromptDelegate.ButtonPrompt) {
+                prompt.confirm(if (accept) GeckoSession.PromptDelegate.ButtonPrompt.Type.POSITIVE else GeckoSession.PromptDelegate.ButtonPrompt.Type.NEGATIVE)
+            } else prompt.dismiss()
+        }.getOrNull()
+        request.result.complete(response)
+    }
 
     @MainThread
     override fun onFilePrompt(
@@ -113,6 +160,7 @@ internal class GeckoFilePicker(
     @MainThread override fun close() {
         if (closed) return
         closed = true
+        websitePrompts.values.toList().forEach { answerWebsitePrompt(it, false) }
         pending?.let { request ->
             gate.invalidate(request.token)
             if (!request.prompt.isComplete) request.result.complete(request.prompt.dismiss())

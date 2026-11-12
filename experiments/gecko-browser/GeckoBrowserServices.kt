@@ -33,7 +33,7 @@ internal class GeckoBrowserServices(
     private val worker = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-download").apply { isDaemon = true } }
     private val activeHistoryId = AtomicReference<Long?>(null)
     private val pickerLauncher = GeckoFilePickerLauncher(registry)
-    private val filePicker = GeckoFilePicker(appContext, pickerLauncher::launch)
+    val filePicker = GeckoFilePicker(appContext, pickerLauncher::launch)
     private val androidPermissions = GeckoRuntimePermissionLauncher(context, registry)
     val permissions = GeckoPermissionUi(androidPermissions)
     private val permissionBroker = GeckoPermissionBroker(permissions)

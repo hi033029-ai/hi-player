@@ -28,7 +28,7 @@ class GeckoCoordinatorPopupTest {
         override fun setDesktop(enabled: Boolean) = Unit
         override fun close() = Unit
     }
-    @Test fun privateChildIsReservedInBackgroundAndSelectedOnlyWhenOpened() {
+    @Test fun privateChildRemainsInBackgroundUntilUserSelectsIt() {
         val store = Store()
         val owner = GeckoBrowserCoordinator<Any>(store) { _, changed -> Session(changed) }
         assertTrue(owner.open(true))
@@ -41,6 +41,8 @@ class GeckoCoordinatorPopupTest {
         assertEquals(opener, owner.activeId)
         assertFalse(store.saved.any { it.id == child.id })
         session.callback(GeckoTabSnapshot(child.id, true, "https://example.org", loading = true))
+        assertEquals(opener, owner.activeId)
+        assertTrue(owner.select(child.id))
         assertEquals(child.id, owner.activeId)
         assertTrue(owner.isPopup(child.id))
         assertTrue(owner.closeTab(child.id))

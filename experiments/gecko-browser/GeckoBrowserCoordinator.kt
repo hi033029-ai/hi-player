@@ -57,7 +57,6 @@ internal class GeckoBrowserCoordinator<View : Any>(
     val snapshots = mutableStateMapOf<Int, GeckoTabSnapshot>()
     private val desktop = mutableMapOf<Int, Boolean>()
     private val lastRecordedUrl = mutableMapOf<Int, String>()
-    private val popupOpeners = mutableMapOf<Int, Int>()
     private val popupIds = mutableSetOf<Int>()
     private val suppressHistoryUntilNextLoad = mutableSetOf<Int>()
     private val generations = mutableMapOf<Int, Long>()
@@ -104,13 +103,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
         // are already known; a new tab is registered before its session factory is invoked.
         if (previous == null || previous.privateTab != snapshot.privateTab) return
         snapshots[snapshot.id] = snapshot
-        // Gecko opens a reserved child after the onNewSession callback returns. Do not
-        // attach it early; select only after its first page starts, and only if its
-        // opener is still selected. A user who switched tabs must not be interrupted.
-        if (ready && snapshot.loading && snapshot.url.isNotBlank()) {
-            val opener = popupOpeners.remove(snapshot.id)
-            if (opener != null && activeId == opener) select(snapshot.id)
-        }
+        // Child windows remain in the tab list without taking focus from the opener.
+        // Users can select them explicitly when a site opens a legitimate destination.
         if (snapshot.loading && !previous.loading) suppressHistoryUntilNextLoad.remove(snapshot.id)
         if (snapshot.loading || snapshot.error != null) lastRecordedUrl.remove(snapshot.id)
         if (ready && !snapshot.privateTab && snapshot.id !in suppressHistoryUntilNextLoad && !snapshot.loading && snapshot.error == null) {
@@ -154,7 +148,6 @@ internal class GeckoBrowserCoordinator<View : Any>(
             snapshots.keys.filter { it !in before }.toList().forEach { snapshots.remove(it); generations.remove(it) }
             throw error
         } ?: return null
-        popupOpeners[reserved.first.id] = openerId
         popupIds.add(reserved.first.id)
         revision++
         persist()
@@ -175,7 +168,6 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots.remove(id)
         desktop.remove(id)
         lastRecordedUrl.remove(id)
-        popupOpeners.remove(id)
         popupIds.remove(id)
         suppressHistoryUntilNextLoad.remove(id)
         generations.remove(id)
@@ -250,7 +242,6 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots.clear()
         desktop.clear()
         lastRecordedUrl.clear()
-        popupOpeners.clear()
         popupIds.clear()
         suppressHistoryUntilNextLoad.clear()
         generations.clear()

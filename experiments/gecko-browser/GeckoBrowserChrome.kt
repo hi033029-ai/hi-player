@@ -97,6 +97,7 @@ internal fun GeckoBrowserChrome(
         GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
         GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
+        GeckoWebsitePromptDialog(services.filePicker, popupSession, current.url)
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = services::dismissDownloadNotice,
