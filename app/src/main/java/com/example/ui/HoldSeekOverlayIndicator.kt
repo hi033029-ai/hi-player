@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.HiPrimaryCyan
 
 @Composable
 fun HoldSeekOverlayIndicator(
@@ -44,17 +45,17 @@ fun HoldSeekOverlayIndicator(
                     Icon(
                         imageVector = Icons.Default.FastRewind,
                         contentDescription = "Rewinding at 2x",
-                        tint = Color.White,
+                        tint = HiPrimaryCyan,
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text("Rewind 2×", color = Color.White, fontSize = 15.sp)
+                    Text("Rewind 2×", color = HiPrimaryCyan, fontSize = 15.sp)
                 } else {
-                    Text("Fast forward 2×", color = Color.White, fontSize = 15.sp)
+                    Text("Fast forward 2×", color = HiPrimaryCyan, fontSize = 15.sp)
                     Spacer(Modifier.width(6.dp))
                     Icon(
                         imageVector = Icons.Default.FastForward,
                         contentDescription = "Fast forwarding at 2x",
-                        tint = Color.White,
+                        tint = HiPrimaryCyan,
                     )
                 }
             }

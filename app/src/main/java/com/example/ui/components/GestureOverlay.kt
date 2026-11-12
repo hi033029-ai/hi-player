@@ -55,7 +55,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.HiAccentAmber
+import com.example.player.GestureIndicatorColors
 import com.example.ui.theme.HiPrimaryCyan
 import kotlinx.coroutines.launch
 
@@ -267,7 +267,7 @@ fun GestureOverlay(
                         Icon(
                             imageVector = Icons.Default.BrightnessHigh,
                             contentDescription = "Brightness",
-                            tint = HiAccentAmber,
+                            tint = HiPrimaryCyan,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -283,7 +283,7 @@ fun GestureOverlay(
                                     .fillMaxWidth()
                                     .fillMaxHeight(level.coerceIn(0f, 1f))
                                     .align(Alignment.BottomCenter)
-                                    .background(HiAccentAmber)
+                                    .background(HiPrimaryCyan)
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -307,6 +307,7 @@ fun GestureOverlay(
         ) {
             volumeLevel?.let { level ->
                 val isBoosted = level > 1.0f
+                val indicatorColor = Color(GestureIndicatorColors.volume(level))
                 val percent = (level * 100).toInt()
                 Box(
                     modifier = Modifier
@@ -325,7 +326,7 @@ fun GestureOverlay(
                                 else -> Icons.Default.VolumeUp
                             },
                             contentDescription = "Volume",
-                            tint = if (isBoosted) HiAccentAmber else HiPrimaryCyan,
+                            tint = indicatorColor,
                             modifier = Modifier.size(32.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -341,13 +342,13 @@ fun GestureOverlay(
                                     .fillMaxWidth()
                                     .fillMaxHeight((level / 2.0f).coerceIn(0f, 1f))
                                     .align(Alignment.BottomCenter)
-                                    .background(if (isBoosted) HiAccentAmber else HiPrimaryCyan)
+                                    .background(indicatorColor)
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isBoosted) "$percent% Boost" else "$percent%",
-                            color = if (isBoosted) HiAccentAmber else Color.White,
+                            color = indicatorColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -395,7 +396,7 @@ fun GestureOverlay(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "[$deltaSign]",
-                            color = if (deltaSeconds >= 0) HiPrimaryCyan else HiAccentAmber,
+                            color = HiPrimaryCyan,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
                         )

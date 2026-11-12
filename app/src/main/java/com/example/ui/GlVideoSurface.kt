@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.SeekParameters
 import com.example.player.ColorPreset
+import com.example.player.GestureIndicatorColors
 import com.example.player.ColorPresets
 import com.example.player.SelectiveColourBand
 import com.example.player.isIdentityTransform
@@ -434,11 +435,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             hudText = null
             hudBar = null
         }
-        val color = if (isVolume && volumeLevel > 1f) {
-            if (volumeLevel >= 1.8f) android.graphics.Color.RED else 0xFFFFA000.toInt()
-        } else {
-            android.graphics.Color.CYAN
-        }
+        val color = if (isVolume) GestureIndicatorColors.volume(volumeLevel) else GestureIndicatorColors.cyan
         if (hudPopup == null) {
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL

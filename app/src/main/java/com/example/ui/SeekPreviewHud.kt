@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.HiPrimaryCyan
 
 @Composable
 fun SeekPreviewHud(
@@ -51,15 +52,10 @@ fun SeekPreviewHud(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "[$sign${deltaSeconds}s]",
-                    color = if (deltaSeconds >= 0L) HiPrimaryCyan else HiAccentAmber,
+                    color = HiPrimaryCyan,
                     fontSize = 14.sp,
                 )
             }
         }
     }
 }
-
-private val HiAccentAmber: Color
-    get() = Color(0xFFFFB020)
-private val HiPrimaryCyan: Color
-    get() = Color(0xFF00D9FF)
