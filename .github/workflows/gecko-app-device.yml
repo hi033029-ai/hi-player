@@ -39,6 +39,7 @@ jobs:
           sudo apt-get install -y ffmpeg
           mkdir -p app/src/debug/assets
           ffmpeg -f lavfi -i 'testsrc2=size=160x90:rate=8' -t 1 -c:v libx264 -profile:v baseline -pix_fmt yuv420p -movflags +faststart -an -y app/src/debug/assets/gecko_test.mp4
+          ffmpeg -f lavfi -i 'testsrc2=size=320x180:rate=12' -t 16 -c:v libx264 -profile:v baseline -g 12 -pix_fmt yuv420p -an -y app/src/debug/assets/gecko_growing_test.mkv
       - name: Compile unpublished device-test APKs
         run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2
       - name: Review APK size and native packaging
@@ -55,7 +56,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: |
-            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest; fi; gradle --no-daemon :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
+            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GrowingPlaybackDeviceTest; fi; gradle --no-daemon :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
       - name: Upload reports only, never APKs
         if: always()
         uses: actions/upload-artifact@v4

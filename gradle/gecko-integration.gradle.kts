@@ -2,8 +2,8 @@ import com.android.build.api.dsl.ApplicationExtension
 
 val android = extensions.getByType<ApplicationExtension>()
 val generated = rootProject.layout.buildDirectory.dir("generated/gecko")
-android.defaultConfig.versionCode = 105
-android.defaultConfig.versionName = "1.0.104"
+android.defaultConfig.versionCode = 106
+android.defaultConfig.versionName = "1.0.105"
 val geckoViewArtifactAbi = providers.gradleProperty("HI_PLAYER_GECKOVIEW_ABI").getOrElse("arm64-v8a")
 val geckoArtifact = when (geckoViewArtifactAbi) {
     "universal" -> "geckoview"
