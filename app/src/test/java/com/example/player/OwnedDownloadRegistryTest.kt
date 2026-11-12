@@ -23,4 +23,16 @@ class OwnedDownloadRegistryTest {
             assertTrue(DownloadingFilesRegistry.isActivelyGrowing(path))
         } finally { DownloadingFilesRegistry.completeOwned(path) }
     }
+    @Test fun mediaScannerCannotCompleteAnOwnedContentDownload() {
+        val uri = "content://media/external/downloads/${System.nanoTime()}"
+        try {
+            DownloadingFilesRegistry.markOwnedDownloading(uri, 4096)
+            DownloadingFilesRegistry.markComplete(uri)
+            DownloadingFilesRegistry.markMissingContentDownloadsComplete(emptySet())
+            assertTrue(DownloadingFilesRegistry.isOwnedDownloading(uri))
+            assertEquals(4096L, DownloadingFilesRegistry.progress(uri)!!.downloadedBytes)
+            DownloadingFilesRegistry.completeOwned(uri)
+            assertFalse(DownloadingFilesRegistry.isDownloading(uri))
+        } finally { DownloadingFilesRegistry.completeOwned(uri) }
+    }
 }

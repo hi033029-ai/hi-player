@@ -4,13 +4,17 @@
   const send = value => browser.runtime.sendNativeMessage("hi_player", value).then(response =>
     typeof response === "string" ? JSON.parse(response) : response);
   let blockPopups = true;
+  // Run after page click handlers: link generators often attach a handler that
+  // must execute before any fallback for an otherwise unhandled _blank anchor.
   if (window.top === window) window.addEventListener("click", event => {
-    if (!blockPopups || !event.isTrusted || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (!blockPopups || event.defaultPrevented || !event.isTrusted || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     const anchor = event.target && event.target.closest && event.target.closest("a[href]");
     if (!anchor || anchor.target.toLowerCase() !== "_blank" || anchor.hasAttribute("download") || !/^https?:\/\//i.test(anchor.href)) return;
-    event.preventDefault(); event.stopImmediatePropagation();
+    // Fragment/placeholder links may be controls for site JavaScript, not navigation.
+    if (anchor.href.split("#")[0] === location.href.split("#")[0]) return;
+    event.preventDefault();
     send({kind:"user-link",page:location.href,url:anchor.href}).catch(() => {});
-  },true);
+  },false);
   const helperResult = ok => {
     if (window.top === window) send({kind:"helper-status",page:location.href,ok}).catch(() => {});
   };

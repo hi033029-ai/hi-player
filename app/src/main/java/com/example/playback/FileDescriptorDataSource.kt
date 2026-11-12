@@ -256,10 +256,15 @@ class FileDescriptorDataSource(
         else -> {
             val length = descriptorLength ?: runCatching {
                 context.contentResolver.openFileDescriptor(targetUri, "r")?.use { descriptor ->
-                    descriptor.statSize.coerceAtLeast(0L)
-                } ?: 0L
-            }.getOrDefault(0L)
-            SourceSnapshot(length.coerceAtLeast(0L), 0L)
+                    descriptor.statSize
+                } ?: -1L
+            }.getOrDefault(-1L)
+            // Providers can report unknown, stale or preallocated sizes. Only
+            // use the owner's actual sequential bytes written during a transfer.
+            val key = downloadKey(originalUri)
+            val written = if (DownloadingFilesRegistry.isOwnedDownloading(key))
+                DownloadingFilesRegistry.progress(key)?.downloadedBytes else null
+            SourceSnapshot(contentLengthForPlayback(length, written), 0L)
         }
     }
 
@@ -308,3 +313,7 @@ class FileDescriptorDataSource(
         const val GROWING_IDLE_GRACE_MS = 120_000L
     }
 }
+
+/** A provider's advertised size is not a downloaded-byte count. */
+internal fun contentLengthForPlayback(descriptorLength: Long, ownedWrittenBytes: Long?): Long =
+    (ownedWrittenBytes ?: descriptorLength).coerceAtLeast(0L)

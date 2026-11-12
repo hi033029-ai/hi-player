@@ -26,11 +26,20 @@ object DownloadingFilesRegistry {
 
     private val ownedPaths = ConcurrentHashMap.newKeySet<String>()
     private val completedAliases = ConcurrentHashMap<String, String>()
-    fun markOwnedDownloading(path: String, bytes: Long) { ownedPaths.add(path); markDownloading(path, bytes) }
-    fun completeOwned(path: String, uri: String? = null) {
-        if (uri != null) completedAliases[path] = uri
-        ownedPaths.remove(path); markComplete(path)
+    private val ownershipLock = Any()
+    fun markOwnedDownloading(path: String, bytes: Long) {
+        if (path.isBlank()) return
+        synchronized(ownershipLock) { ownedPaths.add(path); markDownloading(path, bytes) }
     }
+    fun completeOwned(path: String, uri: String? = null) {
+        if (path.isBlank()) return
+        synchronized(ownershipLock) {
+            if (uri != null) completedAliases[path] = uri
+            ownedPaths.remove(path)
+            activePaths.remove(path)
+        }
+    }
+    fun isOwnedDownloading(path: String): Boolean = path in ownedPaths && activePaths.containsKey(path)
     fun completedUri(path: String): String? = completedAliases[path]
 
     private val activePaths = ConcurrentHashMap<String, DownloadState>()
@@ -55,7 +64,10 @@ object DownloadingFilesRegistry {
     }
 
     fun markComplete(path: String) {
-        if (path.isNotBlank()) activePaths.remove(path)
+        if (path.isBlank()) return
+        // MediaScanner can see a pending app-owned MediaStore item as a normal
+        // video; only its transfer owner can declare that download complete.
+        synchronized(ownershipLock) { if (path !in ownedPaths) activePaths.remove(path) }
     }
 
     /**
@@ -103,7 +115,7 @@ object DownloadingFilesRegistry {
     fun markMissingContentDownloadsComplete(activeContentUris: Set<String>) {
         activePaths.keys
             .filter { key -> key.startsWith("content://") && key !in ownedPaths && key !in activeContentUris }
-            .forEach(activePaths::remove)
+            .forEach(::markComplete)
     }
 
     /**
@@ -118,7 +130,7 @@ object DownloadingFilesRegistry {
                     PendingDownloadFormat.isPending(key.substringAfterLast('/')) &&
                     key !in activeFilePaths
             }
-            .forEach(activePaths::remove)
+            .forEach(::markComplete)
     }
 
     fun isDownloading(path: String): Boolean = activePaths.containsKey(path)

@@ -21,6 +21,15 @@ import java.io.FileOutputStream
 class FileDescriptorDataSourceTest {
 
     @Test
+    fun `owned byte count handles unknown stale and preallocated provider sizes`() {
+        assertEquals(2048L, contentLengthForPlayback(-1L, 2048L))
+        assertEquals(2048L, contentLengthForPlayback(512L, 2048L))
+        assertEquals(2048L, contentLengthForPlayback(1_000_000L, 2048L))
+        assertEquals(4096L, contentLengthForPlayback(4096L, null))
+        assertEquals(0L, contentLengthForPlayback(-1L, null))
+    }
+
+    @Test
     fun `completed partial alias can reopen the published file after private copy is removed`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val partial = File(context.cacheDir, "deleted-${System.nanoTime()}.mp4.part")
