@@ -162,6 +162,12 @@ internal class GeckoBrowserCoordinator<View : Any>(
         persist()
         return true
     }
+    /** Return to a surviving opener without destroying the current tab. */
+    fun returnToOpener(): Boolean {
+        check(!closed)
+        val opener = tabs.firstOrNull { it.id == activeId }?.openerId ?: return false
+        return select(opener)
+    }
     fun closeTab(id: Int): Boolean {
         check(!closed)
         if (!controller.closeTab(id)) return false

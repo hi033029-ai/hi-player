@@ -94,7 +94,6 @@ internal fun GeckoBrowserShell(
         history = if (focused && !activeTab.privateTab) withContext(Dispatchers.IO) { store.history() } else emptyList()
     }
     BackHandler(enabled = find?.visible == true) { find?.dismiss() }
-    BackHandler(enabled = find?.visible != true && secureUrl != null) { secureRouting?.leaveTab(activeId); coordinator.home() }
     BackHandler(enabled = find?.visible != true && secureUrl == null && !home && (snapshot.fullscreen || snapshot.canGoBack)) {
         if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
     }

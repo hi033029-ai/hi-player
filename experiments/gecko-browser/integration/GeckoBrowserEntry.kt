@@ -46,7 +46,6 @@ import com.example.ui.components.GoogleAccountDialog
 import com.example.ui.screens.BrowserDownloadsPanel
 import com.example.ui.screens.BrowserNavigationHost
 import com.example.ui.screens.BrowserSearchProvider
-import com.example.ui.screens.BrowserTabBackPolicy
 import com.example.ui.screens.GeckoBrowserArguments
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.screens.normalizeBrowserInput
@@ -181,16 +180,13 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     BackHandler {
         val activeId = coordinator.activeId
         val snapshot = coordinator.activeSnapshot
-        when (BrowserTabBackPolicy.backAction(
-            showingHome = snapshot.url.isBlank() && services.secureRouting.route(activeId) == null,
-            canGoBack = snapshot.canGoBack,
-        )) {
-            BrowserTabBackPolicy.BackAction.PAGE_HISTORY -> coordinator.back()
-            BrowserTabBackPolicy.BackAction.HOME -> {
-                services.secureRouting.leaveTab(activeId)
-                coordinator.home()
-            }
-            BrowserTabBackPolicy.BackAction.EXIT_BROWSER -> latest.onBack()
+        val secureRoute = services.secureRouting.route(activeId)
+        when {
+            snapshot.fullscreen -> coordinator.exitFullScreen()
+            secureRoute == null && snapshot.canGoBack -> coordinator.back()
+            coordinator.returnToOpener() -> Unit
+            // Leaving the browser is not a request to reset or close this tab.
+            else -> latest.onBack()
         }
     }
     BrowserNavigationHost(modifier = arguments.modifier.fillMaxSize(), enabled = !fullscreen && !arguments.isInPictureInPicture, navigation = arguments.appNavigation) {
@@ -204,7 +200,7 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     try { voice.launch(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)) }
                     catch (_: Exception) { voiceUnavailable = true }
                 },
-                onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
+                onSettings = { showSettings = true }, onExit = { latest.onBack() },
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query,
                     onPlay = { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) },
                     onCancelGecko = services::cancelDownload) },

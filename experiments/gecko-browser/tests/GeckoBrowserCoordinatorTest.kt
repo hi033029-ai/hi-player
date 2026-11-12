@@ -81,6 +81,23 @@ class GeckoBrowserCoordinatorTest {
         coordinator.close()
     }
 
+    @Test fun backToOpenerKeepsBothTabsAndTheirSessions() {
+        val sessions = mutableMapOf<Int, Fake>()
+        val coordinator = GeckoBrowserCoordinator<Any>(Store()) { tab, callback -> Fake(tab, callback).also { sessions[tab.id] = it } }
+        val opener = coordinator.activeId
+        coordinator.load("https://example.org/start")
+        assertTrue(coordinator.open(false))
+        val child = coordinator.activeId
+        coordinator.load("https://example.org/next")
+        assertTrue(coordinator.returnToOpener())
+        assertEquals(opener, coordinator.activeId)
+        assertEquals(setOf(opener, child), coordinator.tabs.map { it.id }.toSet())
+        assertFalse(sessions.getValue(child).closed)
+        assertEquals("https://example.org/next", coordinator.snapshots[child]?.url)
+        assertFalse(coordinator.returnToOpener())
+        coordinator.close()
+    }
+
     @Test fun homeReplacesSessionAndIgnoresStaleCallbacks() {
         val store = Store()
         val sessions = mutableListOf<Fake>()
