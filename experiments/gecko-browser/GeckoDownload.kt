@@ -18,6 +18,7 @@ internal class GeckoDownloadOffer(response: WebResponse) : GeckoDownloadSource {
     override val contentDisposition: String? = response.headers["content-disposition"]
     override val responseUrl: String? = response.uri
     override val contentLength: Long? = response.headers["content-length"]?.toLongOrNull()?.takeIf { it >= 0 }
+    override val contentEncoding: String? = response.headers["content-encoding"]
     override val statusCode: Int = response.statusCode
 
     @Synchronized override fun takeBody(): InputStream? = body.also { body = null }
@@ -79,6 +80,7 @@ internal fun transferGeckoDownload(
     input: InputStream?,
     destination: GeckoDownloadDestination,
     cancellation: GeckoDownloadCancellation,
+    expectedLength: Long? = null,
     onProgress: (Long) -> Unit = {},
 ): GeckoDownloadOutcome {
     if (input == null) return GeckoDownloadOutcome.Failed
@@ -103,6 +105,9 @@ internal fun transferGeckoDownload(
                 }
             } finally { cancellation.clear() }
         }
+        // EOF is not success if an identity-encoded response ended before its
+        // advertised length. Never publish a truncated file as complete.
+        if (expectedLength != null && expectedLength >= 0L && bytes != expectedLength) return GeckoDownloadOutcome.Failed
         if (!cancellation.commitIfActive { destination.commit() }) return GeckoDownloadOutcome.Cancelled
         committed = true
         return GeckoDownloadOutcome.Complete(bytes)

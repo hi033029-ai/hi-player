@@ -35,6 +35,21 @@ class GeckoDownloadTest {
         assertEquals(100_000, target.output.size())
         assertEquals(100_000L, updates.last())
     }
+    @Test fun shortResponseIsAbortedRatherThanPublishedAsComplete() {
+        val target = Destination()
+        val result = transferGeckoDownload(ByteArrayInputStream(byteArrayOf(1, 2, 3)), target,
+            GeckoDownloadCancellation(), expectedLength = 10)
+        assertEquals(GeckoDownloadOutcome.Failed, result)
+        assertTrue(target.aborted)
+        assertFalse(target.committed)
+    }
+    @Test fun responseWithMatchingLengthCommits() {
+        val target = Destination()
+        val result = transferGeckoDownload(ByteArrayInputStream(byteArrayOf(1, 2, 3)), target,
+            GeckoDownloadCancellation(), expectedLength = 3)
+        assertEquals(GeckoDownloadOutcome.Complete(3), result)
+        assertTrue(target.committed)
+    }
     @Test fun cancellationBeforeStartClosesSourceAndAborts() {
         val source = ClosingStream(byteArrayOf(1))
         val target = Destination()

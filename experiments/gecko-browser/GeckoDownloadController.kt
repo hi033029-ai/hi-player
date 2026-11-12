@@ -21,6 +21,8 @@ internal interface GeckoDownloadSource : Closeable {
     val contentDisposition: String?
     val responseUrl: String? get() = null
     val contentLength: Long?
+    // Encoded responses may expose wire length while Gecko supplies decoded bytes.
+    val contentEncoding: String? get() = null
     val statusCode: Int
     fun takeBody(): InputStream?
 }
@@ -90,9 +92,11 @@ internal class GeckoDownloadController(
                 var liveKey: String? = null
                 var published: String? = null
                 var playOffered = false
+                var playDelivered = false // read and written only by main-thread callbacks
                 val outcome = try {
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
-                    val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
+                    val expectedLength = pending.length.takeIf { source.contentEncoding.isNullOrBlank() || source.contentEncoding.equals("identity", ignoreCase = true) }
+                    val transferred = transferGeckoDownload(input, target, cancel, expectedLength = expectedLength) { bytes ->
                         val speed = speedMeter.sample(bytes, System.nanoTime())
                         // Register the real local document so the player waits at its growing EOF.
                         val live = (target as? GeckoPublishedDestination)?.writingUri?.toString()
@@ -101,7 +105,10 @@ internal class GeckoDownloadController(
                         if (offerPlay) playOffered = true
                         dispatchMain { if (!closed && generation == id && cancellation === cancel) {
                             publishState(GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location, live))
-                            if (offerPlay && live != null) runCatching { onPlayable?.invoke(live) }
+                            if (offerPlay && live != null && DownloadingFilesRegistry.isOwnedDownloading(live)) {
+                                playDelivered = true
+                                runCatching { onPlayable?.invoke(live) }
+                            }
                         } }
                     }
                     published = (target as? GeckoPublishedDestination)?.publishedUri?.toString()
@@ -120,7 +127,7 @@ internal class GeckoDownloadController(
                         cancellation = null
                         publishState(GeckoDownloadState.Finished(name, outcome, location, recorded, finalPublished))
                         // A file smaller than the playback prefix becomes playable only once complete.
-                        if (!playOffered && finalPublished != null) runCatching { onPlayable?.invoke(finalPublished) }
+                        if (!playDelivered && finalPublished != null) runCatching { onPlayable?.invoke(finalPublished) }
                     }
                 }
             }

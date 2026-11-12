@@ -912,7 +912,7 @@ class HiPlayerEngine(
      * a frame has already become playable.
      */
     private fun shouldKeepAwaitingGrowingData(uri: Uri): Boolean {
-        if (DownloadingFilesRegistry.isActivelyGrowing(downloadRegistryKey(uri))) {
+        if (DownloadingFilesRegistry.shouldWaitForGrowth(downloadRegistryKey(uri))) {
             growingPlaybackGraceUntilMs = System.currentTimeMillis() + GROWING_INITIAL_GRACE_MS
             return true
         }

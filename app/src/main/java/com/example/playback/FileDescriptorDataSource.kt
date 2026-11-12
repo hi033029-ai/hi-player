@@ -216,7 +216,7 @@ class FileDescriptorDataSource(
      */
     private fun shouldKeepWaitingForGrowth(): Boolean {
         val key = growingDownloadKey.orEmpty()
-        return DownloadingFilesRegistry.isActivelyGrowing(key) ||
+        return DownloadingFilesRegistry.shouldWaitForGrowth(key) ||
             SystemClock.elapsedRealtime() < keepWaitingUntilMs
     }
 

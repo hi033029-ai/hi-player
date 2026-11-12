@@ -142,6 +142,9 @@ object DownloadingFilesRegistry {
         )
     }
 
+    /** Owned transfers stay active until their owner completes or cancels them, even during slow networks. */
+    fun shouldWaitForGrowth(path: String): Boolean = isOwnedDownloading(path) || isActivelyGrowing(path)
+
     /** True only while the file has grown recently, preventing an indefinite player wait. */
     fun isActivelyGrowing(path: String): Boolean {
         val state = activePaths[path] ?: return false

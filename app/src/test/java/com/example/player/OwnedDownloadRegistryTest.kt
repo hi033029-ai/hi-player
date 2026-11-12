@@ -30,9 +30,11 @@ class OwnedDownloadRegistryTest {
             DownloadingFilesRegistry.markComplete(uri)
             DownloadingFilesRegistry.markMissingContentDownloadsComplete(emptySet())
             assertTrue(DownloadingFilesRegistry.isOwnedDownloading(uri))
+            assertTrue(DownloadingFilesRegistry.shouldWaitForGrowth(uri))
             assertEquals(4096L, DownloadingFilesRegistry.progress(uri)!!.downloadedBytes)
             DownloadingFilesRegistry.completeOwned(uri)
             assertFalse(DownloadingFilesRegistry.isDownloading(uri))
+            assertFalse(DownloadingFilesRegistry.shouldWaitForGrowth(uri))
         } finally { DownloadingFilesRegistry.completeOwned(uri) }
     }
 }

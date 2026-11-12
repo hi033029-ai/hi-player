@@ -91,4 +91,62 @@ class GeckoPublishedDownloadTest {
         assertEquals("content://test/item", local)
     }
 
+    @Test fun delayedPlaybackCallbackNeverOpensAnAbortedDocument() {
+        val uri = Uri.parse("content://test/aborted")
+        var aborted = false
+        val target = object : GeckoPublishedDestination {
+            override val treeUri: Uri? = null
+            override val writingUri: Uri get() = uri
+            override val publishedUri: Uri? = null
+            override fun open() = ByteArrayOutputStream()
+            override fun commit() = Unit
+            override fun abort() { aborted = true }
+        }
+        val source = object : GeckoDownloadSource {
+            override val mimeType = "video/x-matroska"
+            override val contentDisposition = "attachment; filename=movie.mkv"
+            override val contentLength = 4L * 1024 * 1024
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(ByteArray(3 * 1024 * 1024))
+            override fun close() = Unit
+        }
+        val main = mutableListOf<() -> Unit>()
+        var played = false
+        val controller = GeckoDownloadController(Executor { it.run() }, { main.add(it) }) { _, _ -> target }
+        controller.offer(source)
+        controller.approve(onPlayable = { played = true })
+        main.forEach { it() }
+        assertTrue(aborted)
+        assertFalse(played)
+        assertEquals(GeckoDownloadOutcome.Failed, (controller.state as GeckoDownloadState.Finished).outcome)
+    }
+
+    @Test fun delayedCallbackPlaysCompletedDocumentOnce() {
+        val uri = Uri.parse("content://test/completed")
+        val target = object : GeckoPublishedDestination {
+            override val treeUri: Uri? = null
+            override val writingUri: Uri get() = uri
+            override var publishedUri: Uri? = null
+            override fun open() = ByteArrayOutputStream()
+            override fun commit() { publishedUri = uri }
+            override fun abort() = Unit
+        }
+        val source = object : GeckoDownloadSource {
+            override val mimeType = "video/x-matroska"
+            override val contentDisposition = "attachment; filename=movie.mkv"
+            override val contentLength = 3L * 1024 * 1024
+            override val statusCode = 200
+            override fun takeBody() = ByteArrayInputStream(ByteArray(contentLength.toInt()))
+            override fun close() = Unit
+        }
+        val main = mutableListOf<() -> Unit>()
+        val played = mutableListOf<String>()
+        val controller = GeckoDownloadController(Executor { it.run() }, { main.add(it) }) { _, _ -> target }
+        controller.offer(source)
+        controller.approve(onPlayable = { played.add(it) })
+        main.forEach { it() }
+        assertEquals(listOf(uri.toString()), played)
+        assertEquals(GeckoDownloadOutcome.Complete(3L * 1024 * 1024), (controller.state as GeckoDownloadState.Finished).outcome)
+    }
+
 }
