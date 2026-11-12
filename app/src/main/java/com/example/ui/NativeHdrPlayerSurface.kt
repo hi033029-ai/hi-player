@@ -3,11 +3,6 @@ package com.example.ui
 import android.view.SurfaceView
 import android.view.View
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -26,15 +21,6 @@ fun NativeHdrPlayerSurface(
     player: Player,
     modifier: Modifier = Modifier,
 ) {
-    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
-
-    DisposableEffect(player, playerViewRef) {
-        val attachedView = playerViewRef
-        onDispose {
-            if (attachedView?.player === player) attachedView.player = null
-        }
-    }
-
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -43,14 +29,16 @@ fun NativeHdrPlayerSurface(
                 subtitleView?.visibility = View.GONE
                 (videoSurfaceView as? SurfaceView)?.setZOrderMediaOverlay(true)
                 this.player = player
-                playerViewRef = this
             }
         },
         update = { view ->
             if (view.player !== player) view.player = player
             view.subtitleView?.visibility = View.GONE
-            playerViewRef = view
         },
         modifier = modifier,
+        // Release only when this AndroidView actually leaves the composition.
+        // A DisposableEffect keyed to a mutable view reference could detach a
+        // freshly rebound player during recomposition, leaving audio-only playback.
+        onRelease = { view -> view.player = null },
     )
 }
