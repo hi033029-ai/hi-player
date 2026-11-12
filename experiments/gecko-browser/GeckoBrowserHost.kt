@@ -43,7 +43,7 @@ internal fun createGeckoBrowserCoordinator(
                 val blockedByProtection = store.adBlock && runCatching {
                     OrbitBrowserFilterEngine.shouldBlock(Uri.parse(destination), enabled = true, pageHost = pageHost, mainFrame = true)
                 }.getOrDefault(false)
-                GeckoPopupPolicy.allows(store.popupBlock, userGesture, blockedByProtection)
+                GeckoPopupPolicy.allows(store.popupBlock && !geckoPopupExceptions.isAllowed(owned.engine.session, coordinator.snapshots[tab.id]?.url.orEmpty()), userGesture, blockedByProtection)
             },
             onPopupRequested = {
                 // Gecko itself opens the newly returned session. Keep it owned by the

@@ -32,11 +32,9 @@
   if (SAFE.test(location.hostname + '.')) return;
 
   var _st = window.setTimeout, _si = window.setInterval, _ct = window.clearTimeout, _ci = window.clearInterval;
-  var _open = window.open;
   var NativeDate = window.Date, _dateNow = NativeDate.now;
   var _raf = window.requestAnimationFrame;
   var _perf = (window.performance && performance.now) ? performance.now.bind(performance) : null;
-  var allowOpen = 0;
   function realNow() { return _dateNow.call(NativeDate); }
 
   // ---- Wait-page detection. Runs only from the throttled scan below (never
@@ -216,11 +214,9 @@
     document.addEventListener('visibilitychange', function (e) { if (isWaitPage) e.stopImmediatePropagation(); }, true);
   } catch (e) {}
 
-  // ---- 2. Pop-ups / pop-unders from fake buttons
-  window.open = function () {
-    if (isWaitPage && Date.now() > allowOpen) return null;
-    return _open.apply(window, arguments);
-  };
+  // New windows are governed by the browser's popup and network policies.
+  // Intercepting window.open here also broke legitimate download generators,
+  // even when the user had explicitly allowed popups for a site.
 
   // ---- 3. Ads and banners
   function addStyle(css) {
@@ -238,9 +234,8 @@
   function styleWaitPage() {
     if (waitStyled) return;
     waitStyled = true;
-    addStyle('[class*="banner"],[id*="banner"],[class*="advert"],[id*="advert"],[class*="sponsor"],' +
-      'iframe:not([src*="captcha"]):not([src*="turnstile"]):not([src*="challenges.cloudflare"]){display:none!important}');
-    addStyle('a[target="_blank"]:has(> img){display:none!important}'); // ad tiles / fake thumbnails
+    addStyle('.ad-banner,.ad-overlay,.ad-popup,.popup-ad,.advertisement,.sponsored-ad,' +
+      '[aria-label="Advertisement" i],[aria-label="Ads" i]{display:none!important}');
   }
 
   function unlockScroll() {
@@ -249,11 +244,13 @@
     });
   }
 
-  // Full-screen overlays (not captchas)
+  // Only remove explicitly ad-labelled overlays; real link dialogs may be large.
   function removeOverlays() {
     var els = document.querySelectorAll('div,section,aside,a,iframe'), n = Math.min(els.length, 400);
     for (var i = 0; i < n; i++) {
       var el = els[i], cs = getComputedStyle(el);
+      var marker = [el.id || '', typeof el.className === 'string' ? el.className : '', el.getAttribute('aria-label') || ''].join(' ');
+      if (!/(^|[\s_-])(ad|ads|advertisement|advertising|sponsored)(?=$|[\s_-])/i.test(marker)) continue;
       if ((cs.position === 'fixed' || cs.position === 'absolute') && parseInt(cs.zIndex, 10) >= 999) {
         var r = el.getBoundingClientRect();
         if (r.width > innerWidth * 0.6 && r.height > innerHeight * 0.6 &&
@@ -286,7 +283,6 @@
       if (GOOD.test(txt)) {
         if (!el.__orbitClicked && !el.disabled && visible(el) && sameSiteOrScript(el)) {
           el.__orbitClicked = true;
-          allowOpen = Date.now() + 1500;
           el.click();
         }
       } else if (BAD.test(txt) && !sameSiteOrScript(el)) {

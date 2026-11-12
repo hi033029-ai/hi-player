@@ -158,6 +158,8 @@ internal class GeckoTabController<View : Any>(
     fun exitFullScreen() { check(!closed); sessions.getValue(activeId).exitFullScreen() }
     fun setDesktop(enabled: Boolean) { check(!closed); sessions.getValue(activeId).setDesktop(enabled) }
 
+    fun sessionFor(tabId: Int): GeckoManagedSession<View>? = if (closed) null else sessions[tabId]
+
     fun find(tabId: Int, query: String?, backwards: Boolean, completion: (GeckoFindResult?) -> Unit) {
         check(!closed)
         val session = sessions[tabId] as? GeckoFindable

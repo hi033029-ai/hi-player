@@ -12,7 +12,7 @@ def augment_regressions(result):
     private val userNavigation = WeakHashMap<GeckoSession, (String) -> Unit>()
     fun setUserNavigation(session: GeckoSession, navigate: (String) -> Unit) { userNavigation[session] = navigate }''', 'trusted navigation handler')
     result[k] = replace_once(result[k], '    fun unbind(session: GeckoSession) {', '    fun unbind(session: GeckoSession) {\n        userNavigation.remove(session)', 'release link handler')
-    result[k] = replace_once(result[k], '.put("skipSpeed", site?.skipSpeed ?: 30)', '.put("popupBlock", prefs.popupBlock)\n                            .put("skipSpeed", site?.skipSpeed ?: 30)', 'popup preference')
+    result[k] = replace_once(result[k], '.put("skipSpeed", site?.skipSpeed ?: 30)', '.put("popupBlock", blockSitePopups)\n                            .put("skipSpeed", site?.skipSpeed ?: 30)', 'popup preference')
     result[k] = replace_once(result[k], '                "reader" -> {', '''                "user-link" -> {
                     if (message.optString("page").substringBefore('#') != client.page().substringBefore('#')) return null
                     val url = message.optString("url")

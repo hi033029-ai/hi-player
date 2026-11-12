@@ -39,6 +39,7 @@ jobs:
           node tools/test_youtube_skipper.cjs
           node tools/test_gecko_request_context.cjs
           node tools/test_page_skipper.cjs
+          node tools/test_adblock_safety.cjs
       - name: Browser, account, download and player regressions
         run: >-
           gradle --no-daemon :app:testDebugUnitTest --max-workers=2

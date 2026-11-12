@@ -41,7 +41,9 @@ def augment_parity(result):
                         .put("adBlock", protectionEnabled && !BuildConfig.PLAY_STORE_BUILD)
                         .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD)
                         .put("skipSpeed", siteTools.skipSpeed)
-                        .put("autoContinue", siteTools.autoContinue))''', '''                    val pageHost = Uri.parse(client.page().takeIf(::validWebUrl) ?: sender.url).host
+                        .put("autoContinue", siteTools.autoContinue))''', '''                    val pageUrl = client.page().takeIf(::validWebUrl) ?: sender.url
+                    val pageHost = Uri.parse(pageUrl).host
+                    val blockSitePopups = prefs.popupBlock && !geckoPopupExceptions.isAllowed(sender.session, pageUrl)
                     val enabled = prefs.adBlock
                     return policyReply {
                         val site = BrowserAdvancedRules.snapshot().sites[pageHost?.lowercase()?.trimEnd('.')]

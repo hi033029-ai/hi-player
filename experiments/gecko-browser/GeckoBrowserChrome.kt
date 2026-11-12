@@ -78,6 +78,12 @@ internal fun GeckoBrowserChrome(
     val onPage = current.url.isNotBlank() && services?.secureRouting?.route(coordinator.activeId) == null
     val bookmarkUrl = if (onPage) GeckoTabPersistence.safeUrl(current.url) else ""
     val saved = bookmarkUrl.isNotEmpty() && store.isBookmarked(bookmarkUrl)
+    var popupRevision by remember { mutableIntStateOf(0) }
+    var popupNotice by remember { mutableStateOf<String?>(null) }
+    @Suppress("UNUSED_VARIABLE") val popupStateRevision = popupRevision
+    val popupSession = (coordinator.controller.sessionFor(coordinator.activeId) as? GeckoManagedTab)?.engine?.session
+    val popupAllowed = geckoPopupExceptions.isAllowed(popupSession, current.url)
+
 
     GeckoBrowserShell(
         coordinator = coordinator, store = store, providerNames = providerNames,
@@ -130,6 +136,14 @@ internal fun GeckoBrowserChrome(
             GeckoClearDataState.IDLE -> Unit
         }
     }
+    popupNotice?.let { notice ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { popupNotice = null },
+            title = { androidx.compose.material3.Text("Site pop-ups") },
+            text = { androidx.compose.material3.Text(notice) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { popupNotice = null }) { androidx.compose.material3.Text("OK") } },
+        )
+    }
     if (showMenu) {
         HiBrowserMenuSheet(
             tiles = listOf(
@@ -158,6 +172,19 @@ internal fun GeckoBrowserChrome(
                         },
                         onError = { qrNotice = it },
                     )
+                },
+                HiMenuAction(if (popupAllowed) "Block site pop-ups" else "Allow site pop-ups", Icons.Default.OpenInNew,
+                    enabled = onPage && popupSession != null && geckoPopupExceptions.origin(current.url) != null,
+                    checked = popupAllowed) {
+                    popupSession?.let { session ->
+                        if (popupAllowed) {
+                            geckoPopupExceptions.revoke(session)
+                            popupNotice = "Site pop-up exception removed."
+                        } else if (geckoPopupExceptions.allow(session, current.url)) {
+                            popupNotice = "Pop-ups are allowed for this site in this tab until it closes. Ad filters still apply, but some unwanted pop-ups may get through. Try the link again; reload only if needed."
+                        }
+                        popupRevision++
+                    }
                 },
                 HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) {
                     coordinator.setDesktop(!coordinator.desktopMode())

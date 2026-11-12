@@ -74,7 +74,7 @@
     var invisible = parseFloat(cs.opacity) < 0.1 ||
       (cs.backgroundColor === 'rgba(0, 0, 0, 0)' && cs.backgroundImage === 'none' &&
         !(el.textContent || '').trim() && !el.querySelector('img,video,canvas,svg,picture'));
-    return invisible || (parseInt(cs.zIndex, 10) || 0) >= 2147480000;
+    return invisible;
   }
   function onTap(e) {
     if (!e.isTrusted) return;
@@ -90,39 +90,10 @@
   document.addEventListener('click', onTap, true);
   document.addEventListener('auxclick', onTap, true);
 
-  // Scripts that build a hidden link to another site and click it themselves.
-  try {
-    var nativeClick = HTMLAnchorElement.prototype.click;
-    HTMLAnchorElement.prototype.click = function () {
-      try {
-        var target = (this.getAttribute('target') || '').toLowerCase();
-        if (!this.isConnected && target === '_blank' && crossSite(this.href)) return;
-      } catch (e) {}
-      return nativeClick.apply(this, arguments);
-    };
-  } catch (e) {}
-
-  // ---- 3. Standard-size ad frames from other sites (300x250, 728x90, ...).
-  var AD_SIZES = [[300, 250], [728, 90], [320, 50], [320, 100], [160, 600], [300, 600], [970, 250], [970, 90], [468, 60], [336, 280], [300, 50], [300, 100]];
-  function adSized(w, h) {
-    for (var i = 0; i < AD_SIZES.length; i++) {
-      if (Math.abs(AD_SIZES[i][0] - w) <= 2 && Math.abs(AD_SIZES[i][1] - h) <= 2) return true;
-    }
-    return false;
-  }
-  function sweepFrames() {
-    var frames = document.getElementsByTagName('iframe');
-    for (var i = 0; i < frames.length && i < 60; i++) {
-      var f = frames[i];
-      if (f.__hiAdChecked) continue;
-      var src = f.getAttribute('src') || '';
-      if (!src || /captcha|turnstile|challenges\.cloudflare|recaptcha|hcaptcha/i.test(src)) { f.__hiAdChecked = true; continue; }
-      var w = f.offsetWidth, h = f.offsetHeight;
-      if (!w || !h) continue;
-      f.__hiAdChecked = true;
-      if (crossSite(src) && adSized(w, h)) f.style.setProperty('display', 'none', 'important');
-    }
-  }
+  // Do not intercept programmatic anchor clicks or hide frames based only on
+  // their size: download links and legitimate widgets commonly use both.
+  // Known ad frames remain covered by the specific selectors above and the
+  // browser's network filter.
 
   // ---- 4. Ads inside HTML5 players: click "Skip ad", otherwise mute and jump to the end.
   var SKIP = '.jw-skip:not(.jw-skip-disabled),.videoAdUiSkipButton,.vast-skip-button,.vast-skip,.vjs-ad-skip,' +
