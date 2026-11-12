@@ -85,6 +85,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -347,6 +349,7 @@ internal data class HiMenuAction(
     val icon: ImageVector,
     val enabled: Boolean = true,
     val checked: Boolean? = null,
+    val avatarUrl: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -449,15 +452,24 @@ private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> 
                     .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(
-                    item.icon,
-                    contentDescription = null,
-                    tint = when {
-                        !item.enabled -> palette.textTertiary
-                        else -> palette.primary
-                    },
-                    modifier = Modifier.size(26.dp),
-                )
+                if (item.avatarUrl != null) {
+                    val fallback = rememberVectorPainter(item.icon)
+                    AsyncImage(
+                        model = item.avatarUrl,
+                        contentDescription = null,
+                        placeholder = fallback,
+                        error = fallback,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(26.dp).clip(CircleShape),
+                    )
+                } else {
+                    Icon(
+                        item.icon,
+                        contentDescription = null,
+                        tint = if (!item.enabled) palette.textTertiary else palette.primary,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Box(modifier = Modifier.height(30.dp), contentAlignment = Alignment.TopCenter) {
                     Text(

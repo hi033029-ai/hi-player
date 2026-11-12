@@ -160,7 +160,7 @@ internal fun GeckoAppearanceDialog(
         title = { Text("Browser settings", color = palette.textPrimary) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Appearance and pop-up choices apply immediately. Content changes save automatically.", color = palette.textSecondary)
+                Text("Appearance and pop-up choices save automatically.", color = palette.textSecondary)
                 GeckoSettingSwitchRow("Dark web pages", "Use a dark color scheme on compatible sites", Icons.Default.DarkMode,
                     settings.dark, "Dark web pages") { settings.setAppearance(it, settings.zoom) }
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated.copy(alpha = .45f)).padding(14.dp)) {
@@ -180,22 +180,6 @@ internal fun GeckoAppearanceDialog(
                 Text("Reload pages to apply text size. Unsent input may be lost when reloading.", color = palette.textSecondary)
                 GeckoSettingSwitchRow("Block pop-ups", "Allow new windows only after you tap a link", Icons.Default.Block,
                     settings.popupBlock, "Block pop-ups", settings::changePopupBlock)
-                Text("Privacy and content", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-                GeckoSettingSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", Icons.Default.Block,
-                    settings.adBlock, "Ad and tracker blocking", settings::changeAdBlock)
-                GeckoSettingSwitchRow("Skip page transitions", "Try to continue through supported pages", Icons.Default.Refresh,
-                    settings.pageSkipper, "Skip page transitions", settings::changePageSkipper)
-                if (!com.example.BuildConfig.PLAY_STORE_BUILD) GeckoSettingSwitchRow(
-                    "YouTube ad skip", "Mute, fast-forward and skip YouTube ads", Icons.Default.Refresh,
-                    settings.youtubeAdSkip, "YouTube ad skip", settings::changeYoutubeAdSkip,
-                )
-                Text("Videos", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-                GeckoSettingSwitchRow("Detect website videos", "Find supported videos for Play in Hi Player", Icons.Default.TextFields,
-                    settings.videoHandoff, "Detect website videos", settings::changeVideoHandoff)
-                if (settings.contentNeedsReload) {
-                    Text("Reload the current page to apply blocking and script changes. Unsent page input may be lost.", color = palette.textSecondary)
-                    TextButton(enabled = canReloadCurrentPage, onClick = { settings.markContentApplied(); onReloadCurrentPage() }) { Text("Reload current page") }
-                }
                 AnimatedVisibility(visible = settings.failed, enter = fadeIn() + slideInVertically { it / 3 }, exit = fadeOut() + slideOutVertically { -it / 3 }) {
                     Text("Could not apply that setting. Your previous setting was restored.", color = com.example.ui.theme.HiErrorRed)
                 }

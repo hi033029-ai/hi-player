@@ -59,7 +59,7 @@ internal fun GeckoBrowserChrome(
     services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
-    onPageTools: (() -> Unit)? = null,
+    onPlayDetected: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
@@ -70,12 +70,6 @@ internal fun GeckoBrowserChrome(
     var clearing by remember { mutableStateOf(false) }
     var clearFailed by remember { mutableStateOf(false) }
     var qrNotice by remember { mutableStateOf<String?>(null) }
-    fun startGoogleSignIn() {
-        services?.secureRouting?.decision(
-            coordinator.activeId,
-            GeckoNavigationDecision.SecureSignIn(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull())),
-        )
-    }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
     val current = coordinator.activeSnapshot
     val find = remember(coordinator) { GeckoFindController(coordinator.controller::find, coordinator.controller::clearFind) }
@@ -152,7 +146,7 @@ internal fun GeckoBrowserChrome(
                     enabled = onPage && SecureWebsitePolicy.originKey(current.url) != null) {
                     services.secureRouting.decision(coordinator.activeId, GeckoNavigationDecision.SecureSite(current.url, userGesture = true))
                 }) else emptyArray(),
-                *if (onPageTools != null) arrayOf(HiMenuAction("Page tools", Icons.Default.Settings, enabled = onPage) { onPageTools() }) else emptyArray(),
+                *if (onPlayDetected != null && current.mediaUrl != null) arrayOf(HiMenuAction("Play detected video", Icons.Default.FindInPage, enabled = onPage) { onPlayDetected() }) else emptyArray(),
                 HiMenuAction("Scan QR code", Icons.Default.QrCodeScanner) {
                     showMenu = false
                     HiBrowserTools.scanQrCode(
@@ -171,8 +165,8 @@ internal fun GeckoBrowserChrome(
                 },
             ),
             rows = listOf(
-                *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) "Hi Player account · signed in" else "Sign in to Hi Player with Google", Icons.Default.AccountCircle) { account.openAccount() }) else emptyArray(),
-                *if (services != null) arrayOf(HiMenuAction("Sign in to Google for websites", Icons.Default.Language) { startGoogleSignIn() }) else emptyArray(),
+                *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) account.name()?.takeIf { it.isNotBlank() } ?: account.email()?.takeIf { it.isNotBlank() } ?: "Hi Player account" else "Sign in to Hi Player", Icons.Default.AccountCircle, avatarUrl = account.photoUrl()) { account.openAccount() }) else emptyArray(),
+                // Website sign-in remains available from each website, not as a menu tile.
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
                 *if (services != null) arrayOf(HiMenuAction("Clear browsing data", Icons.Default.History) { showClearData = true }) else emptyArray(),

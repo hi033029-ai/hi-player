@@ -2030,7 +2030,7 @@ fun HiBrowserScreen(
         val bookmarked = onPage && store.isBookmarked(currentUrl)
         HiBrowserMenuSheet(
             tiles = listOf(
-                HiMenuAction(if (accountProfile == null) "Sign in with Google" else "Your account · signed in", Icons.Default.AccountCircle) { showAccount = true },
+                HiMenuAction(accountProfile?.name?.takeIf { it.isNotBlank() } ?: accountProfile?.email?.takeIf { it.isNotBlank() } ?: "Sign in to Hi Player", Icons.Default.AccountCircle, avatarUrl = accountProfile?.photoUrl) { showAccount = true },
                 HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
                 HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
                 HiMenuAction("Downloads", Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
@@ -2072,11 +2072,6 @@ fun HiBrowserScreen(
             rows = listOf(
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { openNewTab(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { showBrowserSettings = true },
-                HiMenuAction("Google website sign-in", Icons.Default.Language) {
-                    val site = currentUrl.takeIf { !showStartPage && SecureWebSessions.validPage(it) }
-                        ?.let(SecureWebSessions::entryForGoogleAuth) ?: SecureWebSessions.GOOGLE_ACCOUNT
-                    requestSecureSite(site, forSignIn = true)
-                },
                 HiMenuAction("Close this tab", Icons.Default.Close) { closeTab(activeTabId) },
             ),
             bottomRow = listOf(
@@ -2524,7 +2519,6 @@ private fun BrowserSettingsDialog(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                GoogleAccountCard(onPlayDriveMedia = { video -> onDismiss(); onPlayAccountMedia(video) }, model = accountModel)
                 BrowserSettingsGroup("Appearance") {
                     BrowserSettingsSwitchRow("Dark theme", "Dark browser controls and web pages where supported. Open pages reload; unsent page input may be lost.", darkMode, onDarkModeChange)
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -2534,22 +2528,16 @@ private fun BrowserSettingsDialog(
                             onValueChange = { onTextZoomChange((it / 10f).roundToInt() * 10) },
                             modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Webpage text size" })
                         TextButton(onClick = { onTextZoomChange(100) }, enabled = textZoom != 100) { Text("Reset webpage text to 100%") }
-                        Text("App text · ${appTextSizeSp}sp", color = palette.textPrimary, fontWeight = FontWeight.Medium)
-                        Text("Changes Hi Player controls and menus, including this screen. System font size is respected too.", color = palette.textSecondary)
-                        Slider(value = appTextSizeSp.coerceIn(12, 24).toFloat(), valueRange = 12f..24f, steps = 11,
-                            onValueChange = { onAppTextSizeChange(it.roundToInt()) },
-                            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "App text size" })
-                        TextButton(onClick = { onAppTextSizeChange(14) }, enabled = appTextSizeSp != 14) { Text("Reset app text to 14sp") }
                     }
                 }
-                BrowserSettingsGroup("Privacy and content") {
+                BrowserSettingsGroup("Advanced protection") {
                     BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
                     BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
-                    if (!BuildConfig.PLAY_STORE_BUILD) BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
-                    BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
-                }
-                BrowserSettingsGroup("Advanced protection & page skipper") {
-                    BrowserAdvancedTools(currentHost, onAdvancedRulesSaved)
+                    if (!BuildConfig.PLAY_STORE_BUILD) {
+                        BrowserSettingsSwitchRow("Skip supported wait pages", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
+                        BrowserSettingsSwitchRow("Skip supported YouTube ads", "Best-effort blocking and skipping on YouTube", youtubeAdSkip, onYoutubeAdSkipChange)
+                    }
+                    Text("Protection uses automatic rules. Existing saved site rules still apply; server waits and security checks are not bypassed.", color = palette.textSecondary)
                 }
                 BrowserSettingsGroup("Videos") {
                     BrowserSettingsSwitchRow(

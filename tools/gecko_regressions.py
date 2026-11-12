@@ -23,10 +23,10 @@ def augment_regressions(result):
     k = 'main/compatibility/Patched_GeckoTabEngine.kt'
     result[k] = replace_once(result[k], '            { text -> update(snapshot.copy(readerText = text)) })', '            { text -> update(snapshot.copy(readerText = text)) })\n        GeckoFeatureBridge.setUserNavigation(session) { target -> load(target) }', 'normal-policy link loader')
     k = 'main/compatibility/Patched_GeckoBrowserChrome.kt'
-    result[k] = replace_once(result[k], '    onPageTools: (() -> Unit)? = null,', '    onPageTools: (() -> Unit)? = null,\n    onPlayDownload: ((String, String?, String?) -> Unit)? = null,', 'download play callback')
+    result[k] = replace_once(result[k], '    onPlayDetected: (() -> Unit)? = null,', '    onPlayDetected: (() -> Unit)? = null,\n    onPlayDownload: ((String, String?, String?) -> Unit)? = null,', 'download play callback')
     result[k] = replace_once(result[k], '        GeckoDownloadUi(services.downloads)', '        GeckoDownloadUi(services.downloads, onPlay = onPlayDownload)', 'download play action')
     k = 'main/integration/GeckoBrowserEntry.kt'
-    result[k] = replace_once(result[k], '                onPageTools = { showPageTools = true },', '''                onPageTools = { showPageTools = true },
+    result[k] = replace_once(result[k], '                onPlayDetected = { confirmDetectedMedia = true },', '''                onPlayDetected = { confirmDetectedMedia = true },
                 onPlayDownload = { localUri, _, _ ->
                     // Always the app-owned local document; the host resolves partial-download state.
                     latest.onPlayDirectMedia(localUri)

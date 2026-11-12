@@ -104,7 +104,7 @@ internal fun GoogleAccountCard(onPlayDriveMedia: (com.example.model.VideoItem) -
             OutlinedButton(enabled = !busy, onClick = {
                 if (!openDeviceGoogleAccounts(context)) Toast.makeText(context, "Open Android Settings > Accounts to add a Google account.", Toast.LENGTH_LONG).show()
             }) { Text("Add Google account to this phone (for other apps)") }
-            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. In Hi Browser, choose \"Sign in to Google for websites\" once and sites that offer Google sign-in can use that account. Other apps use the Google accounts added to Android.", color = palette.textSecondary)
+            Text("Google sign-in connects your Hi Player profile. Drive permission is requested only when you open your files. On websites, use the site’s own sign-in button. Other apps use the Google accounts added to Android.", color = palette.textSecondary)
             if (includeDriveConnection && profile != null) FilledTonalButton(enabled = !busy, onClick = { showDrive = true }) { Text("My Drive · videos & music") }
 
         }

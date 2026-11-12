@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.theme.HiPlayerTheme
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,16 +60,17 @@ class GeckoBrowserChromeTest {
         }
     }
 
-    @Test fun pageToolsLiveInTheBrowserMenuInsteadOfFloatingOverThePage() {
+    @Test fun menuShowsAccountAndDetectedVideoWithoutRemovedShortcuts() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).edit().clear().commit()
         val store = OrbitBrowserStore(context)
-        var openedPageTools = false
+        var openedAccount = false
+        var openedVideo = false
         val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { tab, changed ->
             object : GeckoManagedSession<GeckoView> {
                 override fun attach(view: GeckoView) = Unit
                 override fun detach() = Unit
-                override fun load(url: String) { changed(GeckoTabSnapshot(tab.id, tab.privateTab, url)) }
+                override fun load(url: String) { changed(GeckoTabSnapshot(tab.id, tab.privateTab, url, mediaUrl = "https://example.org/video.mp4")) }
                 override fun reload() = Unit
                 override fun stop() = Unit
                 override fun back() = Unit
@@ -80,19 +82,22 @@ class GeckoBrowserChromeTest {
             }
         }
         compose.runOnIdle { coordinator.load("https://example.org") }
+        val account = GeckoAccountHooks(email = { "khan@example.org" }, signedIn = { true },
+            name = { "Khan" }, openAccount = { openedAccount = true })
         compose.setContent { HiPlayerTheme {
             GeckoBrowserChrome(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {}, {},
-                downloadsContent = { Text("Downloads") },
-                pageContent = { Text("Gecko page") },
-                onPageTools = { openedPageTools = true })
+                downloadsContent = { Text("Downloads") }, pageContent = { Text("Gecko page") },
+                account = account, onPlayDetected = { openedVideo = true })
         } }
-
-        compose.runOnIdle { assertTrue(compose.onAllNodesWithText("Page actions").fetchSemanticsNodes().isEmpty()) }
         compose.onNodeWithContentDescription("Browser menu").performClick()
-        compose.onNodeWithText("Page tools").performScrollTo().performClick()
         compose.runOnIdle {
-            assertTrue(openedPageTools)
-            coordinator.close()
+            assertTrue(compose.onAllNodesWithText("Page tools").fetchSemanticsNodes().isEmpty())
+            assertTrue(compose.onAllNodesWithText("Sign in to Google for websites").fetchSemanticsNodes().isEmpty())
         }
+        compose.onNodeWithText("Khan").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(openedAccount); assertFalse(openedVideo) }
+        compose.onNodeWithContentDescription("Browser menu").performClick()
+        compose.onNodeWithText("Play detected video").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(openedVideo); coordinator.close() }
     }
 }

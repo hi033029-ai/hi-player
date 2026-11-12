@@ -4,5 +4,7 @@ package com.example.browser.gecko
 internal data class GeckoAccountHooks(
     val email: () -> String?,
     val signedIn: () -> Boolean,
+    val name: () -> String? = { null },
+    val photoUrl: () -> String? = { null },
     val openAccount: () -> Unit,
 )

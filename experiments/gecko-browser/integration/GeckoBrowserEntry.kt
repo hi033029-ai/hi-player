@@ -106,9 +106,11 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     var voiceUnavailable by remember { mutableStateOf(false) }
     val accountModel: GoogleAccountViewModel = viewModel(viewModelStoreOwner = activity)
     var showAccount by remember { mutableStateOf(false) }
-    var showPageTools by remember { mutableStateOf(false) }
-    val accountHooks = remember(accountModel) {
-        GeckoAccountHooks(email = { accountModel.profile.value?.email }, signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true })
+    var confirmDetectedMedia by remember { mutableStateOf(false) }
+    val accountProfile by accountModel.profile.collectAsStateWithLifecycle()
+    val accountHooks = remember(accountProfile) {
+        GeckoAccountHooks(email = { accountProfile?.email }, signedIn = { accountProfile != null },
+            name = { accountProfile?.name }, photoUrl = { accountProfile?.photoUrl }, openAccount = { showAccount = true })
     }
     val fullscreen = coordinator.activeSnapshot.fullscreen
     fun navigate(raw: String) {
@@ -173,12 +175,26 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     onCancelGecko = services::cancelDownload) },
                 appNavigation = arguments.appNavigation, services = services,
                 account = accountHooks,
-                onPageTools = { showPageTools = true },
+                onPlayDetected = { confirmDetectedMedia = true },
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
         }
     }
-    GeckoPageToolsSheet(arguments, services, visible = showPageTools) { showPageTools = false }
+    if (confirmDetectedMedia) AlertDialog(
+        onDismissRequest = { confirmDetectedMedia = false },
+        title = { Text("Open media in Hi Player?") },
+        text = { Text("Only the media address, type and title are handed off. Website cookies and DRM keys stay in Gecko.") },
+        confirmButton = { TextButton(onClick = {
+            confirmDetectedMedia = false
+            val media = coordinator.activeSnapshot
+            media.mediaUrl?.let { url ->
+                val playBrowserVideo = latest.onPlayBrowserVideo
+                if (playBrowserVideo != null) playBrowserVideo(url, media.mediaMime, media.mediaTitle)
+                else latest.onPlayDirectMedia(url)
+            }
+        }) { Text("Play") } },
+        dismissButton = { TextButton(onClick = { confirmDetectedMedia = false }) { Text("Stay in browser") } },
+    )
     if (showSettings) GeckoAppearanceDialog(
         services.settings,
         canReloadCurrentPage = coordinator.activeSnapshot.url.isNotBlank(),
