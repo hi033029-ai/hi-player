@@ -76,6 +76,18 @@
         !(el.textContent || '').trim() && !el.querySelector('img,video,canvas,svg,picture'));
     return invisible;
   }
+  // Remove obvious invisible cross-site clickjack layers before the user taps,
+  // so the genuine control underneath receives the original trusted gesture.
+  // Never synthesize a click or guess a destination from an ad URL.
+  function removeHijackOverlays() {
+    var links = document.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length && i < 400; i++) {
+      var a = links[i];
+      if (crossSite(a.href) && hijackOverlay(a)) {
+        try { a.style.setProperty('display', 'none', 'important'); } catch (e) {}
+      }
+    }
+  }
   function onTap(e) {
     if (!e.isTrusted) return;
     var t = e.target;
@@ -119,7 +131,7 @@
   var _st = window.setTimeout;
   function sweep() {
     pending = 0;
-    try { sweepFrames(); } catch (e) {}
+    try { removeHijackOverlays(); } catch (e) {}
     try { if (document.getElementsByTagName('video').length) skipPlayerAds(); } catch (e) {}
   }
   function schedule() {
@@ -129,7 +141,7 @@
     try {
       new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
     } catch (e) {}
-    schedule();
+    sweep();
     // Players switch to ad mode without DOM insertions, so check while videos exist.
     var ticks = 0;
     var timer = window.setInterval.call(window, function () {
