@@ -132,6 +132,7 @@ class GrowingPlaybackDeviceTest {
                             selected && DownloadingFilesRegistry.isOwnedDownloading(key) &&
                                 (model?.engine?.currentPositionMs?.value ?: 0L) >= 1_000L
                         }
+                        try {
                         waitFor("Player screen remained black while audio and the growing file played") {
                             val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
                             try {
@@ -148,6 +149,18 @@ class GrowingPlaybackDeviceTest {
                                 }
                                 red > 20 && green > 20
                             } finally { image.recycle() }
+                        }
+                        } catch (error: AssertionError) {
+                            val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                            try {
+                                context.getExternalFilesDir(null)?.resolve("growing-screen-diagnostic.png")
+                                    ?.outputStream()?.use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                            } finally { image.recycle() }
+                            activity.onActivity {
+                                val player = model!!.engine.getPlayer()
+                                android.util.Log.i("GrowingScreenTest", "state=${player.playbackState} playing=${player.isPlaying} position=${player.currentPosition} videoSize=${player.videoSize.width}x${player.videoSize.height} rendered=${player.videoDecoderCounters?.renderedOutputBufferCount}")
+                            }
+                            throw error
                         }
                     } finally {
                         activity.onActivity { model?.stopForNavigation() }
