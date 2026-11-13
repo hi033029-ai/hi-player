@@ -77,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.PendingDownloadFormat
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
 import com.example.ui.theme.HiPrimaryCyan
@@ -210,8 +211,11 @@ fun ControlsOverlay(
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
+                        val displayTitle = video?.let {
+                            PendingDownloadFormat.displayName(it.title, it.path)
+                        } ?: "Hi Player"
                         Text(
-                            text = video?.title ?: "Hi Player",
+                            text = displayTitle,
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -219,8 +223,7 @@ fun ControlsOverlay(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = video?.path?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
-                                ?: video?.title ?: "Stream",
+                            text = video?.folderName?.takeIf { it.isNotBlank() } ?: "Video",
                             color = Color.White.copy(alpha = 0.68f),
                             fontSize = 11.sp,
                             maxLines = 1,

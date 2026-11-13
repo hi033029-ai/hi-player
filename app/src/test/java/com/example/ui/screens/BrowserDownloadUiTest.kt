@@ -46,7 +46,40 @@ class BrowserDownloadUiTest {
         assertTrue(stats.top >= card.top && stats.bottom <= card.bottom)
         val row = compose.onNodeWithTag("download-main-row-1").fetchSemanticsNode().boundsInRoot
         assertTrue(stats.top >= row.top && stats.bottom <= row.bottom)
+        val pause = compose.onNodeWithContentDescription("Pause download").fetchSemanticsNode().boundsInRoot
+        assertTrue("compact card actions should not steal filename width", pause.top >= row.bottom)
         compose.onNodeWithText("done.mp4").assertExists()
+    }
+    @Test fun ephemeralDownloadControlsUseGeckoDispatchers() {
+        var pausedId: Long? = null
+        var cancelledId: Long? = null
+        val row = BrowserDownload(
+            88,
+            "streaming.mkv",
+            "https://example.test/streaming",
+            "video/x-matroska",
+            status = BrowserDownloadStatus.RUNNING,
+            ephemeral = true,
+        )
+        compose.setContent {
+            CompositionLocalProvider(LocalHiPalette provides MonochromeLightPalette) {
+                Box(Modifier.size(400.dp, 760.dp)) {
+                    BrowserDownloadsPanel(
+                        downloads = listOf(row),
+                        query = "",
+                        onPlay = {},
+                        onPauseGecko = { pausedId = it },
+                        onCancelGecko = { cancelledId = it },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithContentDescription("Pause download").performClick()
+        compose.runOnIdle { assertEquals(88L, pausedId) }
+        compose.onNodeWithContentDescription("Options for streaming.mkv").performClick()
+        compose.onNodeWithText("Cancel download").performClick()
+        compose.runOnIdle { assertEquals(88L, cancelledId) }
     }
     @Test fun completedStreamDoesNotOfferAnEmptyDownloadLink() {
         val row = BrowserDownload(99, "file.txt", "", "text/plain", status = BrowserDownloadStatus.COMPLETED, savedUri = "content://test/item")

@@ -2,6 +2,8 @@ package com.example.model
 
 /** Shared recognition rules for browser and download-manager temporary media files. */
 object PendingDownloadFormat {
+    private val leadingPendingMarker = Regex("^\\.pending-[0-9]+-", RegexOption.IGNORE_CASE)
+
     val suffixes: List<String> = listOf(
         ".partialdownload",
         ".crdownload",
@@ -25,13 +27,20 @@ object PendingDownloadFormat {
         return suffixes.firstOrNull(lowerName::endsWith)
     }
 
-    fun isPending(name: String): Boolean = suffixFor(name) != null
+    fun isPending(name: String): Boolean = suffixFor(name) != null || leadingPendingMarker.containsMatchIn(name)
 
     fun originalName(name: String): String {
         var normalized = name
         while (true) {
-            val suffix = suffixFor(normalized) ?: break
-            val stripped = normalized.dropLast(suffix.length)
+            val suffix = suffixFor(normalized)
+            if (suffix != null) {
+                val stripped = normalized.dropLast(suffix.length)
+                if (stripped.isBlank()) return name
+                normalized = stripped
+                continue
+            }
+            val marker = leadingPendingMarker.find(normalized) ?: break
+            val stripped = normalized.removeRange(marker.range)
             if (stripped.isBlank()) return name
             normalized = stripped
         }

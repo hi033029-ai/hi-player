@@ -72,6 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -103,6 +104,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiThemePalette
 import com.example.ui.components.HiPlayerLogoBadge
 import com.example.ui.components.rememberHiPlayerLogoPainter
 import androidx.compose.ui.graphics.FilterQuality
@@ -969,6 +971,19 @@ internal enum class HiLibrarySection(val label: String, val icon: ImageVector) {
     DOWNLOADS("Downloads", Icons.Default.Download),
 }
 
+private val BrowserDownloadsPalette = HiThemePalette(
+    background = Color(0xFF0A0E14),
+    surface = Color(0xFF131922),
+    surfaceElevated = Color(0xFF1C2533),
+    surfaceBorder = Color(0xFF344357),
+    primary = Color(0xFF00E5FF),
+    secondary = Color(0xFF38D39F),
+    textPrimary = Color(0xFFF4F7FB),
+    textSecondary = Color(0xFFB6C2D2),
+    textTertiary = Color(0xFF94A0B1),
+    isDark = true,
+)
+
 /** Full-screen library with Bookmarks, History and Downloads, each searchable. */
 @Composable
 internal fun HiBrowserLibrary(
@@ -982,10 +997,12 @@ internal fun HiBrowserLibrary(
     downloadsContent: @Composable (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val palette = LocalHiPalette.current
+    val appPalette = LocalHiPalette.current
     var section by remember { mutableStateOf(initialSection) }
     var query by remember(section) { mutableStateOf("") }
+    val palette = if (section == HiLibrarySection.DOWNLOADS) BrowserDownloadsPalette else appPalette
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        CompositionLocalProvider(LocalHiPalette provides palette) {
         BrowserNavigationHost(revealButtonBottomInset = 12.dp, navigation = appNavigation) {
         Column(modifier = Modifier.fillMaxSize().background(palette.background)) {
             Row(

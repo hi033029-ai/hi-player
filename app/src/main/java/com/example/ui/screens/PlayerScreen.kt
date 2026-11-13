@@ -97,6 +97,7 @@ import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
 import com.example.ui.NativeHdrPlayerSurface
 import com.example.player.HdrColorModeManager
+import com.example.player.FirstFrameRevealPolicy
 import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
 import com.example.player.shouldUseNativeHdrOutput
@@ -283,12 +284,27 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    // Safety valve for finished media whose device codec skips the first-frame
-    // callback after a surface hand-off. A growing file must not use this
-    // timeout: lifting its mask without a decoded frame made a still-loading
-    // Matroska stream look like a broken black player.
+    // Keep the black cover until the first decoded frame in normal playback. For
+    // a growing download, also use a bounded fallback after Media3 reaches READY:
+    // a missed callback during surface negotiation must not hide the video forever.
     LaunchedEffect(currentVideo?.uri, currentVideo?.isPartialDownload, activePlayer) {
-        if (currentVideo?.isPartialDownload != true) {
+        val player = activePlayer
+        val isGrowingDownload = currentVideo?.isPartialDownload == true
+        if (isGrowingDownload) {
+            while (!firstFrameRendered && player.playbackState != Player.STATE_READY) {
+                delay(100)
+            }
+            if (!firstFrameRendered) {
+                delay(FirstFrameRevealPolicy.GROWING_READY_GRACE_MS)
+                if (!firstFrameRendered && FirstFrameRevealPolicy.canFallbackReveal(
+                        isGrowingDownload = true,
+                        playerReady = player.playbackState == Player.STATE_READY,
+                    )
+                ) {
+                    firstFrameRendered = true
+                }
+            }
+        } else {
             delay(850)
             if (!firstFrameRendered) firstFrameRendered = true
         }

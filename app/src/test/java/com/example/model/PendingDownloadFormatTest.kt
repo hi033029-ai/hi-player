@@ -35,4 +35,24 @@ class PendingDownloadFormatTest {
             PendingDownloadFormat.displayName("Pending Video Recap.mp4", "/storage/emulated/0/Download/actual-file.mp4.part"),
         )
     }
+
+    @Test
+    fun `android leading pending marker is removed from title and recognized as active`() {
+        val stagedName = ".pending-1795155175-The.Odyssey.2026.UHD.mkv"
+
+        org.junit.Assert.assertTrue(PendingDownloadFormat.isPending(stagedName))
+        assertEquals("The.Odyssey.2026.UHD.mkv", PendingDownloadFormat.originalName(stagedName))
+        assertEquals(
+            "The.Odyssey.2026.UHD.mkv",
+            PendingDownloadFormat.displayName(stagedName, "/storage/emulated/0/Download/$stagedName"),
+        )
+    }
+
+    @Test
+    fun `leading marker and trailing partial suffix are both removed`() {
+        assertEquals(
+            "The.Movie.mkv",
+            PendingDownloadFormat.originalName(".pending-123-The.Movie.mkv.part"),
+        )
+    }
 }

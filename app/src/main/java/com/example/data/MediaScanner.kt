@@ -75,7 +75,8 @@ object MediaScanner {
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
-                    val name = PendingDownloadFormat.displayName(cursor.getString(nameCol), dataPath)
+                    val rawDisplayName = cursor.getString(nameCol).orEmpty()
+                    val name = PendingDownloadFormat.displayName(rawDisplayName, dataPath)
                     val duration = cursor.getLong(durationCol)
                     val size = cursor.getLong(sizeCol)
                     val width = cursor.getInt(widthCol)
@@ -86,11 +87,14 @@ object MediaScanner {
                     val lastModifiedMs = cursor.getLong(modifiedCol).coerceAtLeast(0L) * 1000L
                     val growthKey = dataPath.ifBlank { contentUri.toString() }
                     val looksLikeDownload = dataPath.contains("/download/", ignoreCase = true) || dataPath.isBlank()
+                    val pendingName = PendingDownloadFormat.isPending(rawDisplayName) ||
+                        PendingDownloadFormat.isPending(dataPath.substringAfterLast('/'))
                     val isFinalNameGrowing = looksLikeDownload &&
-                        !PendingDownloadFormat.isPending(name) &&
+                        !pendingName &&
                         DownloadingFilesRegistry.observeFinalNameDownload(growthKey, size, lastModifiedMs)
+                    val isGrowingDownload = pendingName || isFinalNameGrowing
                     val rawFile = dataPath.takeIf(String::isNotBlank)?.let(::File)
-                    val playbackUri = if (isFinalNameGrowing && rawFile?.isFile == true && rawFile.canRead()) {
+                    val playbackUri = if (isGrowingDownload && rawFile?.isFile == true && rawFile.canRead()) {
                         Uri.fromFile(rawFile)
                     } else {
                         contentUri
@@ -100,7 +104,7 @@ object MediaScanner {
                     } else {
                         playbackUri.toString()
                     }
-                    if (isFinalNameGrowing) {
+                    if (isGrowingDownload) {
                         // A readable raw file gives Media3 a stable descriptor
                         // while a download manager appends bytes. Fall back to
                         // the MediaStore URI only when scoped storage hides it.
@@ -109,11 +113,11 @@ object MediaScanner {
                             activeGrowingContentUris += playbackUri.toString()
                         }
                     }
-                    if (!isFinalNameGrowing) {
+                    if (!isGrowingDownload) {
                         if (dataPath.isNotBlank()) DownloadingFilesRegistry.markComplete(dataPath)
                         DownloadingFilesRegistry.markComplete(contentUri.toString())
                     }
-                    val growingProgress = if (isFinalNameGrowing) {
+                    val growingProgress = if (isGrowingDownload) {
                         DownloadingFilesRegistry.progress(playbackKey)
                     } else {
                         null
@@ -125,7 +129,7 @@ object MediaScanner {
                         "Videos"
                     }
 
-                    val is4k = !isFinalNameGrowing && (width >= 3840 || height >= 2160)
+                    val is4k = !isGrowingDownload && (width >= 3840 || height >= 2160)
                     val codec = when {
                         mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "HEVC (H.265)"
                         mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1 UHD"
@@ -138,22 +142,22 @@ object MediaScanner {
                             id = id,
                             uri = playbackUri,
                             title = name,
-                            durationMs = if (isFinalNameGrowing) 0L else duration,
+                            durationMs = if (isGrowingDownload) 0L else duration,
                             sizeBytes = size,
-                            width = if (isFinalNameGrowing) 0 else width,
-                            height = if (isFinalNameGrowing) 0 else height,
+                            width = if (isGrowingDownload) 0 else width,
+                            height = if (isGrowingDownload) 0 else height,
                             mimeType = mime,
                             dateAdded = dateAdded,
                             folderName = folderName,
                             path = dataPath,
                             isHdr = is4k,
                             hdrFormat = if (is4k) "HDR10 / Dolby Vision" else null,
-                            codec = if (isFinalNameGrowing) "Downloading" else codec,
-                            bitrate = if (!isFinalNameGrowing && duration > 0) (size * 8000L / duration) else 0L,
-                            isPartialDownload = isFinalNameGrowing,
+                            codec = if (isGrowingDownload) "Downloading" else codec,
+                            bitrate = if (!isGrowingDownload && duration > 0) (size * 8000L / duration) else 0L,
+                            isPartialDownload = isGrowingDownload,
                             downloadedBytes = growingProgress?.downloadedBytes ?: 0L,
                             downloadSpeedBytesPerSecond = growingProgress?.speedBytesPerSecond ?: 0L,
-                            isNewVideo = isFinalNameGrowing || (dateAdded > 0L &&
+                            isNewVideo = isGrowingDownload || (dateAdded > 0L &&
                                 (System.currentTimeMillis() / 1000L - dateAdded) in 0..NEW_VIDEO_WINDOW_SECONDS)
                         )
                     )
@@ -186,8 +190,11 @@ object MediaScanner {
             val pendingTitles = partialItems.map { it.title.lowercase(Locale.ROOT) }.toSet()
             if (partialItems.isNotEmpty()) {
                 videoList.removeAll { indexed ->
-                    val namedPendingDuplicate = PendingDownloadFormat.isPending(indexed.title) &&
-                        PendingDownloadFormat.originalName(indexed.title).lowercase(Locale.ROOT) in pendingTitles
+                    val namedPendingDuplicate = indexed.isPartialDownload &&
+                        indexed.title.lowercase(Locale.ROOT) in pendingTitles && partialItems.any { partial ->
+                            indexed.dateAdded <= 0L || partial.dateAdded <= 0L ||
+                                abs(indexed.dateAdded - partial.dateAdded) <= 10 * 60
+                        }
                     val genericPendingDuplicate = PendingDownloadFormat.isPlaceholderTitle(indexed.title) &&
                         indexed.durationMs <= 0L && partialItems.any { partial ->
                             abs(indexed.dateAdded - partial.dateAdded) <= 10 * 60
@@ -314,8 +321,7 @@ object MediaScanner {
                 .flatMap { it.walkTopDown().maxDepth(3) }
                 .filter(File::isFile)
                 .mapNotNull { file ->
-                    val lowerName = file.name.lowercase()
-                    val suffix = PendingDownloadFormat.suffixFor(lowerName) ?: return@mapNotNull null
+                    if (!PendingDownloadFormat.isPending(file.name)) return@mapNotNull null
                     val originalName = PendingDownloadFormat.originalName(file.name)
                     val extension = originalName.substringAfterLast('.', "").lowercase()
                     val playableExtension = extension.takeIf { it in PendingDownloadFormat.videoExtensions }
@@ -456,10 +462,10 @@ object MediaScanner {
             MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.DATA
         )
-        val selection = PendingDownloadFormat.suffixes.joinToString(" OR ") {
+        val selection = (PendingDownloadFormat.suffixes.map {
             "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-        }
-        val selectionArgs = PendingDownloadFormat.suffixes.map { "%$it" }.toTypedArray()
+        } + "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?").joinToString(" OR ", prefix = "(", postfix = ")")
+        val selectionArgs = (PendingDownloadFormat.suffixes.map { "%$it" } + ".pending-%").toTypedArray()
 
         return runCatching {
             context.contentResolver.query(
@@ -479,7 +485,7 @@ object MediaScanner {
                 buildList {
                     while (cursor.moveToNext()) {
                         val pendingName = cursor.getString(nameColumn) ?: continue
-                        PendingDownloadFormat.suffixFor(pendingName) ?: continue
+                        if (!PendingDownloadFormat.isPending(pendingName)) continue
                         val originalName = PendingDownloadFormat.originalName(pendingName)
                         val mimeType = cursor.getString(mimeColumn).orEmpty()
                         val extension = originalName.substringAfterLast('.', "").lowercase()
