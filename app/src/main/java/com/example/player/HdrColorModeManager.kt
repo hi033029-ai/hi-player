@@ -118,7 +118,7 @@ class HdrColorModeManager(private val activity: Activity) {
     }
 
     private fun displaySupportsHdr(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && runCatching {
-        activity.windowManager.defaultDisplay.hdrCapabilities.supportedHdrTypes.isNotEmpty()
+        activity.windowManager.defaultDisplay.hdrCapabilities?.supportedHdrTypes?.isNotEmpty() == true
     }.getOrDefault(false)
 
     @RequiresApi(Build.VERSION_CODES.O)

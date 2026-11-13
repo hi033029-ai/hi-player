@@ -73,7 +73,7 @@ internal object GeckoDownloadRuntime {
             controller.onStateChanged = ::onStateChanged
             controller.onTransferStarted = { cancelTransfer ->
                 val id = activeHistoryId.get()
-                if (id == null) null else BrowserDownloads.registerExternalTransfer(
+                if (id == null) AutoCloseable {} else BrowserDownloads.registerExternalTransfer(
                     appContext,
                     id,
                     ExternalBrowserDownloadControl(
