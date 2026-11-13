@@ -19,7 +19,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko
 diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gecko-browser/GeckoBrowserServices.kt
 --- a/experiments/gecko-browser/GeckoBrowserServices.kt
 +++ b/experiments/gecko-browser/GeckoBrowserServices.kt
-@@ -25,9 +25,11 @@
+@@ -21,9 +21,11 @@
  internal class GeckoBrowserServices(
      context: Context,
 -    registry: ActivityResultRegistry,
@@ -32,7 +32,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +    private var hostContext = if (registry != null) java.lang.ref.WeakReference(context) else null
      private val main = Handler(Looper.getMainLooper())
      private val worker = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-download").apply { isDaemon = true } }
-@@ -54,5 +56,6 @@
+@@ -37,5 +39,6 @@
      var downloadNotice by mutableStateOf<String?>(null)
          private set
 -    val coordinator: GeckoBrowserCoordinator<org.mozilla.geckoview.GeckoView>
@@ -40,7 +40,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        private set
      val clearData: GeckoClearDataController
      val secureRouting: GeckoSecureRouting
-@@ -97,6 +100,6 @@
+@@ -52,6 +55,6 @@
                  rememberOrigin = { SecureWebSessions.rememberBrowser(appContext, it) },
                  forgetOrigin = { SecureWebSessions.forgetBrowser(appContext, it) },
 -                openWebsite = { SecureWebSessions.open(context, it, android.graphics.Color.BLACK).isSuccess },
@@ -49,7 +49,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                openExternal = { url -> withHost { host -> host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true } },
              )
              contextActions = GeckoContextActions(
-@@ -104,10 +107,10 @@
+@@ -59,10 +62,10 @@
                  openTab = { privateTab, url -> if (coordinator.open(privateTab)) { coordinator.load(url); true } else false },
                  copy = { url ->
 -                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -62,7 +62,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                    withHost { host -> host.startActivity(Intent.createChooser(send, "Share link")); true }
                  },
              )
-@@ -122,8 +125,31 @@
+@@ -77,8 +80,31 @@
              })
              clearData = createGeckoClearDataController(appContext, coordinator, worker, secureRouting::clearPrivateRouting)
 -        } catch (error: Exception) {
@@ -95,7 +95,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        contextActions.dismiss()
      }
      private fun shouldRecordDownload(tabId: Int): Boolean = coordinator.tabs.firstOrNull { it.id == tabId }?.privateTab == false
-@@ -135,4 +161,5 @@
+@@ -96,4 +122,5 @@
          if (closed) return
          closed = true
 +        boundRegistry?.let(::unbind)

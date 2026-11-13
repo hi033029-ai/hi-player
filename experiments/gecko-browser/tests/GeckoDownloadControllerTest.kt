@@ -7,7 +7,9 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.Executor
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 
 class GeckoDownloadControllerTest {
     private class Source(
@@ -100,6 +102,43 @@ class GeckoDownloadControllerTest {
         ui.run()
         assertEquals(GeckoDownloadOutcome.Complete(data.size.toLong()), (controller.state as GeckoDownloadState.Finished).outcome)
         assertEquals(1, source.takeCalls)
+    }
+    @Test fun pauseAndResumeKeepTheSameActiveTransfer() {
+        val worker = Tasks(); val target = Target(); val source = Source()
+        val controller = GeckoDownloadController(worker, { it() }) { _, _ -> target }
+        controller.offer(source); controller.approve()
+        val active = controller.state as GeckoDownloadState.Active
+        controller.pause()
+        assertTrue((controller.state as GeckoDownloadState.Active).paused)
+        controller.resume()
+        val resumed = controller.state as GeckoDownloadState.Active
+        assertFalse(resumed.paused)
+        assertEquals(active.name, resumed.name)
+        assertEquals(active.length, resumed.length)
+        assertEquals(1, source.takeCalls)
+        worker.run()
+        assertTrue(target.committed)
+    }
+    @Test fun pausedTransferStopsCopyingUntilTheSameStreamResumes() {
+        val target = Target()
+        val cancellation = GeckoDownloadCancellation()
+        val entered = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        var outcome: GeckoDownloadOutcome? = null
+        assertTrue(cancellation.pause())
+        val worker = Thread {
+            entered.countDown()
+            outcome = transferGeckoDownload(ByteArrayInputStream(byteArrayOf(1, 2, 3)), target, cancellation)
+            finished.countDown()
+        }
+        worker.start()
+        assertTrue(entered.await(1, TimeUnit.SECONDS))
+        Thread.sleep(25)
+        assertEquals(0, target.output.size())
+        assertTrue(cancellation.resume())
+        assertTrue(finished.await(1, TimeUnit.SECONDS))
+        assertEquals(GeckoDownloadOutcome.Complete(3), outcome)
+        assertTrue(target.committed)
     }
     @Test fun lifecycleObserverSeesActiveProgressAndCompletionMetadata() {
         val worker = Tasks(); val ui = Tasks(); val events = mutableListOf<GeckoDownloadState>()

@@ -7,7 +7,6 @@ import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.ColorInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -172,6 +171,10 @@ class HiPlayerEngine(
     /** True when the video decoder reports an HDR transfer function (HLG/PQ). */
     private val _isHdrContent = MutableStateFlow(false)
     val isHdrContent = _isHdrContent.asStateFlow()
+
+    /** False until Media3 exposes color metadata for the selected video format. */
+    private val _isVideoColorMetadataKnown = MutableStateFlow(false)
+    val isVideoColorMetadataKnown = _isVideoColorMetadataKnown.asStateFlow()
 
     /** True when the selected video stream is UHD 4K or larger. */
     private val _is4kContent = MutableStateFlow(false)
@@ -787,6 +790,7 @@ class HiPlayerEngine(
         _availableAudioTracks.value = emptyList()
         _availableSubtitleTracks.value = emptyList()
         _isHdrContent.value = false
+        _isVideoColorMetadataKnown.value = false
         _is4kContent.value = false
         val title = mediaTitle ?: exoPlayer?.currentMediaItem
             ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
@@ -967,13 +971,22 @@ class HiPlayerEngine(
         }
     }
 
-    fun seekTo(positionMs: Long) {
-        val player = exoPlayer ?: return
+    fun clampSeekTarget(positionMs: Long): Long {
+        val player = exoPlayer ?: return positionMs.coerceAtLeast(0L)
         // Clamp only to a known duration. Before the duration is published (and
-        // for live streams) the old clamp to 0..0 sent every skip back to the start.
+        // for live streams) clamping to 0..0 would incorrectly send every skip to
+        // the start. Growing files additionally stop at the safely buffered edge.
         val known = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
             ?: _durationMs.value.takeIf { it > 0L }
-        val clamped = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
+        val durationBounded = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
+        val uri = player.currentMediaItem?.localConfiguration?.uri
+        val growing = uri?.let { DownloadingFilesRegistry.isDownloading(downloadRegistryKey(it)) } == true
+        return GrowingSeekBounds.clamp(durationBounded, player.currentPosition, player.bufferedPosition, growing)
+    }
+
+    fun seekTo(positionMs: Long) {
+        val player = exoPlayer ?: return
+        val clamped = clampSeekTarget(positionMs)
         player.seekTo(clamped)
         _currentPositionMs.value = clamped
     }
@@ -1281,7 +1294,8 @@ class HiPlayerEngine(
 
     private fun updateVideoOutputInfo() {
         val format = exoPlayer?.videoFormat
-        _isHdrContent.value = ColorInfo.isTransferHdr(format?.colorInfo)
+        _isHdrContent.value = isHdrVideoFormat(format)
+        _isVideoColorMetadataKnown.value = hasKnownVideoColorMetadata(format)
         _is4kContent.value = (format?.width ?: 0) >= 3840 || (format?.height ?: 0) >= 2160
     }
 

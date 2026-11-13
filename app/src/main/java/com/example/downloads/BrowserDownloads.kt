@@ -35,6 +35,13 @@ import java.io.File
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal data class ExternalBrowserDownloadControl(
+    val pause: () -> Unit,
+    val resume: () -> Unit,
+    val cancel: () -> Unit,
+)
 
 /** Owns the queue, durable records and bounded transfers; the foreground service owns lifetime. */
 internal object BrowserDownloads {
@@ -45,6 +52,7 @@ internal object BrowserDownloads {
     val downloads = _downloads.asStateFlow()
     private val transfers = mutableMapOf<Long, HttpDownloadTransfer>()
     private val jobs = mutableMapOf<Long, Job>()
+    private val externalControls = mutableMapOf<Long, ExternalBrowserDownloadControl>()
     private val pending = AtomicInteger(0)
     private var restored = false
     private var lastId = System.currentTimeMillis()
@@ -58,6 +66,7 @@ internal object BrowserDownloads {
     const val ACTION_REMOVE = "com.example.download.REMOVE"
     const val ACTION_RENAME = "com.example.download.RENAME"
     const val ACTION_CLEAR = "com.example.download.CLEAR"
+    const val ACTION_SYNC = "com.example.download.SYNC"
 
     fun restore(context: Context) { commands.launch { synchronized(lock) { restoreLocked(context.applicationContext) } } }
 
@@ -153,7 +162,7 @@ internal object BrowserDownloads {
     /** Add a non-resumable Gecko transfer to the live list without writing it to the resume journal. */
     internal fun beginGeckoTransfer(context: Context, fileName: String, mimeType: String?, totalBytes: Long?, location: String): Long {
         val app = context.applicationContext
-        return synchronized(lock) {
+        val id = synchronized(lock) {
             restoreLocked(app)
             val id = ++lastId
             val resolved = DownloadFileResolver.resolve(fileName, "", mimeType)
@@ -163,6 +172,67 @@ internal object BrowserDownloads {
             _downloads.value = listOf(entry) + _downloads.value
             id
         }
+        start(app, Intent(app, BrowserDownloadService::class.java).setAction(ACTION_SYNC))
+        return id
+    }
+
+    /** Bind live engine controls only in memory; sensitive response URLs/headers are not stored. */
+    internal fun registerExternalTransfer(
+        context: Context,
+        id: Long,
+        control: ExternalBrowserDownloadControl,
+    ): AutoCloseable {
+        synchronized(lock) {
+            if (find(id)?.ephemeral == true) externalControls[id] = control
+        }
+        start(context, Intent(context, BrowserDownloadService::class.java).setAction(ACTION_SYNC))
+        val closed = AtomicBoolean(false)
+        return AutoCloseable {
+            if (closed.compareAndSet(false, true)) synchronized(lock) {
+                if (externalControls[id] === control) externalControls.remove(id)
+            }
+        }
+    }
+
+    /** Default Downloads destination mirrors received bytes so completion needs no second full-file copy. */
+    private fun createDirectMirror(context: Context, id: Long): DownloadByteMirror? {
+        if (Build.VERSION.SDK_INT < 29) return null
+        val app = context.applicationContext
+        val entry = synchronized(lock) { find(id) } ?: return null
+        if (entry.destinationTreeUri != null) return null
+        val uri = entry.savedUri?.let(Uri::parse) ?: runCatching {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, entry.fileName)
+                put(MediaStore.Downloads.MIME_TYPE, entry.mimeType ?: "application/octet-stream")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val created = app.contentResolver.insert(
+                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values,
+            ) ?: return null
+            val saved = synchronized(lock) {
+                val current = find(id)
+                if (current?.status != BrowserDownloadStatus.RUNNING) false else {
+                    replaceLocked(current.copy(savedUri = created.toString()))
+                    persistLocked(app)
+                }
+            }
+            if (!saved) {
+                runCatching { app.contentResolver.delete(created, null, null) }
+                return null
+            }
+            created
+        }.getOrNull() ?: return null
+        val mirror = MediaStoreDownloadMirror(app, uri) { failedUri ->
+            runCatching { app.contentResolver.delete(failedUri, null, null) }
+            synchronized(lock) {
+                find(id)?.takeIf { it.savedUri == failedUri.toString() }?.let { current ->
+                    replaceLocked(current.copy(savedUri = null))
+                    persistLocked(app)
+                }
+            }
+        }
+        return mirror.takeIf { it.isHealthy }
     }
 
     /** Update only a live Gecko row; it is intentionally not persisted until the published URI is recorded. */
@@ -173,7 +243,16 @@ internal object BrowserDownloads {
                 replaceLocked(old.copy(fileName = resolved.fileName, mimeType = resolved.mimeType,
                     downloadedBytes = bytes.coerceAtLeast(0), totalBytes = totalBytes?.coerceAtLeast(0) ?: old.totalBytes,
                     speedBytesPerSecond = speed.coerceAtLeast(0),
+                    status = BrowserDownloadStatus.RUNNING,
                     finalizing = totalBytes != null && totalBytes > 0 && bytes >= totalBytes))
+            }
+        }
+    }
+
+    internal fun pauseGeckoTransfer(id: Long) {
+        synchronized(lock) {
+            find(id)?.takeIf { it.ephemeral && it.status == BrowserDownloadStatus.RUNNING }?.let { old ->
+                replaceLocked(old.copy(status = BrowserDownloadStatus.PAUSED, speedBytesPerSecond = 0))
             }
         }
     }
@@ -292,24 +371,37 @@ internal object BrowserDownloads {
                         ACTION_PAUSE_ALL -> _downloads.value.filter { it.needsService }.forEach { pauseLocked(it.id) }
                         ACTION_RESUME, ACTION_RESUME_ALL -> {
                             val candidates = if (intent.action == ACTION_RESUME_ALL) _downloads.value.filter { it.status == BrowserDownloadStatus.PAUSED || it.status == BrowserDownloadStatus.FAILED } else listOfNotNull(find(id))
-                            candidates.filter { !it.needsService && it.status != BrowserDownloadStatus.COMPLETED }.forEach {
-                                replaceLocked(it.copy(status = BrowserDownloadStatus.QUEUED, error = null, retryCount = 0))
+                            candidates.filter { !it.needsService && it.status != BrowserDownloadStatus.COMPLETED }.forEach { entry ->
+                                if (entry.ephemeral) externalControls[entry.id]?.resume?.invoke()
+                                else replaceLocked(entry.copy(status = BrowserDownloadStatus.QUEUED, error = null, retryCount = 0))
                             }
                         }
                         ACTION_CANCEL -> find(id)?.takeIf { it.status != BrowserDownloadStatus.COMPLETED }?.let {
-                            transfers[id]?.cancel()
-                            DownloadingFilesRegistry.completeOwned(part(context, id).absolutePath)
-                            replaceLocked(it.copy(status = BrowserDownloadStatus.CANCELLED, speedBytesPerSecond = 0, error = null))
-                            if (!jobs.containsKey(id)) part(context, id).delete()
+                            if (it.ephemeral) externalControls[id]?.cancel?.invoke()
+                            else {
+                                transfers[id]?.cancel()
+                                DownloadingFilesRegistry.completeOwned(part(context, id).absolutePath)
+                                replaceLocked(it.copy(status = BrowserDownloadStatus.CANCELLED, speedBytesPerSecond = 0, error = null))
+                                if (!jobs.containsKey(id)) part(context, id).delete()
+                            }
                         }
-                        ACTION_REMOVE -> find(id)?.takeUnless { it.isActive || jobs.containsKey(id) }?.let {
+                        ACTION_REMOVE -> find(id)?.takeUnless { it.isActive || jobs.containsKey(it.id) }?.let {
+                            if (it.status != BrowserDownloadStatus.COMPLETED) it.savedUri?.let { raw ->
+                                runCatching { context.contentResolver.delete(Uri.parse(raw), null, null) }
+                            }
                             _downloads.value = _downloads.value.filterNot { d -> d.id == id }
                             if (!jobs.containsKey(id)) part(context, id).delete()
                         }
                         ACTION_CLEAR -> {
-                            _downloads.value.filter { !it.isActive && !jobs.containsKey(it.id) }.forEach { part(context, it.id).delete() }
+                            _downloads.value.filter { !it.isActive && !jobs.containsKey(it.id) }.forEach { entry ->
+                                part(context, entry.id).delete()
+                                if (entry.status != BrowserDownloadStatus.COMPLETED) entry.savedUri?.let { raw ->
+                                    runCatching { context.contentResolver.delete(Uri.parse(raw), null, null) }
+                                }
+                            }
                             _downloads.value = _downloads.value.filter { it.isActive || jobs.containsKey(it.id) }
                         }
+                        ACTION_SYNC -> Unit
                     }
                     persistLocked(context)
                     scheduleLocked(context)
@@ -319,9 +411,12 @@ internal object BrowserDownloads {
     }
 
     private fun pauseLocked(id: Long) {
-        find(id)?.takeIf { it.needsService }?.let {
-            replaceLocked(it.copy(status = BrowserDownloadStatus.PAUSED, speedBytesPerSecond = 0, error = null))
-            transfers[id]?.cancel()
+        find(id)?.takeIf { it.needsService }?.let { entry ->
+            if (entry.ephemeral) externalControls[id]?.pause?.invoke()
+            else {
+                replaceLocked(entry.copy(status = BrowserDownloadStatus.PAUSED, speedBytesPerSecond = 0, error = null))
+                transfers[id]?.cancel()
+            }
         }
     }
 
@@ -340,9 +435,11 @@ internal object BrowserDownloads {
     private suspend fun runTransfer(context: Context, id: Long, transfer: HttpDownloadTransfer) {
         val speedMeter = DownloadSpeedMeter()
         speedMeter.reset(part(context, id).length(), System.nanoTime())
+        var mirror: DownloadByteMirror? = null
         try {
             val cached = synchronized(lock) { find(id) }
             var completed = cached?.formatChecked == true && cached.totalBytes > 0 && part(context, id).length() == cached.totalBytes
+            if (!completed) mirror = createDirectMirror(context, id)
             for (attempt in 0..3) {
                 if (completed) break
                 transfer.checkActive()
@@ -358,6 +455,7 @@ internal object BrowserDownloads {
                             find(id)?.takeIf { it.status == BrowserDownloadStatus.RUNNING }?.let {
                                 val mime = meta.mime?.takeUnless(DownloadFileResolver::isGenericMime) ?: it.mimeType
                                 val resolved = DownloadFileResolver.resolve(if (it.customName) it.fileName else meta.fileName ?: it.fileName, if (it.customName) "" else meta.finalUrl ?: it.sourceUrl, mime)
+                                mirror?.updateMetadata(resolved.fileName, resolved.mimeType)
                                 replaceLocked(it.copy(fileName = resolved.fileName, totalBytes = meta.total, etag = meta.etag, modified = meta.modified, mimeType = resolved.mimeType, error = null))
                                 persistLocked(context)
                             }
@@ -373,12 +471,15 @@ internal object BrowserDownloads {
                                 }.getOrNull() else null
                                 val updated = it.copy(downloadedBytes = bytes, totalBytes = if (total > 0) total else it.totalBytes, speedBytesPerSecond = speed, error = null,
                                     fileName = resolved?.fileName ?: it.fileName, mimeType = resolved?.mimeType ?: it.mimeType)
+                                if (resolved != null && (resolved.fileName != it.fileName || resolved.mimeType != it.mimeType)) {
+                                    mirror?.updateMetadata(resolved.fileName, resolved.mimeType)
+                                }
                                 if (updated.isVideo) DownloadingFilesRegistry.markOwnedDownloading(part(context, id).absolutePath, bytes)
                                 replaceLocked(updated)
                                 if (System.currentTimeMillis() - lastPersist > 1500) persistLocked(context)
                             }
                             }
-                        })
+                        }, mirror = mirror)
                     completed = true
                     break
                 } catch (e: IOException) {
@@ -393,15 +494,25 @@ internal object BrowserDownloads {
             if (completed) {
                 val unfinished = synchronized(lock) { find(id) } ?: return
                 synchronized(lock) {
-                    if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(unfinished.copy(finalizing = true))
+                    if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(unfinished.copy(finalizing = mirror?.isHealthy != true))
                 }
                 val info = DownloadMediaInspector.inspect(part(context, id), unfinished)
                 val current = synchronized(lock) { find(id) } ?: return
                 val finalName = if (current.customName && current.fileName != unfinished.fileName) current.fileName else info.resolved.fileName
-                val entry = current.copy(fileName = finalName, mimeType = info.resolved.mimeType, finalizing = true, formatChecked = true, durationMs = info.durationMs, width = info.width, height = info.height)
+                val entry = current.copy(fileName = finalName, mimeType = info.resolved.mimeType, finalizing = mirror?.isHealthy != true, formatChecked = true, durationMs = info.durationMs, width = info.width, height = info.height)
+                mirror?.updateMetadata(entry.fileName, entry.mimeType)
                 transfer.checkActive()
                 synchronized(lock) { if (find(id)?.status == BrowserDownloadStatus.RUNNING) replaceLocked(entry) }
-                val saved = publish(context, entry, transfer)
+                val mirroredUri = mirror?.publish()
+                val saved = if (mirroredUri != null) {
+                    scanPublishedFile(context, mirroredUri, entry.mimeType)
+                    mirroredUri to Environment.DIRECTORY_DOWNLOADS
+                } else {
+                    synchronized(lock) {
+                        find(id)?.takeIf { it.status == BrowserDownloadStatus.RUNNING }?.let { replaceLocked(it.copy(finalizing = true)) }
+                    }
+                    publish(context, entry.copy(finalizing = true), transfer)
+                }
                 synchronized(lock) {
                     if (find(id)?.status == BrowserDownloadStatus.RUNNING) {
                         replaceLocked(entry.copy(status = BrowserDownloadStatus.COMPLETED, finalizing = false, downloadedBytes = part(context, id).length(), totalBytes = part(context, id).length(), speedBytesPerSecond = 0,
@@ -426,14 +537,21 @@ internal object BrowserDownloads {
                 }
             }
         } finally {
+            runCatching { mirror?.close() }
+            var cancelledUri: Uri? = null
             synchronized(lock) {
                 jobs.remove(id); transfers.remove(id)
                 val state = find(id)
-                if (state == null || state.status == BrowserDownloadStatus.CANCELLED) part(context, id).delete()
+                if (state == null || state.status == BrowserDownloadStatus.CANCELLED) {
+                    part(context, id).delete()
+                    cancelledUri = state?.savedUri?.let(Uri::parse)
+                    if (state?.savedUri != null) replaceLocked(state.copy(savedUri = null))
+                }
                 else if (state.status != BrowserDownloadStatus.COMPLETED) replaceLocked(state.copy(downloadedBytes = part(context, id).length(), speedBytesPerSecond = 0, finalizing = false))
                 persistLocked(context)
                 scheduleLocked(context)
             }
+            cancelledUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
         }
     }
 

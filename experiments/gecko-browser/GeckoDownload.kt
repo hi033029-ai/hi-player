@@ -6,6 +6,7 @@ import android.net.Uri
 import java.io.Closeable
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
 
 /**
  * Owns Gecko's authenticated response stream, not a URL to be re-fetched through another
@@ -51,19 +52,47 @@ internal sealed interface GeckoDownloadOutcome {
 internal class GeckoDownloadCancellation {
     private val lock = Any()
     private var cancelled = false
+    private var pauseGate: CountDownLatch? = null
     private var committed = false
     private var input: InputStream? = null
     fun cancel() {
-        val stream = synchronized(lock) { if (committed) null else { cancelled = true; input.also { input = null } } }
-        runCatching { stream?.close() }
+        val streams = synchronized(lock) {
+            if (committed) null else {
+                cancelled = true
+                val gate = pauseGate
+                pauseGate = null
+                val source = input.also { input = null }
+                gate to source
+            }
+        }
+        streams?.first?.countDown()
+        runCatching { streams?.second?.close() }
     }
     fun isCancelled(): Boolean = synchronized(lock) { cancelled }
+    fun isPaused(): Boolean = synchronized(lock) { pauseGate != null }
+    fun pause(): Boolean = synchronized(lock) {
+        if (cancelled || committed || pauseGate != null) false
+        else { pauseGate = CountDownLatch(1); true }
+    }
+    fun resume(): Boolean {
+        val gate = synchronized(lock) {
+            if (cancelled || committed) null
+            else pauseGate.also { pauseGate = null }
+        } ?: return false
+        gate.countDown()
+        return true
+    }
+    fun awaitActive(): Boolean {
+        val gate = synchronized(lock) { if (cancelled) return false else pauseGate }
+        try { gate?.await() } catch (_: InterruptedException) { Thread.currentThread().interrupt(); return false }
+        return !isCancelled()
+    }
     internal fun register(stream: InputStream): Boolean = synchronized(lock) {
         if (cancelled) false else { input = stream; true }
     }
     internal fun clear() = synchronized(lock) { input = null }
     internal fun commitIfActive(commit: () -> Unit): Boolean = synchronized(lock) {
-        if (cancelled) false else { commit(); committed = true; true }
+        if (cancelled || pauseGate != null) false else { commit(); committed = true; true }
     }
 }
 
@@ -89,9 +118,10 @@ internal fun transferGeckoDownload(
                 destination.open().use { output ->
                     val buffer = ByteArray(256 * 1024)
                     while (true) {
-                        if (cancellation.isCancelled()) return GeckoDownloadOutcome.Cancelled
+                        if (!cancellation.awaitActive()) return GeckoDownloadOutcome.Cancelled
                         val read = source.read(buffer)
                         if (read < 0) break
+                        if (!cancellation.awaitActive()) return GeckoDownloadOutcome.Cancelled
                         if (read == 0) continue
                         output.write(buffer, 0, read)
                         bytes += read
@@ -101,7 +131,11 @@ internal fun transferGeckoDownload(
                 }
             } finally { cancellation.clear() }
         }
-        if (!cancellation.commitIfActive { destination.commit() }) return GeckoDownloadOutcome.Cancelled
+        while (true) {
+            if (!cancellation.awaitActive()) return GeckoDownloadOutcome.Cancelled
+            if (cancellation.commitIfActive { destination.commit() }) break
+            if (cancellation.isCancelled()) return GeckoDownloadOutcome.Cancelled
+        }
         committed = true
         return GeckoDownloadOutcome.Complete(bytes)
     } catch (_: Exception) {

@@ -10,9 +10,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -30,6 +33,11 @@ import androidx.compose.runtime.setValue
 import com.example.ui.components.AudioTrackThumbnail
 import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.contrastContentColor
+import com.example.ui.theme.HiThemePalette
+import com.example.util.AudioArtworkCache
+import com.example.util.AudioArtworkColor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Metadata stays above the flexible lyrics pane; transport controls never scroll away. */
 @Composable
@@ -44,12 +52,24 @@ fun FullScreenAudioPlayerScreen(
     shuffleEnabled: Boolean = false, repeatMode: Int = 0,
     onToggleShuffle: () -> Unit = {}, onCycleRepeat: () -> Unit = {},
 ) {
-    val palette = LocalHiPalette.current
+    val basePalette = LocalHiPalette.current
+    val appContext = LocalContext.current.applicationContext
+    val artworkKey = remember(track) { "${AudioArtworkCache.key(track)}:${track.artworkUrl.orEmpty()}" }
+    var artworkPalette by remember(artworkKey, basePalette) { mutableStateOf<HiThemePalette?>(null) }
+    LaunchedEffect(artworkKey, basePalette) {
+        artworkPalette = null
+        val bitmap = AudioArtworkCache.load(appContext, track)
+        artworkPalette = bitmap?.let { sampled ->
+            withContext(Dispatchers.Default) { AudioArtworkColor.palette(basePalette, sampled) }
+        }
+    }
+    val palette = artworkPalette ?: basePalette
     val total = duration.takeIf { it > 0 } ?: track.durationMs.coerceAtLeast(0)
     val position = currentPos.coerceIn(0, total.coerceAtLeast(0))
     val progress = if (total > 0) (position.toFloat() / total).coerceIn(0f, 1f) else 0f
     fun clock(ms: Long): String = "%02d:%02d".format(java.util.Locale.US, ms / 60000, ms / 1000 % 60)
     BackHandler(onBack = onBack)
+    CompositionLocalProvider(LocalHiPalette provides palette) {
     Surface(modifier.fillMaxSize().testTag("full_screen_audio_player"), color = palette.background) {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth().testTag("audio_song_header"), verticalAlignment = Alignment.CenterVertically) {
@@ -145,5 +165,6 @@ fun FullScreenAudioPlayerScreen(
                 }
             }
         }
+    }
     }
 }

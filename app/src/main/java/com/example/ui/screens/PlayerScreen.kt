@@ -132,7 +132,7 @@ fun PlayerScreen(
     val hdrColorModeManager = remember(activity, activePlayer) {
         activity?.let { HdrColorModeManager(it) }
     }
-    val smoothSeekController = rememberSmoothSeekController(activePlayer)
+    val smoothSeekController = rememberSmoothSeekController(activePlayer, playerViewModel.engine::clampSeekTarget)
 
     // Immersive playback: hide the status bar (battery/network/notification
     // icons) and nav bar while the player is on screen so nothing but the
@@ -181,17 +181,17 @@ fun PlayerScreen(
     val hdrEnhanceActive by playerViewModel.hdrEnhanceActive.collectAsState()
     val hdrColorPreset by playerViewModel.engine.hdrColorPreset.collectAsState()
     val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
+    val colorMetadataKnown by playerViewModel.engine.isVideoColorMetadataKnown.collectAsState()
     val useNativeHdrSurface = shouldUseNativeHdrOutput(
         isHdrContent = isHdrContent,
-        enhancementEnabled = hdrEnhanceActive,
-        selectedPreset = hdrColorPreset,
+        colorMetadataKnown = colorMetadataKnown,
     )
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
     // The indicator reflects native HDR passthrough or an explicitly selected
     // non-neutral grade; the user need not enable grading for accurate HDR output.
-    val managedHdrActive = isHdrContent || (hdrEnhanceActive && !hdrColorPreset.isIdentityTransform())
+    val managedHdrActive = isHdrContent
     val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
@@ -496,11 +496,11 @@ fun PlayerScreen(
     // needs COLOR_MODE_HDR, while SDR material can use wide gamut only when the
     // user enabled that preference. Devices without an HDR-capable display
     // safely fall back to their supported output mode.
-    LaunchedEffect(activity, isHdrContent, is4kContent, wideColorGamutEnabled) {
+    LaunchedEffect(activity, isHdrContent, colorMetadataKnown, is4kContent, wideColorGamutEnabled) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // HdrColorModeManager owns HDR transitions. This effect only applies
             // the user's wide-gamut preference while the selected stream is SDR.
-            if (!isHdrContent) {
+            if (!isHdrContent && colorMetadataKnown) {
                 activity?.window?.colorMode = if (wideColorGamutEnabled) {
                     ActivityInfo.COLOR_MODE_WIDE_COLOR_GAMUT
                 } else {

@@ -47,17 +47,29 @@ internal fun BrowserAdvancedTools(currentHost: String?, onSaved: () -> Unit) {
         Text("Advanced site tools", style = MaterialTheme.typography.titleMedium)
         Text("Hostnames only, no URLs or passwords. Host rules include subdomains; site settings match the exact host. Explicit blocks win over allows.")
         OutlinedTextField(host, { host = it.take(253) }, label = { Text("Website hostname") }, modifier = Modifier.fillMaxWidth(), enabled = !busy, singleLine = true)
-        Column {
-            TextButton(enabled = !busy && normalized != null, onClick = { save(rules.copy(blocked = rules.blocked + normalized!!, allowed = rules.allowed - normalized)) }) { Text("Block host") }
-            TextButton(enabled = !busy && normalized != null, onClick = { save(rules.copy(allowed = rules.allowed + normalized!!, blocked = rules.blocked - normalized)) }) { Text("Allow host") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(modifier = Modifier.weight(1f), enabled = !busy && normalized != null,
+                onClick = { save(rules.copy(blocked = rules.blocked + normalized!!, allowed = rules.allowed - normalized)) }) {
+                Text("Block host", maxLines = 1)
+            }
+            OutlinedButton(modifier = Modifier.weight(1f), enabled = !busy && normalized != null,
+                onClick = { save(rules.copy(allowed = rules.allowed + normalized!!, blocked = rules.blocked - normalized)) }) {
+                Text("Allow host", maxLines = 1)
+            }
         }
         Text("Blocking follows the main ad-blocking switch. Allowing a host does not override HTTPS, sign-in or other security checks.", style = MaterialTheme.typography.bodySmall)
-        Row { Checkbox(paused, { paused = it }, enabled = !busy); Text("Pause ad blocking on this site", modifier = Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Pause ad blocking on this site", modifier = Modifier.weight(1f))
+            Switch(checked = paused, onCheckedChange = { paused = it }, enabled = !busy)
+        }
         Text("Wait-page timer speed · ${speed}×")
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf(1, 10, 30, 60).forEach { value ->
             TextButton(enabled = !busy, onClick = { speed = value }) { Text(if (speed == value) "✓ $value×" else "$value×") }
         } }
-        Row { Checkbox(auto, { auto = it }, enabled = !busy); Text("Automatically continue supported wait pages", Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Automatically continue supported wait pages", Modifier.weight(1f))
+            Switch(checked = auto, onCheckedChange = { auto = it }, enabled = !busy)
+        }
         Text("Page skipper must be on. 1× preserves original timer speed. This cannot skip server waits, sign-in, consent, checkout or security challenges.", style = MaterialTheme.typography.bodySmall)
         Button(enabled = !busy && normalized != null, onClick = {
             save(rules.copy(sites = rules.sites + (normalized!! to BrowserSiteTools(paused, speed, auto))))

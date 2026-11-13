@@ -162,7 +162,11 @@ internal fun GeckoAppearanceDialog(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Appearance and pop-up choices apply immediately. Content changes save automatically.", color = palette.textSecondary)
                 GeckoSettingSwitchRow("Dark web pages", "Use a dark color scheme on compatible sites", Icons.Default.DarkMode,
-                    settings.dark, "Dark web pages") { settings.setAppearance(it, settings.zoom) }
+                    settings.dark, "Dark web pages") {
+                    val previous = settings.dark
+                    settings.setAppearance(it, settings.zoom)
+                    if (settings.dark != previous && canReloadCurrentPage) onReloadCurrentPage()
+                }
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated.copy(alpha = .45f)).padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.TextFields, null, tint = palette.primary, modifier = Modifier.size(22.dp))
@@ -172,10 +176,20 @@ internal fun GeckoAppearanceDialog(
                     }
                     Slider(value = preview.toFloat(), valueRange = 80f..200f, steps = 11,
                         onValueChange = { preview = ((it / 10f).roundToInt() * 10).coerceIn(80, 200) },
-                        onValueChangeFinished = { settings.setAppearance(settings.dark, preview); preview = settings.zoom },
+                        onValueChangeFinished = {
+                            val previous = settings.zoom
+                            settings.setAppearance(settings.dark, preview)
+                            preview = settings.zoom
+                            if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
+                        },
                         modifier = Modifier.semantics { contentDescription = "Webpage text size" })
                     TextButton(enabled = settings.zoom != 100 || preview != 100,
-                        onClick = { settings.setAppearance(settings.dark, 100); preview = settings.zoom }) {
+                        onClick = {
+                            val previous = settings.zoom
+                            settings.setAppearance(settings.dark, 100)
+                            preview = settings.zoom
+                            if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
+                        }) {
                         Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Text("  Reset to 100%")
                     }
                 }

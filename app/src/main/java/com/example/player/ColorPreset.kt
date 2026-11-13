@@ -26,11 +26,11 @@ internal fun ColorPreset.isIdentityTransform(): Boolean =
         red == 1f && green == 1f && blue == 1f && vibrance == 1f &&
         sharpness == 0f && targetHue < 0f && targetAdjustments.isEmpty()
 
+/** HDR and unclassified tracks bypass GLES; only explicitly known SDR can use the grading surface. */
 internal fun shouldUseNativeHdrOutput(
     isHdrContent: Boolean,
-    enhancementEnabled: Boolean,
-    selectedPreset: ColorPreset,
-): Boolean = isHdrContent && (!enhancementEnabled || selectedPreset.isIdentityTransform())
+    colorMetadataKnown: Boolean,
+): Boolean = isHdrContent || !colorMetadataKnown
 
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)

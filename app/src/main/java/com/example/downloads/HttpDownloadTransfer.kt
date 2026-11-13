@@ -8,6 +8,17 @@ import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import android.net.Uri
+
+/** Optional direct destination mirror; implementations must fail closed without aborting the resumable spool. */
+internal interface DownloadByteMirror : AutoCloseable {
+    val isHealthy: Boolean
+    fun reset()
+    fun alignTo(spool: File)
+    fun write(offset: Long, bytes: ByteArray, count: Int)
+    fun updateMetadata(fileName: String, mimeType: String?)
+    fun publish(): Uri?
+}
 
 /** Application-owned HTTP transport. Never delegates transfers to a system downloader. */
 internal class HttpDownloadTransfer {
@@ -22,13 +33,18 @@ internal class HttpDownloadTransfer {
     fun download(
         url: String, file: File, headers: Map<String, String>, etag: String?, modified: String?,
         onMetadata: (Metadata) -> Unit, onProgress: (Long, Long) -> Unit,
+        mirror: DownloadByteMirror? = null,
     ) {
         var current = Request.Builder().url(url).build().url
         val origin = current
         var offset = file.length()
         // Without a server validator it is unsafe to append to an old representation.
         val validator = etag?.takeUnless { it.startsWith("W/") } ?: modified
-        if (offset > 0 && validator.isNullOrBlank()) { RandomAccessFile(file, "rw").use { it.setLength(0) }; offset = 0 }
+        if (offset > 0 && validator.isNullOrBlank()) {
+            RandomAccessFile(file, "rw").use { it.setLength(0) }
+            runCatching { mirror?.reset() }
+            offset = 0
+        }
         var redirects = 0
         while (true) {
             checkActive()
@@ -52,6 +68,7 @@ internal class HttpDownloadTransfer {
                     // A changed resource or a server ignoring Range must restart, never append.
                     if (response.code == 416 && offset > 0) {
                         RandomAccessFile(file, "rw").use { it.setLength(0) }
+                        runCatching { mirror?.reset() }
                         offset = 0
                         if (++redirects > 10) throw DownloadHttpException("This download couldn't resume. Cancel it and start again from the website.", false)
                     } else {
@@ -74,11 +91,16 @@ internal class HttpDownloadTransfer {
                                 throw DownloadHttpException("The file changed. Cancel and download it again.", false)
                             }
                             total = range.second
-                        } else offset = 0
+                        } else {
+                            if (offset > 0) runCatching { mirror?.reset() }
+                            offset = 0
+                        }
                         val metadata = Metadata(total, response.header("ETag"), response.header("Last-Modified"), response.header("Content-Type")?.substringBefore(';'), DownloadFileResolver.dispositionName(response.header("Content-Disposition")), current.toString())
+                        runCatching { mirror?.updateMetadata(metadata.fileName.orEmpty(), metadata.mime) }
                         RandomAccessFile(file, "rw").use { output ->
                             output.setLength(offset)
                             output.seek(offset)
+                            runCatching { mirror?.alignTo(file) }
                             onMetadata(metadata)
                             onProgress(offset, total)
                             var received = offset
@@ -89,6 +111,7 @@ internal class HttpDownloadTransfer {
                                     checkActive()
                                     val count = input.read(buffer)
                                     if (count < 0) break
+                                    runCatching { mirror?.write(received, buffer, count) }
                                     output.write(buffer, 0, count)
                                     received += count
                                     val now = System.nanoTime()

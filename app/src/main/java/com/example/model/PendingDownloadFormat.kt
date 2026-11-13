@@ -37,4 +37,21 @@ object PendingDownloadFormat {
         }
         return normalized
     }
+
+    fun isPlaceholderTitle(name: String?): Boolean {
+        val clean = name?.trim()?.takeIf(String::isNotBlank)?.let(::originalName) ?: return true
+        val stem = clean.substringBeforeLast('.', clean).trim().lowercase(java.util.Locale.ROOT)
+        return stem == "pending video" || stem == "untitled video"
+    }
+
+    /** Prefer a real temporary-file name when MediaStore substitutes a generic pending title. */
+    fun displayName(providerName: String?, fileName: String?): String {
+        val provider = providerName?.trim().orEmpty()
+        val diskName = fileName?.substringAfterLast('/')?.substringAfterLast('\\')?.trim().orEmpty()
+        val cleanProvider = provider.takeIf(String::isNotBlank)?.let(::originalName).orEmpty()
+        val cleanDisk = diskName.takeIf(String::isNotBlank)?.let(::originalName).orEmpty()
+        val isPlaceholder = isPlaceholderTitle(cleanProvider)
+        return if (isPlaceholder && cleanDisk.isNotBlank()) cleanDisk
+        else cleanProvider.ifBlank { cleanDisk.ifBlank { "Untitled Video" } }
+    }
 }

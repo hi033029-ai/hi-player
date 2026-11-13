@@ -18,9 +18,15 @@ import org.robolectric.annotation.Config
 class GeckoDownloadUiTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun source(onClose: () -> Unit = {}, onTake: () -> Unit = {}) = object : GeckoDownloadSource {
-        override val mimeType = "text/plain"
+    private fun source(
+        onClose: () -> Unit = {},
+        onTake: () -> Unit = {},
+        contentType: String = "text/plain",
+        mediaUrl: String? = null,
+    ) = object : GeckoDownloadSource {
+        override val mimeType = contentType
         override val contentDisposition = "attachment; filename=\"report.txt\""
+        override val responseUrl = mediaUrl
         override val contentLength = 3L
         override val statusCode = 200
         override fun takeBody(): ByteArrayInputStream { onTake(); return ByteArrayInputStream(byteArrayOf(1, 2, 3)) }
@@ -54,6 +60,31 @@ class GeckoDownloadUiTest {
             .performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("gecko-download-cancel").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(GeckoDownloadState.Idle, controller.state); controller.close() }
+    }
+
+    @Test fun playOnlineOpensTheMediaLinkWithoutApprovingASave() {
+        var playUrl: String? = null
+        var approved = false
+        val controller = GeckoDownloadController(Executor { it.run() }, { it() }) { _, _ ->
+            approved = true
+            error("Play online must not create a download destination")
+        }
+        compose.setContent {
+            HiPlayerTheme {
+                GeckoDownloadUi(controller, onPlay = { url, _, _ -> playUrl = url })
+            }
+        }
+        compose.runOnIdle {
+            controller.offer(source(contentType = "video/mp4", mediaUrl = "https://media.example/video.mp4"))
+        }
+
+        compose.onNodeWithTag("gecko-play-online").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals("https://media.example/video.mp4", playUrl)
+            assertFalse(approved)
+            assertEquals(GeckoDownloadState.Idle, controller.state)
+            controller.close()
+        }
     }
 
     @Test fun editedFileNameIsUsedByTheActualDownload() {

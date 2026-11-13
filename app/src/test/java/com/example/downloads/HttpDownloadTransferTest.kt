@@ -194,4 +194,49 @@ class HttpDownloadTransferTest {
         assertFalse(HttpDownloadTransfer.sameOrigin("http://a.test:80/file".toHttpUrl(), "http://a.test:81/file".toHttpUrl()))
         assertTrue(HttpDownloadTransfer.sameOrigin("https://a.test/file".toHttpUrl(), "https://a.test/other".toHttpUrl()))
     }
+
+    @Test fun directMirrorReceivesTheSameBytesAsTheResumableSpool() {
+        server.createContext("/file") { x ->
+            x.sendResponseHeaders(200, payload.size.toLong())
+            x.responseBody.use { it.write(payload) }
+        }
+        val target = File(dir, "file.part")
+        val mirror = MemoryMirror()
+        HttpDownloadTransfer().download("$base/file", target, emptyMap(), null, null, {}, { _, _ -> }, mirror)
+        assertArrayEquals(target.readBytes(), mirror.bytes)
+        assertArrayEquals(payload, mirror.bytes)
+    }
+
+    @Test fun mirrorIsTruncatedWhenTheServerIgnoresARangeRequest() {
+        server.createContext("/file") { x ->
+            x.sendResponseHeaders(200, payload.size.toLong())
+            x.responseBody.use { it.write(payload) }
+        }
+        val stale = ByteArray(17_000) { 99 }
+        val target = File(dir, "file.part").apply { writeBytes(stale) }
+        val mirror = MemoryMirror().apply { bytes = stale.copyOf() }
+        HttpDownloadTransfer().download("$base/file", target, emptyMap(), "\"old\"", null, {}, { _, _ -> }, mirror)
+        assertArrayEquals(payload, target.readBytes())
+        assertArrayEquals(payload, mirror.bytes)
+    }
+
+    private class MemoryMirror : DownloadByteMirror {
+        override var isHealthy: Boolean = true
+            private set
+        var bytes = ByteArray(0)
+        override fun reset() { bytes = ByteArray(0) }
+        override fun alignTo(spool: File) {
+            val actual = spool.readBytes()
+            if (bytes.size > actual.size) bytes = bytes.copyOf(actual.size)
+            if (bytes.size < actual.size) bytes = actual
+        }
+        override fun write(offset: Long, bytes: ByteArray, count: Int) {
+            val end = (offset + count).toInt()
+            if (this.bytes.size < end) this.bytes = this.bytes.copyOf(end)
+            bytes.copyInto(this.bytes, offset.toInt(), 0, count)
+        }
+        override fun updateMetadata(fileName: String, mimeType: String?) = Unit
+        override fun publish(): android.net.Uri? = null
+        override fun close() = Unit
+    }
 }

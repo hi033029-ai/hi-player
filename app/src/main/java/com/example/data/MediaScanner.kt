@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.util.Locale
+import kotlin.math.abs
 
 object MediaScanner {
 
@@ -73,14 +74,14 @@ object MediaScanner {
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
-                    val name = cursor.getString(nameCol) ?: "Untitled Video"
+                    val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
+                    val name = PendingDownloadFormat.displayName(cursor.getString(nameCol), dataPath)
                     val duration = cursor.getLong(durationCol)
                     val size = cursor.getLong(sizeCol)
                     val width = cursor.getInt(widthCol)
                     val height = cursor.getInt(heightCol)
                     val mime = cursor.getString(mimeCol) ?: "video/mp4"
                     val dateAdded = cursor.getLong(dateCol)
-                    val dataPath = if (dataCol != -1) cursor.getString(dataCol) ?: "" else ""
                     val contentUri = ContentUris.withAppendedId(collection, id)
                     val lastModifiedMs = cursor.getLong(modifiedCol).coerceAtLeast(0L) * 1000L
                     val growthKey = dataPath.ifBlank { contentUri.toString() }
@@ -183,10 +184,15 @@ object MediaScanner {
             // Remove that temporary Video row by its clean display name before the
             // canonical partial item is added, without affecting completed videos.
             val pendingTitles = partialItems.map { it.title.lowercase(Locale.ROOT) }.toSet()
-            if (pendingTitles.isNotEmpty()) {
+            if (partialItems.isNotEmpty()) {
                 videoList.removeAll { indexed ->
-                    PendingDownloadFormat.isPending(indexed.title) &&
+                    val namedPendingDuplicate = PendingDownloadFormat.isPending(indexed.title) &&
                         PendingDownloadFormat.originalName(indexed.title).lowercase(Locale.ROOT) in pendingTitles
+                    val genericPendingDuplicate = PendingDownloadFormat.isPlaceholderTitle(indexed.title) &&
+                        indexed.durationMs <= 0L && partialItems.any { partial ->
+                            abs(indexed.dateAdded - partial.dateAdded) <= 10 * 60
+                        }
+                    namedPendingDuplicate || genericPendingDuplicate
                 }
             }
             videoList += partialItems

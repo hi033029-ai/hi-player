@@ -11,12 +11,28 @@ import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.media3.common.C
 import androidx.media3.common.ColorInfo
+import androidx.media3.common.Format
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.atomic.AtomicBoolean
+
+internal fun isDolbyVisionFormat(format: Format?): Boolean {
+    if (format == null) return false
+    val mime = format.sampleMimeType.orEmpty()
+    val codec = format.codecs.orEmpty().lowercase()
+    return mime.contains("dolby-vision") || codec.split(',').any { value ->
+        val part = value.trim()
+        part.startsWith("dvhe") || part.startsWith("dvh1") || part.startsWith("dvav") || part.startsWith("dva1")
+    }
+}
+
+internal fun isHdrVideoFormat(format: Format?): Boolean =
+    format != null && (ColorInfo.isTransferHdr(format.colorInfo) || isDolbyVisionFormat(format))
+
+internal fun hasKnownVideoColorMetadata(format: Format?): Boolean =
+    format != null && (format.colorInfo != null || isDolbyVisionFormat(format))
 
 /**
  * Single guarded owner of the Activity HDR window mode for one player instance.
@@ -68,20 +84,14 @@ class HdrColorModeManager(private val activity: Activity) {
     private fun evaluateAndRequest(tracks: Tracks) {
         val isHdr = tracks.groups.any { group ->
             (0 until group.length).any { i ->
-                group.isTrackSelected(i) &&
-                    group.getTrackFormat(i).colorInfo?.let(::isHdrColorInfo) == true
+                group.isTrackSelected(i) && isHdrVideoFormat(group.getTrackFormat(i))
             }
         }
         requestColorMode(isHdr)
     }
 
-    private fun isHdrColorInfo(colorInfo: ColorInfo): Boolean {
-        return colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
-            colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG
-    }
-
     fun requestColorMode(hdrDesired: Boolean) {
-        latestHdrRequest = hdrDesired
+        latestHdrRequest = hdrDesired && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && displaySupportsHdr()
         if (isApplying.get() || hdrDesired == appliedHdr) return
         if (!isApplying.compareAndSet(false, true)) return
 
@@ -106,6 +116,10 @@ class HdrColorModeManager(private val activity: Activity) {
             }
         }
     }
+
+    private fun displaySupportsHdr(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && runCatching {
+        activity.windowManager.defaultDisplay.hdrCapabilities.supportedHdrTypes.isNotEmpty()
+    }.getOrDefault(false)
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun applyColorModeInternal(isHdr: Boolean) {

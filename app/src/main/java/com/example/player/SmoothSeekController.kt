@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 class SmoothSeekController(
     private val player: ExoPlayer,
     private val scope: CoroutineScope,
+    private val clampTarget: (Long) -> Long = { it.coerceAtLeast(0L) },
 ) {
     /** Accumulated offset of the current tap burst — drives the on-screen "+20s" indicator. */
     var pendingOffsetMs by mutableStateOf(0L)
@@ -39,10 +40,11 @@ class SmoothSeekController(
         val base = burstTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         var target = (base + deltaMs).coerceAtLeast(0L)
         if (duration != null) target = target.coerceAtMost(duration)
+        target = clampTarget(target).coerceAtLeast(0L)
         burstTargetMs = target
-        pendingOffsetMs += deltaMs
-        isPending = true
-        player.seekTo(target)
+        pendingOffsetMs = target - player.currentPosition
+        isPending = pendingOffsetMs != 0L
+        if (target != player.currentPosition) player.seekTo(target)
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(BURST_WINDOW_MS)
@@ -62,14 +64,15 @@ class SmoothSeekController(
         debounceJob?.cancel()
         debounceJob = scope.launch {
             delay(150)
-            player.seekTo(targetMs)
+            player.seekTo(clampTarget(targetMs).coerceAtLeast(0L))
         }
     }
 
     fun commitFinalSeek(targetMs: Long) {
         debounceJob?.cancel()
         burstTargetMs = null
-        player.seekTo(targetMs)
+        val bounded = clampTarget(targetMs).coerceAtLeast(0L)
+        player.seekTo(bounded)
     }
 
     private companion object {
@@ -79,7 +82,8 @@ class SmoothSeekController(
 
 @UnstableApi
 @Composable
-fun rememberSmoothSeekController(player: ExoPlayer): SmoothSeekController {
+fun rememberSmoothSeekController(player: ExoPlayer, clampTarget: (Long) -> Long = { it }): SmoothSeekController {
     val scope = rememberCoroutineScope()
-    return remember(player) { SmoothSeekController(player, scope) }
+    val currentClampTarget by rememberUpdatedState(clampTarget)
+    return remember(player) { SmoothSeekController(player, scope) { target -> currentClampTarget(target) } }
 }

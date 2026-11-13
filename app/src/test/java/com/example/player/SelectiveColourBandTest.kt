@@ -1,5 +1,6 @@
 package com.example.player
 
+import androidx.media3.common.Format
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -10,11 +11,22 @@ class SelectiveColourBandTest {
         assertFalse(ColorPresets.NATURAL_HDR.isIdentityTransform())
     }
 
-    @Test fun hdrUsesNativeSurfaceUnlessNonNeutralEnhancementWasExplicitlySelected() {
-        assertTrue(shouldUseNativeHdrOutput(true, false, ColorPresets.NATURAL_HDR))
-        assertTrue(shouldUseNativeHdrOutput(true, true, ColorPresets.HDR_DISABLED))
-        assertFalse(shouldUseNativeHdrOutput(true, true, ColorPresets.NATURAL_HDR))
-        assertFalse(shouldUseNativeHdrOutput(false, false, ColorPresets.HDR_DISABLED))
+    @Test fun allHdrAndUnknownColorTracksUseNativeOutput() {
+        assertTrue(shouldUseNativeHdrOutput(isHdrContent = true, colorMetadataKnown = true))
+        assertTrue(shouldUseNativeHdrOutput(isHdrContent = true, colorMetadataKnown = false))
+        assertTrue(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = false))
+        assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
+    }
+
+    @Test fun dolbyVisionIsRecognizedFromMimeOrCodecWhenTransferMetadataIsMissing() {
+        val mimeFormat = Format.Builder().setSampleMimeType("video/dolby-vision").build()
+        val codecFormat = Format.Builder().setSampleMimeType("video/hevc").setCodecs("dvhe.05.06").build()
+        val unknownFormat = Format.Builder().setSampleMimeType("video/avc").build()
+
+        assertTrue(isHdrVideoFormat(mimeFormat))
+        assertTrue(isDolbyVisionFormat(codecFormat))
+        assertTrue(hasKnownVideoColorMetadata(codecFormat))
+        assertFalse(hasKnownVideoColorMetadata(unknownFormat))
     }
 
     @Test fun neutralMidpointAddsNoColourAdjustment() {

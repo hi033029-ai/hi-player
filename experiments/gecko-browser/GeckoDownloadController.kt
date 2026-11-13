@@ -26,7 +26,7 @@ internal interface GeckoDownloadSource : Closeable {
 internal sealed interface GeckoDownloadState {
     data object Idle : GeckoDownloadState
     data class Offer(val name: String, val length: Long?, val mimeType: String? = null, val recordInHistory: Boolean = true) : GeckoDownloadState
-    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0, val recordInHistory: Boolean = true, val mimeType: String? = null, val location: String = "Downloads") : GeckoDownloadState
+    data class Active(val name: String, val bytes: Long, val length: Long?, val speedBytesPerSecond: Long = 0, val recordInHistory: Boolean = true, val mimeType: String? = null, val location: String = "Downloads", val paused: Boolean = false) : GeckoDownloadState
     data class Finished(val name: String, val outcome: GeckoDownloadOutcome, val location: String = "Downloads", val recorded: Boolean? = null) : GeckoDownloadState
 }
 /** Approved response ownership only; no refetch, persisted credentials or fake progress. */
@@ -86,7 +86,7 @@ internal class GeckoDownloadController(
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
                     val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
                         val speed = speedMeter.sample(bytes, System.nanoTime())
-                        dispatchMain { if (!closed && generation == id && cancellation === cancel) publishState(
+                        dispatchMain { if (!closed && generation == id && cancellation === cancel && !cancel.isPaused()) publishState(
                             GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location)) }
                     }
                     val recorder = onPublished
@@ -102,6 +102,17 @@ internal class GeckoDownloadController(
             cancel.cancel(); runCatching { activeLease.getAndSet(null)?.close() }; cancellation = null
             publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location))
         }
+    }
+    @MainThread fun pause() {
+        val current = state as? GeckoDownloadState.Active ?: return
+        if (current.paused || cancellation?.pause() != true) return
+        publishState(current.copy(speedBytesPerSecond = 0, paused = true))
+    }
+    @MainThread fun resume() {
+        val current = state as? GeckoDownloadState.Active ?: return
+        if (!current.paused || cancellation?.resume() != true) return
+        speedMeter.reset(current.bytes, System.nanoTime())
+        publishState(current.copy(speedBytesPerSecond = 0, paused = false))
     }
     @MainThread fun cancel() { cancellation?.cancel(); runCatching { activeLease.getAndSet(null)?.close() } }
     @MainThread fun dismissResult() { if (state is GeckoDownloadState.Finished) publishState(GeckoDownloadState.Idle) }

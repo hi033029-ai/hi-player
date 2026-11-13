@@ -27,6 +27,7 @@ class BrowserDownloadService : Service() {
     private var observer: Job? = null
     private var lastStartId = 0
     private var idleStop = false
+    private var lastForegroundText: String? = null
     private val wakeLock by lazy {
         (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:browser-downloads").apply { setReferenceCounted(false) }
     }
@@ -48,6 +49,7 @@ class BrowserDownloadService : Service() {
         idleStop = false
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Preparing downloads", false).build(),
             if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
+        lastForegroundText = "Preparing downloads"
         keepCpuAwake()
         BrowserDownloads.execute(applicationContext, intent) {
             scope.launch {
@@ -58,8 +60,23 @@ class BrowserDownloadService : Service() {
                         val running = items.filter { it.status == BrowserDownloadStatus.RUNNING }
                         val queued = items.count { it.status == BrowserDownloadStatus.QUEUED }
                         val finalizing = items.filter { it.status == BrowserDownloadStatus.RUNNING && it.finalizing }
+                        val pausedExternal = items.filter { it.ephemeral && it.status == BrowserDownloadStatus.PAUSED }
+                        if (running.isEmpty() && pausedExternal.isNotEmpty() && queued == 0 && !BrowserDownloads.hasPendingCommands()) {
+                            val pausedName = pausedExternal.singleOrNull()?.fileName
+                            val text = if (pausedName != null) "$pausedName paused • tap Resume" else "${pausedExternal.size} browser downloads paused • tap Resume"
+                            releaseCpu()
+                            if (lastForegroundText != text) {
+                                val note = notification(text, true, resume = true, controlId = pausedExternal.singleOrNull()?.id).build()
+                                ServiceCompat.startForeground(this@BrowserDownloadService, NOTIFICATION_ID, note,
+                                    if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0)
+                                lastForegroundText = text
+                            }
+                            delay(750)
+                            continue
+                        }
                         if (running.isEmpty() && finalizing.isEmpty() && queued == 0 && !BrowserDownloads.hasPendingCommands()) {
-                            val paused = items.count { it.status == BrowserDownloadStatus.PAUSED }
+                            val pausedEntries = items.filter { it.status == BrowserDownloadStatus.PAUSED }
+                            val paused = pausedEntries.size
                             val failed = items.count { it.status == BrowserDownloadStatus.FAILED }
                             val complete = items.count { it.status == BrowserDownloadStatus.COMPLETED }
                             val completedNames = items.filter { it.status == BrowserDownloadStatus.COMPLETED }
@@ -70,7 +87,7 @@ class BrowserDownloadService : Service() {
                                 complete == 1 && completedNames.isNotBlank() -> "File downloaded: $completedNames"
                                 else -> "$complete files downloaded"
                             }
-                            val note = notification(text, false, resume = paused > 0).build()
+                            val note = notification(text, false, resume = paused > 0, controlId = pausedEntries.singleOrNull()?.id).build()
                             idleStop = true
                             releaseCpu()
                             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -87,7 +104,7 @@ class BrowserDownloadService : Service() {
                             running.size == 1 -> running.first().fileName
                             else -> "${running.size} downloading • $queued queued"
                         }
-                        val builder = notification(text, true).setSubText("${formatSpeed(bytes)}/s • Hi Browser engine")
+                        val builder = notification(text, true, controlId = running.singleOrNull()?.id).setSubText("${formatSpeed(bytes)}/s • Hi Browser engine")
                         val single = running.singleOrNull()
                         if (finalizing.size == 1) {
                             builder.setProgress(100, 100, false)
@@ -95,6 +112,7 @@ class BrowserDownloadService : Service() {
                             builder.setProgress(100, ((single.downloadedBytes.toDouble() / single.totalBytes) * 100).toInt().coerceIn(0, 100), false)
                         } else builder.setProgress(0, 0, true)
                         runCatching { notifications.notify(NOTIFICATION_ID, builder.build()) }
+                        lastForegroundText = text
                     }
                 }
             }
@@ -103,7 +121,7 @@ class BrowserDownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun notification(text: String, ongoing: Boolean, resume: Boolean = false): NotificationCompat.Builder {
+    private fun notification(text: String, ongoing: Boolean, resume: Boolean = false, controlId: Long? = null): NotificationCompat.Builder {
         val launch = Intent(this, MainActivity::class.java).setAction("com.example.OPEN_BROWSER_DOWNLOADS").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val content = PendingIntent.getActivity(this, 701, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(this, CHANNEL)
@@ -112,11 +130,41 @@ class BrowserDownloadService : Service() {
             .setOnlyAlertOnce(true).setOngoing(ongoing).setAutoCancel(!ongoing)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS).setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         if (ongoing || resume) {
-            val action = if (resume) BrowserDownloads.ACTION_RESUME_ALL else BrowserDownloads.ACTION_PAUSE_ALL
+            val action = when {
+                resume && controlId != null -> BrowserDownloads.ACTION_RESUME
+                resume -> BrowserDownloads.ACTION_RESUME_ALL
+                controlId != null -> BrowserDownloads.ACTION_PAUSE
+                else -> BrowserDownloads.ACTION_PAUSE_ALL
+            }
             val intent = Intent(this, BrowserDownloadService::class.java).setAction(action)
-            val control = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, if (resume) 703 else 702, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                else PendingIntent.getService(this, if (resume) 703 else 702, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(if (resume) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause, if (resume) "Resume all" else "Pause all", control)
+                .putExtra("id", controlId ?: -1L)
+            val requestCode = when {
+                resume && controlId != null -> 710 + (controlId % 1000).toInt()
+                resume -> 703
+                controlId != null -> 1710 + (controlId % 1000).toInt()
+                else -> 702
+            }
+            val control = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                else PendingIntent.getService(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val label = when {
+                resume && controlId != null -> "Resume"
+                resume -> "Resume all"
+                controlId != null -> "Pause"
+                else -> "Pause all"
+            }
+            builder.addAction(if (resume) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause, label, control)
+        }
+        if (ongoing && controlId != null) {
+            val cancelIntent = Intent(this, BrowserDownloadService::class.java)
+                .setAction(BrowserDownloads.ACTION_CANCEL)
+                .putExtra("id", controlId)
+            val cancelRequestCode = 2710 + (controlId % 1000).toInt()
+            val cancel = if (Build.VERSION.SDK_INT >= 26) {
+                PendingIntent.getForegroundService(this, cancelRequestCode, cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            } else {
+                PendingIntent.getService(this, cancelRequestCode, cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            }
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancel)
         }
         return builder
     }

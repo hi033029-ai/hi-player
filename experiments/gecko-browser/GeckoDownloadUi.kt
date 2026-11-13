@@ -103,10 +103,16 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                 if (permissionFailed) Text("Could not retain access to this folder. Choose another folder.", color = HiTextSecondary)
                 HorizontalDivider(color = HiSurfaceBorder)
                 if (isVideo && state.playUrl != null && onPlay != null) {
-                    TextButton(onClick = { val url = state.playUrl; controller.reject(); onPlay(url, state.mimeType, DownloadFileResolver.safeName(fileName)) }) {
-                        Icon(Icons.Default.PlayArrow, null, tint = HiPrimaryCyan); Text("Play now in Hi Player", color = HiPrimaryCyan)
+                    OutlinedButton(
+                        modifier = Modifier.fillMaxWidth().testTag("gecko-play-online"),
+                        onClick = { val url = state.playUrl; controller.reject(); onPlay(url, state.mimeType, DownloadFileResolver.safeName(fileName)) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = HiPrimaryCyan),
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null, tint = HiPrimaryCyan)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Play online in Hi Player", color = HiPrimaryCyan)
                     }
-                    Text("Playback uses the media address only. Cookie-protected and DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                    Text("Streams the media link in Hi Player without saving a local copy. Seeking depends on server byte-range support and a usable media index. Login-protected or DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
                 }
                 FilledTonalButton(modifier = Modifier.fillMaxWidth().testTag("gecko-download-confirm"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), colors = ButtonDefaults.filledTonalButtonColors(containerColor = HiSurfaceDark, contentColor = HiPrimaryCyan), onClick = {
                     val tree = selectedTree
@@ -120,7 +126,7 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                     }
                 }) { Icon(Icons.Default.Download, null, tint = HiPrimaryCyan); Text("Download", color = HiPrimaryCyan) }
                 TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel", color = HiTextSecondary) }
-                Text("This authenticated stream cannot resume after cancellation or browser exit.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                Text("Pause, resume, and cancel from the download card or ongoing notification. This authenticated stream cannot resume if Android stops the app.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
                 Spacer(Modifier.height(16.dp))
             }
         }
@@ -129,14 +135,23 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                 Column(Modifier.weight(1f)) {
                     Text(state.name, maxLines = 1, color = HiTextPrimary)
                     val finalizing = state.length != null && state.length > 0 && state.bytes >= state.length
-                    Text(state.length?.takeIf { it > 0 }?.let {
+                    Text(if (state.paused) "Paused · ${Formatter.formatFileSize(context, state.bytes)} received" else state.length?.takeIf { it > 0 }?.let {
                         "${if (finalizing) "Saving file" else "Downloading"} · ${Formatter.formatFileSize(context, state.bytes)} of ${Formatter.formatFileSize(context, it)}"
                     } ?: "Downloading · ${Formatter.formatFileSize(context, state.bytes)} received", color = HiTextSecondary)
-                    Text(if (state.speedBytesPerSecond > 0) "${Formatter.formatFileSize(context, state.speedBytesPerSecond)}/s" else "Measuring download speed…", color = HiTextSecondary)
-                    if (state.length != null && state.length > 0) LinearProgressIndicator(progress = { (state.bytes.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
-                    else LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
+                    Text(if (state.paused) "Paused" else if (state.speedBytesPerSecond > 0) "${Formatter.formatFileSize(context, state.speedBytesPerSecond)}/s" else "Measuring download speed…", color = HiTextSecondary)
+                    if (state.length != null && state.length > 0) {
+                        LinearProgressIndicator(progress = { (state.bytes.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
+                    } else if (!state.paused) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
+                    }
                 }
-                TextButton(onClick = controller::cancel) { Text("Cancel", color = HiPrimaryCyan) }
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { if (state.paused) controller.resume() else controller.pause() }) {
+                        Icon(if (state.paused) Icons.Default.PlayArrow else Icons.Default.Pause, null, tint = HiPrimaryCyan)
+                        Text(if (state.paused) "Resume" else "Pause", color = HiPrimaryCyan)
+                    }
+                    TextButton(onClick = controller::cancel) { Text("Cancel", color = HiTextSecondary) }
+                }
             }
         }
         is GeckoDownloadState.Finished -> AlertDialog(
