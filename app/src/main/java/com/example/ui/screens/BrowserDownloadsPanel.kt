@@ -197,6 +197,7 @@ private fun DownloadProgressRow(
                 )
                 Text(
                     "${downloadBytes(download.downloadedBytes)}${if (download.totalBytes > 0) " / ${downloadBytes(download.totalBytes)}" else ""}",
+                    modifier = Modifier.testTag("download-stats-${download.id}"),
                     color = palette.textSecondary,
                     fontSize = 12.sp,
                 )
@@ -215,6 +216,7 @@ private fun DownloadProgressRow(
                 if (running) {
                     Text(
                         "${downloadBytes(download.speedBytesPerSecond)}/s · ${downloadEta(download.etaSeconds)} left",
+                        modifier = Modifier.testTag("download-speed-${download.id}"),
                         color = palette.textSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,

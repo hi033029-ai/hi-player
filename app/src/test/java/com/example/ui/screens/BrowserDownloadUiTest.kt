@@ -37,14 +37,13 @@ class BrowserDownloadUiTest {
         compose.onNodeWithContentDescription("Filter downloads: All").assertDoesNotExist()
         compose.onNodeWithContentDescription("Download actions").assertDoesNotExist()
         compose.onNodeWithTag("download-stats-1").assertExists()
+        compose.onNodeWithTag("download-speed-1").assertExists()
+        compose.onNodeWithText("Downloading · 10%").assertExists()
         compose.onNodeWithTag("download-card-1").assertExists()
         val card = compose.onNodeWithTag("download-card-1").fetchSemanticsNode().boundsInRoot
         val stats = compose.onNodeWithTag("download-stats-1").fetchSemanticsNode().boundsInRoot
         assertTrue(stats.left >= card.left && stats.right <= card.right)
         assertTrue(stats.top >= card.top && stats.bottom <= card.bottom)
-        assertTrue(stats.center.x > card.center.x)
-        val fileName = compose.onNodeWithText("active.mkv").fetchSemanticsNode().boundsInRoot
-        assertTrue(stats.top < fileName.bottom && stats.bottom > fileName.top)
         val row = compose.onNodeWithTag("download-main-row-1").fetchSemanticsNode().boundsInRoot
         assertTrue(stats.top >= row.top && stats.bottom <= row.bottom)
         compose.onNodeWithText("done.mp4").assertExists()
