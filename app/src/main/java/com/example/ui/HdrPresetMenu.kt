@@ -35,6 +35,7 @@ fun HdrPresetMenu(
     visible: Boolean,
     selected: ColorPreset,
     onSelect: (ColorPreset) -> Unit,
+    nativeOutputActive: Boolean = false,
     customPreset: ColorPreset = ColorPresets.CUSTOM,
     customizing: Boolean = false,
     onCustomize: () -> Unit = {},
@@ -63,6 +64,14 @@ fun HdrPresetMenu(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Customize HDR", color = Color.White, fontSize = 14.sp)
                 TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+            }
+            if (nativeOutputActive) {
+                Text(
+                    "Native HDR / unknown-color output is preserved; grading is held off for this video.",
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
             }
             com.example.ui.components.FirstUseTip(
                 com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
@@ -128,30 +137,39 @@ fun HdrPresetMenu(
             }
         }
     } else {
-        Row(
+        Column(
             modifier = modifier
-                .background(Color.Black.copy(alpha = 0.24f))
-                .horizontalScroll(rememberScrollState())
+                .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
-            ColorPresets.ALL.forEach { preset ->
+            if (nativeOutputActive) {
                 Text(
-                    text = preset.name,
+                    "Native HDR / unknown-color output is preserved; grading is held off for this video.",
+                    color = Color.White.copy(alpha = 0.82f),
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                )
+            }
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                ColorPresets.ALL.forEach { preset ->
+                    Text(
+                        text = preset.name,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clickable { onSelect(preset) }
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                    )
+                }
+                Text(
+                    text = "Customize",
                     color = Color.White,
                     fontSize = 14.sp,
                     modifier = Modifier
-                        .clickable { onSelect(preset) }
+                        .clickable(onClick = onCustomize)
                         .padding(horizontal = 16.dp, vertical = 11.dp),
                 )
             }
-            Text(
-                text = "Customize",
-                color = Color.White,
-                fontSize = 14.sp,
-                modifier = Modifier
-                    .clickable(onClick = onCustomize)
-                    .padding(horizontal = 16.dp, vertical = 11.dp),
-            )
         }
     }
 }

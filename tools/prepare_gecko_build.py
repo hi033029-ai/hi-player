@@ -55,6 +55,10 @@ def prepare(files):
     generated['main/LegacyHiBrowserScreen.kt'] = replace_once(
         patched[legacy], 'fun HiBrowserScreen(', 'fun WebViewBrowserScreen(', 'legacy browser entry point')
     generated.pop('main/HiBrowserScreen.kt', None)
+    generated['main/DisplayAwareHdrToneMappingAdapterFactory.kt'] = files[
+        'app/src/main/java/com/example/playback/DisplayAwareHdrToneMappingAdapterFactory.kt']
+    generated['test/DisplayAwareHdrToneMappingTest.kt'] = files[
+        'app/src/test/java/com/example/playback/DisplayAwareHdrToneMappingTest.kt']
     # Bit 6 changed from editable tracks to auxiliary tracks in newer Media3.
     # Never carry the old inverse mask or turn on the new auxiliary-track flag.
     player = generated['main/OptimizedPlayerBuilder.kt']
@@ -110,8 +114,10 @@ def main():
         'app/build.gradle.kts', 'build.gradle.kts', 'app/src/main/AndroidManifest.xml', 'gradle/gecko-integration.gradle.kts',
         'app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt',
         'app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt',
+        'app/src/main/java/com/example/playback/DisplayAwareHdrToneMappingAdapterFactory.kt',
         'app/src/main/java/com/example/player/SharpnessReductionEffect.kt',
         'app/src/test/java/com/example/player/SoftwareDecoderRegistrationTest.kt',
+        'app/src/test/java/com/example/playback/DisplayAwareHdrToneMappingTest.kt',
         PREFIX + 'patches/shared-address-input.patch', PREFIX + 'patches/media3-111-player-candidate.patch', PREFIX + 'patches/host-lifecycle.patch',
         *[PREFIX + name for name in ('GeckoFilePickerLauncher.kt', 'GeckoRuntimePermissionLauncher.kt', 'GeckoBrowserServices.kt', 'GeckoTabController.kt', 'GeckoManagedTab.kt', 'GeckoTabEngine.kt', 'GeckoBrowserChrome.kt')],
     ]

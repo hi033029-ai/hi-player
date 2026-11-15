@@ -2,7 +2,7 @@ diff --git a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt b/
 index 3758f7c..99a13e8 100644
 --- a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
 +++ b/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
-@@ -80,8 +80,16 @@ object OptimizedPlayerBuilder {
+@@ -86,8 +86,16 @@ object OptimizedPlayerBuilder {
      /** Extractors factory tuned to avoid a full-file probe/sniff on huge containers. */
      private fun extractorsFactory(): DefaultExtractorsFactory {
          return DefaultExtractorsFactory().apply {

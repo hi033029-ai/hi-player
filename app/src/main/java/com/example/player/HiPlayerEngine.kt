@@ -185,6 +185,17 @@ class HiPlayerEngine(
         _hdrEnhanceActive.value = enabled
     }
 
+    /**
+     * Mark the next item's color metadata unknown before any async preparation.
+     * PlayerScreen treats unknown metadata as native output, avoiding reuse of an
+     * SDR GLES surface while the next track's transfer function is being detected.
+     */
+    fun beginVideoItemTransition() {
+        _isHdrContent.value = false
+        _isVideoColorMetadataKnown.value = false
+        _is4kContent.value = false
+    }
+
     fun setHdrColorPreset(preset: ColorPreset) {
         _hdrColorPreset.value = preset
     }
@@ -789,9 +800,7 @@ class HiPlayerEngine(
         // onTracksChanged/STATE_READY.
         _availableAudioTracks.value = emptyList()
         _availableSubtitleTracks.value = emptyList()
-        _isHdrContent.value = false
-        _isVideoColorMetadataKnown.value = false
-        _is4kContent.value = false
+        beginVideoItemTransition()
         val title = mediaTitle ?: exoPlayer?.currentMediaItem
             ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)

@@ -18,6 +18,29 @@ class SelectiveColourBandTest {
         assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
     }
 
+    @Test fun colorGradingIsLimitedToOptedInKnownSdrTracks() {
+        assertTrue(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = true))
+        assertFalse(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = false))
+        assertFalse(shouldApplySdrColorPreset(isHdrContent = true, colorMetadataKnown = true, enhancementEnabled = true))
+        assertFalse(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = false, enhancementEnabled = true))
+    }
+
+    @Test fun requestedOriginalVividCinemaAndBrightPresetsAreAvailableFirst() {
+        assertEquals(
+            listOf("Original HDR", "HDR Vivid", "HDR Cinema", "HDR Bright"),
+            ColorPresets.ALL.take(4).map { it.name },
+        )
+        assertFalse(ColorPresets.HDR_BRIGHT.isIdentityTransform())
+    }
+
+    @Test fun quickHdrPresetCycleWrapsAndReturnsToOriginalFromCustomPresets() {
+        assertEquals(ColorPresets.VIVID_HDR, nextHdrCyclePreset(ColorPresets.HDR_DISABLED))
+        assertEquals(ColorPresets.CINEMATIC, nextHdrCyclePreset(ColorPresets.VIVID_HDR))
+        assertEquals(ColorPresets.HDR_BRIGHT, nextHdrCyclePreset(ColorPresets.CINEMATIC))
+        assertEquals(ColorPresets.HDR_DISABLED, nextHdrCyclePreset(ColorPresets.HDR_BRIGHT))
+        assertEquals(ColorPresets.HDR_DISABLED, nextHdrCyclePreset(ColorPresets.CUSTOM))
+    }
+
     @Test fun dolbyVisionIsRecognizedFromMimeOrCodecWhenTransferMetadataIsMissing() {
         val mimeFormat = Format.Builder().setSampleMimeType("video/dolby-vision").build()
         val codecFormat = Format.Builder().setSampleMimeType("video/hevc").setCodecs("dvhe.05.06").build()

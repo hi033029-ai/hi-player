@@ -28,14 +28,17 @@ fun HdrIcon(
     Box(
         modifier = modifier.size(48.dp).combinedClickable(
             enabled = !isSwitching, role = Role.Button,
-            onClickLabel = "HDR settings", onClick = onClick, onLongClick = onLongClick,
+            onClickLabel = "Cycle HDR preset",
+            onLongClickLabel = "Open HDR preset menu",
+            onClick = onClick,
+            onLongClick = onLongClick,
         ),
         contentAlignment = Alignment.Center,
     ) {
         if (isSwitching) {
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
         } else {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = "HDR settings",
+            Icon(Icons.Filled.AutoAwesome, contentDescription = "Cycle HDR preset",
                 tint = if (isActive) Color(0xFFFFC94A) else Color.White.copy(alpha = 0.7f),
                 modifier = Modifier.size(22.dp))
         }

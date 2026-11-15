@@ -182,6 +182,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         saveCurrentProgress()
         if (_currentVideo.value != null) com.example.data.PlaybackLoudness.capture(getApplication())
         engine.pause()
+        // Unknown metadata selects the native surface while the next item's
+        // settings and playback record are loaded asynchronously.
+        engine.beginVideoItemTransition()
         if (!continueQueue) {
             playbackQueue = pendingPlaybackQueue?.takeIf { items -> items.any { it.uri == video.uri } }
                 ?: listOf(video)

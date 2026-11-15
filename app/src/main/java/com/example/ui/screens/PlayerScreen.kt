@@ -5,6 +5,7 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -100,7 +101,9 @@ import com.example.player.HdrColorModeManager
 import com.example.player.FirstFrameRevealPolicy
 import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
+import com.example.player.shouldApplySdrColorPreset
 import com.example.player.shouldUseNativeHdrOutput
+import com.example.player.nextHdrCyclePreset
 import com.example.player.isIdentityTransform
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
@@ -187,12 +190,18 @@ fun PlayerScreen(
         isHdrContent = isHdrContent,
         colorMetadataKnown = colorMetadataKnown,
     )
+    val applyColorPresetOnSdr = shouldApplySdrColorPreset(
+        isHdrContent = isHdrContent,
+        colorMetadataKnown = colorMetadataKnown,
+        enhancementEnabled = hdrEnhanceActive,
+    )
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
-    // The indicator reflects native HDR passthrough or an explicitly selected
-    // non-neutral grade; the user need not enable grading for accurate HDR output.
-    val managedHdrActive = isHdrContent
+    // The indicator reflects native HDR passthrough or a non-neutral grade that
+    // can actually be applied to a positively identified SDR track.
+    val managedHdrActive = isHdrContent ||
+        (applyColorPresetOnSdr && !hdrColorPreset.isIdentityTransform())
     val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
@@ -606,14 +615,14 @@ fun PlayerScreen(
                         glSurfaceRef = this
                         configureGlSurface(this)
                         setPlayer(activePlayer)
-                        setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                        setColorPreset(if (applyColorPresetOnSdr) hdrColorPreset else ColorPresets.NEUTRAL)
                     }
                 },
                 update = { videoSurface ->
                     glSurfaceRef = videoSurface
                     configureGlSurface(videoSurface)
                     videoSurface.setPlayer(activePlayer)
-                    videoSurface.setColorPreset(if (hdrEnhanceActive && isHdrContent) hdrColorPreset else ColorPresets.NEUTRAL)
+                    videoSurface.setColorPreset(if (applyColorPresetOnSdr) hdrColorPreset else ColorPresets.NEUTRAL)
                     videoSurface.invalidate()
                 },
                 modifier = videoSurfaceModifier,
@@ -741,6 +750,7 @@ fun PlayerScreen(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
+            nativeOutputActive = useNativeHdrSurface,
             customPreset = customHdrPreset,
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
@@ -881,20 +891,49 @@ fun PlayerScreen(
             onOpenFile = { videoPickerLauncher.launch("video/*") },
             isHdrEnhanceActive = managedHdrActive,
             isHdrSwitching = managedHdrSwitching,
-            // A single tap opens the HDR choices. HDR is changed only after the
-            // user selects a preset, including the explicit Off option.
+            // Tap cycles the four main presets; long-press opens the full preset
+            // and custom-color controls without replacing the quick action.
             onToggleHdrEnhance = {
                 if (showHdrPresetMenu || showHdrCustomizer) {
                     showHdrPresetMenu = false
                     showHdrCustomizer = false
+                } else if (useNativeHdrSurface) {
+                    val status = when {
+                        isHdrContent && managedHdrSwitching ->
+                            "HDR display output is switching"
+                        isHdrContent && hdrColorModeManager?.isHdrActive == true ->
+                            "Native HDR Active • original signal passthrough"
+                        isHdrContent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+                            "HDR detected • SDR tone mapping requested where supported"
+                        isHdrContent ->
+                            "HDR detected • this display has no active HDR output mode"
+                        else ->
+                            "Color metadata unknown • native output preserved"
+                    }
+                    Toast.makeText(
+                        context,
+                        status,
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 } else {
-                    showHdrPresetMenu = true
-                    showHdrCustomizer = false
+                    val nextPreset = nextHdrCyclePreset(hdrColorPreset)
+                    playerViewModel.engine.setHdrColorPreset(nextPreset)
+                    if (nextPreset.name == ColorPresets.HDR_DISABLED.name) {
+                        playerViewModel.disableHdrEnhance()
+                    } else if (!hdrEnhanceActive) {
+                        playerViewModel.toggleHdrEnhance()
+                    }
+                    val mode = if (useNativeHdrSurface) "Native output preserved" else "SDR grade active"
+                    Toast.makeText(context, "${nextPreset.name} • $mode", Toast.LENGTH_SHORT).show()
                 }
                 hdrInteractionTick++
             },
             onHdrBounds = { guideHdrBounds = it },
-            onLongPressHdrEnhance = {},
+            onLongPressHdrEnhance = {
+                showHdrPresetMenu = true
+                showHdrCustomizer = false
+                hdrInteractionTick++
+            },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
                 // was undiscoverable and prevented users from seeing the embedded

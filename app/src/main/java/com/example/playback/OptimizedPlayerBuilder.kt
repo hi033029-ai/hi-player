@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -66,7 +67,12 @@ object OptimizedPlayerBuilder {
 
     /** Renderer factory that prefers hardware MediaCodec, falls back to the FFmpeg extension. */
     private fun renderersFactory(context: Context): DefaultRenderersFactory {
-        return DefaultRenderersFactory(context).apply {
+        return object : DefaultRenderersFactory(context) {
+            private val hdrToneMappingAdapterFactory = DisplayAwareHdrToneMappingAdapterFactory(context)
+
+            override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory =
+                hdrToneMappingAdapterFactory
+        }.apply {
             // ON = try hardware MediaCodec first, use FFmpeg (software) renderer only if
             // no hardware codec can play the stream (e.g. exotic HDR profiles, obscure audio).
             // Use PREFER instead of ON if you want FFmpeg to be tried before some hw decoders

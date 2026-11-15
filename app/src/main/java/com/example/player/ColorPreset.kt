@@ -32,18 +32,37 @@ internal fun shouldUseNativeHdrOutput(
     colorMetadataKnown: Boolean,
 ): Boolean = isHdrContent || !colorMetadataKnown
 
+/** Only grade tracks positively identified as SDR; HDR and unknown metadata stay on native output. */
+internal fun shouldApplySdrColorPreset(
+    isHdrContent: Boolean,
+    colorMetadataKnown: Boolean,
+    enhancementEnabled: Boolean,
+): Boolean = enhancementEnabled && colorMetadataKnown && !isHdrContent
+
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
-    val HDR_DISABLED = ColorPreset("Off", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
+    val HDR_DISABLED = ColorPreset("Original HDR", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)
     val NATURAL_HDR = ColorPreset("Natural HDR", 1.02f, 1.08f, 1.06f, 1.02f, 1.01f, 1.03f, 1.12f)
-    val VIVID_HDR = ColorPreset("Vivid HDR", 1.02f, 1.12f, 1.14f, 1.03f, 1.05f, 1.08f, 1.20f)
-    val CINEMATIC = ColorPreset("Cinematic", 1.00f, 1.15f, 1.04f, 1.03f, 1.00f, 1.04f, 1.08f)
+    val VIVID_HDR = ColorPreset("HDR Vivid", 1.02f, 1.12f, 1.14f, 1.03f, 1.05f, 1.08f, 1.20f)
+    val CINEMATIC = ColorPreset("HDR Cinema", 1.00f, 1.15f, 1.04f, 1.03f, 1.00f, 1.04f, 1.08f)
+    val HDR_BRIGHT = ColorPreset("HDR Bright", 1.08f, 1.04f, 1.04f, 1.02f, 1.02f, 1.02f, 1.08f)
     val WARM = ColorPreset("Warm", 1.02f, 1.07f, 1.07f, 1.06f, 1.02f, 0.97f, 1.10f)
     val COOL = ColorPreset("Cool", 1.02f, 1.07f, 1.06f, 0.98f, 1.02f, 1.06f, 1.10f)
     val EYE_COMFORT = ColorPreset("Eye Comfort", 1.00f, 1.04f, 1.02f, 1.03f, 1.02f, 0.96f, 1.03f)
     val CUSTOM = ColorPreset("Custom", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f)
 
-    val ALL = listOf(HDR_DISABLED, NATURAL_HDR, VIVID_HDR, CINEMATIC, WARM, COOL, EYE_COMFORT)
+    val ALL = listOf(HDR_DISABLED, VIVID_HDR, CINEMATIC, HDR_BRIGHT, NATURAL_HDR, WARM, COOL, EYE_COMFORT)
+}
+
+internal fun nextHdrCyclePreset(current: ColorPreset): ColorPreset {
+    val cycle = listOf(
+        ColorPresets.HDR_DISABLED,
+        ColorPresets.VIVID_HDR,
+        ColorPresets.CINEMATIC,
+        ColorPresets.HDR_BRIGHT,
+    )
+    val currentIndex = cycle.indexOfFirst { it.name == current.name }
+    return cycle[(currentIndex + 1 + cycle.size) % cycle.size]
 }
 
 /** Midpoint is unchanged; only pixels in this hue band get lighter/darker, never a colour wash. */
