@@ -58,6 +58,8 @@ def prepare(files):
     # Bit 6 changed from editable tracks to auxiliary tracks in newer Media3.
     # Never carry the old inverse mask or turn on the new auxiliary-track flag.
     player = generated['main/OptimizedPlayerBuilder.kt']
+    if player.count('fun hardwarePreferredCodecSelector(): MediaCodecSelector') != 1:
+        raise ValueError('Gecko player builder lost its hardware-preferred codec selector')
     player = replace_once(player,
         'Mp4Extractor.FLAG_READ_WITHIN_GOP_SAMPLE_DEPENDENCIES or\n                    (1 shl 6) // Media3 1.5 editable video tracks; 1.11 auxiliary tracks.',
         'Mp4Extractor.FLAG_READ_WITHIN_GOP_SAMPLE_DEPENDENCIES', 'MP4 compatibility flags')

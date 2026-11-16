@@ -120,6 +120,8 @@ class HiPlayerEngine(
     private var progressJob: Job? = null
     private var audioSelectionRecoveryParameters: DefaultTrackSelector.Parameters? = null
     private var audioSelectionRecoveryUri: Uri? = null
+    private var audioFallbackAttemptedUri: Uri? = null
+    private val attemptedAudioFallbackTracks = mutableSetOf<Pair<Int, Int>>()
     private var configuredHwDecoding: Boolean? = null
     private var configuredRemuxUltraBuffer: Boolean? = null
     private var configuredTunneling: Boolean? = null
@@ -408,11 +410,16 @@ class HiPlayerEngine(
                 return
             }
             val details = buildString {
-                append(error.message.orEmpty())
-                append(' ')
-                append(error.cause?.message.orEmpty())
-            }.lowercase()
-            if (isUnsupportedAudioRendererFailure(details) && recoverWithPlayableAudioTrack()) {
+                var cause: Throwable? = error
+                var depth = 0
+                while (cause != null && depth < 8) {
+                    append(cause.javaClass.simpleName).append(' ')
+                    append(cause.message.orEmpty()).append(' ')
+                    cause = cause.cause
+                    depth++
+                }
+            }.lowercase(Locale.ROOT)
+            if (AudioRendererFallbackPolicy.shouldTryPlayableTrack(details) && recoverWithPlayableAudioTrack(details)) {
                 return
             }
             if (isUnsupportedVideoRendererFailure(details)) {
@@ -497,6 +504,7 @@ class HiPlayerEngine(
             // the platform MediaCodec path.
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
+            setMediaCodecSelector(com.example.playback.OptimizedPlayerBuilder.hardwarePreferredCodecSelector())
         }
 
         // Buffer tuning for smooth playback of large/high-bitrate files and
@@ -776,8 +784,13 @@ class HiPlayerEngine(
         mediaMimeType: String? = null,
         resetDecoderRetry: Boolean = true,
         mediaTitle: String? = null,
+        audioFallbackRecovery: Boolean = false,
     ) {
         _playerError.value = null
+        if (!audioFallbackRecovery || audioFallbackAttemptedUri != uri) {
+            audioFallbackAttemptedUri = uri
+            attemptedAudioFallbackTracks.clear()
+        }
         // Never carry a file-local group/index override into a different film.
         if (exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) applyRememberedTrackPreferences(clearOverrides = true)
         if (uri != activeGrowingUri) {
@@ -1060,16 +1073,9 @@ class HiPlayerEngine(
     /**
      * A phone often has no TrueHD/DTS hardware decoder even though another
      * embedded track, such as E-AC3/DDP, is playable. When MediaCodec rejects
-     * the selected track, silently select the first supported alternative and
+     * the selected track, silently select the best supported alternative and
      * resume at the same position instead of leaving playback on an error UI.
      */
-    private fun isUnsupportedAudioRendererFailure(details: String): Boolean =
-        details.contains("mediacodecaudiorenderer") &&
-            (details.contains("no_unsupported_type") ||
-                details.contains("unsupported type") ||
-                details.contains("audio/true-hd") ||
-                details.contains("audio/vnd.dts"))
-
     private fun isUnsupportedVideoRendererFailure(details: String): Boolean =
         details.contains("mediacodecvideorenderer") &&
             (details.contains("no_exceeds_capabilities") ||
@@ -1104,29 +1110,46 @@ class HiPlayerEngine(
         }
     }
 
-    private fun recoverWithPlayableAudioTrack(): Boolean {
+    private fun recoverWithPlayableAudioTrack(details: String): Boolean {
         val player = exoPlayer ?: return false
         val selector = trackSelector ?: return false
         val tracks = player.currentTracks
         var fallbackGroup: TrackGroup? = null
+        var fallbackGroupIndex = -1
         var fallbackTrackIndex = -1
+        var fallbackPriority = Int.MAX_VALUE
+        val failedTrueHd = details.contains("audio/true-hd")
+        val failedDts = details.contains("audio/vnd.dts") || details.contains("audio/dts")
 
-        for (group in tracks.groups) {
+        for ((groupIndex, group) in tracks.groups.withIndex()) {
             if (group.type != C.TRACK_TYPE_AUDIO) continue
             for (trackIndex in 0 until group.length) {
-                if (group.isTrackSupported(trackIndex) && !group.isTrackSelected(trackIndex)) {
+                val fallbackKey = groupIndex to trackIndex
+                if (!group.isTrackSupported(trackIndex) || group.isTrackSelected(trackIndex) ||
+                    fallbackKey in attemptedAudioFallbackTracks
+                ) continue
+
+                val sampleMimeType = group.getTrackFormat(trackIndex).sampleMimeType.orEmpty()
+                    .lowercase(Locale.ROOT)
+                if ((failedTrueHd && sampleMimeType.contains("audio/true-hd")) ||
+                    (failedDts && (sampleMimeType.contains("audio/vnd.dts") || sampleMimeType.contains("audio/dts")))
+                ) continue
+
+                val priority = AudioRendererFallbackPolicy.fallbackPriority(sampleMimeType)
+                if (priority < fallbackPriority) {
                     fallbackGroup = group.mediaTrackGroup
+                    fallbackGroupIndex = groupIndex
                     fallbackTrackIndex = trackIndex
-                    break
+                    fallbackPriority = priority
                 }
             }
-            if (fallbackGroup != null) break
         }
 
         val fallback = fallbackGroup ?: return false
         val uri = player.currentMediaItem?.localConfiguration?.uri ?: return false
         val mimeType = player.currentMediaItem?.localConfiguration?.mimeType
         val position = player.currentPosition.coerceAtLeast(0L)
+        attemptedAudioFallbackTracks.add(fallbackGroupIndex to fallbackTrackIndex)
         selector.parameters = selector.parameters.buildUpon()
             .setOverrideForType(TrackSelectionOverride(fallback, listOf(fallbackTrackIndex)))
             .build()
@@ -1137,7 +1160,8 @@ class HiPlayerEngine(
                 uri = uri,
                 startPositionMs = position,
                 autoPlay = true,
-                mediaMimeType = mimeType
+                mediaMimeType = mimeType,
+                audioFallbackRecovery = true,
             )
         }
         return true
@@ -1171,6 +1195,8 @@ class HiPlayerEngine(
 
     fun selectAudioTrack(track: VideoTrackInfo) {
         if (!track.isSupported) return
+        audioFallbackAttemptedUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
+        attemptedAudioFallbackTracks.clear()
         rememberedAudioLanguage = com.example.data.normalizeTrackLanguage(track.language)
         val selector = trackSelector ?: return
         val currentTracks = exoPlayer?.currentTracks ?: return

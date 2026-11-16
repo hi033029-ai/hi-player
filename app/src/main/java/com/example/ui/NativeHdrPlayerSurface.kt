@@ -33,6 +33,7 @@ fun NativeHdrPlayerSurface(
         val surfaceView = attachedView?.videoSurfaceView as? SurfaceView
         attachedView?.visibility = View.VISIBLE
         surfaceView?.visibility = View.VISIBLE
+        surfaceView?.setZOrderMediaOverlay(false)
         // PlayerView normally binds this internally. Bind explicitly as well so
         // a branch switch cannot leave the codec attached to a retired surface.
         surfaceView?.let(player::setVideoSurfaceView)
@@ -50,7 +51,7 @@ fun NativeHdrPlayerSurface(
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
                 subtitleView?.visibility = View.GONE
-                (videoSurfaceView as? SurfaceView)?.setZOrderMediaOverlay(true)
+                (videoSurfaceView as? SurfaceView)?.setZOrderMediaOverlay(false)
                 this.player = player
                 playerViewRef = this
             }

@@ -287,6 +287,12 @@ fun PlayerScreen(
             override fun onRenderedFirstFrame() {
                 firstFrameRendered = true
             }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                firstFrameRendered = true
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) firstFrameRendered = true
+            }
         }
         player.addListener(listener)
         // The listener can be registered after Media3 has already rendered the

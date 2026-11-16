@@ -74,7 +74,7 @@ object OptimizedPlayerBuilder {
             // transfer request is injected into HEVC playback.
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true) // if hw codec init fails mid-stream, fall back gracefully
-            setMediaCodecSelector(MediaCodecSelector.DEFAULT)
+            setMediaCodecSelector(hardwarePreferredCodecSelector())
         }
     }
 
@@ -93,6 +93,29 @@ object OptimizedPlayerBuilder {
             }
         }
     }
+
+    /** Prefer platform hardware codecs, but retain software codecs as a fallback. */
+    fun hardwarePreferredCodecSelector(): MediaCodecSelector =
+        MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
+            val primary = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                mimeType,
+                requiresSecureDecoder,
+                requiresTunnelingDecoder,
+            )
+            val hardware = primary.filter { it.hardwareAccelerated }
+
+            if (mimeType == "video/dolby-vision" && hardware.isEmpty()) {
+                val hevc = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                    "video/hevc",
+                    requiresSecureDecoder,
+                    requiresTunnelingDecoder,
+                ).filter { it.hardwareAccelerated }
+                if (hevc.isNotEmpty()) return@MediaCodecSelector hevc
+            }
+
+            if (hardware.isNotEmpty()) hardware + primary.filterNot { it.hardwareAccelerated }
+            else primary
+        }
 
     private fun isActivelyGrowingUri(uri: Uri): Boolean {
         val key = if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
