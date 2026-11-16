@@ -26,11 +26,12 @@ internal fun ColorPreset.isIdentityTransform(): Boolean =
         red == 1f && green == 1f && blue == 1f && vibrance == 1f &&
         sharpness == 0f && targetHue < 0f && targetAdjustments.isEmpty()
 
-/** HDR and unclassified tracks bypass GLES; only explicitly known SDR can use the grading surface. */
+/** HDR, unclassified, and growing tracks bypass GLES; only stable known SDR uses the grading surface. */
 internal fun shouldUseNativeHdrOutput(
     isHdrContent: Boolean,
     colorMetadataKnown: Boolean,
-): Boolean = isHdrContent || !colorMetadataKnown
+    isGrowingContent: Boolean = false,
+): Boolean = isGrowingContent || isHdrContent || !colorMetadataKnown
 
 /** Only grade tracks positively identified as SDR; HDR and unknown metadata stay on native output. */
 internal fun shouldApplySdrColorPreset(

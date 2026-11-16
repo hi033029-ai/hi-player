@@ -28,7 +28,6 @@ import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -492,12 +491,11 @@ class HiPlayerEngine(
         release(forReplacement = true)
 
         val renderersFactory = DefaultRenderersFactory(context).apply {
-            // ON keeps hardware decoding as the default and automatically adds
-            // bundled extension renderers when hardware cannot support a track.
-            // This includes Libgav1 for AV1 video and the existing FFmpeg audio
-            // extension; it avoids forcing expensive software decoding on every
-            // ordinary video.
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            // Prefer bundled extension renderers when a hardware decoder claims
+            // support but cannot actually decode a track (notably DTS/DTS-HD via
+            // FFmpeg). The FFmpeg extension is audio-only; HEVC HDR remains on
+            // the platform MediaCodec path.
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
         }
 
@@ -800,7 +798,12 @@ class HiPlayerEngine(
         // onTracksChanged/STATE_READY.
         _availableAudioTracks.value = emptyList()
         _availableSubtitleTracks.value = emptyList()
-        beginVideoItemTransition()
+        // A growing-source retry re-prepares the same MediaItem. Preserve the
+        // already-detected HDR/color state in that case; resetting it can make
+        // Compose swap surfaces while the incremental Matroska stream is active.
+        if (exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) {
+            beginVideoItemTransition()
+        }
         val title = mediaTitle ?: exoPlayer?.currentMediaItem
             ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
@@ -826,7 +829,7 @@ class HiPlayerEngine(
         exoPlayer?.apply {
             stop()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
-            val growingSource = if (externalSubtitleUri == null && isGrowingDownloadUri(uri)) {
+            val growingSource = if (isGrowingDownloadUri(uri)) {
                 createGrowingFileSource(uri, mediaItem)
             } else {
                 null
@@ -855,7 +858,7 @@ class HiPlayerEngine(
         val key = downloadRegistryKey(uri)
         if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile && DownloadingFilesRegistry.completedUri(key) == null) return null
         if (uri.scheme != "file" && !DownloadingFilesRegistry.isDownloading(key)) return null
-        return ProgressiveMediaSource.Factory(
+        return DefaultMediaSourceFactory(
             com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),
             createGrowingExtractorsFactory()
         )
@@ -865,6 +868,13 @@ class HiPlayerEngine(
             // error and recreating the whole surface/player.
             .setLoadErrorHandlingPolicy(growingFileLoadErrorPolicy(key))
             .createMediaSource(mediaItem)
+    }
+
+    /** True for an incomplete source, but false for a pending-name alias already published as complete. */
+    fun isActivelyGrowingDownload(uri: Uri?): Boolean {
+        uri ?: return false
+        val key = downloadRegistryKey(uri)
+        return DownloadingFilesRegistry.completedUri(key) == null && isGrowingDownloadUri(uri)
     }
 
     private fun createGrowingExtractorsFactory(): DefaultExtractorsFactory =

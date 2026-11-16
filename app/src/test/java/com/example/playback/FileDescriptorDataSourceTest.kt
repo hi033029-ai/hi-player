@@ -9,12 +9,17 @@ import com.example.player.DownloadingFilesRegistry
 import kotlin.concurrent.thread
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -28,7 +33,7 @@ class FileDescriptorDataSourceTest {
         DownloadingFilesRegistry.completeOwned(partial.absolutePath, Uri.fromFile(completed).toString())
         val source = FileDescriptorDataSource(context, waitForGrowth = true)
         try {
-            source.open(DataSpec.Builder().setUri(Uri.fromFile(partial)).build())
+            assertEquals(4L, source.open(DataSpec.Builder().setUri(Uri.fromFile(partial)).build()))
             val bytes = ByteArray(4)
             assertEquals(4, source.read(bytes, 0, 4))
             assertArrayEquals(byteArrayOf(1, 2, 3, 4), bytes)
@@ -96,6 +101,68 @@ class FileDescriptorDataSourceTest {
                 )
             )
             writer.join(2_000L)
+        } finally {
+            source.close()
+            DownloadingFilesRegistry.markComplete(file.absolutePath)
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `cancelled source exits while waiting for an unwritten extractor position`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("growing-cancel", ".mkv", context.cacheDir)
+        file.writeBytes(byteArrayOf(1, 2, 3, 4))
+        DownloadingFilesRegistry.markDownloading(file.absolutePath, file.length())
+
+        val source = FileDescriptorDataSource(context, waitForGrowth = true)
+        val finished = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>(null)
+        val opener = thread(start = true) {
+            try {
+                source.open(
+                    DataSpec.Builder()
+                        .setUri(Uri.fromFile(file))
+                        .setPosition(16L)
+                        .build()
+                )
+            } catch (error: Throwable) {
+                failure.set(error)
+            } finally {
+                finished.countDown()
+            }
+        }
+
+        try {
+            Thread.sleep(250L)
+            source.close()
+            assertTrue("open should stop promptly after cancellation", finished.await(2, TimeUnit.SECONDS))
+            assertTrue(failure.get() is IOException)
+            opener.join(1_000L)
+        } finally {
+            source.close()
+            DownloadingFilesRegistry.markComplete(file.absolutePath)
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `far future metadata seek returns eof without failing source open`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("growing-far-seek", ".mkv", context.cacheDir)
+        file.writeBytes(byteArrayOf(1, 2, 3, 4))
+        DownloadingFilesRegistry.markDownloading(file.absolutePath, file.length())
+
+        val source = FileDescriptorDataSource(context, waitForGrowth = true)
+        try {
+            val length = source.open(
+                DataSpec.Builder()
+                    .setUri(Uri.fromFile(file))
+                    .setPosition(64L * 1024L * 1024L)
+                    .build()
+            )
+            assertEquals(C.LENGTH_UNSET.toLong(), length)
+            assertEquals(C.RESULT_END_OF_INPUT, source.read(ByteArray(1), 0, 1))
         } finally {
             source.close()
             DownloadingFilesRegistry.markComplete(file.absolutePath)

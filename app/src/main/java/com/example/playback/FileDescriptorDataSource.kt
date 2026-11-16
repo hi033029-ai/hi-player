@@ -33,6 +33,13 @@ class FileDescriptorDataSource(
         val modifiedAtMs: Long,
     )
 
+    private enum class RequiredPositionResult {
+        AVAILABLE,
+        FAR_AHEAD,
+        NOT_GROWING,
+        CANCELLED,
+    }
+
     private var pfd: ParcelFileDescriptor? = null
     private var input: FileInputStream? = null
     private var uri: Uri? = null
@@ -42,18 +49,21 @@ class FileDescriptorDataSource(
     private var keepWaitingUntilMs = 0L
     private var lastObservedLength = 0L
     private var lastObservedModifiedMs = 0L
+    private var returnEofForUnavailableSeek = false
 
     @Volatile
     private var closed = false
 
     override fun open(dataSpec: DataSpec): Long {
         closed = false
+        returnEofForUnavailableSeek = false
         uri = dataSpec.uri
         val downloadKey = downloadKey(dataSpec.uri)
-        val activeGrowingFile = waitForGrowth && (
+        val publishedUri = DownloadingFilesRegistry.completedUri(downloadKey)
+        val activeGrowingFile = waitForGrowth && publishedUri == null && (
             DownloadingFilesRegistry.isDownloading(downloadKey) ||
                 PendingDownloadFormat.isPending(dataSpec.uri.lastPathSegment.orEmpty())
-            )
+        )
         growingDownloadKey = downloadKey.takeIf { activeGrowingFile }
         openedAsGrowingFile = activeGrowingFile
         keepWaitingUntilMs = if (activeGrowingFile) {
@@ -68,7 +78,20 @@ class FileDescriptorDataSource(
             // yet. Wait before creating the stream, rather than calling
             // FileChannel.position past EOF and surfacing a source failure.
             if (dataSpec.position > snapshotFor(dataSpec.uri).length && activeGrowingFile) {
-                waitForRequiredPosition(dataSpec.uri, dataSpec.position)
+                when (waitForRequiredPosition(dataSpec.uri, dataSpec.position)) {
+                    RequiredPositionResult.FAR_AHEAD -> {
+                        // Return a valid unknown-length source. The extractor
+                        // receives ordinary EOF from read() and can abandon an
+                        // optional tail SeekHead entry without failing prepare.
+                        returnEofForUnavailableSeek = true
+                        bytesRemaining = C.LENGTH_UNSET.toLong()
+                        transferStarted(dataSpec)
+                        return bytesRemaining
+                    }
+                    RequiredPositionResult.CANCELLED ->
+                        throw IOException("Data source closed while waiting for a growing file")
+                    else -> Unit
+                }
             }
 
             val descriptor = openDescriptor(dataSpec.uri)
@@ -115,6 +138,7 @@ class FileDescriptorDataSource(
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
+        if (returnEofForUnavailableSeek) return C.RESULT_END_OF_INPUT
         if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
 
         val bytesToRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
@@ -144,13 +168,22 @@ class FileDescriptorDataSource(
     }
 
     /** Waits until an extractor's requested offset has actually become readable. */
-    private fun waitForRequiredPosition(targetUri: Uri, requiredPosition: Long) {
-        val deadline = SystemClock.elapsedRealtime() + GROWTH_POLL_WINDOW_MS
-        while (!closed && SystemClock.elapsedRealtime() < deadline) {
-            if (snapshotFor(targetUri).length >= requiredPosition) return
-            if (!shouldKeepWaitingForGrowth()) break
+    private fun waitForRequiredPosition(
+        targetUri: Uri,
+        requiredPosition: Long,
+    ): RequiredPositionResult {
+        // Sequential reads may briefly run just ahead of the writer, but a
+        // Matroska SeekHead can point to Tags/Chapters/Attachments several GiB
+        // away. Fail those probes immediately; only follow nearby written data.
+        while (!closed) {
+            val availableLength = snapshotFor(targetUri).length
+            if (availableLength >= requiredPosition) return RequiredPositionResult.AVAILABLE
+            val gap = requiredPosition - availableLength
+            if (gap > MAX_SEQUENTIAL_WAIT_GAP_BYTES) return RequiredPositionResult.FAR_AHEAD
+            if (!shouldKeepWaitingForGrowth()) return RequiredPositionResult.NOT_GROWING
             sleepForGrowthPoll()
         }
+        return RequiredPositionResult.CANCELLED
     }
 
     /**
@@ -216,6 +249,7 @@ class FileDescriptorDataSource(
      */
     private fun shouldKeepWaitingForGrowth(): Boolean {
         val key = growingDownloadKey.orEmpty()
+        if (DownloadingFilesRegistry.completedUri(key) != null) return false
         return DownloadingFilesRegistry.isActivelyGrowing(key) ||
             SystemClock.elapsedRealtime() < keepWaitingUntilMs
     }
@@ -274,6 +308,7 @@ class FileDescriptorDataSource(
         } finally {
             growingDownloadKey = null
             openedAsGrowingFile = false
+            returnEofForUnavailableSeek = false
             keepWaitingUntilMs = 0L
             lastObservedLength = 0L
             lastObservedModifiedMs = 0L
@@ -306,5 +341,6 @@ class FileDescriptorDataSource(
         const val GROWTH_POLL_INTERVAL_MS = 200L
         const val GROWTH_POLL_WINDOW_MS = 30_000L
         const val GROWING_IDLE_GRACE_MS = 120_000L
+        const val MAX_SEQUENTIAL_WAIT_GAP_BYTES = 32L * 1024L * 1024L
     }
 }

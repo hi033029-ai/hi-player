@@ -18,6 +18,15 @@ class SelectiveColourBandTest {
         assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
     }
 
+    @Test fun growingFilesKeepOneNativeSurfaceEvenWhenColorMetadataLooksSdr() {
+        assertTrue(shouldUseNativeHdrOutput(
+            isHdrContent = false,
+            colorMetadataKnown = true,
+            isGrowingContent = true,
+        ))
+        assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
+    }
+
     @Test fun colorGradingIsLimitedToOptedInKnownSdrTracks() {
         assertTrue(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = true))
         assertFalse(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = false))

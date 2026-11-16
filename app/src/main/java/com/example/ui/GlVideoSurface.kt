@@ -552,6 +552,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     }
 
     override fun onDetachedFromWindow() {
+        // A SurfaceView owns a separate compositor surface. Hide it before
+        // detaching/releasing so it cannot overlap the native HDR PlayerView
+        // surface during a Compose branch switch.
+        visibility = View.GONE
         dismissPresetPopup()
         endHoldSeek()
         hudDismissRunnable?.let(::removeCallbacks)
@@ -572,6 +576,11 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         // so a frame being drawn never touches a released SurfaceTexture.
         super.onDetachedFromWindow()
         renderer.releaseSurface()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        visibility = View.VISIBLE
     }
 
     private class VideoGlRenderer : Renderer, SurfaceTexture.OnFrameAvailableListener {

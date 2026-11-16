@@ -11,21 +11,22 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.extractor.mp4.Mp4Extractor
+import com.example.model.PendingDownloadFormat
+import com.example.player.DownloadingFilesRegistry
 
 /**
  * Builds an ExoPlayer instance configured for very large 4K/HDR files, covering
  * the 10 techniques UPlayer/Manus identified:
  *
- *  1. Hardware MediaCodec decoding      -> DefaultRenderersFactory(EXTENSION_RENDERER_MODE_ON)
- *  2. FFmpeg native decoding (fallback) -> RenderersFactory extension mode PREFER, see build.gradle
+ *  1. Platform MediaCodec decoding      -> DefaultRenderersFactory with decoder fallback enabled
+ *  2. FFmpeg native audio decoding      -> RenderersFactory extension mode PREFER, see build.gradle
  *  3. Random-access reads               -> FileDataSource / ContentResolver FD source, no full read
  *  4. Fast seeking                      -> DefaultLoadControl tuned buffers + coalesced seeks
  *                                          (SmoothSeekController) — EXACT seek params, see build()
@@ -65,33 +66,39 @@ object OptimizedPlayerBuilder {
             .build()
     }
 
-    /** Renderer factory that prefers hardware MediaCodec, falls back to the FFmpeg extension. */
+    /** Renderer factory that enables the bundled FFmpeg extension for formats such as DTS-HD. */
     private fun renderersFactory(context: Context): DefaultRenderersFactory {
-        return object : DefaultRenderersFactory(context) {
-            private val hdrToneMappingAdapterFactory = DisplayAwareHdrToneMappingAdapterFactory(context)
-
-            override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory =
-                hdrToneMappingAdapterFactory
-        }.apply {
-            // ON = try hardware MediaCodec first, use FFmpeg (software) renderer only if
-            // no hardware codec can play the stream (e.g. exotic HDR profiles, obscure audio).
-            // Use PREFER instead of ON if you want FFmpeg to be tried before some hw decoders
-            // that are known-buggy on certain devices.
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        return DefaultRenderersFactory(context).apply {
+            // Prefer the bundled FFmpeg renderer when hardware claims support for
+            // a format such as DTS-HD but fails to decode it. No HDR-to-SDR codec
+            // transfer request is injected into HEVC playback.
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true) // if hw codec init fails mid-stream, fall back gracefully
             setMediaCodecSelector(MediaCodecSelector.DEFAULT)
         }
     }
 
     /** Extractors factory tuned to avoid a full-file probe/sniff on huge containers. */
-    private fun extractorsFactory(): DefaultExtractorsFactory {
+    private fun extractorsFactory(): DefaultExtractorsFactory = extractorsFactory(disableMatroskaCueSeek = false)
+
+    private fun extractorsFactory(disableMatroskaCueSeek: Boolean): DefaultExtractorsFactory {
         return DefaultExtractorsFactory().apply {
             // Skip the exhaustive index scan on large MP4/MOV; trust the moov atom.
             setMp4ExtractorFlags(Mp4Extractor.FLAG_READ_MOTION_PHOTO_METADATA.inv())
             // Don't force constant-bitrate seeking heuristics on huge files — use the
             // container's own index (fast) rather than scanning (slow on multi-GB files).
             setConstantBitrateSeekingEnabled(false)
+            if (disableMatroskaCueSeek) {
+                setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+            }
         }
+    }
+
+    private fun isActivelyGrowingUri(uri: Uri): Boolean {
+        val key = if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
+        if (DownloadingFilesRegistry.completedUri(key) != null) return false
+        return DownloadingFilesRegistry.isDownloading(key) ||
+            (uri.scheme == "file" && PendingDownloadFormat.isPending(uri.lastPathSegment.orEmpty()))
     }
 
     /** Route local files through the growing-file source; keep normal handling for remote/content URIs. */
@@ -106,7 +113,11 @@ object OptimizedPlayerBuilder {
      * the file or ExoPlayer re-opening by path, and avoids loading the whole file into memory.
      */
     fun mediaSourceFromUri(context: Context, uri: Uri): MediaSource {
-        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory(context), extractorsFactory())
+        val growing = isActivelyGrowingUri(uri)
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            dataSourceFactory(context),
+            extractorsFactory(disableMatroskaCueSeek = growing),
+        )
         return mediaSourceFactory.createMediaSource(MediaItem.fromUri(uri))
     }
 

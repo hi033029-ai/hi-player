@@ -10,8 +10,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
@@ -23,14 +23,23 @@ import androidx.media3.ui.PlayerView
 @OptIn(UnstableApi::class)
 @Composable
 fun NativeHdrPlayerSurface(
-    player: Player,
+    player: ExoPlayer,
     modifier: Modifier = Modifier,
 ) {
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
 
     DisposableEffect(player, playerViewRef) {
         val attachedView = playerViewRef
+        val surfaceView = attachedView?.videoSurfaceView as? SurfaceView
+        attachedView?.visibility = View.VISIBLE
+        surfaceView?.visibility = View.VISIBLE
+        // PlayerView normally binds this internally. Bind explicitly as well so
+        // a branch switch cannot leave the codec attached to a retired surface.
+        surfaceView?.let(player::setVideoSurfaceView)
         onDispose {
+            attachedView?.visibility = View.GONE
+            surfaceView?.visibility = View.GONE
+            surfaceView?.let(player::clearVideoSurfaceView)
             if (attachedView?.player === player) attachedView.player = null
         }
     }
@@ -48,6 +57,7 @@ fun NativeHdrPlayerSurface(
         },
         update = { view ->
             if (view.player !== player) view.player = player
+            view.visibility = View.VISIBLE
             view.subtitleView?.visibility = View.GONE
             playerViewRef = view
         },

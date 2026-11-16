@@ -186,9 +186,13 @@ fun PlayerScreen(
     val hdrColorPreset by playerViewModel.engine.hdrColorPreset.collectAsState()
     val isHdrContent by playerViewModel.engine.isHdrContent.collectAsState()
     val colorMetadataKnown by playerViewModel.engine.isVideoColorMetadataKnown.collectAsState()
+    val isGrowingDownload = currentVideo?.let { video ->
+        video.isPartialDownload || playerViewModel.engine.isActivelyGrowingDownload(video.uri)
+    } == true
     val useNativeHdrSurface = shouldUseNativeHdrOutput(
         isHdrContent = isHdrContent,
         colorMetadataKnown = colorMetadataKnown,
+        isGrowingContent = isGrowingDownload,
     )
     val applyColorPresetOnSdr = shouldApplySdrColorPreset(
         isHdrContent = isHdrContent,
@@ -296,9 +300,8 @@ fun PlayerScreen(
     // Keep the black cover until the first decoded frame in normal playback. For
     // a growing download, also use a bounded fallback after Media3 reaches READY:
     // a missed callback during surface negotiation must not hide the video forever.
-    LaunchedEffect(currentVideo?.uri, currentVideo?.isPartialDownload, activePlayer) {
+    LaunchedEffect(currentVideo?.uri, isGrowingDownload, activePlayer) {
         val player = activePlayer
-        val isGrowingDownload = currentVideo?.isPartialDownload == true
         if (isGrowingDownload) {
             while (!firstFrameRendered && player.playbackState != Player.STATE_READY) {
                 delay(100)
@@ -588,8 +591,8 @@ fun PlayerScreen(
             .onGloballyPositioned { guideRootOrigin = it.positionInWindow() },
         contentAlignment = Alignment.Center,
     ) {
-        // 1. Use Media3's native SurfaceView for HDR passthrough. The GLES path
-        // remains available for SDR and explicitly selected non-neutral effects.
+        // This exclusive branch keeps only one SurfaceView in the window. Growing
+        // files stay native even while Matroska track metadata arrives incrementally.
         val ratioScale = computeVideoRatioScale(
             containerSize,
             videoWidth,
@@ -903,10 +906,8 @@ fun PlayerScreen(
                             "HDR display output is switching"
                         isHdrContent && hdrColorModeManager?.isHdrActive == true ->
                             "Native HDR Active • original signal passthrough"
-                        isHdrContent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-                            "HDR detected • SDR tone mapping requested where supported"
                         isHdrContent ->
-                            "HDR detected • this display has no active HDR output mode"
+                            "HDR detected • native surface selected; display HDR mode unavailable"
                         else ->
                             "Color metadata unknown • native output preserved"
                     }

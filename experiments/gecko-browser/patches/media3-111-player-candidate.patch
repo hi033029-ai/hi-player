@@ -2,9 +2,7 @@ diff --git a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt b/
 index 3758f7c..99a13e8 100644
 --- a/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
 +++ b/app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt
-@@ -86,8 +86,16 @@ object OptimizedPlayerBuilder {
-     /** Extractors factory tuned to avoid a full-file probe/sniff on huge containers. */
-     private fun extractorsFactory(): DefaultExtractorsFactory {
+@@ -85,6 +85,14 @@ object OptimizedPlayerBuilder {
          return DefaultExtractorsFactory().apply {
 -            // Skip the exhaustive index scan on large MP4/MOV; trust the moov atom.
 -            setMp4ExtractorFlags(Mp4Extractor.FLAG_READ_MOTION_PHOTO_METADATA.inv())
