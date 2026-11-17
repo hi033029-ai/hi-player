@@ -7,8 +7,6 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.os.SystemClock
-import android.util.Log
 import android.os.ParcelFileDescriptor
 import android.view.SurfaceView
 import androidx.media3.common.C

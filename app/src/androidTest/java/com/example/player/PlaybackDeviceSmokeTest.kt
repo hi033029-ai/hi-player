@@ -29,6 +29,7 @@ import kotlinx.coroutines.cancel
  * Dolby Vision, DTS-HD/TrueHD, and 10-bit HDR validation.
  */
 @RunWith(AndroidJUnit4::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackDeviceSmokeTest {
     private fun fixture(name: String, part: Boolean = false): File {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
