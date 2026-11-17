@@ -17,7 +17,7 @@ Base: `47dec5939604986eda850ad4058b4a05c681157a`, branch `feat/geckoview-browser
 
 These are verified source defects. **No physical-phone ANR trace has been supplied or captured here. The original phone's exact blocked native stack is not verified.** A vendor codec stuck in JNI cannot safely be killed in-process; the design keeps that single instance out of the UI's execution path and avoids creating replacements indefinitely.
 
-A real `onSurfaceSizeChanged` acknowledgement now gates Media3 video preparation (audio/background sessions bypass it). This also prevents a newly created paused grading pipeline from consuming its first frame before Compose binds the replacement surface. Missing output reaches a responsive, bounded error state.
+A real `onSurfaceSizeChanged` acknowledgement now gates Media3 video preparation (audio/background sessions bypass it). This also prevents a newly created paused grading pipeline from consuming its first frame before Compose binds the replacement surface. Missing output reaches a responsive, bounded error state. Paused seeks/replacements explicitly enable the renderer's first-frame release on its playback looper, preserving paused audio/video state.
 
 ## Rendering and codec limits
 

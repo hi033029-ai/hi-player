@@ -172,7 +172,6 @@ class PlaybackDeviceSmokeTest {
         val engine = AtomicReference<HiPlayerEngine>()
         val surface = AtomicReference<SurfaceView>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        val frame = AtomicLong(-1)
         fun capture(): android.graphics.Bitmap {
             val bitmap = android.graphics.Bitmap.createBitmap(480,270,android.graphics.Bitmap.Config.ARGB_8888)
             val done = CountDownLatch(1)
@@ -206,19 +205,25 @@ class PlaybackDeviceSmokeTest {
                     scope.launch {
                         playback.playerInstance.collect { player ->
                             player?.setVideoSurfaceView(view)
-                            player?.setVideoFrameMetadataListener { us, _, _, _ -> frame.set(us/1000) }
                         }
                     }
                     playback.prepareMedia(Uri.fromFile(file), autoPlay = false, mediaMimeType = "video/mp4")
                 }
-                await("No paused SDR frame") { frame.get() >= 0 }
+                await("No paused SDR frame") { engine.get().lastRenderedPresentationMs >= 0 }
                 fun atReferenceFrame(preset: ColorPreset) {
-                    frame.set(-1)
                     scenario.onActivity { engine.get().setHdrEnhanceActive(true); engine.get().setHdrColorPreset(preset); engine.get().seekTo(1_000) }
-                    await("Preset did not decode preroll") { frame.get() in 1_000..1_100 }
-                    frame.set(-1)
+                    try {
+                        await("Preset did not decode preroll") { engine.get().lastRenderedPresentationMs in 1_000..1_100 }
+                    } catch (failure: AssertionError) {
+                        var snapshot = ""
+                        scenario.onActivity {
+                            val p = engine.get().getPlayer()
+                            snapshot = "${preset.name}: rendered=${engine.get().lastRenderedPresentationMs}, position=${p.currentPosition}, state=${p.playbackState}, surface=${p.surfaceSize}, error=${engine.get().playerError.value}"
+                        }
+                        throw AssertionError(snapshot, failure)
+                    }
                     scenario.onActivity { engine.get().seekTo(3_000) }
-                    await("Preset did not render the reference frame") { frame.get() in 3_000..3_100 }
+                    await("Preset did not render the reference frame") { engine.get().lastRenderedPresentationMs in 3_000..3_100 }
                     Thread.sleep(200) // PixelCopy consumes the frame after its release timestamp.
                 }
                 atReferenceFrame(ColorPresets.HDR_DISABLED)

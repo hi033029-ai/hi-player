@@ -348,6 +348,9 @@ class HiPlayerEngine(
         }
         if (preset != null && appliedPreset != preset) {
             player.setVideoEffects(listOf(ColorPresetEffect(preset)))
+            if (!player.playWhenReady && player.playbackState == Player.STATE_READY) {
+                player.setVideoEffects(androidx.media3.common.VideoFrameProcessor.REDRAW)
+            }
             appliedPreset = preset
             videoEffectsInitialized = true
         }
@@ -529,6 +532,7 @@ class HiPlayerEngine(
                 updateAvailableTracks(exoPlayer?.currentTracks)
                 updateVideoOutputInfo()
                 updateTelemetry()
+                exoPlayer?.let(::requestPausedVideoFrame)
             } else if (playbackState == Player.STATE_ENDED) {
                 onVideoEnded?.invoke()
             }
@@ -1384,6 +1388,22 @@ class HiPlayerEngine(
         val clamped = clampSeekTarget(positionMs)
         pendingDecodedSeekMs = clamped.takeIf { player.videoFormat != null }
         player.seekTo(clamped)
+        requestPausedVideoFrame(player)
+    }
+
+    private fun requestPausedVideoFrame(player: ExoPlayer) {
+        if (player.playWhenReady || player.playbackState == Player.STATE_IDLE) return
+        // The Media3 GL sink may retain RELEASE_FIRST_FRAME_WHEN_STARTED after
+        // a paused seek/rebind. Explicitly allow the new frame without starting
+        // audio or momentarily resuming playback. Renderer access runs on its
+        // playback looper, never on Compose/main or a native event callback.
+        repeat(player.rendererCount) { index ->
+            if (player.getRendererType(index) == C.TRACK_TYPE_VIDEO) {
+                val renderer = player.getRenderer(index)
+                player.createMessage { _, _ -> renderer.enableMayRenderStartOfStream() }
+                    .setType(0).send()
+            }
+        }
     }
 
     fun seekRelative(deltaMs: Long) {
