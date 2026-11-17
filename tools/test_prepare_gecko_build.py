@@ -7,6 +7,10 @@ prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
 
 class PatchTests(unittest.TestCase):
+    def test_gecko_libvlc_dependency_generated(self):
+        app = Path(__file__).resolve().parents[1] / "app/build.gradle.kts"
+        assert app.read_text().count('implementation("org.videolan.android:libvlc-all:3.6.0")') == 1
+
     def test_context_checked_replacement(self):
         patch = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n one\n-two\n+three\n"
         original = {"a": "one\ntwo\n"}

@@ -95,6 +95,7 @@ import com.example.ui.HdrPresetMenu
 import com.example.ui.HdrColor
 import com.example.ui.SeekPreviewHud
 import com.example.ui.GlVideoSurface
+import com.example.ui.VlcHdrVideoSurface
 import com.example.ui.NativeHdrPlayerSurface
 import com.example.player.HdrColorModeManager
 import com.example.player.FirstFrameRevealPolicy
@@ -131,6 +132,9 @@ fun PlayerScreen(
     // HDR/codec switches). Holding a released player was a source of playback crashes.
     val observedPlayer by playerViewModel.engine.playerInstance.collectAsState()
     val activePlayer = observedPlayer ?: playerViewModel.engine.getPlayer()
+    val usingVlc by playerViewModel.engine.usesVlc.collectAsState()
+    val vlcVideoSize by playerViewModel.engine.vlcVideoSize.collectAsState()
+    val vlcFirstFrame by playerViewModel.engine.vlcFirstFrame.collectAsState()
     val hdrColorModeManager = remember(activity, activePlayer) {
         activity?.let { HdrColorModeManager(it) }
     }
@@ -199,8 +203,8 @@ fun PlayerScreen(
 
     // Attach before the first selected HDR track reaches the surface so the
     // window is already in HDR output mode when MediaCodec renders frame one.
-    DisposableEffect(hdrColorModeManager, activePlayer) {
-        hdrColorModeManager?.attach(activePlayer)
+    DisposableEffect(hdrColorModeManager, activePlayer, usingVlc) {
+        if (!usingVlc) hdrColorModeManager?.attach(activePlayer)
         onDispose { hdrColorModeManager?.release() }
     }
 
@@ -244,6 +248,18 @@ fun PlayerScreen(
     var hdrColorIntensities by remember { mutableStateOf(emptyMap<HdrColor, Float>()) }
     var hdrInteractionTick by remember { mutableStateOf(0) }
 
+    LaunchedEffect(usingVlc, vlcVideoSize) {
+        if (usingVlc) {
+            videoWidth = vlcVideoSize.first
+            videoHeight = vlcVideoSize.second
+            videoPixelWidthHeightRatio = 1f
+            videoRotationDegrees = 0
+        }
+    }
+    LaunchedEffect(usingVlc, vlcFirstFrame) {
+        if (usingVlc) firstFrameRendered = vlcFirstFrame
+    }
+
     DisposableEffect(activePlayer) {
         val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
@@ -269,8 +285,11 @@ fun PlayerScreen(
 
     // Keep the native surface path, but mask the initial surface/HDR negotiation
     // until Media3 confirms that the first decoded frame is on screen.
-    DisposableEffect(activePlayer, currentVideo?.uri) {
-        firstFrameRendered = false
+    DisposableEffect(activePlayer, currentVideo?.uri, usingVlc) {
+        firstFrameRendered = if (usingVlc) vlcFirstFrame else false
+        if (usingVlc) {
+            onDispose { }
+        } else {
         val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
@@ -290,6 +309,7 @@ fun PlayerScreen(
         firstFrameRendered = player.videoSize.width > 0 &&
             (player.playbackState == Player.STATE_READY || player.currentPosition > 0)
         onDispose { player.removeListener(listener) }
+        }
     }
 
     // Keep the black cover until the first decoded frame in normal playback. For
@@ -297,6 +317,7 @@ fun PlayerScreen(
     // a missed callback during surface negotiation must not hide the video forever.
     LaunchedEffect(currentVideo?.uri, isGrowingDownload, activePlayer) {
         val player = activePlayer
+        if (usingVlc) return@LaunchedEffect
         if (isGrowingDownload) {
             while (!firstFrameRendered && player.playbackState != Player.STATE_READY) {
                 delay(100)
@@ -542,10 +563,26 @@ fun PlayerScreen(
     }
 
     // Keep press-and-hold seek available when native HDR bypasses GlVideoSurface.
-    LaunchedEffect(activePlayer, nativeHoldSeekDirection) {
+    LaunchedEffect(activePlayer, nativeHoldSeekDirection, usingVlc) {
         val direction = nativeHoldSeekDirection
         if (direction == 0) return@LaunchedEffect
-
+        if (usingVlc) {
+            val wasPlaying = playerViewModel.engine.isPlaying.value
+            val previousSpeed = playerViewModel.engine.playbackSpeed.value
+            try {
+                if (direction > 0) playerViewModel.engine.setPlaybackSpeed(4f)
+                else playerViewModel.engine.pause()
+                while (direction < 0) {
+                    delay(500L)
+                    playerViewModel.engine.seekRelative(-1_000L)
+                }
+                awaitCancellation()
+            } finally {
+                playerViewModel.engine.setPlaybackSpeed(previousSpeed)
+                if (wasPlaying) playerViewModel.engine.play()
+                else playerViewModel.engine.pause()
+            }
+        } else {
         val wasPlaying = activePlayer.isPlaying
         val previousParameters = activePlayer.playbackParameters
         val previousSeekParameters = activePlayer.seekParameters
@@ -567,6 +604,7 @@ fun PlayerScreen(
             runCatching { activePlayer.setSeekParameters(previousSeekParameters) }
             if (wasPlaying) runCatching { activePlayer.play() }
             else runCatching { activePlayer.pause() }
+        }
         }
     }
 
@@ -604,7 +642,9 @@ fun PlayerScreen(
                 scaleX = ratioScale.first * videoScale
                 scaleY = ratioScale.second * videoScale
             }
-        if (useNativeHdrSurface) {
+        if (usingVlc) {
+            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, modifier = videoSurfaceModifier)
+        } else if (useNativeHdrSurface) {
             NativeHdrPlayerSurface(activePlayer, modifier = videoSurfaceModifier)
         } else {
             AndroidView(
@@ -641,16 +681,22 @@ fun PlayerScreen(
             )
         }
 
-        if (useNativeHdrSurface) {
+        if (useNativeHdrSurface || usingVlc) {
             com.example.ui.components.GestureOverlay(
                 isLocked = isScreenLocked,
                 onSingleTap = {
                     if (isScreenLocked) showLockedUnlockControl = !showLockedUnlockControl
                     else areControlsVisible = !areControlsVisible
                 },
-                onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) },
+                onDoubleTapLeft = {
+                    if (usingVlc) playerViewModel.seekRelative(-10_000L)
+                    else smoothSeekController.seekBy(-10_000L)
+                },
                 onDoubleTapCenter = { playerViewModel.togglePlayPause() },
-                onDoubleTapRight = { smoothSeekController.seekBy(10_000L) },
+                onDoubleTapRight = {
+                    if (usingVlc) playerViewModel.seekRelative(10_000L)
+                    else smoothSeekController.seekBy(10_000L)
+                },
                 isPlaying = isPlaying,
                 onBrightnessDelta = { delta ->
                     activity?.let { act ->

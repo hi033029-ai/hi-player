@@ -81,6 +81,8 @@ def prepare(files):
 """
     generated['AndroidManifest.xml'] = replace_once(manifest, marker, additions + marker, 'manifest permission insertion')
     app = files['app/build.gradle.kts']
+    if app.count('implementation("org.videolan.android:libvlc-all:3.6.0")') != 1:
+        raise ValueError('Gecko app must include exactly one LibVLC 3.6.0 dependency')
     app = replace_once(app, 'release(36) { minorApiLevel = 1 }', 'release(37) { minorApiLevel = 2 }', 'compile SDK')
     if app.count('JavaVersion.VERSION_11') != 2:
         raise ValueError('Unexpected Java toolchain configuration')

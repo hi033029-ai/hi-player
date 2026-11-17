@@ -106,6 +106,80 @@ class HiPlayerEngine(
     }
 
     private var exoPlayer: ExoPlayer? = null
+    private val _usesVlc = MutableStateFlow(false)
+    val usesVlc = _usesVlc.asStateFlow()
+    private val _vlcVideoSize = MutableStateFlow(0 to 0)
+    val vlcVideoSize = _vlcVideoSize.asStateFlow()
+    private val _vlcFirstFrame = MutableStateFlow(false)
+    val vlcFirstFrame = _vlcFirstFrame.asStateFlow()
+    private var vlcPlayback: VlcPlaybackEngine? = null
+    private var vlcActiveUri: Uri? = null
+    private var vlcExoFallbackUri: Uri? = null
+
+    val vlcSurfaceEngine: VlcPlaybackEngine
+        get() = vlcPlayback ?: createVlc().also { vlcPlayback = it }
+
+    private fun createVlc() = VlcPlaybackEngine(
+        context,
+        onUpdate = { state ->
+            if (_usesVlc.value) {
+                _isPlaying.value = state.playing
+                _isBuffering.value = state.buffering
+                _currentPositionMs.value = state.positionMs
+                _durationMs.value = state.durationMs
+                _bufferedPositionMs.value = state.positionMs
+                val a = _abRepeatA.value
+                val b = _abRepeatB.value
+                if (a != null && b != null && state.positionMs >= b) vlcPlayback?.seekTo(a)
+            }
+        },
+        onTracks = { audio, subtitles ->
+            if (_usesVlc.value) {
+                _availableAudioTracks.value = audio
+                _availableSubtitleTracks.value = subtitles
+                _telemetry.value = _telemetry.value.copy(
+                    codecName = "LibVLC / native codec",
+                    audioFormat = audio.firstOrNull { it.isSelected }?.label ?: "LibVLC / FFmpeg",
+                )
+            }
+        },
+        onVideoLayout = { width, height ->
+            if (_usesVlc.value) {
+                _vlcVideoSize.value = width to height
+                _is4kContent.value = width >= 3840 || height >= 2160
+            }
+        },
+        onFirstFrame = { if (_usesVlc.value) _vlcFirstFrame.value = true },
+        onSeekUnavailable = { position ->
+            vlcActiveUri?.let { uri ->
+                vlcExoFallbackUri = uri
+                prepareMedia(uri, position, autoPlay = true, mediaMimeType = "video/x-matroska")
+            }
+        },
+        onEnd = { if (_usesVlc.value) onVideoEnded?.invoke() },
+        onError = { message ->
+            if (_usesVlc.value) {
+                val uri = vlcActiveUri
+                if (uri != null) {
+                    vlcExoFallbackUri = uri
+                    prepareMedia(uri, _currentPositionMs.value, autoPlay = true,
+                        mediaMimeType = "video/x-matroska")
+                } else {
+                    _isPlaying.value = false
+                    _isBuffering.value = false
+                    _playerError.value = message
+                }
+            }
+        },
+    )
+
+    private fun shouldUseVlc(uri: Uri, mimeType: String?): Boolean {
+        if (uri.scheme?.lowercase() !in setOf("file", "content")) return false
+        val name = PendingDownloadFormat.originalName(uri.lastPathSegment?.lowercase().orEmpty())
+        return name.endsWith(".mkv") || name.endsWith(".mk3d") ||
+            name.endsWith(".mka") || name.endsWith(".webm") ||
+            mimeType?.contains("matroska", ignoreCase = true) == true
+    }
     // The engine replaces its ExoPlayer when decoder settings change or after a
     // Dolby Vision decoder failure. Screens observe this so the video surface,
     // gestures and media session always talk to the live instance instead of a
@@ -209,10 +283,12 @@ class HiPlayerEngine(
         // requires a custom AudioProcessor/renderer-level change that isn't
         // implemented yet - so audible sync will not shift from this alone.
         _audioDelayMs.value = ms
+        if (_usesVlc.value) vlcPlayback?.setDelays(ms, _subtitleOffsetMs.value)
     }
 
     fun setSubtitleOffset(ms: Long) {
         _subtitleOffsetMs.value = ms
+        if (_usesVlc.value) vlcPlayback?.setDelays(_audioDelayMs.value, ms)
         if (lastExternalSubtitleRawText != null) {
             reapplyExternalSubtitleWithOffset()
         }
@@ -733,6 +809,7 @@ class HiPlayerEngine(
     fun setVolumeBoost(percent: Int) {
         val clamped = percent.coerceIn(0, 100)
         _volumeBoostPercent.value = clamped
+        if (_usesVlc.value) vlcPlayback?.setMuted(rememberedMuted, clamped)
         try {
             loudnessEnhancer?.apply {
                 enabled = clamped > 0
@@ -788,6 +865,30 @@ class HiPlayerEngine(
         mediaTitle: String? = null,
         audioFallbackRecovery: Boolean = false,
     ) {
+        if (uri != vlcActiveUri) vlcExoFallbackUri = null
+        if (shouldUseVlc(uri, mediaMimeType) && vlcExoFallbackUri != uri) {
+            vlcActiveUri = uri
+            if (!_usesVlc.value) exoPlayer?.stop()
+            _usesVlc.value = true
+            _vlcFirstFrame.value = false
+            _vlcVideoSize.value = 0 to 0
+            _playerError.value = null
+            _availableAudioTracks.value = emptyList()
+            _availableSubtitleTracks.value = emptyList()
+            _isHdrContent.value = false
+            _isVideoColorMetadataKnown.value = false
+            val backend = vlcSurfaceEngine
+            backend.setSpeed(_playbackSpeed.value)
+            backend.setMuted(rememberedMuted, _volumeBoostPercent.value)
+            backend.setDelays(_audioDelayMs.value, _subtitleOffsetMs.value)
+            backend.open(uri, startPositionMs, autoPlay, isGrowingDownloadUri(uri))
+            return
+        }
+        if (_usesVlc.value) {
+            vlcPlayback?.stop()
+            _usesVlc.value = false
+            _vlcFirstFrame.value = false
+        }
         _playerError.value = null
         if (!audioFallbackRecovery || audioFallbackAttemptedUri != uri) {
             audioFallbackAttemptedUri = uri
@@ -968,15 +1069,22 @@ class HiPlayerEngine(
     }
 
     fun play() {
+        if (_usesVlc.value) { vlcPlayback?.play(); return }
         exoPlayer?.play()
     }
 
     fun pause() {
+        if (_usesVlc.value) { vlcPlayback?.pause(); return }
         exoPlayer?.pause()
     }
 
     /** Pauses for a temporary app switch without removing the active stream. */
     fun pauseForAppBackground() {
+        if (_usesVlc.value) {
+            resumeAfterForeground = _isPlaying.value
+            vlcPlayback?.pause()
+            return
+        }
         val player = exoPlayer ?: return
         resumeAfterForeground = player.playWhenReady || player.isPlaying
         player.pause()
@@ -985,6 +1093,11 @@ class HiPlayerEngine(
 
     /** Resumes only a stream that the activity lifecycle paused. */
     fun resumeAfterAppForeground() {
+        if (_usesVlc.value) {
+            if (resumeAfterForeground && _playerError.value == null) vlcPlayback?.play()
+            resumeAfterForeground = false
+            return
+        }
         val player = exoPlayer ?: return
         if (HiMediaSessionService.sharedPlayer != null && HiMediaSessionService.sharedPlayer !== player) {
             resumeAfterForeground = false
@@ -998,6 +1111,7 @@ class HiPlayerEngine(
 
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
+        if (_usesVlc.value) { vlcPlayback?.stop(); _usesVlc.value = false }
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
@@ -1015,12 +1129,17 @@ class HiPlayerEngine(
     }
 
     fun togglePlayPause() {
+        if (_usesVlc.value) { vlcPlayback?.togglePlayPause(); return }
         exoPlayer?.let {
             if (it.isPlaying) it.pause() else it.play()
         }
     }
 
     fun clampSeekTarget(positionMs: Long): Long {
+        if (_usesVlc.value) {
+            val known = _durationMs.value
+            return if (known > 0L) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
+        }
         val player = exoPlayer ?: return positionMs.coerceAtLeast(0L)
         // Clamp only to a known duration. Before the duration is published (and
         // for live streams) clamping to 0..0 would incorrectly send every skip to
@@ -1034,6 +1153,7 @@ class HiPlayerEngine(
     }
 
     fun seekTo(positionMs: Long) {
+        if (_usesVlc.value) { vlcPlayback?.seekTo(clampSeekTarget(positionMs)); return }
         val player = exoPlayer ?: return
         val clamped = clampSeekTarget(positionMs)
         player.seekTo(clamped)
@@ -1041,13 +1161,14 @@ class HiPlayerEngine(
     }
 
     fun seekRelative(deltaMs: Long) {
-        val current = exoPlayer?.currentPosition ?: 0L
+        val current = if (_usesVlc.value) _currentPositionMs.value else exoPlayer?.currentPosition ?: 0L
         seekTo(current + deltaMs)
     }
 
     fun setPlaybackSpeed(speed: Float) {
         _playbackSpeed.value = speed
-        exoPlayer?.playbackParameters = PlaybackParameters(speed)
+        if (_usesVlc.value) vlcPlayback?.setSpeed(speed)
+        else exoPlayer?.playbackParameters = PlaybackParameters(speed)
     }
 
     fun setAspectRatioMode(mode: AspectRatioMode) {
@@ -1072,11 +1193,11 @@ class HiPlayerEngine(
     }
 
     fun setAbRepeatA() {
-        _abRepeatA.value = exoPlayer?.currentPosition ?: 0L
+        _abRepeatA.value = if (_usesVlc.value) _currentPositionMs.value else exoPlayer?.currentPosition ?: 0L
     }
 
     fun setAbRepeatB() {
-        val current = exoPlayer?.currentPosition ?: 0L
+        val current = if (_usesVlc.value) _currentPositionMs.value else exoPlayer?.currentPosition ?: 0L
         if (_abRepeatA.value != null && current > _abRepeatA.value!!) {
             _abRepeatB.value = current
         }
@@ -1186,6 +1307,7 @@ class HiPlayerEngine(
 
     fun setMuted(muted: Boolean) {
         rememberedMuted = muted
+        if (_usesVlc.value) vlcPlayback?.setMuted(muted, _volumeBoostPercent.value)
         exoPlayer?.volume = if (muted) 0f else 1f
     }
 
@@ -1212,6 +1334,7 @@ class HiPlayerEngine(
 
     fun selectAudioTrack(track: VideoTrackInfo) {
         if (!track.isSupported) return
+        if (_usesVlc.value) { vlcPlayback?.selectAudioTrack(track); return }
         audioFallbackAttemptedUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
         attemptedAudioFallbackTracks.clear()
         rememberedAudioLanguage = com.example.data.normalizeTrackLanguage(track.language)
@@ -1241,6 +1364,7 @@ class HiPlayerEngine(
     }
 
     fun selectSubtitleTrack(track: VideoTrackInfo?) {
+        if (_usesVlc.value) { vlcPlayback?.selectSubtitleTrack(track); return }
         rememberedSubtitlesEnabled = track != null
         if (track != null) rememberedSubtitleLanguage = com.example.data.normalizeTrackLanguage(track.language)
         val selector = trackSelector ?: return
@@ -1287,6 +1411,7 @@ class HiPlayerEngine(
 
     /** Re-reads Media3's current track groups for a newly opened CC panel. */
     fun refreshAvailableTracks() {
+        if (_usesVlc.value) { vlcPlayback?.refreshTracks(); return }
         updateAvailableTracks(exoPlayer?.currentTracks)
         updateVideoOutputInfo()
     }
@@ -1394,7 +1519,8 @@ class HiPlayerEngine(
         progressJob?.cancel()
         progressJob = coroutineScope.launch(Dispatchers.Main) {
             while (isActive) {
-                exoPlayer?.let { player ->
+                if (_usesVlc.value) vlcPlayback?.publish()
+                else exoPlayer?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
                     _currentPositionMs.value = pos
                     _bufferedPositionMs.value = player.bufferedPosition.coerceAtLeast(0L)
@@ -1413,6 +1539,7 @@ class HiPlayerEngine(
     }
 
     fun release(forReplacement: Boolean = false) {
+        if (!forReplacement) { vlcPlayback?.release(); vlcPlayback = null; _usesVlc.value = false }
         if (!forReplacement) HiMediaSessionService.detachPlayer(exoPlayer)
         growingRetryJob?.cancel()
         growingRetryJob = null

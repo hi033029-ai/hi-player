@@ -241,7 +241,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 // The playback notification (and lock-screen controls) exist for
                 // background listening. Without that setting a video must not post
                 // one; it only stops any music that is still playing.
-                if (settings.backgroundPlayEnabled) {
+                if (engine.usesVlc.value) {
+                    HiMediaSessionService.detachPlayer(player)
+                } else if (settings.backgroundPlayEnabled) {
                     HiMediaSessionService.startPlayback(getApplication(), player,
                         onNext = { playAdjacentVideo(1) }, onPrevious = { playAdjacentVideo(-1) })
                 } else {
@@ -254,6 +256,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Attaches the current video to the playback notification (Background Audio Playback). */
     fun attachVideoSessionForBackground() {
+        if (engine.usesVlc.value) return // Exo MediaSession cannot control a LibVLC instance.
         if (_currentVideo.value == null) return
         val player = engine.getPlayer()
         if (HiMediaSessionService.sharedPlayer === player) return
@@ -436,7 +439,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun togglePlayPause() {
         // A stopped (idle) player ignores play(); re-prepare at the kept position.
         val player = engine.getPlayer()
-        if (!player.isPlaying && player.playbackState == androidx.media3.common.Player.STATE_IDLE &&
+        if (!engine.usesVlc.value && !player.isPlaying &&
+            player.playbackState == androidx.media3.common.Player.STATE_IDLE &&
             player.currentMediaItem != null) player.prepare()
         engine.togglePlayPause()
         saveCurrentProgress()
@@ -555,7 +559,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun restoreFileAudioTrack(tracks: List<VideoTrackInfo>) {
         val (uri, saved) = pendingAudioTrack ?: return
         if (_currentVideo.value?.uri?.toString() != uri ||
-            engine.getPlayer().currentMediaItem?.localConfiguration?.uri?.toString() != uri) return
+            (!engine.usesVlc.value &&
+                engine.getPlayer().currentMediaItem?.localConfiguration?.uri?.toString() != uri)) return
         val track = matchingRememberedAudioTrack(tracks, saved) ?: return
         pendingAudioTrack = null // Clear before selection can emit another track event.
         if (!track.isSelected) engine.selectAudioTrack(track)
@@ -721,7 +726,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onScrubMove(deltaMs: Long) {
         val total = engine.durationMs.value
-        val target = (scrubOriginMs + deltaMs).coerceIn(0L, total)
+        val requested = (scrubOriginMs + deltaMs).coerceAtLeast(0L)
+        val target = if (total > 0L) requested.coerceAtMost(total) else requested
         _scrubDeltaMs.value = deltaMs
         _scrubTimeMs.value = target
     }

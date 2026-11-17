@@ -140,6 +140,7 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.10.1")
   implementation("com.google.android.play:asset-delivery:2.3.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+  implementation("org.videolan.android:libvlc-all:3.6.0")
   implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))
   implementation(files("libs/media3-av1-decoder-release.aar"))
   implementation(platform(libs.androidx.compose.bom))
