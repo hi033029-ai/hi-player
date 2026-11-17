@@ -18,8 +18,10 @@ fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier)
         factory = { context ->
             SurfaceView(context).apply {
                 isClickable = false
+                isLongClickable = false
                 isFocusable = false
                 isFocusableInTouchMode = false
+                setZOrderOnTop(false)
                 setZOrderMediaOverlay(false)
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) { engine.attachSurface(this@apply) }
@@ -32,6 +34,7 @@ fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier)
         },
         update = { surface ->
             surface.isClickable = false
+            surface.isLongClickable = false
             engine.attachSurface(surface)
             engine.updateWindowSize(surface)
         },

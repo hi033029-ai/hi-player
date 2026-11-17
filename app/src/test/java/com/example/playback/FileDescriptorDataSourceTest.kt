@@ -41,6 +41,24 @@ class FileDescriptorDataSourceTest {
     }
 
     @Test
+    fun `pending suffix is treated as growing before registry catches up`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("direct-part-", ".mkv.part", context.cacheDir)
+        file.writeBytes(byteArrayOf(1, 2, 3, 4))
+
+        val source = FileDescriptorDataSource(context, waitForGrowth = true)
+        try {
+            assertEquals(
+                C.LENGTH_UNSET.toLong(),
+                source.open(DataSpec.Builder().setUri(Uri.fromFile(file)).build())
+            )
+        } finally {
+            source.close()
+            file.delete()
+        }
+    }
+
+    @Test
     fun `waits at temporary eof then reads appended download bytes`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val file = File.createTempFile("growing-source", ".mp4", context.cacheDir)

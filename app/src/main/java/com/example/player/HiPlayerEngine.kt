@@ -49,13 +49,13 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 data class DecoderTelemetry(
-    val codecName: String = "HEVC (H.265 HW)",
-    val resolution: String = "3840x2160 (4K UHD)",
-    val fps: Float = 60.0f,
-    val bitrateMbps: Float = 65.0f,
+    val codecName: String = "Unknown decoder",
+    val resolution: String = "Unknown",
+    val fps: Float = 0f,
+    val bitrateMbps: Float = 0f,
     val droppedFrames: Int = 0,
-    val colorSpace: String = "BT.2020 / HDR10",
-    val audioFormat: String = "DTS-HD MA 7.1 / TrueHD"
+    val colorSpace: String = "Unknown",
+    val audioFormat: String = "Unknown audio"
 )
 
 private fun displayTrackLanguage(language: String?, formatLabel: String?, fallback: String): String {
@@ -70,6 +70,16 @@ private fun displayTrackLanguage(language: String?, formatLabel: String?, fallba
         ?.trim()
         ?.takeUnless { it.isNullOrBlank() }
         ?: fallback
+}
+
+internal object PlaybackBackendPolicy {
+    fun shouldUseVlc(scheme: String?, displayName: String?, mimeType: String?): Boolean {
+        if (scheme?.lowercase() !in setOf("file", "content")) return false
+        val name = PendingDownloadFormat.originalName(displayName?.lowercase().orEmpty())
+        return name.endsWith(".mkv") || name.endsWith(".mk3d") ||
+            name.endsWith(".mka") || name.endsWith(".webm") ||
+            mimeType?.contains("matroska", ignoreCase = true) == true
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -127,7 +137,7 @@ class HiPlayerEngine(
                 _isBuffering.value = state.buffering
                 _currentPositionMs.value = state.positionMs
                 _durationMs.value = state.durationMs
-                _bufferedPositionMs.value = state.positionMs
+                _bufferedPositionMs.value = state.bufferedPositionMs
                 val a = _abRepeatA.value
                 val b = _abRepeatB.value
                 if (a != null && b != null && state.positionMs >= b) vlcPlayback?.seekTo(a)
@@ -173,13 +183,8 @@ class HiPlayerEngine(
         },
     )
 
-    private fun shouldUseVlc(uri: Uri, mimeType: String?): Boolean {
-        if (uri.scheme?.lowercase() !in setOf("file", "content")) return false
-        val name = PendingDownloadFormat.originalName(uri.lastPathSegment?.lowercase().orEmpty())
-        return name.endsWith(".mkv") || name.endsWith(".mk3d") ||
-            name.endsWith(".mka") || name.endsWith(".webm") ||
-            mimeType?.contains("matroska", ignoreCase = true) == true
-    }
+    private fun shouldUseVlc(uri: Uri, mimeType: String?): Boolean =
+        PlaybackBackendPolicy.shouldUseVlc(uri.scheme, uri.lastPathSegment, mimeType)
     // The engine replaces its ExoPlayer when decoder settings change or after a
     // Dolby Vision decoder failure. Screens observe this so the video surface,
     // gestures and media session always talk to the live instance instead of a
@@ -260,6 +265,7 @@ class HiPlayerEngine(
     /** HDR enhancement state. Native HDR output is managed by HdrColorModeManager. */
     fun setHdrEnhanceActive(enabled: Boolean) {
         _hdrEnhanceActive.value = enabled
+        vlcPlayback?.setColorPreset(_hdrColorPreset.value, enabled)
     }
 
     /**
@@ -275,6 +281,7 @@ class HiPlayerEngine(
 
     fun setHdrColorPreset(preset: ColorPreset) {
         _hdrColorPreset.value = preset
+        vlcPlayback?.setColorPreset(preset, _hdrEnhanceActive.value)
     }
 
     fun setAudioDelay(ms: Long) {
@@ -881,6 +888,7 @@ class HiPlayerEngine(
             backend.setSpeed(_playbackSpeed.value)
             backend.setMuted(rememberedMuted, _volumeBoostPercent.value)
             backend.setDelays(_audioDelayMs.value, _subtitleOffsetMs.value)
+            backend.setColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value, reopen = false)
             backend.open(uri, startPositionMs, autoPlay, isGrowingDownloadUri(uri))
             return
         }
@@ -975,9 +983,7 @@ class HiPlayerEngine(
         // Recheck registry state after URI classification: a download can finish
         // between the initial test and source construction. Completed media must
         // go through the regular extractor factory so its final Cues are indexed.
-        if (DownloadingFilesRegistry.completedUri(key) != null ||
-            !DownloadingFilesRegistry.isDownloading(key)
-        ) return null
+        if (!isGrowingDownloadUri(uri)) return null
         if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile) return null
         return DefaultMediaSourceFactory(
             com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),
@@ -1011,28 +1017,31 @@ class HiPlayerEngine(
             delegateFactory = factory,
             context = context,
             uri = uri,
-            isDownloading = {
-                DownloadingFilesRegistry.completedUri(key) == null &&
-                    DownloadingFilesRegistry.isDownloading(key)
-            },
+            isDownloading = { isGrowingDownloadUri(uri) },
         )
     }
 
     private fun growingFileLoadErrorPolicy(downloadKey: String) =
         object : DefaultLoadErrorHandlingPolicy() {
             override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-                if (DownloadingFilesRegistry.isDownloading(downloadKey)) 1_500L
+                if (isGrowingDownloadKey(downloadKey)) 1_500L
                 else super.getRetryDelayMsFor(loadErrorInfo)
 
             override fun getMinimumLoadableRetryCount(dataType: Int): Int =
-                if (DownloadingFilesRegistry.isDownloading(downloadKey)) Int.MAX_VALUE
+                if (isGrowingDownloadKey(downloadKey)) Int.MAX_VALUE
                 else super.getMinimumLoadableRetryCount(dataType)
         }
 
+    private fun isGrowingDownloadKey(key: String): Boolean =
+        DownloadingFilesRegistry.completedUri(key) == null &&
+            (DownloadingFilesRegistry.isDownloading(key) ||
+                PendingDownloadFormat.isPending(key.substringAfterLast('/')))
+
     private fun isGrowingDownloadUri(uri: Uri): Boolean {
         val key = downloadRegistryKey(uri)
-        return DownloadingFilesRegistry.completedUri(key) == null &&
-            DownloadingFilesRegistry.isDownloading(key)
+        return isGrowingDownloadKey(key) ||
+            (DownloadingFilesRegistry.completedUri(key) == null &&
+                PendingDownloadFormat.isPending(uri.lastPathSegment.orEmpty()))
     }
 
     /**
@@ -1148,7 +1157,7 @@ class HiPlayerEngine(
             ?: _durationMs.value.takeIf { it > 0L }
         val durationBounded = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
         val uri = player.currentMediaItem?.localConfiguration?.uri
-        val growing = uri?.let { DownloadingFilesRegistry.isDownloading(downloadRegistryKey(it)) } == true
+        val growing = uri?.let(::isGrowingDownloadUri) == true
         return GrowingSeekBounds.clamp(durationBounded, player.currentPosition, player.bufferedPosition, growing)
     }
 
@@ -1489,29 +1498,40 @@ class HiPlayerEngine(
     private fun updateTelemetry() {
         val player = exoPlayer ?: return
         val videoFormat = player.videoFormat
-
-        val width = videoFormat?.width ?: 3840
-        val height = videoFormat?.height ?: 2160
-        val fps = if (videoFormat?.frameRate != null && videoFormat.frameRate > 0) videoFormat.frameRate else 60.0f
-        val bitrate = if (videoFormat?.bitrate != null && videoFormat.bitrate > 0) videoFormat.bitrate / 1_000_000f else 65.0f
-        val mime = videoFormat?.sampleMimeType ?: "video/hevc"
+        val audioFormat = player.audioFormat
+        val width = videoFormat?.width?.coerceAtLeast(0) ?: 0
+        val height = videoFormat?.height?.coerceAtLeast(0) ?: 0
+        val fps = videoFormat?.frameRate?.takeIf { it > 0f } ?: 0f
+        val bitrate = videoFormat?.bitrate?.takeIf { it > 0 }?.div(1_000_000f) ?: 0f
+        val mime = videoFormat?.sampleMimeType.orEmpty()
         val dropped = player.videoDecoderCounters?.droppedBufferCount ?: 0
-
-        val codecName = when {
-            mime.contains("hevc") || mime.contains("h265") -> "HEVC (H.265 HW)"
-            mime.contains("av01") || mime.contains("av1") -> "AV1 (Hardware)"
-            mime.contains("vp9") -> "VP9 HDR Profile 2"
-            else -> "AVC / MediaCodec HW"
+        val codecName = videoFormat?.codecs?.takeIf(String::isNotBlank) ?: when {
+            mime.contains("hevc") || mime.contains("h265") -> "HEVC"
+            mime.contains("av01") || mime.contains("av1") -> "AV1"
+            mime.contains("vp9") -> "VP9"
+            mime.contains("avc") || mime.contains("h264") -> "AVC"
+            mime.isNotBlank() -> mime
+            else -> "Unknown decoder"
         }
+        val channelLabel = audioFormat?.channelCount?.takeIf { it > 0 }?.let { " · ${it} ch" }.orEmpty()
+        val actualAudio = audioFormat?.label?.takeIf(String::isNotBlank)
+            ?: audioFormat?.codecs?.takeIf(String::isNotBlank)
+            ?: audioFormat?.sampleMimeType?.takeIf(String::isNotBlank)
+            ?: "Unknown audio"
 
         _telemetry.value = DecoderTelemetry(
             codecName = codecName,
-            resolution = "${width}x${height} (${if (width >= 3840 || height >= 2160) "4K UHD" else "FHD"})",
+            resolution = if (width > 0 && height > 0) "${width}x${height}" else "Unknown",
             fps = fps,
             bitrateMbps = bitrate,
             droppedFrames = dropped,
-            colorSpace = if (width >= 3840) "BT.2020 / HDR10+" else "Rec.709 / SDR",
-            audioFormat = "DTS:X / TrueHD 7.1 Passthrough"
+            colorSpace = when {
+                isDolbyVisionFormat(videoFormat) -> "Dolby Vision"
+                isHdrVideoFormat(videoFormat) -> "HDR"
+                hasKnownVideoColorMetadata(videoFormat) -> "SDR"
+                else -> "Unknown"
+            },
+            audioFormat = actualAudio + channelLabel,
         )
     }
 
@@ -1523,8 +1543,17 @@ class HiPlayerEngine(
                 else exoPlayer?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
                     _currentPositionMs.value = pos
-                    _bufferedPositionMs.value = player.bufferedPosition.coerceAtLeast(0L)
-                    _durationMs.value = player.duration.coerceAtLeast(0L)
+                    val buffered = player.bufferedPosition.coerceAtLeast(0L)
+                    _bufferedPositionMs.value = buffered
+                    val reportedDuration = player.duration
+                    _durationMs.value = if (
+                        reportedDuration == C.TIME_UNSET &&
+                        player.currentMediaItem?.localConfiguration?.uri?.let(::isGrowingDownloadUri) == true
+                    ) {
+                        maxOf(pos, buffered)
+                    } else {
+                        reportedDuration.coerceAtLeast(0L)
+                    }
 
                     // Check A-B loop repeat
                     val a = _abRepeatA.value

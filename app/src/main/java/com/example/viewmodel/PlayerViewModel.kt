@@ -317,6 +317,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         closeSheet()
         _showStartOverPrompt.value = false
         engine.setBackgroundPlay(true)
+        // Never start the dormant Media3 instance beside an active LibVLC item.
+        if (engine.usesVlc.value) {
+            engine.play()
+            return
+        }
         // Keep the existing position and decoder; this is not a new navigation.
         if (playRequestJob?.isActive == true) return
         engine.getPlayer().let { player ->
@@ -437,9 +442,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
 
     fun togglePlayPause() {
-        // A stopped (idle) player ignores play(); re-prepare at the kept position.
+        if (engine.usesVlc.value) {
+            engine.togglePlayPause()
+            saveCurrentProgress()
+            return
+        }
+        // A stopped (idle) Media3 player ignores play(); re-prepare at the kept position.
         val player = engine.getPlayer()
-        if (!engine.usesVlc.value && !player.isPlaying &&
+        if (!player.isPlaying &&
             player.playbackState == androidx.media3.common.Player.STATE_IDLE &&
             player.currentMediaItem != null) player.prepare()
         engine.togglePlayPause()

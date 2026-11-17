@@ -8,6 +8,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import com.example.model.PendingDownloadFormat
 import com.example.player.DownloadingFilesRegistry
 import java.io.File
 import java.io.FileInputStream
@@ -59,8 +60,10 @@ class FileDescriptorDataSource(
         uri = dataSpec.uri
         val downloadKey = downloadKey(dataSpec.uri)
         val publishedUri = DownloadingFilesRegistry.completedUri(downloadKey)
+        val pendingFileName = dataSpec.uri.lastPathSegment.orEmpty()
         val activeGrowingFile = waitForGrowth && publishedUri == null &&
-            DownloadingFilesRegistry.isDownloading(downloadKey)
+            (DownloadingFilesRegistry.isDownloading(downloadKey) ||
+                PendingDownloadFormat.isPending(pendingFileName))
         growingDownloadKey = downloadKey.takeIf { activeGrowingFile }
         openedAsGrowingFile = activeGrowingFile
         keepWaitingUntilMs = if (activeGrowingFile) {
@@ -314,16 +317,15 @@ class FileDescriptorDataSource(
     }
 
     private fun clearDescriptors() {
-        try {
-            input?.close()
-        } finally {
-            input = null
-            try {
-                pfd?.close()
-            } finally {
-                pfd = null
-            }
-        }
+        // FileInputStream and ParcelFileDescriptor reference the same kernel fd.
+        // Cleanup must be idempotent because Media3 may close after a failed open
+        // and again during player replacement.
+        val stream = input
+        val descriptor = pfd
+        input = null
+        pfd = null
+        runCatching { stream?.close() }
+        runCatching { descriptor?.close() }
     }
 
     class Factory(

@@ -34,8 +34,9 @@ object GrowingMkvExtractorsFactory {
     ): ExtractorsFactory = ExtractorsFactory {
         delegateFactory.createExtractors().map { extractor ->
             if (extractor is MatroskaExtractor) {
-                val index = GrowingMkvClusterIndex(
-                    sourceFactory = { openGrowingMkvByteSource(context.applicationContext, uri) },
+                val index = createGrowingMkvClusterIndex(
+                    context = context.applicationContext,
+                    uri = uri,
                     isDownloading = isDownloading,
                 )
                 GrowingMkvSeekableExtractor(
@@ -48,6 +49,16 @@ object GrowingMkvExtractorsFactory {
         }.toTypedArray()
     }
 }
+
+@UnstableApi
+internal fun createGrowingMkvClusterIndex(
+    context: Context,
+    uri: Uri,
+    isDownloading: () -> Boolean,
+): GrowingMkvClusterIndex = GrowingMkvClusterIndex(
+    sourceFactory = { openGrowingMkvByteSource(context.applicationContext, uri) },
+    isDownloading = isDownloading,
+)
 
 /**
  * Wraps Media3's ordinary Matroska parser and replaces only its unseekable map.
@@ -122,7 +133,6 @@ internal class GrowingMkvClusterIndex(
 
     @Synchronized
     fun scanAvailable(): List<SeekPoint> {
-        if (!isDownloading()) return checkpoints.toList()
         val source = try {
             sourceFactory.open()
         } catch (_: Exception) {
@@ -131,8 +141,15 @@ internal class GrowingMkvClusterIndex(
 
         try {
             source.use { randomAccess ->
-                val safeDownloadedBytes =
-                    (randomAccess.length() - SAFE_TAIL_BYTES).coerceAtLeast(0L)
+                val downloadedBytes = randomAccess.length().coerceAtLeast(0L)
+                // While bytes are arriving, leave a tail margin so a writer cannot
+                // expose a half-written EBML element. Once growth stops/completes,
+                // scan every readable byte instead of freezing the last partial index.
+                val safeDownloadedBytes = if (isDownloading()) {
+                    (downloadedBytes - SAFE_TAIL_BYTES).coerceAtLeast(0L)
+                } else {
+                    downloadedBytes
+                }
                 if (segmentChildrenOffset == NO_OFFSET) {
                     val segmentStart = findSegmentChildrenOffset(randomAccess, safeDownloadedBytes)
                         ?: return@use
@@ -141,7 +158,7 @@ internal class GrowingMkvClusterIndex(
                 }
 
                 var offset = lastScannedOffset
-                while (offset >= 0L && offset < safeDownloadedBytes && isDownloading()) {
+                while (offset >= 0L && offset < safeDownloadedBytes) {
                     val header = readElementHeader(randomAccess, offset, safeDownloadedBytes)
                         ?: break
                     val size = header.size ?: break // Unknown-size children cannot be validated.
@@ -194,6 +211,9 @@ internal class GrowingMkvClusterIndex(
         }
         return points[if (best >= 0) best else 0]
     }
+
+    @Synchronized
+    fun latestTimeUs(): Long? = scanAvailable().lastOrNull()?.timeUs
 
     private fun insertCheckpoint(point: SeekPoint) {
         var low = 0
@@ -383,7 +403,10 @@ internal class GrowingMkvSeekMap(
     override fun isSeekable(): Boolean =
         original.isSeekable || clusterIndex.scanAvailable().size >= MIN_CLUSTERS_FOR_SEEK
 
-    override fun getDurationUs(): Long = original.durationUs
+    override fun getDurationUs(): Long =
+        original.durationUs.takeUnless { it == androidx.media3.common.C.TIME_UNSET }
+            ?: clusterIndex.latestTimeUs()
+            ?: androidx.media3.common.C.TIME_UNSET
 
     override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
         if (original.isSeekable) return original.getSeekPoints(timeUs)

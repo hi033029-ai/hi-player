@@ -1,5 +1,6 @@
 package com.example.playback
 
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.SeekMap
 import com.example.player.ColorPresets
@@ -72,7 +73,7 @@ class GrowingMkvSeekableExtractorTest {
     }
 
     @Test
-    fun stopsUpdatingPartialIndexAfterRegistryReportsDownloadComplete() {
+    fun finishesIndexingReadableClustersAfterRegistryReportsDownloadComplete() {
         val source = MemoryByteSource(minimalMkv(cluster(timecode = 0)))
         var downloading = true
         val index = GrowingMkvClusterIndex(
@@ -84,7 +85,23 @@ class GrowingMkvSeekableExtractorTest {
         downloading = false
         source.append(cluster(timecode = 1_000))
 
-        assertEquals(1, index.scanAvailable().size)
+        assertEquals(2, index.scanAvailable().size)
+        assertEquals(1_000_000L, index.latestTimeUs())
+    }
+
+    @Test
+    fun usesLatestValidatedClusterAsProvisionalDurationWhenFinalDurationIsMissing() {
+        val content = minimalMkv(
+            cluster(timecode = 0),
+            cluster(timecode = 2_000),
+        )
+        val index = GrowingMkvClusterIndex(
+            sourceFactory = GrowingMkvByteSourceFactory { MemoryByteSource(content) },
+            isDownloading = { true },
+        )
+        val seekMap = GrowingMkvSeekMap(SeekMap.Unseekable(C.TIME_UNSET), index)
+
+        assertEquals(2_000_000L, seekMap.durationUs)
     }
 
     @Test

@@ -315,9 +315,25 @@ fun PlayerScreen(
     // Keep the black cover until the first decoded frame in normal playback. For
     // a growing download, also use a bounded fallback after Media3 reaches READY:
     // a missed callback during surface negotiation must not hide the video forever.
-    LaunchedEffect(currentVideo?.uri, isGrowingDownload, activePlayer) {
+    LaunchedEffect(
+        currentVideo?.uri,
+        isGrowingDownload,
+        activePlayer,
+        usingVlc,
+        vlcVideoSize,
+        isPlaying,
+    ) {
         val player = activePlayer
-        if (usingVlc) return@LaunchedEffect
+        if (usingVlc) {
+            // LibVLC's Vout callback can race SurfaceView creation. A decoded
+            // layout or active playback is sufficient to remove the black mask;
+            // never leave an otherwise playing video permanently covered.
+            if (!firstFrameRendered && (vlcVideoSize.first > 0 || isPlaying)) {
+                delay(350L)
+                firstFrameRendered = true
+            }
+            return@LaunchedEffect
+        }
         if (isGrowingDownload) {
             while (!firstFrameRendered && player.playbackState != Player.STATE_READY) {
                 delay(100)
@@ -681,7 +697,10 @@ fun PlayerScreen(
             )
         }
 
-        if (useNativeHdrSurface || usingVlc) {
+        run {
+            // Keep one Compose gesture owner above every rendering backend.
+            // Native SurfaceViews remain non-clickable and the GLES view no
+            // longer receives a competing touch stream.
             com.example.ui.components.GestureOverlay(
                 isLocked = isScreenLocked,
                 onSingleTap = {
