@@ -35,7 +35,7 @@ class FileDescriptorDataSource(
         closed = false
         optionalTailProbe = false
         uri = dataSpec.uri
-        key = if (dataSpec.uri.scheme == "file") dataSpec.uri.path.orEmpty() else dataSpec.uri.toString()
+        key = if (dataSpec.uri.scheme == "file" || dataSpec.uri.scheme == null) dataSpec.uri.path.orEmpty() else dataSpec.uri.toString()
         val published = DownloadingFilesRegistry.completedUri(key)
         growing = waitForGrowth && published == null &&
             (DownloadingFilesRegistry.isDownloading(key) || PendingDownloadFormat.isPending(dataSpec.uri.lastPathSegment.orEmpty()))
@@ -43,7 +43,7 @@ class FileDescriptorDataSource(
         transferInitializing(dataSpec)
         try {
             val target = published?.let(Uri::parse) ?: dataSpec.uri
-            val descriptor = if (target.scheme == "file") {
+            val descriptor = if (target.scheme == "file" || target.scheme == null) {
                 ParcelFileDescriptor.open(File(target.path ?: throw IOException("Missing file path")), ParcelFileDescriptor.MODE_READ_ONLY)
             } else context.contentResolver.openFileDescriptor(target, "r") ?: throw IOException("No readable descriptor")
             // AutoCloseInputStream is the sole owner; do not double-close a raw fd.

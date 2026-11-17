@@ -72,7 +72,7 @@ class VlcPlaybackEngine(
     private var loadedRevision = -1L
     private var pendingResumeMs = 0L
     private var buffering = false
-    @Volatile private var firstFrame = false
+    @Volatile private var firstFrameRevision = -1L
     private var displayedPictures = 0
     private var reportedTracks: Pair<List<VideoTrackInfo>, List<VideoTrackInfo>>? = null
     private var failedRevision = -1L
@@ -81,7 +81,7 @@ class VlcPlaybackEngine(
         private set
 
     private val watchdog = Runnable {
-        if (!released && request != null && !firstFrame) {
+        if (!released && request != null && firstFrameRevision != revision.get()) {
             unresponsive = true
             onError("Video output did not start. Trying the compatible playback engine.")
         }
@@ -160,7 +160,6 @@ class VlcPlaybackEngine(
     private fun rebind() {
         val token = revision.incrementAndGet()
         main.removeCallbacks(watchdog)
-        firstFrame = false
         if (!released && request != null) main.postDelayed(watchdog, 18_000)
         worker.post {
             loadedRevision = -1L
@@ -228,7 +227,6 @@ class VlcPlaybackEngine(
             } finally { media.release() }
             pendingResumeMs = lastGoodMs.takeIf { it > 0 } ?: next.startMs
             buffering = true
-            firstFrame = false
             displayedPictures = 0
             reportedTracks = null
             loadedRevision = token
@@ -286,8 +284,8 @@ class VlcPlaybackEngine(
                         finally { media?.release() }
         val displayed = displayedCount > displayedPictures
         displayedPictures = displayedCount
-        if (displayed && !firstFrame) {
-            firstFrame = true
+        if (displayed && firstFrameRevision != token) {
+            firstFrameRevision = token
             postMain(token) { main.removeCallbacks(watchdog); onFirstFrame() }
         }
         if (displayed && pendingResumeMs == 0L) lastGoodMs = time

@@ -26,7 +26,13 @@ object DownloadingFilesRegistry {
 
     private val ownedPaths = ConcurrentHashMap.newKeySet<String>()
     private val completedAliases = ConcurrentHashMap<String, String>()
-    fun markOwnedDownloading(path: String, bytes: Long) { ownedPaths.add(path); markDownloading(path, bytes) }
+    fun markOwnedDownloading(path: String, bytes: Long) {
+        // A new download can reuse the private .part path of an older one.
+        // Never resolve that new input to the previous published movie.
+        completedAliases.remove(path)
+        ownedPaths.add(path)
+        markDownloading(path, bytes)
+    }
     fun completeOwned(path: String, uri: String? = null) {
         if (uri != null) completedAliases[path] = uri
         ownedPaths.remove(path); markComplete(path)

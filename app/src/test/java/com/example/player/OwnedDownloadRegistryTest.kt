@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OwnedDownloadRegistryTest {
+    @Test fun reusingPartialPathDoesNotOpenPreviouslyCompletedMovie() {
+        val path = "/private/reused-${System.nanoTime()}.mkv.part"
+        try {
+            DownloadingFilesRegistry.completeOwned(path, "content://media/external/downloads/old")
+            DownloadingFilesRegistry.markOwnedDownloading(path, 10)
+            assertNull(DownloadingFilesRegistry.completedUri(path))
+            assertTrue(DownloadingFilesRegistry.isDownloading(path))
+        } finally { DownloadingFilesRegistry.completeOwned(path) }
+    }
     @Test fun publicScannerCannotForgetPrivatePartialDownload() {
         val path = "/private/test-${System.nanoTime()}.mp4.part"
         try {

@@ -138,6 +138,7 @@ class HiPlayerEngine(
     private var activeMimeType: String? = null
     private var appliedPreset: ColorPreset? = null
     private var videoEffectsInitialized = false
+    private var rebuildingGradePipeline = false
     @Volatile private var pendingDecodedSeekMs: Long? = null
     @Volatile var lastRenderedPresentationMs: Long = -1L
         private set
@@ -313,18 +314,42 @@ class HiPlayerEngine(
         applyVideoGrade()
     }
 
-    private fun applyVideoGrade() {
+    private fun applyVideoGrade(allowRebuild: Boolean = true) {
         val preset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
         if (preset != null && _usesVlc.value) {
             val uri = vlcActiveUri ?: return
             vlcExoFallbackUri = uri
             prepareMedia(uri, _currentPositionMs.value, desiredAutoPlay, mediaMimeType = activeMimeType)
         }
-        if (!videoEffectsInitialized || appliedPreset != preset) {
-            exoPlayer?.setVideoEffects(if (preset == null) emptyList() else listOf(ColorPresetEffect(preset)))
+        val player = exoPlayer ?: return
+        if (!_usesVlc.value && allowRebuild && !rebuildingGradePipeline &&
+            player.currentMediaItem != null && videoEffectsInitialized != (preset != null)) {
+            // In Media3 1.11 even setVideoEffects(emptyList()) permanently enables
+            // the GL video sink for this renderer. Original must have NO sink.
+            // Cross this boundary once per explicit user mode change, retaining
+            // the media item/track overrides and last decoded position. Changing
+            // one grade to another does not recreate the player.
+            val item = player.currentMediaItem ?: return
+            val uri = item.localConfiguration?.uri ?: return
+            val params = trackSelector?.parameters
+            val position = _currentPositionMs.value
+            val autoPlay = desiredAutoPlay
+            rebuildingGradePipeline = true
+            try {
+                initializePlayer(configuredHwDecoding ?: true, configuredRemuxUltraBuffer ?: false,
+                    configuredTunneling ?: false)
+                params?.let { trackSelector?.parameters = it }
+                prepareMedia(uri, position, autoPlay, activeExternalSubtitleUri, activeExternalSubtitleMime,
+                    item.localConfiguration?.mimeType, mediaTitle = item.mediaMetadata.title?.toString())
+            } finally { rebuildingGradePipeline = false }
+            return
+        }
+        if (preset != null && appliedPreset != preset) {
+            player.setVideoEffects(listOf(ColorPresetEffect(preset)))
             appliedPreset = preset
             videoEffectsInitialized = true
         }
+        // Do not call setVideoEffects(emptyList()) on a direct-output renderer.
     }
 
     fun setAudioDelay(ms: Long) {
@@ -754,6 +779,7 @@ class HiPlayerEngine(
             .apply {
                 repeatMode = Player.REPEAT_MODE_OFF
                 volume = if (rememberedMuted) 0f else 1f
+                playbackParameters = PlaybackParameters(_playbackSpeed.value)
                 // Keep scaling in the native video pipeline for UHD surfaces.
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
@@ -771,7 +797,7 @@ class HiPlayerEngine(
                 }
                 addListener(playerListener)
             }
-        applyVideoGrade()
+        applyVideoGrade(allowRebuild = false)
         _playerInstance.value = exoPlayer
         HiMediaSessionService.replacePlayer(sessionPlayerBeforeRebuild, exoPlayer)
         setBackgroundPlay(_isBackgroundPlayActive.value)
@@ -939,6 +965,11 @@ class HiPlayerEngine(
         mediaTitle: String? = null,
         audioFallbackRecovery: Boolean = false,
     ) {
+        if (uri.scheme == null && uri.path?.startsWith("/") == true) {
+            prepareMedia(Uri.fromFile(java.io.File(uri.path!!)), startPositionMs, autoPlay,
+                externalSubtitleUri, externalSubtitleMimeType, mediaMimeType, resetDecoderRetry, mediaTitle, audioFallbackRecovery)
+            return
+        }
         if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
             pendingBackendAudioIndex = null
             pendingBackendSubtitleIndex = null
@@ -1086,7 +1117,7 @@ class HiPlayerEngine(
         }
 
         val mediaItem = mediaItemBuilder.build()
-        applyVideoGrade()
+        applyVideoGrade(allowRebuild = false)
         exoPlayer?.apply {
             stop()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
@@ -1156,7 +1187,7 @@ class HiPlayerEngine(
             context = context,
             uri = uri,
             isDownloading = { isGrowingDownloadUri(uri) },
-            onSeekFrontier = { frontier -> if (activeGrowingUri == uri) downloadedSeekEndMs = frontier },
+            onSeekFrontier = { frontier -> mainHandler.post { if (activeGrowingUri == uri) downloadedSeekEndMs = frontier } },
         )
     }
 
@@ -1233,11 +1264,13 @@ class HiPlayerEngine(
     fun pauseForAppBackground() {
         if (_usesVlc.value) {
             resumeAfterForeground = _isPlaying.value
+            desiredAutoPlay = false
             vlcPlayback?.pause()
             return
         }
         val player = exoPlayer ?: return
         resumeAfterForeground = player.playWhenReady || player.isPlaying
+        desiredAutoPlay = false
         player.pause()
         _isPlaying.value = false
     }
@@ -1245,7 +1278,7 @@ class HiPlayerEngine(
     /** Resumes only a stream that the activity lifecycle paused. */
     fun resumeAfterAppForeground() {
         if (_usesVlc.value) {
-            if (resumeAfterForeground && _playerError.value == null) vlcPlayback?.play()
+            if (resumeAfterForeground && _playerError.value == null) play()
             resumeAfterForeground = false
             return
         }
@@ -1255,7 +1288,7 @@ class HiPlayerEngine(
             return
         }
         if (resumeAfterForeground && _playerError.value == null && player.currentMediaItem != null) {
-            player.play()
+            play()
         }
         resumeAfterForeground = false
     }
@@ -1285,10 +1318,8 @@ class HiPlayerEngine(
     }
 
     fun togglePlayPause() {
-        if (_usesVlc.value) { vlcPlayback?.togglePlayPause(); return }
-        exoPlayer?.let {
-            if (it.isPlaying) it.pause() else it.play()
-        }
+        val playingRequested = if (_usesVlc.value) desiredAutoPlay else exoPlayer?.playWhenReady == true
+        if (playingRequested) pause() else play()
     }
 
     fun clampSeekTarget(positionMs: Long): Long {

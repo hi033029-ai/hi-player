@@ -493,10 +493,10 @@ internal class GrowingMkvSeekMap(
 }
 
 private fun openGrowingMkvByteSource(context: Context, uri: Uri): GrowingMkvByteSource? {
-    val key = if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
+    val key = if (uri.scheme == "file" || uri.scheme == null) uri.path.orEmpty() else uri.toString()
     val resolved = DownloadingFilesRegistry.completedUri(key)?.let(Uri::parse) ?: uri
     val descriptor = try {
-        if (resolved.scheme == "file") {
+        if (resolved.scheme == "file" || resolved.scheme == null) {
             ParcelFileDescriptor.open(File(resolved.path ?: return null), ParcelFileDescriptor.MODE_READ_ONLY)
         } else {
             context.contentResolver.openFileDescriptor(resolved, "r")
