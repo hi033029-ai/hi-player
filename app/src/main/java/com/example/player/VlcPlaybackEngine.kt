@@ -64,12 +64,13 @@ class VlcPlaybackEngine(
         val seekable: Boolean,
     )
 
+    private val appContext = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
-    private val vlc = LibVLC(context.applicationContext, arrayListOf(
+    private val vlc = LibVLC(appContext, arrayListOf(
         "--no-video-title-show", "--avcodec-hw=any", "--file-caching=250",
     ))
     private val player = MediaPlayer(vlc)
-    private val resolver = context.applicationContext.contentResolver
+    private val resolver = appContext.contentResolver
     private var openDescriptor: ParcelFileDescriptor? = null
     private var currentUri: Uri? = null
     private var attachedView: SurfaceView? = null
@@ -196,7 +197,7 @@ class VlcPlaybackEngine(
         growing = isGrowing
         if (isGrowing && growingClusterIndex == null) {
             growingClusterIndex = createGrowingMkvClusterIndex(
-                context = context.applicationContext,
+                context = appContext,
                 uri = uri,
                 isDownloading = { growing && isPotentiallyGrowing(uri) },
             )
