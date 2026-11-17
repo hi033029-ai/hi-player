@@ -28,6 +28,7 @@ jobs:
       - name: Test context-checked compatibility generation
         run: |
           python3 tools/test_prepare_gecko_build.py
+          python3 -m unittest tools/test_check_gecko_apk.py
           python3 tools/prepare_gecko_build.py
           git diff --exit-code
 

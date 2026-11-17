@@ -53,8 +53,8 @@ android {
     applicationId = "com.aistudio.hiplayer.vdmk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 103
-    versionName = "1.0.102"
+    versionCode = 109
+    versionName = "1.0.108"
     // AGP rejects NDK filters together with APK ABI split filters. Bundle tasks use
     // NDK filters; APK tasks are restricted by the split configuration below.
     if (bundleBuildRequested) ndk { abiFilters.addAll(packagedAbis) }
@@ -140,7 +140,7 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.10.1")
   implementation("com.google.android.play:asset-delivery:2.3.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
-  implementation("org.videolan.android:libvlc-all:3.6.0")
+  implementation("org.videolan.android:libvlc-all:3.7.7")
   implementation(files("libs/media3-ffmpeg-decoder-debug.aar"))
   implementation(files("libs/media3-av1-decoder-release.aar"))
   implementation(platform(libs.androidx.compose.bom))
