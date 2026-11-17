@@ -149,7 +149,7 @@ class PlaybackDeviceSmokeTest {
                 await("Clock did not advance") { engine.get().currentPositionMs.value > 2_000 }
                 expectedHdr?.let {
                     assertEquals("Input HDR metadata lost", it, engine.get().isHdrContent.value)
-                    assertNotEquals("No decoder output metadata observed", "Unknown", engine.get().lastCodecOutputColor)
+                    assertNotEquals("No output-frame metadata callback observed", "Unknown", engine.get().lastCodecOutputColor)
                 }
                 scenario.onActivity { engine.get().seekTo(12_000) }
                 await("Forward seek did not decode") { engine.get().lastRenderedPresentationMs in 11_800..18_000 }
@@ -211,9 +211,10 @@ class PlaybackDeviceSmokeTest {
                 }
                 await("No paused SDR frame") { engine.get().lastRenderedPresentationMs >= 0 }
                 fun atReferenceFrame(preset: ColorPreset) {
+                    var beforeFrame = engine.get().renderedFrameSequence
                     scenario.onActivity { engine.get().setHdrEnhanceActive(true); engine.get().setHdrColorPreset(preset); engine.get().seekTo(1_000) }
                     try {
-                        await("Preset did not decode preroll") { engine.get().lastRenderedPresentationMs in 1_000..1_100 }
+                        await("Preset did not decode preroll") { engine.get().renderedFrameSequence > beforeFrame && engine.get().currentPositionMs.value in 1_000..1_100 }
                     } catch (failure: AssertionError) {
                         var snapshot = ""
                         scenario.onActivity {
@@ -222,8 +223,11 @@ class PlaybackDeviceSmokeTest {
                         }
                         throw AssertionError(snapshot, failure)
                     }
+                    beforeFrame = engine.get().renderedFrameSequence
                     scenario.onActivity { engine.get().seekTo(3_000) }
-                    await("Preset did not render the reference frame") { engine.get().lastRenderedPresentationMs in 3_000..3_100 }
+                    await("Preset did not render the reference frame") {
+                        engine.get().renderedFrameSequence > beforeFrame && engine.get().currentPositionMs.value in 3_000..3_100
+                    }
                     Thread.sleep(200) // PixelCopy consumes the frame after its release timestamp.
                 }
                 atReferenceFrame(ColorPresets.HDR_DISABLED)

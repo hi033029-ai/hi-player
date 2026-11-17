@@ -17,7 +17,7 @@ Base: `47dec5939604986eda850ad4058b4a05c681157a`, branch `feat/geckoview-browser
 
 These are verified source defects. **No physical-phone ANR trace has been supplied or captured here. The original phone's exact blocked native stack is not verified.** A vendor codec stuck in JNI cannot safely be killed in-process; the design keeps that single instance out of the UI's execution path and avoids creating replacements indefinitely.
 
-A real `onSurfaceSizeChanged` acknowledgement now gates Media3 video preparation (audio/background sessions bypass it). This also prevents a newly created paused grading pipeline from consuming its first frame before Compose binds the replacement surface. Missing output reaches a responsive, bounded error state. Paused seeks/replacements explicitly enable the renderer's first-frame release on its playback looper, preserving paused audio/video state.
+A real `onSurfaceSizeChanged` acknowledgement now gates Media3 video preparation (audio/background sessions bypass it). This also prevents a newly created paused grading pipeline from consuming its first frame before Compose binds the replacement surface. Missing output reaches a responsive, bounded error state. Paused seeks/replacements explicitly enable the renderer's first-frame release on its playback looper, preserving paused audio/video state. Seek completion requires a rendered frame after the playback-thread seek/flush acknowledgement; processed frame PTS can be relative to a GL stream and must not be compared directly with movie time. The timeline comes from Player, with the previous decoded position retained until that rendered-frame acknowledgement.
 
 ## Rendering and codec limits
 
@@ -29,7 +29,7 @@ A real `onSurfaceSizeChanged` acknowledgement now gates Media3 video preparation
 
 ## Automated validation
 
-Generate fixtures with `bash tools/generate_playback_fixtures.sh`. They are excluded from git and generated in device CI. `PlaybackDeviceSmokeTest` requires actual decoded/rendered output and a continuous main-loop heartbeat. Browser/account/download regressions remain enabled in Build APK; Gecko device tests remain on API 24 and API 30. Packaging validation still checks the expected ABI, ELF alignment, duplicate C++ runtimes, decoder JNI matching and notices.
+Generate fixtures with `bash tools/generate_playback_fixtures.sh`. They are excluded from git and generated in device CI. `PlaybackDeviceSmokeTest` requires actual decoded/rendered output and a continuous main-loop heartbeat. Build APK now requires both API 24 and API 30 decoded-output/device suites before its arm64 build/artifact upload. Browser/account/download regressions remain enabled, and any playback failure blocks APK publication. Packaging validation still checks the expected ABI, ELF alignment, duplicate C++ runtimes, decoder JNI matching and notices.
 
 Unit cases cover exact EBML offsets/timestamps, incomplete blocks, keyframe absence, unknown-size clusters, retained index descriptors, zero-I/O SeekMap queries, rename/append and cancellation. Temporary EOF does not signal END_REACHED or recreate the player. Malformed parsing errors and abandoned growth have bounded failure paths.
 

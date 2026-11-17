@@ -103,3 +103,8 @@
 # NTLM and normal event dispatch do not require these EL/Kerberos classes.
 -dontwarn javax.el.**
 -dontwarn org.ietf.jgss.**
+
+# Optional public Media3 redraw marker is resolved across the retained 1.5/1.11 APIs.
+-keepclassmembers interface androidx.media3.common.VideoFrameProcessor {
+    public static *** REDRAW;
+}

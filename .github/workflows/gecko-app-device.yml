@@ -1,7 +1,6 @@
 name: Gecko app device validation
 on:
-  push:
-    branches: [feat/geckoview-browser-migration]
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read

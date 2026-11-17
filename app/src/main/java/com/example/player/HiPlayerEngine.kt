@@ -141,7 +141,11 @@ class HiPlayerEngine(
     private var rebuildingGradePipeline = false
     private var pendingVideoPreparation: (() -> Unit)? = null
     private var surfaceWaitTimeout: Runnable? = null
-    @Volatile private var pendingDecodedSeekMs: Long? = null
+    private val decodedSeekRevision = java.util.concurrent.atomic.AtomicLong()
+    private val renderedFrames = java.util.concurrent.atomic.AtomicLong()
+    val renderedFrameSequence: Long get() = renderedFrames.get()
+    @Volatile private var seekDecoderAcknowledgement = -1L
+    @Volatile private var pendingDecodedSeekRevision: Long? = null
     @Volatile var lastRenderedPresentationMs: Long = -1L
         private set
     @Volatile var lastCodecOutputColor: String = "Unknown"
@@ -349,7 +353,7 @@ class HiPlayerEngine(
         if (preset != null && appliedPreset != preset) {
             player.setVideoEffects(listOf(ColorPresetEffect(preset)))
             if (!player.playWhenReady && player.playbackState == Player.STATE_READY) {
-                player.setVideoEffects(androidx.media3.common.VideoFrameProcessor.REDRAW)
+                VideoEffectRedraw.request(player)
             }
             appliedPreset = preset
             videoEffectsInitialized = true
@@ -387,6 +391,7 @@ class HiPlayerEngine(
     fun loadExternalSubtitleFile(uri: Uri) {
         externalSubtitleReadJob?.cancel()
         val videoUri = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
+        val loadRevision = routingRevision
         externalSubtitleReadJob = coroutineScope.launch {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
@@ -394,7 +399,7 @@ class HiPlayerEngine(
                 }.getOrNull()
             }
             val current = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
-            if (current != videoUri) return@launch
+            if (current != videoUri || routingRevision != loadRevision) return@launch
             if (text == null) { _playerError.value = "Could not read subtitle file."; return@launch }
             lastExternalSubtitleRawText = text
             lastExternalSubtitleMimeType = guessSubtitleMimeType(uri.toString())
@@ -409,6 +414,7 @@ class HiPlayerEngine(
         videoUri ?: return
         val position = _currentPositionMs.value
         val offset = _subtitleOffsetMs.value
+        val loadRevision = routingRevision
         coroutineScope.launch {
             val file = withContext(Dispatchers.IO) {
                 java.io.File.createTempFile("hiplayer_sub", subtitleExtensionFor(mime), context.cacheDir).apply {
@@ -416,7 +422,7 @@ class HiPlayerEngine(
                 }
             }
             val current = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
-            if (current != videoUri) { file.delete(); return@launch }
+            if (current != videoUri || routingRevision != loadRevision || _subtitleOffsetMs.value != offset) { file.delete(); return@launch }
             vlcExoFallbackUri = videoUri
             prepareMedia(videoUri, position, desiredAutoPlay, Uri.fromFile(file), mime, activeMimeType)
         }
@@ -793,10 +799,19 @@ class HiPlayerEngine(
                 // Keep scaling in the native video pipeline for UHD surfaces.
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
+                val frameOwner = this
                 setVideoFrameMetadataListener { presentationTimeUs, _, format, output ->
+                    if (_playerInstance.value !== frameOwner) return@setVideoFrameMetadataListener
+                    renderedFrames.incrementAndGet()
                     lastRenderedPresentationMs = presentationTimeUs / 1_000
-                    pendingDecodedSeekMs?.let { target ->
-                        if (lastRenderedPresentationMs in target..(target + 2_000)) pendingDecodedSeekMs = null
+                    val seek = pendingDecodedSeekRevision
+                    if (seek != null && seekDecoderAcknowledgement == seek) {
+                        mainHandler.post {
+                            if (_playerInstance.value === frameOwner && pendingDecodedSeekRevision == seek) {
+                                pendingDecodedSeekRevision = null
+                                _currentPositionMs.value = frameOwner.currentPosition.coerceAtLeast(0)
+                            }
+                        }
                     }
                     fun color(key: String): Int = if (output?.containsKey(key) == true) output.getInteger(key) else -1
                     val observed = "standard=${color("color-standard")},transfer=${color("color-transfer")},range=${color("color-range")},input=${format.colorInfo}"
@@ -1133,7 +1148,7 @@ class HiPlayerEngine(
         exoPlayer?.apply {
             stop()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
-            pendingDecodedSeekMs = null
+            pendingDecodedSeekRevision = null
             _currentPositionMs.value = initialPositionMs
             val growingSource = if (isGrowingDownloadUri(uri)) {
                 createGrowingFileSource(uri, mediaItem)
@@ -1386,8 +1401,19 @@ class HiPlayerEngine(
         if (_usesVlc.value) { vlcPlayback?.seekTo(clampSeekTarget(positionMs)); return }
         val player = exoPlayer ?: return
         val clamped = clampSeekTarget(positionMs)
-        pendingDecodedSeekMs = clamped.takeIf { player.videoFormat != null }
+        val seek = decodedSeekRevision.incrementAndGet()
+        val expectVideo = !_isBackgroundPlayActive.value && activeMimeType?.startsWith("audio/") != true
+        pendingDecodedSeekRevision = seek.takeIf { expectVideo }
         player.seekTo(clamped)
+        if (expectVideo) {
+            // A processed-frame PTS may be relative to a newly configured GL
+            // input stream. It is not necessarily movie time. Confirm the core
+            // seek/flush first, then wait for a rendered frame and read the
+            // authoritative Player timeline on main. Never compare raw PTS to
+            // the requested movie position or advertise a request as decoded.
+            player.createMessage { _, _ -> seekDecoderAcknowledgement = seek }
+                .setType(0).send()
+        }
         requestPausedVideoFrame(player)
     }
 
@@ -1795,7 +1821,7 @@ class HiPlayerEngine(
                 if (_usesVlc.value) vlcPlayback?.publish()
                 else exoPlayer?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
-                    if (pendingDecodedSeekMs == null && player.playbackState == Player.STATE_READY) _currentPositionMs.value = pos
+                    if (pendingDecodedSeekRevision == null && player.playbackState == Player.STATE_READY) _currentPositionMs.value = pos
                     val buffered = player.bufferedPosition.coerceAtLeast(0L)
                     _bufferedPositionMs.value = buffered
                     val reportedDuration = player.duration

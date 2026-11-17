@@ -14,10 +14,10 @@ concurrency:
   group: main-apk-${{ github.ref }}
   cancel-in-progress: false
 jobs:
-  decoders:
-    uses: ./.github/workflows/gecko-decoders.yml
+  playback:
+    uses: ./.github/workflows/gecko-app-device.yml
   build:
-    needs: decoders
+    needs: playback
     runs-on: ubuntu-latest
     timeout-minutes: 70
     steps:
