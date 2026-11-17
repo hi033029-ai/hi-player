@@ -3,11 +3,6 @@ package com.example.ui
 import android.view.SurfaceView
 import android.view.View
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
@@ -16,9 +11,11 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 /**
- * Direct HDR output host. PlayerView defaults to SurfaceView, allowing Media3 and
- * Android's video/display pipeline to preserve HDR instead of round-tripping the
- * frame through the app's 8-bit GLES framebuffer.
+ * Media3 owns its native HDR SurfaceView through PlayerView.
+ *
+ * Calling setVideoSurfaceView() in addition to assigning PlayerView.player
+ * double-attaches the same SurfaceView and can race surface release/rebinding
+ * when switching between HDR, GLES and LibVLC backends.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -26,25 +23,6 @@ fun NativeHdrPlayerSurface(
     player: ExoPlayer,
     modifier: Modifier = Modifier,
 ) {
-    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
-
-    DisposableEffect(player, playerViewRef) {
-        val attachedView = playerViewRef
-        val surfaceView = attachedView?.videoSurfaceView as? SurfaceView
-        attachedView?.visibility = View.VISIBLE
-        surfaceView?.visibility = View.VISIBLE
-        surfaceView?.setZOrderMediaOverlay(false)
-        // PlayerView normally binds this internally. Bind explicitly as well so
-        // a branch switch cannot leave the codec attached to a retired surface.
-        surfaceView?.let(player::setVideoSurfaceView)
-        onDispose {
-            attachedView?.visibility = View.GONE
-            surfaceView?.visibility = View.GONE
-            surfaceView?.let(player::clearVideoSurfaceView)
-            if (attachedView?.player === player) attachedView.player = null
-        }
-    }
-
     AndroidView(
         factory = { context ->
             PlayerView(context).apply {
@@ -53,14 +31,17 @@ fun NativeHdrPlayerSurface(
                 subtitleView?.visibility = View.GONE
                 (videoSurfaceView as? SurfaceView)?.setZOrderMediaOverlay(false)
                 this.player = player
-                playerViewRef = this
             }
         },
         update = { view ->
             if (view.player !== player) view.player = player
             view.visibility = View.VISIBLE
             view.subtitleView?.visibility = View.GONE
-            playerViewRef = view
+        },
+        // PlayerView clears *only its own* managed video surface.
+        onRelease = { view ->
+            view.visibility = View.GONE
+            view.player = null
         },
         modifier = modifier,
     )
