@@ -183,7 +183,7 @@ class GrowingMkvSeekableExtractorTest {
         private var content = initialContent.copyOf()
 
         fun append(bytes: ByteArray) {
-            content = concat(content, bytes)
+            content = content + bytes
         }
 
         override fun length(): Long = content.size.toLong() + SAFETY_TAIL_BYTES
