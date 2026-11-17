@@ -8,8 +8,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.player.VlcPlaybackEngine
 
 /**
- * No GLES intermediate framebuffer: MediaCodec renders directly into SurfaceView,
- * preserving hardware 10-bit/HDR output when supported by the device/display.
+ * Direct VLC SurfaceView with no application color transform. Color-sensitive
+ * HEVC/HDR items are routed through the metadata-aware Media3 path by the engine.
  * Compose's GestureOverlay sits above this non-interactive native surface.
  */
 @Composable

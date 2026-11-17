@@ -92,7 +92,7 @@ class HdrColorModeManager(private val activity: Activity) {
 
     fun requestColorMode(hdrDesired: Boolean) {
         latestHdrRequest = hdrDesired && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && displaySupportsHdr()
-        if (isApplying.get() || hdrDesired == appliedHdr) return
+        if (isApplying.get() || latestHdrRequest == appliedHdr) return
         if (!isApplying.compareAndSet(false, true)) return
 
         isSwitching = true

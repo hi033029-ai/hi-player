@@ -58,6 +58,45 @@ class FileDescriptorDataSourceTest {
         }
     }
 
+    @Test fun renamedGrowingFileKeepsReadingTheOriginalDescriptor() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("rename-source", ".mkv.part", context.cacheDir)
+        val renamed = File(file.parentFile, file.name.removeSuffix(".part"))
+        file.writeBytes(byteArrayOf(1,2))
+        DownloadingFilesRegistry.markDownloading(file.absolutePath, 2)
+        val source = FileDescriptorDataSource(context, true)
+        try {
+            source.open(DataSpec.Builder().setUri(Uri.fromFile(file)).build())
+            assertEquals(2, source.read(ByteArray(2), 0, 2))
+            assertTrue(file.renameTo(renamed))
+            FileOutputStream(renamed, true).use { it.write(byteArrayOf(3,4)) }
+            val received = ByteArray(2)
+            assertEquals(2, source.read(received, 0, 2))
+            assertArrayEquals(byteArrayOf(3,4), received)
+        } finally { source.close(); DownloadingFilesRegistry.markComplete(file.absolutePath); renamed.delete(); file.delete() }
+    }
+
+    @Test fun interruptedTemporaryEofReadTerminatesRatherThanSpinning() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File.createTempFile("interrupt-source", ".mkv.part", context.cacheDir)
+        file.writeBytes(byteArrayOf(1))
+        val source = FileDescriptorDataSource(context, true)
+        source.open(DataSpec.Builder().setUri(Uri.fromFile(file)).build())
+        source.read(ByteArray(1), 0, 1)
+        val finished = CountDownLatch(1)
+        val failure = AtomicReference<Throwable>()
+        val reader = thread {
+            try { source.read(ByteArray(1), 0, 1) } catch (e: Throwable) { failure.set(e) }
+            finally { finished.countDown() }
+        }
+        try {
+            Thread.sleep(200)
+            reader.interrupt()
+            assertTrue(finished.await(2, TimeUnit.SECONDS))
+            assertTrue(failure.get() is java.io.InterruptedIOException)
+        } finally { source.close(); file.delete() }
+    }
+
     @Test
     fun `waits at temporary eof then reads appended download bytes`() {
         val context = ApplicationProvider.getApplicationContext<Context>()

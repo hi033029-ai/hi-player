@@ -103,15 +103,9 @@ object OptimizedPlayerBuilder {
             )
             val hardware = primary.filter { it.hardwareAccelerated }
 
-            if (mimeType == "video/dolby-vision" && hardware.isEmpty()) {
-                val hevc = MediaCodecSelector.DEFAULT.getDecoderInfos(
-                    "video/hevc",
-                    requiresSecureDecoder,
-                    requiresTunnelingDecoder,
-                ).filter { it.hardwareAccelerated }
-                if (hevc.isNotEmpty()) return@MediaCodecSelector hevc
-            }
-
+            // Alternative codec selection needs the stream's Dolby Vision
+            // profile/level. Media3 does that with the actual Format; a MIME-only
+            // selector must never treat profile 5 as an HDR10-compatible HEVC base.
             if (hardware.isNotEmpty()) hardware + primary.filterNot { it.hardwareAccelerated }
             else primary
         }

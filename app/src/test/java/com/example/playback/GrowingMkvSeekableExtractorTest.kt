@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.SeekMap
 import com.example.player.ColorPresets
+import java.util.concurrent.atomic.AtomicInteger
 import com.example.player.shouldApplyColorPreset
 import com.example.player.shouldUseNativeHdrOutput
 import org.junit.Assert.assertEquals
@@ -61,11 +62,13 @@ class GrowingMkvSeekableExtractorTest {
         )
         val seekMap = GrowingMkvSeekMap(SeekMap.Unseekable(10_000_000L), index)
 
+        index.scanAvailable()
         assertFalse(seekMap.isSeekable)
         val previousScannedOffset = index.lastScannedOffset
 
         source.append(cluster(timecode = 1_000))
 
+        index.scanAvailable()
         assertTrue(seekMap.isSeekable)
         assertEquals(2, index.scanAvailable().size)
         assertTrue(index.lastScannedOffset > previousScannedOffset)
@@ -101,6 +104,7 @@ class GrowingMkvSeekableExtractorTest {
         )
         val seekMap = GrowingMkvSeekMap(SeekMap.Unseekable(C.TIME_UNSET), index)
 
+        index.scanAvailable()
         assertEquals(2_000_000L, seekMap.durationUs)
     }
 
@@ -117,6 +121,7 @@ class GrowingMkvSeekableExtractorTest {
         )
         val seekMap = GrowingMkvSeekMap(SeekMap.Unseekable(10_000_000L), index)
 
+        index.scanAvailable()
         assertTrue(seekMap.isSeekable)
         assertEquals(1_000_000L, seekMap.getSeekPoints(1_500_000L).first.timeUs)
         assertEquals(clusterHeaderOffsets(content)[1], seekMap.getSeekPoints(1_500_000L).first.position)
@@ -139,10 +144,42 @@ class GrowingMkvSeekableExtractorTest {
         assertTrue(shouldUseNativeHdrOutput(ColorPresets.VIVID_HDR, enhancementEnabled = false))
     }
 
+    @Test fun unknownSizeClustersEndAtParsedSiblingNotPayloadMagic() {
+        val first = cluster(0)
+        val unknown = first.copyOf().also { it[4] = 0xFF.toByte() }
+        val source = MemoryByteSource(minimalMkv(unknown, cluster(1000)))
+        val index = GrowingMkvClusterIndex({ source }, { true })
+        assertEquals(listOf(0L, 1_000_000L), index.scanAvailable().map { it.timeUs })
+    }
+
+    @Test fun seekMapQueriesDoNotOpenOrReadSourcesAndDescriptorIsRetained() {
+        val opens = AtomicInteger()
+        val source = MemoryByteSource(minimalMkv(cluster(0), cluster(1000)))
+        val index = GrowingMkvClusterIndex({ opens.incrementAndGet(); source }, { true })
+        val map = GrowingMkvSeekMap(SeekMap.Unseekable(C.TIME_UNSET), index)
+        repeat(20) { map.isSeekable; map.durationUs; map.getSeekPoints(500_000) }
+        assertEquals(0, opens.get())
+        index.scanAvailable()
+        source.append(cluster(2000))
+        index.scanAvailable()
+        repeat(20) { map.getSeekPoints(2_000_000) }
+        assertEquals(1, opens.get())
+        assertEquals(2_000_000L, map.getSeekPoints(2_000_000).first.timeUs)
+        index.close()
+    }
+
+    @Test fun timestampsWithoutCompleteVideoKeyframeDoNotAdvertiseSeeking() {
+        val timestampOnly = element(byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75),
+            element(byteArrayOf(0xE7.toByte()), byteArrayOf(0)))
+        val index = GrowingMkvClusterIndex({ MemoryByteSource(minimalMkv(timestampOnly)) }, { true })
+        assertTrue(index.scanAvailable().isEmpty())
+    }
+
     private fun cluster(timecode: Int): ByteArray {
         val payload = unsignedBytes(timecode.toLong())
         val timecodeElement = element(byteArrayOf(0xE7.toByte()), payload)
-        return element(byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75), timecodeElement)
+        val keyframe = element(byteArrayOf(0xA3.toByte()), byteArrayOf(0x81.toByte(), 0, 0, 0x80.toByte(), 1))
+        return element(byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75), timecodeElement + keyframe)
     }
 
     private fun minimalMkv(vararg clusters: ByteArray): ByteArray {
@@ -159,7 +196,10 @@ class GrowingMkvSeekableExtractorTest {
             byteArrayOf(0x15, 0x49, 0xA9.toByte(), 0x66),
             timecodeScale,
         )
-        return concat(ebmlHeader, segmentHeader, info, *clusters)
+        val track = element(byteArrayOf(0xAE.toByte()),
+            element(byteArrayOf(0xD7.toByte()), byteArrayOf(1)) + element(byteArrayOf(0x83.toByte()), byteArrayOf(1)))
+        val tracks = element(byteArrayOf(0x16, 0x54, 0xAE.toByte(), 0x6B), track)
+        return concat(ebmlHeader, segmentHeader, info, tracks, *clusters)
     }
 
     private fun clusterHeaderOffsets(content: ByteArray): List<Long> {
@@ -203,7 +243,7 @@ class GrowingMkvSeekableExtractorTest {
             content = content + bytes
         }
 
-        override fun length(): Long = content.size.toLong() + SAFETY_TAIL_BYTES
+        override fun length(): Long = content.size.toLong()
 
         override fun readAt(position: Long, target: ByteArray, offset: Int, length: Int): Int {
             if (position < 0L || position >= content.size) return 0

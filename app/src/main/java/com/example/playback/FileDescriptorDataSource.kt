@@ -13,333 +13,129 @@ import com.example.player.DownloadingFilesRegistry
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.InterruptedIOException
 
-/**
- * A seekable local/content source that can keep an incomplete download open while
- * its writer appends bytes. It never copies media into app storage.
- *
- * Progressive extractors can legitimately request a position just beyond the
- * bytes written so far (for example, while looking for Matroska metadata). For
- * a registered growing download, this source waits for that position instead of
- * converting the temporary condition into a fatal source error.
- */
+/** A loader-thread reader. One descriptor survives append, EOF and atomic rename. */
 class FileDescriptorDataSource(
     private val context: Context,
     private val waitForGrowth: Boolean = false,
-) : BaseDataSource(true) {
-
-    private data class SourceSnapshot(
-        val length: Long,
-        val modifiedAtMs: Long,
-    )
-
-    private enum class RequiredPositionResult {
-        AVAILABLE,
-        FAR_AHEAD,
-        NOT_GROWING,
-        CANCELLED,
-    }
-
-    private var pfd: ParcelFileDescriptor? = null
+) : BaseDataSource(false) {
     private var input: FileInputStream? = null
     private var uri: Uri? = null
-    private var growingDownloadKey: String? = null
-    private var bytesRemaining: Long = 0L
-    private var openedAsGrowingFile = false
-    private var keepWaitingUntilMs = 0L
-    private var lastObservedLength = 0L
-    private var lastObservedModifiedMs = 0L
-    private var returnEofForUnavailableSeek = false
-
-    @Volatile
-    private var closed = false
+    private var key = ""
+    private var remaining = 0L
+    private var growing = false
+    private var started = false
+    private var optionalTailProbe = false
+    private var idleDeadline = 0L
+    private var observedLength = 0L
+    @Volatile private var closed = false
 
     override fun open(dataSpec: DataSpec): Long {
         closed = false
-        returnEofForUnavailableSeek = false
+        optionalTailProbe = false
         uri = dataSpec.uri
-        val downloadKey = downloadKey(dataSpec.uri)
-        val publishedUri = DownloadingFilesRegistry.completedUri(downloadKey)
-        val pendingFileName = dataSpec.uri.lastPathSegment.orEmpty()
-        val activeGrowingFile = waitForGrowth && publishedUri == null &&
-            (DownloadingFilesRegistry.isDownloading(downloadKey) ||
-                PendingDownloadFormat.isPending(pendingFileName))
-        growingDownloadKey = downloadKey.takeIf { activeGrowingFile }
-        openedAsGrowingFile = activeGrowingFile
-        keepWaitingUntilMs = if (activeGrowingFile) {
-            SystemClock.elapsedRealtime() + GROWING_IDLE_GRACE_MS
-        } else {
-            0L
-        }
-
+        key = if (dataSpec.uri.scheme == "file") dataSpec.uri.path.orEmpty() else dataSpec.uri.toString()
+        val published = DownloadingFilesRegistry.completedUri(key)
+        growing = waitForGrowth && published == null &&
+            (DownloadingFilesRegistry.isDownloading(key) || PendingDownloadFormat.isPending(dataSpec.uri.lastPathSegment.orEmpty()))
+        idleDeadline = SystemClock.elapsedRealtime() + IDLE_TIMEOUT_MS
         transferInitializing(dataSpec)
         try {
-            // An extractor may seek to a metadata position that has not arrived
-            // yet. Wait before creating the stream, rather than calling
-            // FileChannel.position past EOF and surfacing a source failure.
-            if (dataSpec.position > snapshotFor(dataSpec.uri).length && activeGrowingFile) {
-                when (waitForRequiredPosition(dataSpec.uri, dataSpec.position)) {
-                    RequiredPositionResult.FAR_AHEAD -> {
-                        // Return a valid unknown-length source. The extractor
-                        // receives ordinary EOF from read() and can abandon an
-                        // optional tail SeekHead entry without failing prepare.
-                        returnEofForUnavailableSeek = true
-                        bytesRemaining = C.LENGTH_UNSET.toLong()
-                        transferStarted(dataSpec)
-                        return bytesRemaining
-                    }
-                    RequiredPositionResult.CANCELLED ->
-                        throw IOException("Data source closed while waiting for a growing file")
-                    else -> Unit
-                }
-            }
-
-            val descriptor = openDescriptor(dataSpec.uri)
-            val stream = FileInputStream(descriptor.fileDescriptor)
-            val snapshot = snapshotFor(dataSpec.uri, descriptor.statSize)
-            if (dataSpec.position > snapshot.length) {
-                stream.close()
-                descriptor.close()
-                throw IOException("Requested position beyond available download data")
-            }
-
-            try {
-                stream.channel.position(dataSpec.position)
-            } catch (error: Exception) {
-                stream.close()
-                descriptor.close()
-                throw error
-            }
-
-            pfd = descriptor
+            val target = published?.let(Uri::parse) ?: dataSpec.uri
+            val descriptor = if (target.scheme == "file") {
+                ParcelFileDescriptor.open(File(target.path ?: throw IOException("Missing file path")), ParcelFileDescriptor.MODE_READ_ONLY)
+            } else context.contentResolver.openFileDescriptor(target, "r") ?: throw IOException("No readable descriptor")
+            // AutoCloseInputStream is the sole owner; do not double-close a raw fd.
+            val stream = ParcelFileDescriptor.AutoCloseInputStream(descriptor)
             input = stream
-            lastObservedLength = snapshot.length
-            lastObservedModifiedMs = snapshot.modifiedAtMs
-
-            // A stale explicit length is unsafe for a file still being appended.
-            // Advertising an unknown length makes Media3 reopen/read through the
-            // growing source instead of treating the current EOF as final.
-            bytesRemaining = when {
-                activeGrowingFile -> C.LENGTH_UNSET.toLong()
+            observedLength = stream.channel.size()
+            if (growing && dataSpec.position - observedLength > MAX_SEQUENTIAL_GAP) {
+                // An optional SeekHead tail probe, not a playback seek success.
+                optionalTailProbe = true
+            } else {
+                while (dataSpec.position > stream.channel.size() && growing && !closed) {
+                    awaitGrowthPoll()
+                }
+                if (closed) throw InterruptedIOException("Source closed")
+                if (dataSpec.position > stream.channel.size()) throw IOException("Position is not downloaded")
+                stream.channel.position(dataSpec.position)
+            }
+            remaining = when {
                 dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
-                else -> snapshot.length - dataSpec.position
+                growing -> C.LENGTH_UNSET.toLong()
+                else -> (stream.channel.size() - dataSpec.position).coerceAtLeast(0)
             }
-            if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining < 0) {
-                throw IOException("Requested position beyond file length")
-            }
-
             transferStarted(dataSpec)
-            return bytesRemaining
+            started = true
+            return remaining
         } catch (error: Exception) {
-            clearDescriptors()
+            input?.close(); input = null
             throw error
         }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
-        if (returnEofForUnavailableSeek) return C.RESULT_END_OF_INPUT
-        if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
-
-        val bytesToRead = if (bytesRemaining == C.LENGTH_UNSET.toLong()) {
-            length
-        } else {
-            minOf(length.toLong(), bytesRemaining).toInt()
-        }
-
-        var read = input?.read(buffer, offset, bytesToRead) ?: -1
-        while (read == -1 && waitForGrowth && openedAsGrowingFile && !closed) {
-            if (waitForAppendedBytes()) {
-                read = input?.read(buffer, offset, bytesToRead) ?: -1
-            } else if (!shouldKeepWaitingForGrowth()) {
-                break
+        if (closed) throw InterruptedIOException("Source closed")
+        if (remaining == 0L || optionalTailProbe) return C.RESULT_END_OF_INPUT
+        val count = if (remaining == C.LENGTH_UNSET.toLong()) length else minOf(length.toLong(), remaining).toInt()
+        val stream = input ?: throw IOException("Source is not open")
+        while (true) {
+            val read = stream.read(buffer, offset, count)
+            if (read > 0) {
+                if (remaining != C.LENGTH_UNSET.toLong()) remaining -= read
+                observedLength = maxOf(observedLength, stream.channel.position())
+                idleDeadline = SystemClock.elapsedRealtime() + IDLE_TIMEOUT_MS
+                bytesTransferred(read)
+                return read
             }
-        }
-        if (read == -1) {
-            if (bytesRemaining != C.LENGTH_UNSET.toLong() && bytesRemaining > 0) {
-                throw IOException("Unexpected end of stream, $bytesRemaining bytes remaining")
+            if (!growing || DownloadingFilesRegistry.completedUri(key) != null) {
+                if (remaining > 0) throw IOException("Incomplete stream")
+                return C.RESULT_END_OF_INPUT
             }
-            return C.RESULT_END_OF_INPUT
-        }
-
-        if (bytesRemaining != C.LENGTH_UNSET.toLong()) bytesRemaining -= read
-        bytesTransferred(read)
-        return read
-    }
-
-    /** Waits until an extractor's requested offset has actually become readable. */
-    private fun waitForRequiredPosition(
-        targetUri: Uri,
-        requiredPosition: Long,
-    ): RequiredPositionResult {
-        // Sequential reads may briefly run just ahead of the writer, but a
-        // Matroska SeekHead can point to Tags/Chapters/Attachments several GiB
-        // away. Fail those probes immediately; only follow nearby written data.
-        while (!closed) {
-            val availableLength = snapshotFor(targetUri).length
-            if (availableLength >= requiredPosition) return RequiredPositionResult.AVAILABLE
-            val gap = requiredPosition - availableLength
-            if (gap > MAX_SEQUENTIAL_WAIT_GAP_BYTES) return RequiredPositionResult.FAR_AHEAD
-            if (!shouldKeepWaitingForGrowth()) return RequiredPositionResult.NOT_GROWING
-            sleepForGrowthPoll()
-        }
-        return RequiredPositionResult.CANCELLED
-    }
-
-    /**
-     * Reopens only after the source has genuinely changed. This avoids a tight
-     * retry loop when a download manager preallocates a file but has not yet
-     * written the next media bytes into it.
-     */
-    private fun waitForAppendedBytes(): Boolean {
-        val activeUri = uri ?: return false
-        val position = input?.channel?.position() ?: return false
-        val deadline = SystemClock.elapsedRealtime() + GROWTH_POLL_WINDOW_MS
-        while (!closed && SystemClock.elapsedRealtime() < deadline) {
-            val snapshot = snapshotFor(activeUri)
-            val hasNewLength = snapshot.length > lastObservedLength && snapshot.length > position
-            // Some download managers preallocate the final filename. For file:
-            // sources, an updated mtime is the available signal that new bytes
-            // may have been written even when File.length() did not change.
-            val hasNewFileWrite = activeUri.scheme == "file" &&
-                snapshot.modifiedAtMs > lastObservedModifiedMs && snapshot.length > position
-            if ((hasNewLength || hasNewFileWrite) && reopenAt(position, snapshot)) {
-                return true
+            // Never expose temporary EOF to MatroskaExtractor. Its EBML reader
+            // can be in the middle of a size vint, laced block or codec packet.
+            // Retrying the SAME read preserves parser/decoder/track state.
+            awaitGrowthPoll()
+            val size = stream.channel.size()
+            if (size > observedLength) {
+                observedLength = size
+                idleDeadline = SystemClock.elapsedRealtime() + IDLE_TIMEOUT_MS
             }
-            if (!shouldKeepWaitingForGrowth()) return false
-            sleepForGrowthPoll()
+            if (!DownloadingFilesRegistry.isDownloading(key) &&
+                !PendingDownloadFormat.isPending(uri?.lastPathSegment.orEmpty()) &&
+                SystemClock.elapsedRealtime() >= idleDeadline) return C.RESULT_END_OF_INPUT
         }
-        return false
     }
 
-    /**
-     * A MediaStore provider can hand out a descriptor that has reached the
-     * current file end while its owner keeps appending data. Reopening at the
-     * same byte position exposes the newly written range atomically.
-     */
-    private fun reopenAt(position: Long, snapshot: SourceSnapshot): Boolean {
-        val activeUri = uri ?: return false
-        return runCatching {
-            val descriptor = openDescriptor(activeUri)
-            val stream = FileInputStream(descriptor.fileDescriptor)
-            try {
-                stream.channel.position(position)
-            } catch (error: Exception) {
-                stream.close()
-                descriptor.close()
-                throw error
-            }
-            val previousInput = input
-            val previousDescriptor = pfd
-            pfd = descriptor
-            input = stream
-            lastObservedLength = snapshot.length
-            lastObservedModifiedMs = snapshot.modifiedAtMs
-            keepWaitingUntilMs = SystemClock.elapsedRealtime() + GROWING_IDLE_GRACE_MS
-            previousInput?.close()
-            previousDescriptor?.close()
-            true
-        }.getOrDefault(false)
-    }
-
-    /**
-     * Do not turn a short scanner/network pause into a fatal player error. A
-     * fresh growth observation extends the wait window, while an abandoned
-     * download eventually returns EOF rather than buffering indefinitely.
-     */
-    private fun shouldKeepWaitingForGrowth(): Boolean {
-        val key = growingDownloadKey.orEmpty()
-        if (DownloadingFilesRegistry.completedUri(key) != null) return false
-        return DownloadingFilesRegistry.isActivelyGrowing(key) ||
-            SystemClock.elapsedRealtime() < keepWaitingUntilMs
-    }
-
-    private fun sleepForGrowthPoll() {
-        try {
-            Thread.sleep(GROWTH_POLL_INTERVAL_MS)
-        } catch (_: InterruptedException) {
+    private fun awaitGrowthPoll() {
+        if (closed || Thread.currentThread().isInterrupted) throw InterruptedIOException("Read cancelled")
+        if (SystemClock.elapsedRealtime() >= idleDeadline) throw IOException("Download stopped supplying data")
+        try { Thread.sleep(POLL_MS) }
+        catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
+            throw InterruptedIOException("Read cancelled")
         }
-    }
-
-    private fun resolvedUri(targetUri: Uri): Uri = DownloadingFilesRegistry.completedUri(downloadKey(targetUri))?.let(Uri::parse) ?: targetUri
-
-    private fun openDescriptor(originalUri: Uri): ParcelFileDescriptor {
-        val targetUri = resolvedUri(originalUri)
-        return if (targetUri.scheme == "file") {
-            val path = targetUri.path ?: throw IOException("File URI has no path: $targetUri")
-            ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY)
-        } else {
-            context.contentResolver.openFileDescriptor(targetUri, "r")
-                ?: throw IOException("Could not open file descriptor for $targetUri")
-        }
-    }
-
-    private fun downloadKey(uri: Uri): String =
-        if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
-
-    private fun snapshotFor(originalUri: Uri, descriptorLength: Long? = null): SourceSnapshot {
-        val targetUri = resolvedUri(originalUri)
-        return when (targetUri.scheme) {
-        "file" -> targetUri.path?.let(::File)?.let { file ->
-            SourceSnapshot(
-                length = file.length().coerceAtLeast(0L),
-                modifiedAtMs = file.lastModified().coerceAtLeast(0L),
-            )
-        } ?: SourceSnapshot(0L, 0L)
-        else -> {
-            val length = descriptorLength ?: runCatching {
-                context.contentResolver.openFileDescriptor(targetUri, "r")?.use { descriptor ->
-                    descriptor.statSize.coerceAtLeast(0L)
-                } ?: 0L
-            }.getOrDefault(0L)
-            SourceSnapshot(length.coerceAtLeast(0L), 0L)
-        }
-    }
-
+        if (closed) throw InterruptedIOException("Read cancelled")
     }
 
     override fun getUri(): Uri? = uri
-
     override fun close() {
         closed = true
-        try {
-            clearDescriptors()
-        } finally {
-            growingDownloadKey = null
-            openedAsGrowingFile = false
-            returnEofForUnavailableSeek = false
-            keepWaitingUntilMs = 0L
-            lastObservedLength = 0L
-            lastObservedModifiedMs = 0L
-            transferEnded()
+        val stream = input
+        input = null
+        try { stream?.close() }
+        finally {
+            if (started) { started = false; transferEnded() }
         }
     }
-
-    private fun clearDescriptors() {
-        // FileInputStream and ParcelFileDescriptor reference the same kernel fd.
-        // Cleanup must be idempotent because Media3 may close after a failed open
-        // and again during player replacement.
-        val stream = input
-        val descriptor = pfd
-        input = null
-        pfd = null
-        runCatching { stream?.close() }
-        runCatching { descriptor?.close() }
+    class Factory(private val context: Context, private val waitForGrowth: Boolean = false) : DataSource.Factory {
+        override fun createDataSource(): DataSource = FileDescriptorDataSource(context, waitForGrowth)
     }
-
-    class Factory(
-        private val context: Context,
-        private val waitForGrowth: Boolean = false,
-    ) : DataSource.Factory {
-        override fun createDataSource(): DataSource =
-            FileDescriptorDataSource(context, waitForGrowth)
-    }
-
     private companion object {
-        const val GROWTH_POLL_INTERVAL_MS = 200L
-        const val GROWTH_POLL_WINDOW_MS = 30_000L
-        const val GROWING_IDLE_GRACE_MS = 120_000L
-        const val MAX_SEQUENTIAL_WAIT_GAP_BYTES = 32L * 1024L * 1024L
+        const val POLL_MS = 100L
+        const val IDLE_TIMEOUT_MS = 120_000L
+        const val MAX_SEQUENTIAL_GAP = 32L * 1024 * 1024
     }
 }

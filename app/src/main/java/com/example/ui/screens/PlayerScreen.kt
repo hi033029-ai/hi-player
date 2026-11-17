@@ -660,27 +660,8 @@ fun PlayerScreen(
             }
         if (usingVlc) {
             VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, modifier = videoSurfaceModifier)
-        } else if (useNativeHdrSurface) {
-            NativeHdrPlayerSurface(activePlayer, modifier = videoSurfaceModifier)
         } else {
-            AndroidView(
-                factory = { ctx ->
-                    GlVideoSurface(ctx).apply {
-                        glSurfaceRef = this
-                        configureGlSurface(this)
-                        setPlayer(activePlayer)
-                        setColorPreset(if (applyColorPresetToVideo) hdrColorPreset else ColorPresets.NEUTRAL)
-                    }
-                },
-                update = { videoSurface ->
-                    glSurfaceRef = videoSurface
-                    configureGlSurface(videoSurface)
-                    videoSurface.setPlayer(activePlayer)
-                    videoSurface.setColorPreset(if (applyColorPresetToVideo) hdrColorPreset else ColorPresets.NEUTRAL)
-                    videoSurface.invalidate()
-                },
-                modifier = videoSurfaceModifier,
-            )
+            NativeHdrPlayerSurface(activePlayer, modifier = videoSurfaceModifier)
         }
 
         val surfaceMaskAlpha by animateFloatAsState(

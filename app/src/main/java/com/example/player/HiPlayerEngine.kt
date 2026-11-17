@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -47,6 +49,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 data class DecoderTelemetry(
@@ -74,7 +77,8 @@ private fun displayTrackLanguage(language: String?, formatLabel: String?, fallba
 }
 
 internal object PlaybackBackendPolicy {
-    fun shouldUseVlc(scheme: String?, displayName: String?, mimeType: String?): Boolean {
+    fun shouldUseVlc(scheme: String?, displayName: String?, mimeType: String?, growing: Boolean = false, colorManaged: Boolean = false): Boolean {
+        if (growing || colorManaged) return false
         if (scheme?.lowercase() !in setOf("file", "content")) return false
         val name = PendingDownloadFormat.originalName(displayName?.lowercase().orEmpty())
         return name.endsWith(".mkv") || name.endsWith(".mk3d") ||
@@ -127,6 +131,23 @@ class HiPlayerEngine(
     private var vlcActiveUri: Uri? = null
     private var vlcExoFallbackUri: Uri? = null
     private var vlcInitializationFailed = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var routingRevision = 0L
+    private var routingTimeout: Runnable? = null
+    private var desiredAutoPlay = true
+    private var activeMimeType: String? = null
+    private var appliedPreset: ColorPreset? = null
+    private var videoEffectsInitialized = false
+    @Volatile private var pendingDecodedSeekMs: Long? = null
+    @Volatile var lastRenderedPresentationMs: Long = -1L
+        private set
+    @Volatile var lastCodecOutputColor: String = "Unknown"
+        private set
+    private var externalSubtitleReadJob: Job? = null
+    private var activeExternalSubtitleUri: Uri? = null
+    private var activeExternalSubtitleMime: String? = null
+    private var localProbeUri: Uri? = null
+    private var localProbeUsesMedia3 = true
 
     val vlcSurfaceEngine: VlcPlaybackEngine
         get() = vlcPlayback ?: createVlc().also { vlcPlayback = it }
@@ -163,19 +184,20 @@ class HiPlayerEngine(
         },
         onFirstFrame = { if (_usesVlc.value) _vlcFirstFrame.value = true },
         onSeekUnavailable = { position ->
-            vlcActiveUri?.let { uri ->
+            if (_usesVlc.value) vlcActiveUri?.let { uri ->
                 vlcExoFallbackUri = uri
-                prepareMedia(uri, position, autoPlay = true, mediaMimeType = "video/x-matroska")
+                prepareMedia(uri, position, autoPlay = desiredAutoPlay, mediaMimeType = activeMimeType)
             }
         },
         onEnd = { if (_usesVlc.value) onVideoEnded?.invoke() },
         onError = { message ->
+            if (vlcPlayback?.unresponsive == true) vlcInitializationFailed = true
             if (_usesVlc.value) {
                 val uri = vlcActiveUri
                 if (uri != null) {
                     vlcExoFallbackUri = uri
-                    prepareMedia(uri, _currentPositionMs.value, autoPlay = true,
-                        mediaMimeType = "video/x-matroska")
+                    prepareMedia(uri, _currentPositionMs.value, autoPlay = desiredAutoPlay,
+                        mediaMimeType = activeMimeType)
                 } else {
                     _isPlaying.value = false
                     _isBuffering.value = false
@@ -186,7 +208,10 @@ class HiPlayerEngine(
     )
 
     private fun shouldUseVlc(uri: Uri, mimeType: String?): Boolean =
-        PlaybackBackendPolicy.shouldUseVlc(uri.scheme, uri.lastPathSegment, mimeType)
+        PlaybackBackendPolicy.shouldUseVlc(uri.scheme, uri.lastPathSegment, mimeType,
+            growing = isGrowingDownloadUri(uri),
+            colorManaged = shouldApplyColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value) ||
+                (localProbeUri == uri && localProbeUsesMedia3))
     // The engine replaces its ExoPlayer when decoder settings change or after a
     // Dolby Vision decoder failure. Screens observe this so the video surface,
     // gestures and media session always talk to the live instance instead of a
@@ -198,6 +223,8 @@ class HiPlayerEngine(
     private var rememberedSubtitleLanguage: String? = null
     private var rememberedSubtitlesEnabled = true
     private var rememberedMuted = false
+    private var pendingBackendAudioIndex: Int? = null
+    private var pendingBackendSubtitleIndex: Int? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var equalizer: Equalizer? = null
     private var progressJob: Job? = null
@@ -267,7 +294,7 @@ class HiPlayerEngine(
     /** HDR enhancement state. Native HDR output is managed by HdrColorModeManager. */
     fun setHdrEnhanceActive(enabled: Boolean) {
         _hdrEnhanceActive.value = enabled
-        vlcPlayback?.setColorPreset(_hdrColorPreset.value, enabled)
+        applyVideoGrade()
     }
 
     /**
@@ -283,7 +310,21 @@ class HiPlayerEngine(
 
     fun setHdrColorPreset(preset: ColorPreset) {
         _hdrColorPreset.value = preset
-        vlcPlayback?.setColorPreset(preset, _hdrEnhanceActive.value)
+        applyVideoGrade()
+    }
+
+    private fun applyVideoGrade() {
+        val preset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
+        if (preset != null && _usesVlc.value) {
+            val uri = vlcActiveUri ?: return
+            vlcExoFallbackUri = uri
+            prepareMedia(uri, _currentPositionMs.value, desiredAutoPlay, mediaMimeType = activeMimeType)
+        }
+        if (!videoEffectsInitialized || appliedPreset != preset) {
+            exoPlayer?.setVideoEffects(if (preset == null) emptyList() else listOf(ColorPresetEffect(preset)))
+            appliedPreset = preset
+            videoEffectsInitialized = true
+        }
     }
 
     fun setAudioDelay(ms: Long) {
@@ -314,41 +355,41 @@ class HiPlayerEngine(
      * which could make them fail to parse/render at all).
      */
     fun loadExternalSubtitleFile(uri: Uri) {
-        try {
-            val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: java.io.File(uri.path ?: "").takeIf { it.exists() }?.readText()
-            if (text == null) {
-                _playerError.value = "Could not read subtitle file"
-                return
+        externalSubtitleReadJob?.cancel()
+        val videoUri = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
+        externalSubtitleReadJob = coroutineScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
             }
+            val current = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
+            if (current != videoUri) return@launch
+            if (text == null) { _playerError.value = "Could not read subtitle file."; return@launch }
             lastExternalSubtitleRawText = text
             lastExternalSubtitleMimeType = guessSubtitleMimeType(uri.toString())
             reapplyExternalSubtitleWithOffset()
-        } catch (e: Exception) {
-            _playerError.value = "Failed to load subtitle: ${e.message}"
         }
     }
 
-    /** Re-prepares the current video with the loaded external subtitle,
-     * shifted by the current sync offset, without losing playback position. */
     private fun reapplyExternalSubtitleWithOffset() {
-        val rawText = lastExternalSubtitleRawText ?: return
+        val raw = lastExternalSubtitleRawText ?: return
         val mime = lastExternalSubtitleMimeType ?: MimeTypes.TEXT_VTT
-        val offsetMs = _subtitleOffsetMs.value
-        val finalText = if (offsetMs == 0L) rawText else shiftSubtitleTimestamps(rawText, offsetMs, mime)
-        val tempFile = java.io.File.createTempFile("hiplayer_sub", subtitleExtensionFor(mime), context.cacheDir)
-        tempFile.writeText(finalText)
-
-        val videoUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri ?: return
-        val currentPos = exoPlayer?.currentPosition ?: 0L
-        val wasPlaying = exoPlayer?.isPlaying ?: false
-        prepareMedia(
-            uri = videoUri,
-            startPositionMs = currentPos,
-            autoPlay = wasPlaying,
-            externalSubtitleUri = Uri.fromFile(tempFile),
-            externalSubtitleMimeType = mime
-        )
+        val videoUri = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
+        videoUri ?: return
+        val position = _currentPositionMs.value
+        val offset = _subtitleOffsetMs.value
+        coroutineScope.launch {
+            val file = withContext(Dispatchers.IO) {
+                java.io.File.createTempFile("hiplayer_sub", subtitleExtensionFor(mime), context.cacheDir).apply {
+                    writeText(if (offset == 0L) raw else shiftSubtitleTimestamps(raw, offset, mime))
+                }
+            }
+            val current = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
+            if (current != videoUri) { file.delete(); return@launch }
+            vlcExoFallbackUri = videoUri
+            prepareMedia(videoUri, position, desiredAutoPlay, Uri.fromFile(file), mime, activeMimeType)
+        }
     }
 
     /** Returns (text, fileExtension) for the currently loaded external
@@ -426,6 +467,7 @@ class HiPlayerEngine(
     private var dolbyVisionRetryAttempted = false
     private var pendingResumePositionMs: Long = 0L
     private var activeGrowingUri: Uri? = null
+    @Volatile private var downloadedSeekEndMs = 0L
     private var growingRetryJob: Job? = null
     private var growingRetryAttempts = 0
     private var growingPlaybackReachedReady = false
@@ -434,6 +476,7 @@ class HiPlayerEngine(
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (_usesVlc.value) return
             _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
             if (playbackState == Player.STATE_READY) {
                 if (exoPlayer?.currentMediaItem?.localConfiguration?.uri == activeGrowingUri) {
@@ -461,6 +504,7 @@ class HiPlayerEngine(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (_usesVlc.value) return
             _isPlaying.value = isPlaying
             if (isPlaying) {
                 updateTelemetry()
@@ -468,7 +512,9 @@ class HiPlayerEngine(
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            if (_usesVlc.value) return
             updateAvailableTracks(tracks)
+            restoreBackendTrackChoices()
             updateVideoOutputInfo()
             updateTelemetry()
         }
@@ -478,6 +524,7 @@ class HiPlayerEngine(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            if (_usesVlc.value) return
             _isBuffering.value = false
             _isPlaying.value = false
             val recoveryParameters = audioSelectionRecoveryParameters
@@ -490,7 +537,7 @@ class HiPlayerEngine(
                 audioSelectionRecoveryParameters = null
                 audioSelectionRecoveryUri = null
                 trackSelector?.parameters = recoveryParameters
-                val recoveryPosition = exoPlayer?.currentPosition ?: 0L
+                val recoveryPosition = _currentPositionMs.value
                 coroutineScope.launch(Dispatchers.Main) {
                     prepareMedia(recoveryUri, recoveryPosition, autoPlay = true)
                 }
@@ -519,7 +566,7 @@ class HiPlayerEngine(
             val retryUri = exoPlayer?.currentMediaItem?.localConfiguration?.uri
             if (isDolbyVisionDecoderFailure && !dolbyVisionRetryAttempted && retryUri != null) {
                 dolbyVisionRetryAttempted = true
-                val retryPosition = exoPlayer?.currentPosition ?: 0L
+                val retryPosition = _currentPositionMs.value
                 coroutineScope.launch(Dispatchers.Main) {
                     // Dolby Vision streams can fail when tunneling is enabled.
                     // Recreate the player once without tunneling and resume at
@@ -538,13 +585,14 @@ class HiPlayerEngine(
                 // metadata is at the beginning, they can play while growing;
                 // if it is at the end, retrying lets playback begin as soon as
                 // the index arrives.
-                if (shouldKeepAwaitingGrowingData(retryUri)) {
+                if (growingRetryAttempts < 2 && shouldKeepAwaitingGrowingData(retryUri) &&
+                    error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
                     // An MP4 whose metadata arrives at the end can need more
                     // than 30 seconds before its extractor becomes usable.
                     // Keep retrying while the file remains registered as an
                     // active download; navigation/release cancels the job.
                     growingRetryAttempts = (growingRetryAttempts + 1).coerceAtMost(Int.MAX_VALUE)
-                    val retryPosition = exoPlayer?.currentPosition ?: 0L
+                    val retryPosition = _currentPositionMs.value
                     _isBuffering.value = true
                     growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
                         delay(1500L)
@@ -555,13 +603,8 @@ class HiPlayerEngine(
                 _playerError.value = incompleteDownloadMessage(retryUri)
                 return
             }
-            val cause = error.cause
-            val msg = if (cause is HttpDataSource.InvalidResponseCodeException) {
-                "HTTP ${cause.responseCode} Forbidden: Video source requires explicit permissions or updated URL."
-            } else {
-                error.localizedMessage ?: "Playback source error."
-            }
-            _playerError.value = msg
+            Log.e("HiPlayerPlayback", "Playback failed: ${error.errorCodeName}")
+            _playerError.value = "This video could not be opened. Check the file or try another source."
         }
     }
 
@@ -582,6 +625,8 @@ class HiPlayerEngine(
         enableTunneling: Boolean = false
     ) {
         val sessionPlayerBeforeRebuild = exoPlayer
+        appliedPreset = null
+        videoEffectsInitialized = false
         release(forReplacement = true)
 
         val renderersFactory = DefaultRenderersFactory(context).apply {
@@ -591,7 +636,14 @@ class HiPlayerEngine(
             // the platform MediaCodec path.
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
-            setMediaCodecSelector(com.example.playback.OptimizedPlayerBuilder.hardwarePreferredCodecSelector())
+            setMediaCodecSelector(if (enableHwDecoding) {
+                com.example.playback.OptimizedPlayerBuilder.hardwarePreferredCodecSelector()
+            } else {
+                androidx.media3.exoplayer.mediacodec.MediaCodecSelector { mime, secure, tunneled ->
+                    androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
+                        .getDecoderInfos(mime, secure, tunneled).sortedBy { it.hardwareAccelerated }
+                }
+            })
         }
 
         // Buffer tuning for smooth playback of large/high-bitrate files and
@@ -705,8 +757,21 @@ class HiPlayerEngine(
                 // Keep scaling in the native video pipeline for UHD surfaces.
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
+                setVideoFrameMetadataListener { presentationTimeUs, _, format, output ->
+                    lastRenderedPresentationMs = presentationTimeUs / 1_000
+                    pendingDecodedSeekMs?.let { target ->
+                        if (lastRenderedPresentationMs in target..(target + 2_000)) pendingDecodedSeekMs = null
+                    }
+                    fun color(key: String): Int = if (output?.containsKey(key) == true) output.getInteger(key) else -1
+                    val observed = "standard=${color("color-standard")},transfer=${color("color-transfer")},range=${color("color-range")},input=${format.colorInfo}"
+                    if (lastCodecOutputColor != observed) {
+                        lastCodecOutputColor = observed
+                        Log.i("HiPlayerColor", "Codec output $observed")
+                    }
+                }
                 addListener(playerListener)
             }
+        applyVideoGrade()
         _playerInstance.value = exoPlayer
         HiMediaSessionService.replacePlayer(sessionPlayerBeforeRebuild, exoPlayer)
         setBackgroundPlay(_isBackgroundPlayActive.value)
@@ -874,8 +939,37 @@ class HiPlayerEngine(
         mediaTitle: String? = null,
         audioFallbackRecovery: Boolean = false,
     ) {
-        if (uri != vlcActiveUri) vlcExoFallbackUri = null
-        if (shouldUseVlc(uri, mediaMimeType) &&
+        if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
+            pendingBackendAudioIndex = null
+            pendingBackendSubtitleIndex = null
+        }
+        val routeToken = ++routingRevision
+        routingTimeout?.let(mainHandler::removeCallbacks)
+        desiredAutoPlay = autoPlay
+        activeMimeType = mediaMimeType
+        val needsProbe = localProbeUri != uri && !isGrowingDownloadUri(uri) &&
+            PlaybackBackendPolicy.shouldUseVlc(uri.scheme, uri.lastPathSegment, mediaMimeType)
+        if (needsProbe) {
+            _isBuffering.value = true
+            _playerError.value = null
+            fun continueWith(useMedia3: Boolean) {
+                if (routeToken != routingRevision) return
+                routingTimeout?.let(mainHandler::removeCallbacks)
+                localProbeUri = uri
+                localProbeUsesMedia3 = useMedia3
+                prepareMedia(uri, startPositionMs, desiredAutoPlay, externalSubtitleUri,
+                    externalSubtitleMimeType, mediaMimeType, resetDecoderRetry, mediaTitle, audioFallbackRecovery)
+            }
+            val timeout = Runnable { continueWith(true) }
+            routingTimeout = timeout
+            mainHandler.postDelayed(timeout, 5_000)
+            if (!LocalVideoProbe.submit(context.applicationContext, uri) { useMedia3 ->
+                mainHandler.post { continueWith(useMedia3) }
+            }) continueWith(true)
+            return
+        }
+        if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) vlcExoFallbackUri = null
+        if (externalSubtitleUri == null && shouldUseVlc(uri, mediaMimeType) &&
             vlcExoFallbackUri != uri && !vlcInitializationFailed
         ) {
             // Native initialization can throw UnsatisfiedLinkError on a device
@@ -909,7 +1003,6 @@ class HiPlayerEngine(
                     backend.setSpeed(_playbackSpeed.value)
                     backend.setMuted(rememberedMuted, _volumeBoostPercent.value)
                     backend.setDelays(_audioDelayMs.value, _subtitleOffsetMs.value)
-                    backend.setColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value, reopen = false)
                     backend.open(uri, startPositionMs, autoPlay, isGrowingDownloadUri(uri))
                     return
                 } catch (error: LinkageError) {
@@ -922,6 +1015,10 @@ class HiPlayerEngine(
             }
         }
         if (_usesVlc.value) {
+            if (uri == vlcActiveUri) {
+                pendingBackendAudioIndex = _availableAudioTracks.value.indexOfFirst { it.isSelected }.takeIf { it >= 0 }
+                pendingBackendSubtitleIndex = _availableSubtitleTracks.value.indexOfFirst { it.isSelected }
+            }
             vlcPlayback?.stop()
             _usesVlc.value = false
             _vlcFirstFrame.value = false
@@ -937,6 +1034,7 @@ class HiPlayerEngine(
             growingRetryJob?.cancel()
             growingRetryJob = null
             growingRetryAttempts = 0
+            downloadedSeekEndMs = 0
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
             growingPlaybackReachedReady = false
             growingPlaybackGraceUntilMs = if (activeGrowingUri != null) {
@@ -957,6 +1055,14 @@ class HiPlayerEngine(
         if (exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) {
             beginVideoItemTransition()
         }
+        if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
+            activeExternalSubtitleUri = null
+            activeExternalSubtitleMime = null
+        }
+        if (externalSubtitleUri != null) {
+            activeExternalSubtitleUri = externalSubtitleUri
+            activeExternalSubtitleMime = externalSubtitleMimeType
+        }
         val title = mediaTitle ?: exoPlayer?.currentMediaItem
             ?.takeIf { it.localConfiguration?.uri == uri }?.mediaMetadata?.title?.toString()
         val mediaItemBuilder = MediaItem.Builder().setUri(uri)
@@ -968,9 +1074,10 @@ class HiPlayerEngine(
             mediaItemBuilder.setMimeType(mediaMimeType)
         }
 
-        if (externalSubtitleUri != null) {
-            val mimeType = externalSubtitleMimeType ?: guessSubtitleMimeType(externalSubtitleUri.toString())
-            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(externalSubtitleUri)
+        val subtitleUri = activeExternalSubtitleUri
+        if (subtitleUri != null) {
+            val mimeType = activeExternalSubtitleMime ?: guessSubtitleMimeType(subtitleUri.toString())
+            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                 .setMimeType(mimeType)
                 .setLanguage("en")
                 .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
@@ -979,9 +1086,12 @@ class HiPlayerEngine(
         }
 
         val mediaItem = mediaItemBuilder.build()
+        applyVideoGrade()
         exoPlayer?.apply {
             stop()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
+            pendingDecodedSeekMs = null
+            _currentPositionMs.value = initialPositionMs
             val growingSource = if (isGrowingDownloadUri(uri)) {
                 createGrowingFileSource(uri, mediaItem)
             } else {
@@ -1013,7 +1123,6 @@ class HiPlayerEngine(
         // between the initial test and source construction. Completed media must
         // go through the regular extractor factory so its final Cues are indexed.
         if (!isGrowingDownloadUri(uri)) return null
-        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile) return null
         return DefaultMediaSourceFactory(
             com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),
             createGrowingExtractorsFactory(uri)
@@ -1047,17 +1156,19 @@ class HiPlayerEngine(
             context = context,
             uri = uri,
             isDownloading = { isGrowingDownloadUri(uri) },
+            onSeekFrontier = { frontier -> if (activeGrowingUri == uri) downloadedSeekEndMs = frontier },
         )
     }
 
     private fun growingFileLoadErrorPolicy(downloadKey: String) =
         object : DefaultLoadErrorHandlingPolicy() {
             override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-                if (isGrowingDownloadKey(downloadKey)) 1_500L
+                if (isGrowingDownloadKey(downloadKey) && loadErrorInfo.errorCount <= 3 &&
+                    loadErrorInfo.exception !is androidx.media3.common.ParserException) 1_500L
                 else super.getRetryDelayMsFor(loadErrorInfo)
 
             override fun getMinimumLoadableRetryCount(dataType: Int): Int =
-                if (isGrowingDownloadKey(downloadKey)) Int.MAX_VALUE
+                if (isGrowingDownloadKey(downloadKey)) 3
                 else super.getMinimumLoadableRetryCount(dataType)
         }
 
@@ -1107,11 +1218,13 @@ class HiPlayerEngine(
     }
 
     fun play() {
+        desiredAutoPlay = true
         if (_usesVlc.value) { vlcPlayback?.play(); return }
         exoPlayer?.play()
     }
 
     fun pause() {
+        desiredAutoPlay = false
         if (_usesVlc.value) { vlcPlayback?.pause(); return }
         exoPlayer?.pause()
     }
@@ -1149,6 +1262,9 @@ class HiPlayerEngine(
 
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
+        routingRevision++
+        externalSubtitleReadJob?.cancel()
+        routingTimeout?.let(mainHandler::removeCallbacks)
         if (_usesVlc.value) { vlcPlayback?.stop(); _usesVlc.value = false }
         vlcActiveUri = null
         vlcExoFallbackUri = null
@@ -1189,6 +1305,11 @@ class HiPlayerEngine(
         val durationBounded = if (known != null) positionMs.coerceIn(0L, known) else positionMs.coerceAtLeast(0L)
         val uri = player.currentMediaItem?.localConfiguration?.uri
         val growing = uri?.let(::isGrowingDownloadUri) == true
+        // The Matroska map resolves the target to a downloaded keyframe's REAL
+        // Cluster offset. Decoder-buffer length is not the downloaded seek frontier.
+        if (growing && PendingDownloadFormat.originalName(uri?.lastPathSegment.orEmpty()).let {
+                it.endsWith(".mkv", true) || it.endsWith(".webm", true) || it.endsWith(".mk3d", true)
+            }) return positionMs.coerceIn(0L, maxOf(downloadedSeekEndMs, player.currentPosition))
         return GrowingSeekBounds.clamp(durationBounded, player.currentPosition, player.bufferedPosition, growing)
     }
 
@@ -1196,8 +1317,8 @@ class HiPlayerEngine(
         if (_usesVlc.value) { vlcPlayback?.seekTo(clampSeekTarget(positionMs)); return }
         val player = exoPlayer ?: return
         val clamped = clampSeekTarget(positionMs)
+        pendingDecodedSeekMs = clamped.takeIf { player.videoFormat != null }
         player.seekTo(clamped)
-        _currentPositionMs.value = clamped
     }
 
     fun seekRelative(deltaMs: Long) {
@@ -1519,6 +1640,21 @@ class HiPlayerEngine(
         _availableSubtitleTracks.value = subtitleList
     }
 
+    private fun restoreBackendTrackChoices() {
+        pendingBackendAudioIndex?.let { index ->
+            _availableAudioTracks.value.getOrNull(index)?.let { track ->
+                pendingBackendAudioIndex = null
+                selectAudioTrack(track)
+            }
+        }
+        pendingBackendSubtitleIndex?.let { index ->
+            if (index < 0 || _availableSubtitleTracks.value.size > index) {
+                pendingBackendSubtitleIndex = null
+                selectSubtitleTrack(_availableSubtitleTracks.value.getOrNull(index))
+            }
+        }
+    }
+
     private fun updateVideoOutputInfo() {
         val format = exoPlayer?.videoFormat
         _isHdrContent.value = isHdrVideoFormat(format)
@@ -1573,7 +1709,7 @@ class HiPlayerEngine(
                 if (_usesVlc.value) vlcPlayback?.publish()
                 else exoPlayer?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
-                    _currentPositionMs.value = pos
+                    if (pendingDecodedSeekMs == null && player.playbackState == Player.STATE_READY) _currentPositionMs.value = pos
                     val buffered = player.bufferedPosition.coerceAtLeast(0L)
                     _bufferedPositionMs.value = buffered
                     val reportedDuration = player.duration
@@ -1599,7 +1735,7 @@ class HiPlayerEngine(
     }
 
     fun release(forReplacement: Boolean = false) {
-        if (!forReplacement) { vlcPlayback?.release(); vlcPlayback = null; _usesVlc.value = false }
+        if (!forReplacement) { routingRevision++; routingTimeout?.let(mainHandler::removeCallbacks); vlcPlayback?.release(); vlcPlayback = null; _usesVlc.value = false }
         if (!forReplacement) HiMediaSessionService.detachPlayer(exoPlayer)
         growingRetryJob?.cancel()
         growingRetryJob = null

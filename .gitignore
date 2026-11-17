@@ -6,3 +6,13 @@
 local.properties
 .gradle/
 **/build/
+
+# Generated deterministic playback fixtures (tools/generate_playback_fixtures.sh).
+app/src/debug/assets/gecko_test.mp4
+app/src/debug/assets/gecko_test.mkv
+app/src/debug/assets/growing_test.mkv
+app/src/debug/assets/playback_test.webm
+app/src/debug/assets/playback_main10_hdr10.mkv
+**/__pycache__/
+
+.kotlin/

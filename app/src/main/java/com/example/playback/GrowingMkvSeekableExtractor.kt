@@ -19,6 +19,8 @@ import androidx.media3.extractor.mkv.MatroskaExtractor
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
+import android.os.SystemClock
+import com.example.player.DownloadingFilesRegistry
 
 /**
  * Replaces only the Matroska extractor in a normal Media3 extractor list.
@@ -31,6 +33,7 @@ object GrowingMkvExtractorsFactory {
         context: Context,
         uri: Uri,
         isDownloading: () -> Boolean,
+        onSeekFrontier: (Long) -> Unit = {},
     ): ExtractorsFactory = ExtractorsFactory {
         delegateFactory.createExtractors().map { extractor ->
             if (extractor is MatroskaExtractor) {
@@ -42,6 +45,7 @@ object GrowingMkvExtractorsFactory {
                 GrowingMkvSeekableExtractor(
                     delegate = extractor,
                     clusterIndex = index,
+                    onSeekFrontier = onSeekFrontier,
                 )
             } else {
                 extractor
@@ -70,12 +74,18 @@ internal fun createGrowingMkvClusterIndex(
 internal class GrowingMkvSeekableExtractor(
     private val delegate: Extractor,
     private val clusterIndex: GrowingMkvClusterIndex,
+    private val onSeekFrontier: (Long) -> Unit = {},
 ) : Extractor {
     override fun sniff(input: ExtractorInput): Boolean = delegate.sniff(input)
 
     override fun getSniffFailureDetails() = delegate.getSniffFailureDetails()
 
+    private var output: ExtractorOutput? = null
+    private var originalMap: SeekMap? = null
+    private var lastScanMs = -1L
+
     override fun init(output: ExtractorOutput) {
+        this.output = output
         delegate.init(object : ExtractorOutput {
             override fun track(id: Int, type: Int): TrackOutput = output.track(id, type)
 
@@ -84,19 +94,33 @@ internal class GrowingMkvSeekableExtractor(
             override fun seekMap(seekMap: SeekMap) {
                 // Preserve a real Cues-based map verbatim. Only an unseekable
                 // map gets the validated growing-prefix Cluster index.
-                output.seekMap(
-                    if (seekMap.isSeekable) seekMap else GrowingMkvSeekMap(seekMap, clusterIndex),
-                )
+                originalMap = seekMap
+                clusterIndex.scanAvailable() // extractor loader thread, never SeekMap/UI
+                onSeekFrontier(clusterIndex.latestTimeUs()?.div(1_000) ?: 0)
+                output.seekMap(GrowingMkvSeekMap(seekMap, clusterIndex))
             }
         })
     }
 
-    override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int =
-        delegate.read(input, seekPosition)
+    override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+        val now = SystemClock.elapsedRealtime()
+        if (lastScanMs < 0 || now - lastScanMs >= 500) {
+            lastScanMs = now
+            val before = clusterIndex.snapshot
+            clusterIndex.scanAvailable()
+            if (before != clusterIndex.snapshot) originalMap?.let {
+                onSeekFrontier(clusterIndex.latestTimeUs()?.div(1_000) ?: 0)
+                output?.seekMap(GrowingMkvSeekMap(it, clusterIndex))
+            }
+        }
+        return delegate.read(input, seekPosition)
+    }
 
     override fun seek(position: Long, timeUs: Long) = delegate.seek(position, timeUs)
 
-    override fun release() = delegate.release()
+    override fun release() {
+        try { delegate.release() } finally { clusterIndex.close() }
+    }
 
     override fun getUnderlyingImplementation(): Extractor = delegate.getUnderlyingImplementation()
 }
@@ -122,8 +146,12 @@ internal fun interface GrowingMkvByteSourceFactory {
 internal class GrowingMkvClusterIndex(
     private val sourceFactory: GrowingMkvByteSourceFactory,
     private val isDownloading: () -> Boolean,
-) {
+) : Closeable {
+    private var source: GrowingMkvByteSource? = null
+    @Volatile var snapshot: List<SeekPoint> = emptyList()
+        private set
     private val checkpoints = ArrayList<SeekPoint>()
+    private var videoTrack: Long? = null
     private var segmentChildrenOffset = NO_OFFSET
     private var timecodeScaleNs = DEFAULT_TIMECODE_SCALE_NS
 
@@ -133,69 +161,53 @@ internal class GrowingMkvClusterIndex(
 
     @Synchronized
     fun scanAvailable(): List<SeekPoint> {
-        val source = try {
-            sourceFactory.open()
-        } catch (_: Exception) {
-            null
-        } ?: return checkpoints.toList()
-
+        val randomAccess = source ?: try {
+            sourceFactory.open()?.also { source = it }
+        } catch (_: IOException) { null } ?: return snapshot
         try {
-            source.use { randomAccess ->
-                val downloadedBytes = randomAccess.length().coerceAtLeast(0L)
-                // While bytes are arriving, leave a tail margin so a writer cannot
-                // expose a half-written EBML element. Once growth stops/completes,
-                // scan every readable byte instead of freezing the last partial index.
-                val safeDownloadedBytes = if (isDownloading()) {
-                    (downloadedBytes - SAFE_TAIL_BYTES).coerceAtLeast(0L)
-                } else {
-                    downloadedBytes
-                }
+                val safeDownloadedBytes = randomAccess.length().coerceAtLeast(0L)
                 if (segmentChildrenOffset == NO_OFFSET) {
                     val segmentStart = findSegmentChildrenOffset(randomAccess, safeDownloadedBytes)
-                        ?: return@use
+                        ?: return snapshot
                     segmentChildrenOffset = segmentStart
                     lastScannedOffset = segmentStart
                 }
 
                 var offset = lastScannedOffset
-                while (offset >= 0L && offset < safeDownloadedBytes) {
+                var budget = 4096
+                while (offset >= 0L && offset < safeDownloadedBytes && budget-- > 0) {
                     val header = readElementHeader(randomAccess, offset, safeDownloadedBytes)
                         ?: break
-                    val size = header.size ?: break // Unknown-size children cannot be validated.
-                    val endOffset = safeAdd(header.bodyOffset, size) ?: break
+                    val size = header.size
+                    val declaredEnd = size?.let { safeAdd(header.bodyOffset, it) }
+                    val endOffset = if (header.elementId == CLUSTER_ELEMENT_ID) {
+                        val cluster = scanCluster(randomAccess, header.bodyOffset,
+                            minOf(declaredEnd ?: safeDownloadedBytes, safeDownloadedBytes))
+                        cluster.second?.let { timeUs -> insertCheckpoint(SeekPoint(timeUs, offset)) }
+                        // Unknown-size Cluster ends only at a parsed level-one header.
+                        declaredEnd ?: cluster.first ?: break
+                    } else declaredEnd ?: break
                     if (endOffset > safeDownloadedBytes || endOffset <= offset) break
-
                     when (header.elementId) {
-                        INFO_ELEMENT_ID -> readTimecodeScale(
-                            randomAccess,
-                            header.bodyOffset,
-                            endOffset,
-                        )?.let { if (it > 0L) timecodeScaleNs = it }
-
-                        CLUSTER_ELEMENT_ID -> readClusterTimecode(
-                            randomAccess,
-                            header.bodyOffset,
-                            endOffset,
-                        )?.let { rawTimecode ->
-                            val timeUs = toTimeUs(rawTimecode, timecodeScaleNs)
-                            insertCheckpoint(SeekPoint(timeUs, offset))
-                        }
+                        INFO_ELEMENT_ID -> readTimecodeScale(randomAccess, header.bodyOffset, endOffset)
+                            ?.let { if (it > 0) timecodeScaleNs = it }
+                        TRACKS_ELEMENT_ID -> readVideoTrack(randomAccess, header.bodyOffset, endOffset)
+                            ?.let { videoTrack = it }
                     }
                     // Advance only after the complete top-level element is inside
                     // the safety frontier. An incomplete Cluster is retried later.
                     offset = endOffset
                     lastScannedOffset = endOffset
                 }
-            }
         } catch (_: IOException) {
             // Keep the last successfully indexed offset; the next map query can retry.
         }
-        return checkpoints.toList()
+        snapshot = checkpoints.toList()
+        return snapshot
     }
 
-    @Synchronized
     fun seekPointAtOrBefore(timeUs: Long): SeekPoint? {
-        val points = scanAvailable()
+        val points = snapshot
         if (points.isEmpty()) return null
         var low = 0
         var high = points.lastIndex
@@ -212,10 +224,12 @@ internal class GrowingMkvClusterIndex(
         return points[if (best >= 0) best else 0]
     }
 
-    @Synchronized
-    fun latestTimeUs(): Long? = scanAvailable().lastOrNull()?.timeUs
+    fun latestTimeUs(): Long? = snapshot.lastOrNull()?.timeUs
+
+    override fun close() { source?.close(); source = null }
 
     private fun insertCheckpoint(point: SeekPoint) {
+        if (checkpoints.any { it.position == point.position }) return
         var low = 0
         var high = checkpoints.size
         while (low < high) {
@@ -261,21 +275,77 @@ internal class GrowingMkvClusterIndex(
         return null
     }
 
-    private fun readClusterTimecode(
-        source: GrowingMkvByteSource,
-        clusterBodyOffset: Long,
-        clusterEndOffset: Long,
-    ): Long? {
-        var offset = clusterBodyOffset
-        while (offset < clusterEndOffset) {
-            val child = readElementHeader(source, offset, clusterEndOffset) ?: return null
-            val size = child.size ?: return null
-            val end = safeAdd(child.bodyOffset, size) ?: return null
-            if (end > clusterEndOffset || end <= offset) return null
+    /** Skip EBML children by their sizes. Never search block payloads for magic bytes. */
+    private fun scanCluster(source: GrowingMkvByteSource, start: Long, limit: Long): Pair<Long?, Long?> {
+        var offset = start
+        var timestamp: Long? = null
+        var keyframeRelative: Long? = null
+        var budget = 8192
+        while (offset < limit && budget-- > 0) {
+            val child = readElementHeader(source, offset, limit) ?: break
+            if (child.elementId in LEVEL_ONE_IDS) return offset to keyframeRelative?.let { relative ->
+                timestamp?.let { toTimeUs((it + relative).coerceAtLeast(0), timecodeScaleNs) }
+            }
+            val size = child.size ?: break
+            val end = safeAdd(child.bodyOffset, size) ?: break
+            if (end > limit || end <= offset) break
             if (child.elementId == TIMECODE_ELEMENT_ID) {
-                return readUnsignedInteger(source, child.bodyOffset, size, clusterEndOffset)
+                timestamp = readUnsignedInteger(source, child.bodyOffset, size, limit)
+            } else if (child.elementId == 0xA3L && keyframeRelative == null) {
+                keyframeRelative = keyframeTime(source, child.bodyOffset, end, simple = true)
+            } else if (child.elementId == 0xA0L && keyframeRelative == null) {
+                var block: Pair<Long, Long>? = null
+                var reference = false
+                var pos = child.bodyOffset
+                while (pos < end) {
+                    val entry = readElementHeader(source, pos, end) ?: break
+                    val entryEnd = safeAdd(entry.bodyOffset, entry.size ?: break) ?: break
+                    if (entryEnd > end || entryEnd <= pos) break
+                    if (entry.elementId == 0xFBL) reference = true
+                    if (entry.elementId == 0xA1L) block = entry.bodyOffset to entryEnd
+                    pos = entryEnd
+                }
+                if (!reference) block?.let { keyframeRelative = keyframeTime(source, it.first, it.second, false) }
             }
             offset = end
+        }
+        return null to keyframeRelative?.let { relative ->
+            timestamp?.let { toTimeUs((it + relative).coerceAtLeast(0), timecodeScaleNs) }
+        }
+    }
+
+    private fun keyframeTime(source: GrowingMkvByteSource, start: Long, end: Long, simple: Boolean): Long? {
+        val track = readVint(source, start, end, 8, true) ?: return null
+        if (track.value != videoTrack) return null
+        val header = readExact(source, start + track.length, 3, end) ?: return null
+        if (simple && (header[2].toInt() and 0x80) == 0) return null
+        // Require at least one payload byte, not an empty/truncated Block header.
+        if (end <= start + track.length + 3) return null
+        return (((header[0].toInt() and 255) shl 8) or (header[1].toInt() and 255)).toShort().toLong()
+    }
+
+    private fun readVideoTrack(source: GrowingMkvByteSource, start: Long, limit: Long): Long? {
+        var pos = start
+        while (pos < limit) {
+            val entry = readElementHeader(source, pos, limit) ?: return null
+            val end = safeAdd(entry.bodyOffset, entry.size ?: return null) ?: return null
+            if (end > limit || end <= pos) return null
+            if (entry.elementId == 0xAEL) {
+                var number: Long? = null
+                var type: Long? = null
+                var childPos = entry.bodyOffset
+                while (childPos < end) {
+                    val child = readElementHeader(source, childPos, end) ?: break
+                    val childSize = child.size ?: break
+                    val childEnd = safeAdd(child.bodyOffset, childSize) ?: break
+                    if (childEnd > end || childEnd <= childPos) break
+                    if (child.elementId == 0xD7L) number = readUnsignedInteger(source, child.bodyOffset, childSize, end)
+                    if (child.elementId == 0x83L) type = readUnsignedInteger(source, child.bodyOffset, childSize, end)
+                    childPos = childEnd
+                }
+                if (type == 1L) return number
+            }
+            pos = end
         }
         return null
     }
@@ -378,7 +448,6 @@ internal class GrowingMkvClusterIndex(
     private data class Vint(val value: Long, val length: Int, val unknown: Boolean)
 
     private companion object {
-        const val SAFE_TAIL_BYTES = 256L * 1024L
         const val NO_OFFSET = -1L
         const val DEFAULT_TIMECODE_SCALE_NS = 1_000_000L
         const val MAX_ELEMENT_ID_BYTES = 4
@@ -386,6 +455,9 @@ internal class GrowingMkvClusterIndex(
         const val MAX_UNSIGNED_INTEGER_BYTES = 8
         const val SEGMENT_ELEMENT_ID = 0x18538067L
         const val INFO_ELEMENT_ID = 0x1549A966L
+        const val TRACKS_ELEMENT_ID = 0x1654AE6BL
+        val LEVEL_ONE_IDS = setOf(0x114D9B74L, 0x1549A966L, 0x1654AE6BL, 0x1F43B675L,
+            0x1C53BB6BL, 0x1941A469L, 0x1043A770L, 0x1254C367L)
         const val CLUSTER_ELEMENT_ID = 0x1F43B675L
         const val TIMECODE_SCALE_ELEMENT_ID = 0x2AD7B1L
         const val TIMECODE_ELEMENT_ID = 0xE7L
@@ -401,7 +473,7 @@ internal class GrowingMkvSeekMap(
     private val clusterIndex: GrowingMkvClusterIndex,
 ) : SeekMap {
     override fun isSeekable(): Boolean =
-        original.isSeekable || clusterIndex.scanAvailable().size >= MIN_CLUSTERS_FOR_SEEK
+        original.isSeekable || clusterIndex.snapshot.size >= MIN_CLUSTERS_FOR_SEEK
 
     override fun getDurationUs(): Long =
         original.durationUs.takeUnless { it == androidx.media3.common.C.TIME_UNSET }
@@ -421,11 +493,13 @@ internal class GrowingMkvSeekMap(
 }
 
 private fun openGrowingMkvByteSource(context: Context, uri: Uri): GrowingMkvByteSource? {
+    val key = if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
+    val resolved = DownloadingFilesRegistry.completedUri(key)?.let(Uri::parse) ?: uri
     val descriptor = try {
-        if (uri.scheme == "file") {
-            ParcelFileDescriptor.open(File(uri.path ?: return null), ParcelFileDescriptor.MODE_READ_ONLY)
+        if (resolved.scheme == "file") {
+            ParcelFileDescriptor.open(File(resolved.path ?: return null), ParcelFileDescriptor.MODE_READ_ONLY)
         } else {
-            context.contentResolver.openFileDescriptor(uri, "r")
+            context.contentResolver.openFileDescriptor(resolved, "r")
         }
     } catch (_: Exception) {
         null

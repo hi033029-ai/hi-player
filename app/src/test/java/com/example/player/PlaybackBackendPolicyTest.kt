@@ -7,21 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackBackendPolicyTest {
-    @Test
-    fun `growing MKV seeking never extrapolates outside verified cluster timestamps`() {
-        val clusters = listOf(0L, 1_500_000L, 4_000_000L)
-        assertNull(VlcGrowingSeekPolicy.clusterTimeMs(100L, emptyList()))
-        assertEquals(0L, VlcGrowingSeekPolicy.clusterTimeMs(900L, clusters))
-        assertEquals(1_500L, VlcGrowingSeekPolicy.clusterTimeMs(2_000L, clusters))
-        assertEquals(4_000L, VlcGrowingSeekPolicy.clusterTimeMs(40_000L, clusters))
-        assertEquals(0L, VlcGrowingSeekPolicy.clusterTimeMs(-1L, clusters))
+    @Test fun growingMatroskaUsesByteAddressedMedia3Extractor() {
+        assertFalse(PlaybackBackendPolicy.shouldUseVlc("file", "movie.mkv.part", null, growing = true))
+        assertFalse(PlaybackBackendPolicy.shouldUseVlc("content", "movie.mkv", "video/x-matroska", growing = true))
     }
 
-    @Test
-    fun `index without an initial cluster does not invent time zero`() {
-        val clusters = listOf(2_000_000L, 5_000_000L)
-        assertNull(VlcGrowingSeekPolicy.clusterTimeMs(1_000L, clusters))
-        assertEquals(2_000L, VlcGrowingSeekPolicy.clusterTimeMs(2_001L, clusters))
+    @Test fun explicitColorManagementUsesSingleMedia3Processor() {
+        assertFalse(PlaybackBackendPolicy.shouldUseVlc("file", "movie.mkv", null, colorManaged = true))
     }
 
     @Test
@@ -29,18 +21,6 @@ class PlaybackBackendPolicyTest {
         assertTrue(PlaybackBackendPolicy.shouldUseVlc("file", "movie.mkv", null))
         assertTrue(PlaybackBackendPolicy.shouldUseVlc("content", "movie.mkv.part", "application/octet-stream"))
         assertTrue(PlaybackBackendPolicy.shouldUseVlc("content", "download", "video/x-matroska"))
-    }
-
-    @Test
-    fun `LibVLC color presets install a real filter only when explicitly enabled`() {
-        assertTrue(vlcColorAdjustOptions(ColorPresets.HDR_DISABLED, enhancementEnabled = true).isEmpty())
-        assertTrue(vlcColorAdjustOptions(ColorPresets.VIVID_HDR, enhancementEnabled = false).isEmpty())
-
-        val options = vlcColorAdjustOptions(ColorPresets.VIVID_HDR, enhancementEnabled = true)
-        assertTrue(":video-filter=adjust" in options)
-        assertTrue(options.any { it.startsWith(":brightness=") })
-        assertTrue(options.any { it.startsWith(":contrast=") })
-        assertTrue(options.any { it.startsWith(":saturation=") })
     }
 
     @Test
