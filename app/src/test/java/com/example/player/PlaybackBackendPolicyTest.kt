@@ -1,10 +1,29 @@
 package com.example.player
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackBackendPolicyTest {
+    @Test
+    fun `growing MKV seeking never extrapolates outside verified cluster timestamps`() {
+        val clusters = listOf(0L, 1_500_000L, 4_000_000L)
+        assertNull(VlcGrowingSeekPolicy.clusterTimeMs(100L, emptyList()))
+        assertEquals(0L, VlcGrowingSeekPolicy.clusterTimeMs(900L, clusters))
+        assertEquals(1_500L, VlcGrowingSeekPolicy.clusterTimeMs(2_000L, clusters))
+        assertEquals(4_000L, VlcGrowingSeekPolicy.clusterTimeMs(40_000L, clusters))
+        assertEquals(0L, VlcGrowingSeekPolicy.clusterTimeMs(-1L, clusters))
+    }
+
+    @Test
+    fun `index without an initial cluster does not invent time zero`() {
+        val clusters = listOf(2_000_000L, 5_000_000L)
+        assertNull(VlcGrowingSeekPolicy.clusterTimeMs(1_000L, clusters))
+        assertEquals(2_000L, VlcGrowingSeekPolicy.clusterTimeMs(2_001L, clusters))
+    }
+
     @Test
     fun `local Matroska and pending aliases use LibVLC`() {
         assertTrue(PlaybackBackendPolicy.shouldUseVlc("file", "movie.mkv", null))

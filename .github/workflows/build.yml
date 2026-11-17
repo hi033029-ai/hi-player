@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main]
+    branches: [main, feat/geckoview-browser-migration]
 permissions:
   contents: read
 concurrency:

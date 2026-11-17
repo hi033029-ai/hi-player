@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -125,6 +126,7 @@ class HiPlayerEngine(
     private var vlcPlayback: VlcPlaybackEngine? = null
     private var vlcActiveUri: Uri? = null
     private var vlcExoFallbackUri: Uri? = null
+    private var vlcInitializationFailed = false
 
     val vlcSurfaceEngine: VlcPlaybackEngine
         get() = vlcPlayback ?: createVlc().also { vlcPlayback = it }
@@ -873,24 +875,51 @@ class HiPlayerEngine(
         audioFallbackRecovery: Boolean = false,
     ) {
         if (uri != vlcActiveUri) vlcExoFallbackUri = null
-        if (shouldUseVlc(uri, mediaMimeType) && vlcExoFallbackUri != uri) {
-            vlcActiveUri = uri
-            if (!_usesVlc.value) exoPlayer?.stop()
-            _usesVlc.value = true
-            _vlcFirstFrame.value = false
-            _vlcVideoSize.value = 0 to 0
-            _playerError.value = null
-            _availableAudioTracks.value = emptyList()
-            _availableSubtitleTracks.value = emptyList()
-            _isHdrContent.value = false
-            _isVideoColorMetadataKnown.value = false
-            val backend = vlcSurfaceEngine
-            backend.setSpeed(_playbackSpeed.value)
-            backend.setMuted(rememberedMuted, _volumeBoostPercent.value)
-            backend.setDelays(_audioDelayMs.value, _subtitleOffsetMs.value)
-            backend.setColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value, reopen = false)
-            backend.open(uri, startPositionMs, autoPlay, isGrowingDownloadUri(uri))
-            return
+        if (shouldUseVlc(uri, mediaMimeType) &&
+            vlcExoFallbackUri != uri && !vlcInitializationFailed
+        ) {
+            // Native initialization can throw UnsatisfiedLinkError on a device
+            // even when the APK passed ELF checks in CI. Do not force-close
+            // the entire app or stop a working Media3 instance first.
+            val backend = try {
+                vlcSurfaceEngine
+            } catch (error: LinkageError) {
+                vlcInitializationFailed = true
+                vlcExoFallbackUri = uri
+                Log.e("HiPlayerLibVLC", "Native VLC initialization unavailable", error)
+                null
+            } catch (error: RuntimeException) {
+                vlcInitializationFailed = true
+                vlcExoFallbackUri = uri
+                Log.e("HiPlayerLibVLC", "VLC initialization failed", error)
+                null
+            }
+            if (backend != null) {
+                vlcActiveUri = uri
+                if (!_usesVlc.value) exoPlayer?.stop()
+                _usesVlc.value = true
+                _vlcFirstFrame.value = false
+                _vlcVideoSize.value = 0 to 0
+                _playerError.value = null
+                _availableAudioTracks.value = emptyList()
+                _availableSubtitleTracks.value = emptyList()
+                _isHdrContent.value = false
+                _isVideoColorMetadataKnown.value = false
+                try {
+                    backend.setSpeed(_playbackSpeed.value)
+                    backend.setMuted(rememberedMuted, _volumeBoostPercent.value)
+                    backend.setDelays(_audioDelayMs.value, _subtitleOffsetMs.value)
+                    backend.setColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value, reopen = false)
+                    backend.open(uri, startPositionMs, autoPlay, isGrowingDownloadUri(uri))
+                    return
+                } catch (error: LinkageError) {
+                    Log.e("HiPlayerLibVLC", "Native VLC playback failed; using Media3", error)
+                } catch (error: RuntimeException) {
+                    Log.e("HiPlayerLibVLC", "VLC playback startup failed; using Media3", error)
+                }
+                vlcExoFallbackUri = uri
+                runCatching { backend.stop() }
+            }
         }
         if (_usesVlc.value) {
             vlcPlayback?.stop()
@@ -1121,6 +1150,8 @@ class HiPlayerEngine(
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
         if (_usesVlc.value) { vlcPlayback?.stop(); _usesVlc.value = false }
+        vlcActiveUri = null
+        vlcExoFallbackUri = null
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
