@@ -247,6 +247,9 @@ class PlaybackDeviceSmokeTest {
             launch().use { scenario ->
                 scenario.onActivity { activity ->
                     engine.set(HiPlayerEngine(activity, scope))
+                    val view = SurfaceView(activity)
+                    activity.addContentView(view, FrameLayout.LayoutParams(480,270))
+                    engine.get().getPlayer().setVideoSurfaceView(view)
                     engine.get().prepareMedia(Uri.fromFile(invalid), mediaMimeType = "video/x-matroska")
                 }
                 await("Invalid file never reached an error state", 30_000) { engine.get().playerError.value != null }

@@ -59,6 +59,8 @@ class PlayerStartupThreadTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         val engine = HiPlayerEngine(context, scope)
         try {
+            // Exercise loader/provider I/O without requiring a video window in this JVM test.
+            engine.setBackgroundPlay(true)
             engine.prepareMedia(Uri.parse("content://player.startup.test/video/1"), mediaMimeType = "video/mp4")
             assertTrue("Test must actually reach the slow provider", provider.entered.await(4, TimeUnit.SECONDS))
             val heartbeat = AtomicBoolean(false)

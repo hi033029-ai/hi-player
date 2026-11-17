@@ -139,6 +139,8 @@ class HiPlayerEngine(
     private var appliedPreset: ColorPreset? = null
     private var videoEffectsInitialized = false
     private var rebuildingGradePipeline = false
+    private var pendingVideoPreparation: (() -> Unit)? = null
+    private var surfaceWaitTimeout: Runnable? = null
     @Volatile private var pendingDecodedSeekMs: Long? = null
     @Volatile var lastRenderedPresentationMs: Long = -1L
         private set
@@ -500,6 +502,10 @@ class HiPlayerEngine(
     var onVideoEnded: (() -> Unit)? = null
 
     private val playerListener = object : Player.Listener {
+        override fun onSurfaceSizeChanged(width: Int, height: Int) {
+            if (width > 0 && height > 0) pendingVideoPreparation?.invoke()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (_usesVlc.value) return
             _isBuffering.value = (playbackState == Player.STATE_BUFFERING)
@@ -721,7 +727,7 @@ class HiPlayerEngine(
         trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setTunnelingEnabled(enableTunneling)
+                    .setTunnelingEnabled(enableTunneling && !shouldApplyColorPreset(_hdrColorPreset.value, _hdrEnhanceActive.value))
                     .setAllowVideoMixedMimeTypeAdaptiveness(true)
                     .setAllowVideoNonSeamlessAdaptiveness(true)
             )
@@ -974,6 +980,8 @@ class HiPlayerEngine(
             pendingBackendAudioIndex = null
             pendingBackendSubtitleIndex = null
         }
+        pendingVideoPreparation = null
+        surfaceWaitTimeout?.let(mainHandler::removeCallbacks)
         val routeToken = ++routingRevision
         routingTimeout?.let(mainHandler::removeCallbacks)
         desiredAutoPlay = autoPlay
@@ -1143,9 +1151,33 @@ class HiPlayerEngine(
             setSeekParameters(seekParametersFor(uri))
             pendingResumePositionMs = 0L
             playWhenReady = autoPlay
-            prepare()
+            prepareWithVideoSurface(this, routeToken, mediaMimeType?.startsWith("audio/") == true)
         }
         setupLoudnessEnhancer()
+    }
+
+    private fun prepareWithVideoSurface(player: ExoPlayer, token: Long, audioOnly: Boolean) {
+        // Media3's paused GL renderer can consume its one initial frame while
+        // Compose is still binding the replacement PlayerView. Start only after
+        // ExoPlayer acknowledges a real SurfaceView size. The UI never waits.
+        fun startIfReady() {
+            if (player !== exoPlayer || token != routingRevision) return
+            if (!audioOnly && !_isBackgroundPlayActive.value &&
+                (player.surfaceSize.width <= 0 || player.surfaceSize.height <= 0)) return
+            pendingVideoPreparation = null
+            surfaceWaitTimeout?.let(mainHandler::removeCallbacks)
+            player.prepare()
+        }
+        pendingVideoPreparation = ::startIfReady
+        _isBuffering.value = true
+        surfaceWaitTimeout = Runnable {
+            if (token == routingRevision && player === exoPlayer && pendingVideoPreparation != null) {
+                pendingVideoPreparation = null
+                _isBuffering.value = false
+                _playerError.value = "Video output is unavailable. Return to the player and try again."
+            }
+        }.also { mainHandler.postDelayed(it, 8_000) }
+        startIfReady()
     }
 
     private fun createGrowingFileSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
@@ -1295,6 +1327,8 @@ class HiPlayerEngine(
 
     /** Prevents playback from resuming after leaving the player screen. */
     fun stopForNavigation() {
+        pendingVideoPreparation = null
+        surfaceWaitTimeout?.let(mainHandler::removeCallbacks)
         routingRevision++
         externalSubtitleReadJob?.cancel()
         routingTimeout?.let(mainHandler::removeCallbacks)
@@ -1379,6 +1413,7 @@ class HiPlayerEngine(
 
     fun setBackgroundPlay(enabled: Boolean) {
         _isBackgroundPlayActive.value = enabled
+        if (enabled) pendingVideoPreparation?.invoke()
         val selector = trackSelector ?: return
         selector.setParameters(selector.buildUponParameters()
             .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, enabled))
@@ -1766,6 +1801,8 @@ class HiPlayerEngine(
     }
 
     fun release(forReplacement: Boolean = false) {
+        pendingVideoPreparation = null
+        surfaceWaitTimeout?.let(mainHandler::removeCallbacks)
         if (!forReplacement) { routingRevision++; routingTimeout?.let(mainHandler::removeCallbacks); vlcPlayback?.release(); vlcPlayback = null; _usesVlc.value = false }
         if (!forReplacement) HiMediaSessionService.detachPlayer(exoPlayer)
         growingRetryJob?.cancel()

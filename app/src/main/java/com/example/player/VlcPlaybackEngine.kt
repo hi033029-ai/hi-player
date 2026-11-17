@@ -55,6 +55,8 @@ class VlcPlaybackEngine(
     @Volatile private var wantsPlayback = false
     private var view: SurfaceView? = null // main only
     private var bound = false // main only
+    private var windowWidth = 0
+    private var windowHeight = 0
     private var cached = State(false, false, 0, 0, 0, false)
     @Volatile private var lastGoodMs = 0L
     @Volatile private var speed = 1f
@@ -140,6 +142,8 @@ class VlcPlaybackEngine(
         check(Looper.myLooper() == Looper.getMainLooper())
         if (released || view === surfaceView || !surfaceView.holder.surface.isValid) return
         view = surfaceView
+        windowWidth = surfaceView.width
+        windowHeight = surfaceView.height
         rebind()
     }
 
@@ -151,9 +155,16 @@ class VlcPlaybackEngine(
     }
 
     fun updateWindowSize(surfaceView: SurfaceView) {
-        // Window size is set at the barrier before playback, when no native vout
-        // is registered. Never invoke AWindow.nativeOnWindowSize from Compose.
-        // A size-changing SurfaceView recreation follows detach/attach above.
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (released || view !== surfaceView) return
+        val width = surfaceView.width
+        val height = surfaceView.height
+        if (width == windowWidth && height == windowHeight) return
+        windowWidth = width
+        windowHeight = height
+        // Some SurfaceView resizes preserve the Surface. Cross the same stop
+        // barrier rather than invoking nativeOnWindowSize on a live vout on UI.
+        rebind()
     }
 
     /** Stop -> main detach/attach -> worker prepare/play. No blocking handoff. */
@@ -167,6 +178,10 @@ class VlcPlaybackEngine(
             try {
                 nativePlayer?.setEventListener(null)
                 nativePlayer?.stop()
+                // AWindow.attachViews can synchronously call
+                // MediaPlayer.setVideoTrackEnabled on main. hasMedia MUST be
+                // false at the barrier so that callback cannot enter JNI.
+                nativePlayer?.media = null
                 descriptor?.close()
                 descriptor = null
             } catch (error: Exception) { fail(token, error); return@post }
