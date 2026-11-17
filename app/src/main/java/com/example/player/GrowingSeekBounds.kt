@@ -2,7 +2,7 @@ package com.example.player
 
 /** Bounds forward seeks for files whose container duration/index is still changing. */
 internal object GrowingSeekBounds {
-    private const val BUFFER_SAFETY_MARGIN_MS = 750L
+    private const val BUFFERED_AHEAD_SAFETY_DIVISOR = 10L
 
     fun clamp(
         requestedPositionMs: Long,
@@ -15,7 +15,10 @@ internal object GrowingSeekBounds {
         if (!isGrowing || requested <= current) return requested
 
         val buffered = bufferedPositionMs.takeIf { it > 0L } ?: current
-        val safeForwardLimit = (buffered - BUFFER_SAFETY_MARGIN_MS).coerceAtLeast(current)
+        val bufferedAhead = (buffered - current).coerceAtLeast(0L)
+        val safetyMargin = bufferedAhead / BUFFERED_AHEAD_SAFETY_DIVISOR +
+            if (bufferedAhead % BUFFERED_AHEAD_SAFETY_DIVISOR == 0L) 0L else 1L
+        val safeForwardLimit = (buffered - safetyMargin).coerceAtLeast(current)
         return requested.coerceAtMost(safeForwardLimit)
     }
 }

@@ -26,19 +26,17 @@ internal fun ColorPreset.isIdentityTransform(): Boolean =
         red == 1f && green == 1f && blue == 1f && vibrance == 1f &&
         sharpness == 0f && targetHue < 0f && targetAdjustments.isEmpty()
 
-/** HDR, unclassified, and growing tracks bypass GLES; only stable known SDR uses the grading surface. */
-internal fun shouldUseNativeHdrOutput(
-    isHdrContent: Boolean,
-    colorMetadataKnown: Boolean,
-    isGrowingContent: Boolean = false,
-): Boolean = isGrowingContent || isHdrContent || !colorMetadataKnown
-
-/** Only grade tracks positively identified as SDR; HDR and unknown metadata stay on native output. */
-internal fun shouldApplySdrColorPreset(
-    isHdrContent: Boolean,
-    colorMetadataKnown: Boolean,
+/** A non-identity preset is an explicit request to grade the decoded frame in GLES. */
+internal fun shouldApplyColorPreset(
+    preset: ColorPreset,
     enhancementEnabled: Boolean,
-): Boolean = enhancementEnabled && colorMetadataKnown && !isHdrContent
+): Boolean = enhancementEnabled && !preset.isIdentityTransform()
+
+/** Original/neutral output stays on the native path; an active grade opts into GLES. */
+internal fun shouldUseNativeHdrOutput(
+    preset: ColorPreset,
+    enhancementEnabled: Boolean,
+): Boolean = !shouldApplyColorPreset(preset, enhancementEnabled)
 
 object ColorPresets {
     val NEUTRAL = ColorPreset("Neutral", 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f)

@@ -11,27 +11,19 @@ class SelectiveColourBandTest {
         assertFalse(ColorPresets.NATURAL_HDR.isIdentityTransform())
     }
 
-    @Test fun allHdrAndUnknownColorTracksUseNativeOutput() {
-        assertTrue(shouldUseNativeHdrOutput(isHdrContent = true, colorMetadataKnown = true))
-        assertTrue(shouldUseNativeHdrOutput(isHdrContent = true, colorMetadataKnown = false))
-        assertTrue(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = false))
-        assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
+    @Test fun originalOrDisabledPresetKeepsNativeOutputAndActiveGradeUsesGles() {
+        assertTrue(shouldUseNativeHdrOutput(ColorPresets.HDR_DISABLED, enhancementEnabled = false))
+        assertTrue(shouldUseNativeHdrOutput(ColorPresets.HDR_DISABLED, enhancementEnabled = true))
+        assertFalse(shouldUseNativeHdrOutput(ColorPresets.VIVID_HDR, enhancementEnabled = true))
+        assertTrue(shouldUseNativeHdrOutput(ColorPresets.VIVID_HDR, enhancementEnabled = false))
     }
 
-    @Test fun growingFilesKeepOneNativeSurfaceEvenWhenColorMetadataLooksSdr() {
-        assertTrue(shouldUseNativeHdrOutput(
-            isHdrContent = false,
-            colorMetadataKnown = true,
-            isGrowingContent = true,
-        ))
-        assertFalse(shouldUseNativeHdrOutput(isHdrContent = false, colorMetadataKnown = true))
-    }
-
-    @Test fun colorGradingIsLimitedToOptedInKnownSdrTracks() {
-        assertTrue(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = true))
-        assertFalse(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = true, enhancementEnabled = false))
-        assertFalse(shouldApplySdrColorPreset(isHdrContent = true, colorMetadataKnown = true, enhancementEnabled = true))
-        assertFalse(shouldApplySdrColorPreset(isHdrContent = false, colorMetadataKnown = false, enhancementEnabled = true))
+    @Test fun activeNonIdentityPresetAppliesRegardlessOfTrackMetadata() {
+        assertTrue(shouldApplyColorPreset(ColorPresets.VIVID_HDR, enhancementEnabled = true))
+        assertTrue(shouldApplyColorPreset(ColorPresets.CINEMATIC, enhancementEnabled = true))
+        assertFalse(shouldApplyColorPreset(ColorPresets.VIVID_HDR, enhancementEnabled = false))
+        assertFalse(shouldApplyColorPreset(ColorPresets.HDR_DISABLED, enhancementEnabled = true))
+        assertFalse(shouldApplyColorPreset(ColorPresets.NEUTRAL, enhancementEnabled = true))
     }
 
     @Test fun requestedOriginalVividCinemaAndBrightPresetsAreAvailableFirst() {

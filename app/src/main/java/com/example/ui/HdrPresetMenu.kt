@@ -35,7 +35,6 @@ fun HdrPresetMenu(
     visible: Boolean,
     selected: ColorPreset,
     onSelect: (ColorPreset) -> Unit,
-    nativeOutputActive: Boolean = false,
     customPreset: ColorPreset = ColorPresets.CUSTOM,
     customizing: Boolean = false,
     onCustomize: () -> Unit = {},
@@ -64,14 +63,6 @@ fun HdrPresetMenu(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Customize HDR", color = Color.White, fontSize = 14.sp)
                 TextButton(onClick = onClose) { Text("Done", color = Color.White) }
-            }
-            if (nativeOutputActive) {
-                Text(
-                    "Native HDR / unknown-color output is preserved; grading is held off for this video.",
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(bottom = 6.dp),
-                )
             }
             com.example.ui.components.FirstUseTip(
                 com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
@@ -142,14 +133,6 @@ fun HdrPresetMenu(
                 .background(Color.Black.copy(alpha = 0.30f))
                 .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
-            if (nativeOutputActive) {
-                Text(
-                    "Native HDR / unknown-color output is preserved; grading is held off for this video.",
-                    color = Color.White.copy(alpha = 0.82f),
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                )
-            }
             Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                 ColorPresets.ALL.forEach { preset ->
                     Text(

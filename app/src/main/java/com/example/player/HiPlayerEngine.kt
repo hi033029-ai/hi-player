@@ -31,11 +31,13 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.example.model.AspectRatioMode
 import com.example.model.PendingDownloadFormat
 import com.example.model.VideoTrackInfo
+import com.example.playback.GrowingMkvExtractorsFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -869,11 +871,16 @@ class HiPlayerEngine(
 
     private fun createGrowingFileSource(uri: Uri, mediaItem: MediaItem): MediaSource? {
         val key = downloadRegistryKey(uri)
-        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile && DownloadingFilesRegistry.completedUri(key) == null) return null
-        if (uri.scheme != "file" && !DownloadingFilesRegistry.isDownloading(key)) return null
+        // Recheck registry state after URI classification: a download can finish
+        // between the initial test and source construction. Completed media must
+        // go through the regular extractor factory so its final Cues are indexed.
+        if (DownloadingFilesRegistry.completedUri(key) != null ||
+            !DownloadingFilesRegistry.isDownloading(key)
+        ) return null
+        if (uri.scheme == "file" && !java.io.File(uri.path.orEmpty()).isFile) return null
         return DefaultMediaSourceFactory(
             com.example.playback.FileDescriptorDataSource.Factory(context, waitForGrowth = true),
-            createGrowingExtractorsFactory()
+            createGrowingExtractorsFactory(uri)
         )
             // A growing file signals a recoverable I/O error at temporary EOF.
             // Let Media3 retry the same progressive source while its registry
@@ -890,13 +897,25 @@ class HiPlayerEngine(
         return DownloadingFilesRegistry.completedUri(key) == null && isGrowingDownloadUri(uri)
     }
 
-    private fun createGrowingExtractorsFactory(): DefaultExtractorsFactory =
-        createOptimizedExtractorsFactory()
-            // A Matroska download often has its Cues index near the tail. It is
-            // unavailable until download completion, but the header/Tracks and
-            // clusters at the beginning can already be decoded. Disabling the
-            // Cues seek lets progressive playback begin from byte zero.
-            .setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
+    private fun createGrowingExtractorsFactory(uri: Uri): ExtractorsFactory {
+        // Keep the normal parser on the sequential path while the tail Cues are
+        // unavailable. The wrapper incrementally scans complete top-level
+        // Clusters and reads each Cluster Timecode, without inspecting block
+        // payloads or guessing time-to-byte positions.
+        val flags = MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES
+        val factory = createOptimizedExtractorsFactory()
+            .setMatroskaExtractorFlags(flags)
+        val key = downloadRegistryKey(uri)
+        return GrowingMkvExtractorsFactory.wrap(
+            delegateFactory = factory,
+            context = context,
+            uri = uri,
+            isDownloading = {
+                DownloadingFilesRegistry.completedUri(key) == null &&
+                    DownloadingFilesRegistry.isDownloading(key)
+            },
+        )
+    }
 
     private fun growingFileLoadErrorPolicy(downloadKey: String) =
         object : DefaultLoadErrorHandlingPolicy() {
@@ -911,10 +930,8 @@ class HiPlayerEngine(
 
     private fun isGrowingDownloadUri(uri: Uri): Boolean {
         val key = downloadRegistryKey(uri)
-        if (DownloadingFilesRegistry.isDownloading(key)) return true
-        if (uri.scheme != "file") return false
-        val name = uri.lastPathSegment?.lowercase() ?: return false
-        return PendingDownloadFormat.isPending(name)
+        return DownloadingFilesRegistry.completedUri(key) == null &&
+            DownloadingFilesRegistry.isDownloading(key)
     }
 
     /**

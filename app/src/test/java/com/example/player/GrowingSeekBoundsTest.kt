@@ -6,7 +6,7 @@ import org.junit.Test
 class GrowingSeekBoundsTest {
     @Test
     fun `forward seek is limited to buffer with a safety margin`() {
-        assertEquals(19_250L, GrowingSeekBounds.clamp(30_000L, 10_000L, 20_000L, isGrowing = true))
+        assertEquals(19_000L, GrowingSeekBounds.clamp(30_000L, 10_000L, 20_000L, isGrowing = true))
     }
 
     @Test

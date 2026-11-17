@@ -112,8 +112,10 @@ def main():
         'app/build.gradle.kts', 'build.gradle.kts', 'app/src/main/AndroidManifest.xml', 'gradle/gecko-integration.gradle.kts',
         'app/src/main/java/com/example/ui/screens/HiBrowserScreen.kt',
         'app/src/main/java/com/example/playback/OptimizedPlayerBuilder.kt',
+        'app/src/main/java/com/example/playback/GrowingMkvSeekableExtractor.kt',
         'app/src/main/java/com/example/player/SharpnessReductionEffect.kt',
         'app/src/test/java/com/example/player/SoftwareDecoderRegistrationTest.kt',
+        'app/src/test/java/com/example/playback/GrowingMkvSeekableExtractorTest.kt',
         PREFIX + 'patches/shared-address-input.patch', PREFIX + 'patches/media3-111-player-candidate.patch', PREFIX + 'patches/host-lifecycle.patch',
         *[PREFIX + name for name in ('GeckoFilePickerLauncher.kt', 'GeckoRuntimePermissionLauncher.kt', 'GeckoBrowserServices.kt', 'GeckoTabController.kt', 'GeckoManagedTab.kt', 'GeckoTabEngine.kt', 'GeckoBrowserChrome.kt')],
     ]

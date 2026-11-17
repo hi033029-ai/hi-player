@@ -5,7 +5,6 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -101,10 +100,9 @@ import com.example.player.HdrColorModeManager
 import com.example.player.FirstFrameRevealPolicy
 import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
-import com.example.player.shouldApplySdrColorPreset
+import com.example.player.shouldApplyColorPreset
 import com.example.player.shouldUseNativeHdrOutput
 import com.example.player.nextHdrCyclePreset
-import com.example.player.isIdentityTransform
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
 import com.example.player.rememberSmoothSeekController
@@ -189,23 +187,14 @@ fun PlayerScreen(
     val isGrowingDownload = currentVideo?.let { video ->
         video.isPartialDownload || playerViewModel.engine.isActivelyGrowingDownload(video.uri)
     } == true
-    val useNativeHdrSurface = shouldUseNativeHdrOutput(
-        isHdrContent = isHdrContent,
-        colorMetadataKnown = colorMetadataKnown,
-        isGrowingContent = isGrowingDownload,
-    )
-    val applyColorPresetOnSdr = shouldApplySdrColorPreset(
-        isHdrContent = isHdrContent,
-        colorMetadataKnown = colorMetadataKnown,
-        enhancementEnabled = hdrEnhanceActive,
-    )
+    val useNativeHdrSurface = shouldUseNativeHdrOutput(hdrColorPreset, hdrEnhanceActive)
+    val applyColorPresetToVideo = shouldApplyColorPreset(hdrColorPreset, hdrEnhanceActive)
     val is4kContent by playerViewModel.engine.is4kContent.collectAsState()
     val wideColorGamutEnabled by playerViewModel.wideColorGamutEnabled.collectAsState()
     val screenOrientation by playerViewModel.screenOrientation.collectAsState()
-    // The indicator reflects native HDR passthrough or a non-neutral grade that
-    // can actually be applied to a positively identified SDR track.
-    val managedHdrActive = isHdrContent ||
-        (applyColorPresetOnSdr && !hdrColorPreset.isIdentityTransform())
+    // The indicator reflects native HDR passthrough or a non-identity grade
+    // explicitly routed through the GLES surface.
+    val managedHdrActive = isHdrContent || applyColorPresetToVideo
     val managedHdrSwitching = hdrColorModeManager?.isSwitching ?: false
 
     // Attach before the first selected HDR track reaches the surface so the
@@ -624,14 +613,14 @@ fun PlayerScreen(
                         glSurfaceRef = this
                         configureGlSurface(this)
                         setPlayer(activePlayer)
-                        setColorPreset(if (applyColorPresetOnSdr) hdrColorPreset else ColorPresets.NEUTRAL)
+                        setColorPreset(if (applyColorPresetToVideo) hdrColorPreset else ColorPresets.NEUTRAL)
                     }
                 },
                 update = { videoSurface ->
                     glSurfaceRef = videoSurface
                     configureGlSurface(videoSurface)
                     videoSurface.setPlayer(activePlayer)
-                    videoSurface.setColorPreset(if (applyColorPresetOnSdr) hdrColorPreset else ColorPresets.NEUTRAL)
+                    videoSurface.setColorPreset(if (applyColorPresetToVideo) hdrColorPreset else ColorPresets.NEUTRAL)
                     videoSurface.invalidate()
                 },
                 modifier = videoSurfaceModifier,
@@ -759,7 +748,6 @@ fun PlayerScreen(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
-            nativeOutputActive = useNativeHdrSurface,
             customPreset = customHdrPreset,
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
@@ -906,22 +894,6 @@ fun PlayerScreen(
                 if (showHdrPresetMenu || showHdrCustomizer) {
                     showHdrPresetMenu = false
                     showHdrCustomizer = false
-                } else if (useNativeHdrSurface) {
-                    val status = when {
-                        isHdrContent && managedHdrSwitching ->
-                            "HDR display output is switching"
-                        isHdrContent && hdrColorModeManager?.isHdrActive == true ->
-                            "Native HDR Active • original signal passthrough"
-                        isHdrContent ->
-                            "HDR detected • native surface selected; display HDR mode unavailable"
-                        else ->
-                            "Color metadata unknown • native output preserved"
-                    }
-                    Toast.makeText(
-                        context,
-                        status,
-                        Toast.LENGTH_SHORT,
-                    ).show()
                 } else {
                     val nextPreset = nextHdrCyclePreset(hdrColorPreset)
                     playerViewModel.engine.setHdrColorPreset(nextPreset)
@@ -930,8 +902,6 @@ fun PlayerScreen(
                     } else if (!hdrEnhanceActive) {
                         playerViewModel.toggleHdrEnhance()
                     }
-                    val mode = if (useNativeHdrSurface) "Native output preserved" else "SDR grade active"
-                    Toast.makeText(context, "${nextPreset.name} • $mode", Toast.LENGTH_SHORT).show()
                 }
                 hdrInteractionTick++
             },

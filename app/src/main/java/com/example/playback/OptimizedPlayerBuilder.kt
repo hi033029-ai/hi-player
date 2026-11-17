@@ -18,7 +18,6 @@ import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.extractor.mp4.Mp4Extractor
-import com.example.model.PendingDownloadFormat
 import com.example.player.DownloadingFilesRegistry
 
 /**
@@ -120,8 +119,7 @@ object OptimizedPlayerBuilder {
     private fun isActivelyGrowingUri(uri: Uri): Boolean {
         val key = if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
         if (DownloadingFilesRegistry.completedUri(key) != null) return false
-        return DownloadingFilesRegistry.isDownloading(key) ||
-            (uri.scheme == "file" && PendingDownloadFormat.isPending(uri.lastPathSegment.orEmpty()))
+        return DownloadingFilesRegistry.isDownloading(key)
     }
 
     /** Route local files through the growing-file source; keep normal handling for remote/content URIs. */
