@@ -1,5 +1,6 @@
 package com.example.player
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +33,17 @@ import kotlinx.coroutines.cancel
 @RunWith(AndroidJUnit4::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackDeviceSmokeTest {
+    private fun launchSmokeActivity(): ActivityScenario<PlaybackSmokeActivity> {
+        // ActivityScenario.launch(Class) can resolve against the instrumentation
+        // .test package, even though this debug-only Activity belongs to the
+        // actual app APK. Specify the target app package explicitly.
+        val target = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(Intent.ACTION_MAIN).setClassName(
+            target.packageName, PlaybackSmokeActivity::class.java.name,
+        )
+        return ActivityScenario.launch(intent)
+    }
+
     private fun fixture(name: String, part: Boolean = false): File {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = File(context.cacheDir, "hiplayer-test-" + name + (if (part) ".part" else ""))
@@ -63,7 +76,7 @@ class PlaybackDeviceSmokeTest {
         val error = AtomicReference<String?>(null)
         val engine = AtomicReference<VlcPlaybackEngine>()
         try {
-            ActivityScenario.launch(PlaybackSmokeActivity::class.java).use { scenario ->
+            launchSmokeActivity().use { scenario ->
                 scenario.onActivity { activity ->
                     val playback = VlcPlaybackEngine(
                         activity,
@@ -117,7 +130,7 @@ class PlaybackDeviceSmokeTest {
         val engineRef = AtomicReference<HiPlayerEngine>()
         val scopeRef = AtomicReference<CoroutineScope>()
         try {
-            ActivityScenario.launch(PlaybackSmokeActivity::class.java).use { scenario ->
+            launchSmokeActivity().use { scenario ->
                 scenario.onActivity { activity ->
                     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
                     val engine = HiPlayerEngine(activity, scope)
