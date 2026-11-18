@@ -12,7 +12,7 @@ permissions:
   contents: read
 concurrency:
   group: main-apk-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   playback:
     uses: ./.github/workflows/gecko-app-device.yml
