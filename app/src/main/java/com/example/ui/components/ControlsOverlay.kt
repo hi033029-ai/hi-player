@@ -3,6 +3,9 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -77,9 +80,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PendingDownloadFormat
@@ -196,7 +202,7 @@ fun ControlsOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .height(uiMetrics.headerHeight)
+                        .heightIn(min = uiMetrics.headerHeight)
                         .align(Alignment.TopCenter)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -253,38 +259,42 @@ fun ControlsOverlay(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    // Icon-only secondary row, above the seek bar. All actions are
-                    // local Hi Player callbacks; no separate decoder/settings menu.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
-                        PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
-                        Column(
-                            modifier = Modifier.width(52.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                    // Restore the original left/right utility groups. On a narrow
+                    // screen this row scrolls instead of squeezing labels or targets.
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val utilityCellWidth = (maxWidth / 6).coerceIn(48.dp, 58.dp)
+                        val utilityWidth = maxOf(maxWidth, utilityCellWidth * 6)
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()).width(utilityWidth),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            HdrIcon(
-                                isActive = isHdrEnhanceActive,
-                                isSwitching = isHdrSwitching,
-                                onClick = onToggleHdrEnhance,
-                                onLongClick = onLongPressHdrEnhance,
-                                modifier = Modifier.size(48.dp).onGloballyPositioned { onHdrBounds(it.boundsInWindow()) },
-                            )
-                            Text(
-                                text = pictureModeLabel,
-                                color = Color.White.copy(alpha = 0.86f),
-                                fontSize = 10.sp,
-                                maxLines = 2,
-                                textAlign = TextAlign.Center,
-                            )
+                            PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, width = utilityCellWidth)
+                            PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip, width = utilityCellWidth)
+                            Column(
+                                modifier = Modifier.width(utilityCellWidth),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                HdrIcon(
+                                    isActive = isHdrEnhanceActive,
+                                    isSwitching = isHdrSwitching,
+                                    onClick = onToggleHdrEnhance,
+                                    onLongClick = onLongPressHdrEnhance,
+                                    modifier = Modifier.size(48.dp)
+                                        .semantics { stateDescription = pictureModeLabel }
+                                        .onGloballyPositioned { onHdrBounds(it.boundsInWindow()) },
+                                )
+                                Text(
+                                    text = "HDR",
+                                    color = Color.White.copy(alpha = 0.86f),
+                                    fontSize = 10.sp,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                            Spacer(Modifier.weight(1f))
+                            PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, width = utilityCellWidth)
+                            PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White, width = utilityCellWidth)
+                            PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer, width = utilityCellWidth)
                         }
-                        // Right-side group marked in the reference image.
-                        PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
-                        PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
-                        PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     // Timebar and Timestamps
@@ -323,53 +333,41 @@ fun ControlsOverlay(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Attached reference grouping: left utility, centered transport,
-                    // right caption/audio actions. Controls stay icon-only.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            PlayerToolbarButton(if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen, "Lock", onToggleLock, testTag = "bottom_lock_button")
-                            PlayerToolbarButton(
-                                Icons.Default.AspectRatio,
-                                referenceAspectLabel,
-                                onCycleAspectRatio,
-                                onLongClick = onLongPressAspectRatio,
-                                testTag = "bottom_aspect_button",
-                            )
+                    // Keep transport centred and utilities at the edges, as before.
+                    // Five transport targets plus four utilities need 472dp. Split
+                    // the rows below that width; never overlap or clip hit targets.
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val left: @Composable () -> Unit = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PlayerToolbarButton(Icons.Default.LockOpen, "Lock", onToggleLock, testTag = "bottom_lock_button")
+                                PlayerToolbarButton(
+                                    Icons.Default.AspectRatio, referenceAspectLabel, onCycleAspectRatio,
+                                    onLongClick = onLongPressAspectRatio, testTag = "bottom_aspect_button",
+                                )
+                            }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SkipButton(
-                                Icons.Default.SkipPrevious,
-                                onPrevious,
-                                modifier = Modifier.testTag("previous_file_button"),
-                                contentDescription = "Previous video",
-                            )
-                            SkipButton(
-                                Icons.Default.Replay10,
-                                onRewind10,
-                                modifier = Modifier.testTag("rewind_10_button"),
-                                contentDescription = "Rewind 10 seconds",
-                            )
-                            PlayPauseButton(isPlaying, onTogglePlayPause, tint = Color.White, modifier = Modifier.testTag("bottom_play_pause_button"))
-                            SkipButton(
-                                Icons.Default.Forward10,
-                                onFastForward10,
-                                modifier = Modifier.testTag("forward_10_button"),
-                                contentDescription = "Forward 10 seconds",
-                            )
-                            SkipButton(
-                                Icons.Default.SkipNext,
-                                onNext,
-                                modifier = Modifier.testTag("next_file_button"),
-                                contentDescription = "Next video",
-                            )
+                        val right: @Composable () -> Unit = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")
+                                PlayerToolbarButton(Icons.Default.Audiotrack, "Language", onOpenAudioSettings, testTag = "bottom_audio_tracks_button")
+                            }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")
-                            PlayerToolbarButton(Icons.Default.Audiotrack, "Language", onOpenAudioSettings, testTag = "bottom_audio_tracks_button")
+                        val transport: @Composable () -> Unit = {
+                            PlayerTransportControls(isPlaying, onTogglePlayPause, onPrevious, onNext, onRewind10, onFastForward10)
+                        }
+                        if (maxWidth >= 472.dp) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically) {
+                                left(); transport(); right()
+                            }
+                        } else {
+                            Column {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    left(); right()
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { transport() }
+                            }
                         }
                     }
                 }
@@ -412,7 +410,7 @@ internal fun HiVideoSeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(28.dp)
+                .height(48.dp)
                 .pointerInput(durationMs) {
                     if (durationMs <= 0) return@pointerInput
                     awaitEachGesture {
@@ -429,15 +427,15 @@ internal fun HiVideoSeekBar(
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id }
                                     ?: break
-                                if (!change.pressed) {
-                                    finishedNormally = change.changedToUpIgnoreConsumed()
-                                    break
-                                }
-
                                 if (event.changes.any { it.id != down.id && it.pressed }) {
                                     movedPastSlop = true
                                 }
                                 lastX = change.position.x
+                                if (!change.pressed) {
+                                    // ACTION_CANCEL is delivered as a consumed up.
+                                    finishedNormally = change.changedToUpIgnoreConsumed() && !change.isConsumed
+                                    break
+                                }
                                 val dx = lastX - startX
                                 val dy = change.position.y - down.position.y
                                 if (!movedPastSlop && !isHorizontalDrag &&
@@ -534,10 +532,11 @@ private fun PlayerToolbarTextButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     onClick: () -> Unit,
-    tint: Color = Color.White
+    tint: Color = Color.White,
+    width: Dp = 58.dp,
 ) {
     Column(
-        modifier = Modifier.width(52.dp).heightIn(min = 48.dp)
+        modifier = Modifier.width(width).heightIn(min = 60.dp)
             .clickable(onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -565,8 +564,8 @@ private fun PlayerToolbarButton(
 ) {
     Column(
         modifier = Modifier
-            .width(52.dp)
-            .height(48.dp)
+            .width(58.dp)
+            .heightIn(min = 60.dp)
             .testTag(testTag)
             .combinedClickable(
                 onClick = onClick,
@@ -585,9 +584,32 @@ private fun PlayerToolbarButton(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
             fontSize = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
         )
+    }
+}
+
+@Composable
+private fun PlayerTransportControls(
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onRewind10: () -> Unit,
+    onFastForward10: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SkipButton(Icons.Default.SkipPrevious, onPrevious, Modifier.testTag("previous_file_button"),
+            contentDescription = "Previous video")
+        SkipButton(Icons.Default.Replay10, onRewind10, Modifier.testTag("rewind_10_button"),
+            contentDescription = "Rewind 10 seconds")
+        PlayPauseButton(isPlaying, onTogglePlayPause, tint = Color.White,
+            modifier = Modifier.testTag("bottom_play_pause_button"))
+        SkipButton(Icons.Default.Forward10, onFastForward10, Modifier.testTag("forward_10_button"),
+            contentDescription = "Forward 10 seconds")
+        SkipButton(Icons.Default.SkipNext, onNext, Modifier.testTag("next_file_button"),
+            contentDescription = "Next video")
     }
 }
 

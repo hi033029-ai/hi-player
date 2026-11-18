@@ -25,13 +25,13 @@ class PlaybackGestureDeviceTest {
     @Test(timeout = 100_000) fun completedMkvSwipesReachLibVlcAndDeviceControls() = exercise("gecko_test.mkv",true)
     private fun exercise(name: String, vlc: Boolean) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val file = File(context.cacheDir,name)
+        val file = File(context.cacheDir,"${System.nanoTime()}-$name")
         context.assets.open(name).use { input -> file.outputStream().use { input.copyTo(it) } }
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val originalVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
         try {
             ActivityScenario.launch<PlaybackGestureActivity>(Intent(context,PlaybackGestureActivity::class.java)
-                .putExtra("fixture",file.absolutePath)).use { scenario ->
+                .putExtra("fixture",file.absolutePath).putExtra("saved_at_end",true)).use { scenario ->
                 lateinit var activity: PlaybackGestureActivity
                 scenario.onActivity { activity = it }
                 val engine = activity.model.engine
@@ -40,6 +40,7 @@ class PlaybackGestureDeviceTest {
                     else engine.renderedFrameSequence > 0 && engine.currentPositionMs.value > 1_000
                 }
                 assertEquals("Exercise the intended backend",vlc,engine.usesVlc.value)
+                assertTrue("Finished videos must reopen near the beginning",engine.currentPositionMs.value < 8_000)
                 scenario.onActivity {
                     engine.pause()
                     it.model.onBrightnessGestureLevel(.3f)
@@ -60,6 +61,18 @@ class PlaybackGestureDeviceTest {
                 compose.waitUntil(20_000) { engine.currentPositionMs.value < forward - 5_000 }
                 assertNull("Swiping must not leave a stale preview",activity.model.scrubTimeMs.value)
                 assertNull(engine.playerError.value)
+
+                // Reach a genuine decoder EOF, then use the same public action
+                // as the Play control. A playWhenReady flag alone cannot replay.
+                scenario.onActivity { engine.seekTo(31_300); engine.play() }
+                compose.waitUntil(25_000) { engine.hasPlaybackEnded }
+                val frameBeforeReplay = engine.renderedFrameSequence
+                scenario.onActivity { engine.togglePlayPause() }
+                compose.waitUntil(20_000) {
+                    engine.isPlaying.value && engine.currentPositionMs.value in 200..5_000 &&
+                        (if (vlc) engine.vlcFirstFrame.value else engine.renderedFrameSequence > frameBeforeReplay)
+                }
+                assertNull("Replay failed",engine.playerError.value)
             }
         } finally { audio.setStreamVolume(AudioManager.STREAM_MUSIC,originalVolume,0); file.delete() }
     }

@@ -196,7 +196,7 @@ class HiPlayerEngine(
                 prepareMedia(uri, position, autoPlay = desiredAutoPlay, mediaMimeType = activeMimeType)
             }
         },
-        onEnd = { if (_usesVlc.value) onVideoEnded?.invoke() },
+        onEnd = { if (_usesVlc.value) handlePlaybackEnded() },
         onError = { message ->
             if (vlcPlayback?.unresponsive == true) vlcInitializationFailed = true
             if (_usesVlc.value) {
@@ -344,7 +344,11 @@ class HiPlayerEngine(
             try {
                 initializePlayer(configuredHwDecoding ?: true, configuredRemuxUltraBuffer ?: false,
                     configuredTunneling ?: false)
-                params?.let { trackSelector?.parameters = it }
+                params?.let {
+                    trackSelector?.parameters = it.buildUpon()
+                        .setTunnelingEnabled(configuredTunneling == true && preset == null)
+                        .build()
+                }
                 prepareMedia(uri, position, autoPlay, activeExternalSubtitleUri, activeExternalSubtitleMime,
                     item.localConfiguration?.mimeType, mediaTitle = item.mediaMetadata.title?.toString())
             } finally { rebuildingGradePipeline = false }
@@ -509,6 +513,22 @@ class HiPlayerEngine(
     private var growingPlaybackReachedReady = false
     private var growingPlaybackGraceUntilMs = 0L
     var onVideoEnded: (() -> Unit)? = null
+    @Volatile private var playbackEnded = false
+    internal val hasPlaybackEnded: Boolean get() = playbackEnded
+
+    private fun handlePlaybackEnded() {
+        playbackEnded = true
+        desiredAutoPlay = false
+        _isPlaying.value = false
+        _isBuffering.value = false
+        onVideoEnded?.invoke()
+    }
+
+    fun isPreparedFor(uri: Uri): Boolean = if (_usesVlc.value) {
+        vlcActiveUri == uri
+    } else {
+        exoPlayer?.currentMediaItem?.localConfiguration?.uri == uri
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onSurfaceSizeChanged(width: Int, height: Int) {
@@ -540,7 +560,7 @@ class HiPlayerEngine(
                 updateTelemetry()
                 exoPlayer?.let(::requestPausedVideoFrame)
             } else if (playbackState == Player.STATE_ENDED) {
-                onVideoEnded?.invoke()
+                handlePlaybackEnded()
             }
         }
 
@@ -995,6 +1015,7 @@ class HiPlayerEngine(
                 externalSubtitleUri, externalSubtitleMimeType, mediaMimeType, resetDecoderRetry, mediaTitle, audioFallbackRecovery)
             return
         }
+        playbackEnded = false
         if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
             pendingBackendAudioIndex = null
             pendingBackendSubtitleIndex = null
@@ -1301,8 +1322,19 @@ class HiPlayerEngine(
 
     fun play() {
         desiredAutoPlay = true
-        if (_usesVlc.value) { vlcPlayback?.play(); return }
-        exoPlayer?.play()
+        if (_usesVlc.value) {
+            if (playbackEnded) {
+                vlcActiveUri?.let { prepareMedia(it, 0L, autoPlay = true, mediaMimeType = activeMimeType) }
+            } else vlcPlayback?.play()
+            return
+        }
+        exoPlayer?.let { player ->
+            if (playbackEnded || player.playbackState == Player.STATE_ENDED) {
+                playbackEnded = false
+                seekTo(0L)
+            }
+            player.play()
+        }
     }
 
     fun pause() {
@@ -1371,6 +1403,10 @@ class HiPlayerEngine(
     }
 
     fun togglePlayPause() {
+        if (playbackEnded || (!_usesVlc.value && exoPlayer?.playbackState == Player.STATE_ENDED)) {
+            play()
+            return
+        }
         val playingRequested = if (_usesVlc.value) desiredAutoPlay else exoPlayer?.playWhenReady == true
         if (playingRequested) pause() else play()
     }
@@ -1398,9 +1434,18 @@ class HiPlayerEngine(
     }
 
     fun seekTo(positionMs: Long) {
-        if (_usesVlc.value) { vlcPlayback?.seekTo(clampSeekTarget(positionMs)); return }
+        if (_usesVlc.value) {
+            val target = clampSeekTarget(positionMs)
+            if (playbackEnded) {
+                vlcActiveUri?.let {
+                    prepareMedia(it, target, autoPlay = desiredAutoPlay, mediaMimeType = activeMimeType)
+                }
+            } else vlcPlayback?.seekTo(target)
+            return
+        }
         val player = exoPlayer ?: return
         val clamped = clampSeekTarget(positionMs)
+        playbackEnded = false
         val seek = decodedSeekRevision.incrementAndGet()
         val expectVideo = !_isBackgroundPlayActive.value && activeMimeType?.startsWith("audio/") != true
         pendingDecodedSeekRevision = seek.takeIf { expectVideo }

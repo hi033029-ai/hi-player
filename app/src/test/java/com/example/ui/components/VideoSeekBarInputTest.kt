@@ -72,4 +72,26 @@ class VideoSeekBarInputTest {
 
         compose.runOnIdle { assertEquals(8_000L, soughtPosition) }
     }
+
+    @Test fun cancelledScrubDoesNotSeek() = discardedGesture { cancel() }
+
+    @Test fun secondFingerDiscardsTheScrub() = discardedGesture {
+        down(1, Offset(width * 0.7f, height / 2f))
+        up(1)
+        up(0)
+    }
+
+    private fun discardedGesture(finish: androidx.compose.ui.test.TouchInjectionScope.() -> Unit) {
+        var soughtPosition = -1L
+        compose.setContent {
+            HiVideoSeekBar(2_000L, 10_000L, 0L, { soughtPosition = it },
+                Modifier.size(width = 300.dp, height = 48.dp).testTag("seek_bar_input_test"))
+        }
+        compose.onNodeWithTag("seek_bar_input_test").performTouchInput {
+            down(Offset(width * 0.2f, height / 2f))
+            moveTo(Offset(width * 0.8f, height / 2f), delayMillis = 100L)
+            finish()
+        }
+        compose.runOnIdle { assertEquals(-1L, soughtPosition) }
+    }
 }

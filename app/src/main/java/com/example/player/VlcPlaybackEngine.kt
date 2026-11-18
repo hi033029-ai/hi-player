@@ -282,7 +282,11 @@ class VlcPlaybackEngine(
             }
             MediaPlayer.Event.Paused -> buffering = false
             MediaPlayer.Event.ESAdded, MediaPlayer.Event.ESSelected -> refreshTracksOnWorker(nativePlayer, token)
-            MediaPlayer.Event.EndReached -> postMain(token) { main.removeCallbacks(watchdog); onEnd() }
+            MediaPlayer.Event.EndReached -> {
+                wantsPlayback = false
+                buffering = false
+                postMain(token) { main.removeCallbacks(watchdog); onEnd() }
+            }
             MediaPlayer.Event.EncounteredError -> {
                 fail(token, IllegalStateException("Native playback failed")); return
             }

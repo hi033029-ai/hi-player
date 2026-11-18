@@ -21,7 +21,11 @@ class PlaybackGestureActivity : ComponentActivity() {
         model = ViewModelProvider(this)[PlayerViewModel::class.java]
         setContent { HiPlayerTheme { PlayerScreen(model,onBack = { finish() },onEnterPip = {}) } }
         val file = File(requireNotNull(intent.getStringExtra("fixture")))
+        val savedAtEnd = intent.getBooleanExtra("saved_at_end", false)
         model.playVideo(VideoItem(uri = Uri.fromFile(file), title = "Playback gesture fixture",
-            mimeType = if (file.extension == "mkv") "video/x-matroska" else "video/mp4"),startPositionOverride = 0)
+            durationMs = if (savedAtEnd) 32_000L else 0L,
+            lastPositionMs = if (savedAtEnd) 32_000L else 0L,
+            mimeType = if (file.extension == "mkv") "video/x-matroska" else "video/mp4"),
+            startPositionOverride = if (savedAtEnd) null else 0L)
     }
 }

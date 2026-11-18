@@ -1010,13 +1010,10 @@ fun PlayerScreen(
             }
         }
 
-        // Network streams can pause while the next media segment arrives. Keep
-        // the feedback compact, centred, and strictly transient: it is visible
-        // only while playback is actually stalled and disappears immediately as
-        // soon as Media3 resumes rendering.
-        if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
+        // Local probing/decoder setup and picture-mode changes can also buffer.
+        // A black surface alone must not leave the controls looking unresponsive.
+        if (isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
             Card(
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                 modifier = Modifier.align(Alignment.Center),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xB8141E2E))
@@ -1032,11 +1029,11 @@ fun PlayerScreen(
                         color = Color.White
                     )
                     Column {
-                        Text("Buffering", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (isNetworkStream) "Buffering" else "Loading video", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Speed, contentDescription = null, tint = Color.White.copy(alpha = 0.72f), modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Waiting for network data", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp)
+                            Text(if (isNetworkStream) "Waiting for network data" else "Preparing playback", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp)
                         }
                     }
                 }

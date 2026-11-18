@@ -218,7 +218,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             engine.setHdrEnhanceActive(settings.enableHdrEnhance)
 
             val record = recordDeferred.await()
-            val startPos = startPositionOverride ?: record?.lastPositionMs ?: 0L
+            val startPos = startPositionOverride?.coerceAtLeast(0L) ?: com.example.player.playbackResumePosition(
+                savedPositionMs = record?.lastPositionMs ?: video.lastPositionMs,
+                durationMs = record?.durationMs?.takeIf { it > 0L } ?: video.durationMs,
+                growing = video.isPartialDownload || engine.isActivelyGrowingDownload(video.uri),
+            )
             _showStartOverPrompt.value = !engine.isBackgroundPlayActive.value && startPositionOverride == null && startPos >= 10_000L
 
             // Restore the saved ratio before preparing the new item. Previously
@@ -842,9 +846,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun saveCurrentProgress() {
         val video = _currentVideo.value ?: return
+        // The selected library item changes before async settings/probing completes.
+        // Never persist the previous decoder's clock under the newly selected URI.
+        if (!engine.isPreparedFor(video.uri)) return
         val pos = engine.currentPositionMs.value
         val dur = engine.durationMs.value
         if (pos > 0 || dur > 0) {
+            val aspectRatio = engine.aspectRatioMode.value.name
             viewModelScope.launch {
                 videoDao.insertOrUpdate(
                     VideoEntity(
@@ -853,7 +861,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         lastPositionMs = pos,
                         durationMs = dur,
                         lastWatchedTimestamp = System.currentTimeMillis(),
-                        customAspectRatio = engine.aspectRatioMode.value.name
+                        customAspectRatio = aspectRatio
                     )
                 )
             }
