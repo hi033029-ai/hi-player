@@ -88,7 +88,11 @@ class PlaybackGestureDeviceTest {
                         !engine.usesVlc.value && engine.renderedFrameSequence > beforeGrade &&
                             kotlin.math.abs(engine.currentPositionMs.value - positionBeforeGrade) < 1_000
                     }
-                    assertFalse("Grading a paused video must not start audio", engine.isPlaying.value)
+                    assertFalse("Paused output was reported as playing", engine.isPlaying.value)
+                    scenario.onActivity {
+                        assertFalse("Grading a paused video must not request playback",engine.getPlayer().playWhenReady)
+                        assertFalse("Grading a paused video must not start audio",engine.getPlayer().isPlaying)
+                    }
                     assertNull("VLC to graded Media3 transition failed",engine.playerError.value)
                 }
             }

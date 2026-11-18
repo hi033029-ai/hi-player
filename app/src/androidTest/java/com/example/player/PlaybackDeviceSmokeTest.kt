@@ -168,7 +168,7 @@ class PlaybackDeviceSmokeTest {
     @Test(timeout = 100_000) fun sdrPresetChangesRenderedPixelsAndOriginalRestoresThem() {
         // Pixel comparison proves the SDR effect is connected. It is not an HDR
         // accuracy test; physical HDR output metadata/reference checks are separate.
-        val file = fixture("gecko_test.mp4")
+        val file = fixture("grading_reference.mp4")
         val engine = AtomicReference<HiPlayerEngine>()
         val surface = AtomicReference<SurfaceView>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -228,15 +228,33 @@ class PlaybackDeviceSmokeTest {
                     await("Preset did not render the reference frame") {
                         engine.get().renderedFrameSequence > beforeFrame && engine.get().currentPositionMs.value in 3_000..3_100
                     }
-                    Thread.sleep(200) // PixelCopy consumes the frame after its release timestamp.
                 }
+                fun presentedFrame(message: String, accept: (android.graphics.Bitmap) -> Boolean): android.graphics.Bitmap {
+                    val deadline = SystemClock.elapsedRealtime() + 5_000
+                    do {
+                        val bitmap = capture()
+                        if (accept(bitmap)) return bitmap
+                        bitmap.recycle()
+                        Thread.sleep(50)
+                    } while (SystemClock.elapsedRealtime() < deadline)
+                    throw AssertionError(message)
+                }
+                fun hasDecodedPixels(bitmap: android.graphics.Bitmap): Boolean =
+                    (20 until 250 step 20).any { y -> (20 until 470 step 20).any { x ->
+                        val p = bitmap.getPixel(x,y)
+                        android.graphics.Color.red(p) + android.graphics.Color.green(p) + android.graphics.Color.blue(p) > 100
+                    } }
                 atReferenceFrame(ColorPresets.HDR_DISABLED)
-                val original = capture()
+                val original = presentedFrame("Original never presented decoded SDR pixels", ::hasDecodedPixels)
                 atReferenceFrame(ColorPresets.VIVID_HDR)
-                val graded = capture()
+                // Frame metadata precedes GPU processing and Surface presentation.
+                // Wait for actual changed output, retaining the strict pixel threshold.
+                val graded = presentedFrame("Preset did not present changed nonblack SDR pixels") {
+                    hasDecodedPixels(it) && difference(original,it) > 2.0
+                }
                 assertTrue("Preset did not change rendered SDR pixels", difference(original,graded) > 2.0)
                 atReferenceFrame(ColorPresets.HDR_DISABLED)
-                val restored = capture()
+                val restored = presentedFrame("Original retained a color filter") { difference(original,it) < 2.0 }
                 assertTrue("Original retained a color filter", difference(original,restored) < 2.0)
                 original.recycle(); graded.recycle(); restored.recycle()
                 scenario.onActivity { engine.get().release() }

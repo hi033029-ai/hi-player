@@ -13,13 +13,22 @@ ffmpeg -hide_banner -loglevel error -i "$out/gecko_test.mp4" -map 0 -c copy -clu
 # No final Cues/duration, streaming unknown-size Segment.
 ffmpeg -hide_banner -loglevel error -i "$out/gecko_test.mp4" -map 0 -c copy -live 1 -cluster_time_limit 1000 -y "$out/growing_test.mkv"
 ffmpeg -hide_banner -loglevel error -i "$out/gecko_test.mp4" -an -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -y "$out/playback_test.webm"
+# A stationary colour reference separates a real grade from temporal motion
+# while a paused frame travels through Media3's asynchronous output pipeline.
+ffmpeg -hide_banner -loglevel error -f lavfi -i 'smptebars=size=640x360:rate=24' \
+  -f lavfi -i 'sine=frequency=440:sample_rate=48000' -t 8 \
+  -c:v libx264 -preset ultrafast -g 24 -pix_fmt yuv420p \
+  -x264-params 'colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited' \
+  -color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv \
+  -c:a aac -movflags +faststart -y "$out/grading_reference.mp4"
 # Fail if a generated "SDR reference" silently lost its transfer/gamut tags.
-python3 - "$out/gecko_test.mp4" <<'PYVERIFY'
+python3 - "$out/gecko_test.mp4" "$out/grading_reference.mp4" <<'PYVERIFY'
 import json, subprocess, sys
-stream = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", sys.argv[1]]))["streams"][0]
-assert stream["color_transfer"] == "bt709", stream
-assert stream["color_primaries"] == "bt709", stream
-assert stream["color_range"] == "tv", stream
+for path in sys.argv[1:]:
+    stream = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", path]))["streams"][0]
+    assert stream["color_transfer"] == "bt709", stream
+    assert stream["color_primaries"] == "bt709", stream
+    assert stream["color_range"] == "tv", stream
 PYVERIFY
 # Optional physical-device fixtures. A 4K/Main10 decode is not emulated HDR evidence.
 if [ "${HI_PLAYER_PHYSICAL_FIXTURES:-false}" = true ]; then

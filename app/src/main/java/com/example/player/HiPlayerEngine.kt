@@ -325,7 +325,7 @@ class HiPlayerEngine(
         if (preset != null) {
             // This also covers VLC -> Media3, which can reuse an empty native
             // player without crossing the player-rebuild branch below.
-            trackSelector?.let { selector ->
+            trackSelector?.takeIf { it.parameters.tunnelingEnabled }?.let { selector ->
                 selector.parameters = selector.buildUponParameters().setTunnelingEnabled(false).build()
             }
         }
@@ -851,6 +851,7 @@ class HiPlayerEngine(
             }
         applyVideoGrade(allowRebuild = false)
         _playerInstance.value = exoPlayer
+        if (!_usesVlc.value) _isPlaying.value = exoPlayer?.isPlaying == true
         HiMediaSessionService.replacePlayer(sessionPlayerBeforeRebuild, exoPlayer)
         setBackgroundPlay(_isBackgroundPlayActive.value)
         setupLoudnessEnhancer()
@@ -1107,6 +1108,10 @@ class HiPlayerEngine(
             }
             vlcPlayback?.stop()
             _usesVlc.value = false
+            // A newly selected paused Media3 player may never emit an
+            // onIsPlayingChanged(false) callback: it has always been paused.
+            // Do not retain the old VLC instance's last asynchronous sample.
+            _isPlaying.value = false
             _vlcFirstFrame.value = false
         }
         _playerError.value = null
