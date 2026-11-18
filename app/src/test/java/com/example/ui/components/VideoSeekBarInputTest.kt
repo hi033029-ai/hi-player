@@ -42,7 +42,7 @@ class VideoSeekBarInputTest {
         }
 
         compose.onNodeWithTag("seek_bar_input_test").performTouchInput {
-            click(Offset(size.width * 0.75f, size.height / 2f))
+            click(Offset(width * 0.75f, height / 2f))
         }
 
         compose.runOnIdle { assertEquals(7_500L, soughtPosition) }
@@ -64,8 +64,8 @@ class VideoSeekBarInputTest {
         }
 
         compose.onNodeWithTag("seek_bar_input_test").performTouchInput {
-            down(Offset(size.width * 0.2f, size.height / 2f))
-            moveTo(Offset(size.width * 0.8f, size.height / 2f), delayMillis = 100L)
+            down(Offset(width * 0.2f, height / 2f))
+            moveTo(Offset(width * 0.8f, height / 2f), delayMillis = 100L)
             up()
         }
 

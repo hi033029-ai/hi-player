@@ -47,8 +47,8 @@ class GestureOverlaySeekInputTest {
         }
 
         compose.onNodeWithTag("gesture_overlay_seek_test").performTouchInput {
-            down(Offset(size.width * 0.2f, size.height * 0.5f))
-            moveTo(Offset(size.width * 0.8f, size.height * 0.5f), delayMillis = 100L)
+            down(Offset(width * 0.2f, height * 0.5f))
+            moveTo(Offset(width * 0.8f, height * 0.5f), delayMillis = 100L)
             up()
         }
 
