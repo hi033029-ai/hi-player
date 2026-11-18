@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.PixelCopy
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.FrameLayout
@@ -172,15 +173,21 @@ class PlaybackDeviceSmokeTest {
         val engine = AtomicReference<HiPlayerEngine>()
         val surface = AtomicReference<SurfaceView>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        fun capture(): android.graphics.Bitmap {
+        fun capture(): android.graphics.Bitmap? {
             val bitmap = android.graphics.Bitmap.createBitmap(480,270,android.graphics.Bitmap.Config.ARGB_8888)
             val done = CountDownLatch(1)
             val result = java.util.concurrent.atomic.AtomicInteger(-1)
             Handler(Looper.getMainLooper()).post {
-                android.view.PixelCopy.request(surface.get(), bitmap, { result.set(it); done.countDown() }, Handler(Looper.getMainLooper()))
+                PixelCopy.request(surface.get(), bitmap, { result.set(it); done.countDown() }, Handler(Looper.getMainLooper()))
             }
             assertTrue("PixelCopy did not complete", done.await(3, TimeUnit.SECONDS))
-            assertEquals(android.view.PixelCopy.SUCCESS, result.get())
+            val status = result.get()
+            if (status != PixelCopy.SUCCESS) {
+                bitmap.recycle()
+                // The replacement output may exist before its first buffer is presented.
+                if (status == PixelCopy.ERROR_SOURCE_NO_DATA) return null
+                throw AssertionError("Could not capture the video surface (PixelCopy $status)")
+            }
             return bitmap
         }
         fun difference(a: android.graphics.Bitmap, b: android.graphics.Bitmap): Double {
@@ -233,8 +240,10 @@ class PlaybackDeviceSmokeTest {
                     val deadline = SystemClock.elapsedRealtime() + 5_000
                     do {
                         val bitmap = capture()
-                        if (accept(bitmap)) return bitmap
-                        bitmap.recycle()
+                        if (bitmap != null) {
+                            if (accept(bitmap)) return bitmap
+                            bitmap.recycle()
+                        }
                         Thread.sleep(50)
                     } while (SystemClock.elapsedRealtime() < deadline)
                     throw AssertionError(message)
