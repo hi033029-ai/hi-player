@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Text
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -53,16 +54,18 @@ class GeckoAddressNavigationTest {
             GeckoBrowserShell(coordinator,store,listOf("Google"),"Google",{},{it},{},{},
                 onNavigate = { hostUrl = it },pageContent = { Text("Page") })
         } }
-        compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement("https://example.org/movie.mkv")
+        // Test focus/handoff semantics here. The real-device browser suite
+        // also injects touch; Robolectric cannot create Magnifier's native Surface.
+        compose.onNodeWithTag("browser_address_input").performSemanticsAction(SemanticsActions.RequestFocus) { it() }.performTextReplacement("https://example.org/movie.mkv")
         compose.onNodeWithTag("browser_address_input").performImeAction()
         compose.onNodeWithTag("browser_address_input").assertIsNotFocused()
         compose.runOnIdle { assertEquals("https://example.org/movie.mkv",hostUrl); assertEquals(0,engineLoads) }
         compose.runOnIdle { coordinator.load("https://example.org/page") }
-        compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement("unfinished search")
+        compose.onNodeWithTag("browser_address_input").performSemanticsAction(SemanticsActions.RequestFocus) { it() }.performTextReplacement("unfinished search")
         compose.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithTag("browser_address_input").assertIsNotFocused()
         compose.runOnIdle { assertEquals("Back while editing must not leave page",0,backs); assertEquals(0,exits) }
-        compose.onNodeWithTag("browser_address_input").performClick()
+        compose.onNodeWithTag("browser_address_input").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         compose.onNodeWithContentDescription("Open tabs, 1 tab").performClick()
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Browser home").assertIsDisplayed()

@@ -54,6 +54,8 @@ jobs:
           --tests 'com.example.auth.*'
           --tests 'com.example.downloads.*'
           --tests 'com.example.player.*'
+          --tests 'com.example.ui.components.GestureOverlayTest'
+          --tests 'com.example.viewmodel.PlayerVolumeGestureTest'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
       - uses: actions/upload-artifact@v4
@@ -114,6 +116,8 @@ jobs:
           --tests 'com.example.auth.*'
           --tests 'com.example.downloads.*'
           --tests 'com.example.player.*'
+          --tests 'com.example.ui.components.GestureOverlayTest'
+          --tests 'com.example.viewmodel.PlayerVolumeGestureTest'
           --tests 'com.example.playback.*'
           --tests 'com.example.ui.screens.Browser*'
       - uses: actions/upload-artifact@v4

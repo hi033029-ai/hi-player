@@ -169,6 +169,10 @@ fun GestureOverlay(
                                 }
                                 val change = event.changes.firstOrNull { it.id == down.id }
                                 if (pressed == 0) {
+                                    // Compose synthesizes consumed up events for
+                                    // ACTION_CANCEL. They are not a successful
+                                    // finger release and must discard the preview.
+                                    if (event.changes.any { it.isConsumed }) break
                                     if (mode == SwipeMode.SEEK) {
                                         currentOnScrubEnd(); seekStarted = false
                                     } else if (mode == SwipeMode.PENDING) {

@@ -54,9 +54,11 @@ class GestureOverlayTest {
     @Test fun cancelledSeekDoesNotCommitAndNextSwipeStillWorks() {
         show()
         compose.onNodeWithTag("gestures").performTouchInput {
-            down(Offset(250f,180f)); moveTo(Offset(400f,180f)); cancel()
+            down(Offset(250f,180f)); moveTo(Offset(330f,180f)); moveTo(Offset(400f,180f))
         }
-        compose.runOnIdle { assertEquals(1,cancels); assertEquals(0,seekEnds) }
+        compose.runOnIdle { assertEquals("A real seek must be active before cancellation",1,seekStarts) }
+        compose.onNodeWithTag("gestures").performTouchInput { cancel() }
+        compose.runOnIdle { assertEquals("Cancelled preview must be discarded",1,cancels); assertEquals(0,seekEnds) }
         compose.onNodeWithTag("gestures").performTouchInput { swipe(Offset(400f,180f),Offset(200f,180f),300) }
         compose.runOnIdle { assertEquals(1,seekEnds); assertTrue(seek < 0) }
     }

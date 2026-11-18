@@ -2,6 +2,7 @@ package com.example.player
 
 import android.opengl.EGL14
 import android.opengl.GLES20
+import androidx.media3.effect.BaseGlShaderProgram
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.*
@@ -48,7 +49,7 @@ class ColorPresetGpuTest {
             GLES20.glViewport(0,0,8,1)
             listOf(false,true).forEach { hdr ->
                 val shader = ColorPresetEffect(ColorPresets.CUSTOM.copy(contrast = 1.15f))
-                    .toGlShaderProgram(InstrumentationRegistry.getInstrumentation().targetContext,hdr)
+                    .toGlShaderProgram(InstrumentationRegistry.getInstrumentation().targetContext,hdr) as BaseGlShaderProgram
                 try {
                     shader.configure(8,1); shader.drawFrame(textures[0],0)
                     val output = ByteBuffer.allocateDirect(32)
