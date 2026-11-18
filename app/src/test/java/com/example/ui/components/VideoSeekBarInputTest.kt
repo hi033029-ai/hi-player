@@ -42,7 +42,8 @@ class VideoSeekBarInputTest {
         }
 
         compose.onNodeWithTag("seek_bar_input_test").performTouchInput {
-            click(Offset(width * 0.75f, height / 2f))
+            down(Offset(width * 0.75f, height / 2f))
+            up()
         }
 
         compose.runOnIdle { assertEquals(7_500L, soughtPosition) }
