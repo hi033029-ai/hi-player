@@ -73,6 +73,24 @@ class PlaybackGestureDeviceTest {
                         (if (vlc) engine.vlcFirstFrame.value else engine.renderedFrameSequence > frameBeforeReplay)
                 }
                 assertNull("Replay failed",engine.playerError.value)
+                if (vlc) {
+                    // The first grade can reuse the dormant Media3 player. Its
+                    // native tunneling preference must not enter a GL pipeline.
+                    val beforeGrade = engine.renderedFrameSequence
+                    val positionBeforeGrade = engine.currentPositionMs.value
+                    scenario.onActivity {
+                        engine.pause()
+                        engine.applyConfiguration(hwDecoding = true, remuxUltraBuffer = false, tunneling = true)
+                        engine.setHdrEnhanceActive(true)
+                        engine.setHdrColorPreset(ColorPresets.NATURAL_HDR)
+                    }
+                    compose.waitUntil(25_000) {
+                        !engine.usesVlc.value && engine.renderedFrameSequence > beforeGrade &&
+                            kotlin.math.abs(engine.currentPositionMs.value - positionBeforeGrade) < 1_000
+                    }
+                    assertFalse("Grading a paused video must not start audio", engine.isPlaying.value)
+                    assertNull("VLC to graded Media3 transition failed",engine.playerError.value)
+                }
             }
         } finally { audio.setStreamVolume(AudioManager.STREAM_MUSIC,originalVolume,0); file.delete() }
     }

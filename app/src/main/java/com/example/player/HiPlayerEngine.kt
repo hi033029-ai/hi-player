@@ -322,6 +322,13 @@ class HiPlayerEngine(
 
     private fun applyVideoGrade(allowRebuild: Boolean = true) {
         val preset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
+        if (preset != null) {
+            // This also covers VLC -> Media3, which can reuse an empty native
+            // player without crossing the player-rebuild branch below.
+            trackSelector?.let { selector ->
+                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(false).build()
+            }
+        }
         if (preset != null && _usesVlc.value) {
             val uri = vlcActiveUri ?: return
             vlcExoFallbackUri = uri
