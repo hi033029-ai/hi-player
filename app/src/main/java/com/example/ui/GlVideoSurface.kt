@@ -105,6 +105,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
     var onScrubStart: (() -> Unit)? = null
     var onScrubMove: ((Long) -> Unit)? = null
     var onScrubEnd: (() -> Unit)? = null
+    var onScrubCancel: (() -> Unit)? = null
     var isInteractionLocked: (() -> Boolean)? = null
     /** Receives only a simple touch-up while locked; media gestures stay blocked. */
     var onLockedScreenTap: (() -> Unit)? = null
@@ -275,7 +276,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     pinchActive = false
                     onPinchEnd?.invoke()
                 }
-                if (horizontalScrub) onScrubEnd?.invoke()
+                if (horizontalScrub) {
+                    if (event.actionMasked == MotionEvent.ACTION_UP) onScrubEnd?.invoke()
+                    else onScrubCancel?.invoke()
+                }
                 endHoldSeek()
                 pinchDistance = 0f
                 horizontalScrub = false

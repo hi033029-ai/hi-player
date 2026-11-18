@@ -38,18 +38,29 @@ fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit, modifier: Modifier 
             transitionSpec = { (scaleIn(initialScale = 0.55f) + fadeIn()) togetherWith (scaleOut(targetScale = 0.55f) + fadeOut()) },
             label = "playPauseIcon",
         ) { playing ->
-            Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null, tint = tint, modifier = Modifier.size(28.dp))
+            Icon(
+                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play",
+                tint = tint,
+                modifier = Modifier.size(28.dp),
+            )
         }
     }
     LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(110); pressed = false } }
 }
 
 @Composable
-fun SkipButton(icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = Color.White) {
+fun SkipButton(
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White,
+    contentDescription: String? = null,
+) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (pressed) 0.78f else 1f, tween(100), label = "skipScale")
     IconButton(onClick = { pressed = true; onClick() }, modifier = modifier.size(36.dp).scale(scale)) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))
     }
     LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(100); pressed = false } }
 }

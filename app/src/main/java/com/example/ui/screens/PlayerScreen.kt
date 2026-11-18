@@ -485,6 +485,7 @@ fun PlayerScreen(
         surface.onScrubStart = { playerViewModel.onScrubStart() }
         surface.onScrubMove = { delta -> playerViewModel.onScrubMove(delta) }
         surface.onScrubEnd = { playerViewModel.onScrubEnd() }
+        surface.onScrubCancel = { playerViewModel.onScrubCancel() }
         surface.onSingleTap = { areControlsVisible = !areControlsVisible }
         surface.onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) }
         surface.onDoubleTapCenter = { playerViewModel.togglePlayPause() }

@@ -8,8 +8,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +47,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
@@ -61,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
@@ -72,6 +74,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -338,9 +341,31 @@ fun ControlsOverlay(
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            SkipButton(Icons.Default.SkipPrevious, onPrevious, modifier = Modifier.testTag("bottom_rewind_button"))
+                            SkipButton(
+                                Icons.Default.SkipPrevious,
+                                onPrevious,
+                                modifier = Modifier.testTag("previous_file_button"),
+                                contentDescription = "Previous video",
+                            )
+                            SkipButton(
+                                Icons.Default.Replay10,
+                                onRewind10,
+                                modifier = Modifier.testTag("rewind_10_button"),
+                                contentDescription = "Rewind 10 seconds",
+                            )
                             PlayPauseButton(isPlaying, onTogglePlayPause, tint = Color.White, modifier = Modifier.testTag("bottom_play_pause_button"))
-                            SkipButton(Icons.Default.SkipNext, onNext, modifier = Modifier.testTag("bottom_ff_button"))
+                            SkipButton(
+                                Icons.Default.Forward10,
+                                onFastForward10,
+                                modifier = Modifier.testTag("forward_10_button"),
+                                contentDescription = "Forward 10 seconds",
+                            )
+                            SkipButton(
+                                Icons.Default.SkipNext,
+                                onNext,
+                                modifier = Modifier.testTag("next_file_button"),
+                                contentDescription = "Next video",
+                            )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             PlayerToolbarButton(Icons.Default.ClosedCaption, "CC", onToggleSubtitles, testTag = "bottom_subtitles_cc_button")
@@ -355,7 +380,7 @@ fun ControlsOverlay(
 }
 
 @Composable
-private fun HiVideoSeekBar(
+internal fun HiVideoSeekBar(
     currentPositionMs: Long,
     durationMs: Long,
     bufferedPositionMs: Long,
@@ -363,6 +388,7 @@ private fun HiVideoSeekBar(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
+    val currentOnSeekTo by rememberUpdatedState(onSeekTo)
     // While the user is actively dragging, track the scrub fraction locally
     // so the thumb tracks the finger smoothly instead of jumping on every
     // upstream position update, and show a live time preview above it.
@@ -389,29 +415,55 @@ private fun HiVideoSeekBar(
                 .height(28.dp)
                 .pointerInput(durationMs) {
                     if (durationMs <= 0) return@pointerInput
-                    detectTapGestures { offset ->
-                        val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                        onSeekTo((fraction * durationMs).toLong())
-                    }
-                }
-                .pointerInput(durationMs) {
-                    if (durationMs <= 0) return@pointerInput
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            dragFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                        },
-                        onDragEnd = {
-                            if (dragFraction >= 0f) {
-                                onSeekTo((dragFraction * durationMs).toLong())
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startX = down.position.x
+                        var lastX = startX
+                        var isHorizontalDrag = false
+                        var movedPastSlop = false
+                        var finishedNormally = false
+                        down.consume()
+
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: break
+                                if (!change.pressed) {
+                                    finishedNormally = change.changedToUpIgnoreConsumed()
+                                    break
+                                }
+
+                                if (event.changes.any { it.id != down.id && it.pressed }) {
+                                    movedPastSlop = true
+                                }
+                                lastX = change.position.x
+                                val dx = lastX - startX
+                                val dy = change.position.y - down.position.y
+                                if (!movedPastSlop && !isHorizontalDrag &&
+                                    (kotlin.math.abs(dx) > viewConfiguration.touchSlop ||
+                                        kotlin.math.abs(dy) > viewConfiguration.touchSlop)
+                                ) {
+                                    if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                                        isHorizontalDrag = true
+                                    } else {
+                                        movedPastSlop = true
+                                    }
+                                }
+                                if (isHorizontalDrag) {
+                                    dragFraction = (lastX / size.width.toFloat()).coerceIn(0f, 1f)
+                                }
+                                change.consume()
                             }
+                            if (finishedNormally && !movedPastSlop && size.width > 0) {
+                                val seekX = if (isHorizontalDrag) lastX else startX
+                                val fraction = (seekX / size.width.toFloat()).coerceIn(0f, 1f)
+                                currentOnSeekTo((fraction * durationMs).toLong())
+                            }
+                        } finally {
                             dragFraction = -1f
-                        },
-                        onDragCancel = { dragFraction = -1f },
-                        onHorizontalDrag = { change, _ ->
-                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            dragFraction = fraction
                         }
-                    )
+                    }
                 },
             contentAlignment = Alignment.CenterStart
         ) {
