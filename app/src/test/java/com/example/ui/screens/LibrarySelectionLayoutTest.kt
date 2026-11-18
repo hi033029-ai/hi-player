@@ -73,7 +73,9 @@ class LibrarySelectionLayoutTest {
             }
         }
         compose.onNodeWithTag("test_storage_overview").assertIsDisplayed()
-        compose.onNodeWithText("item40.bin").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("files_root_list")
+            .performScrollToNode(androidx.compose.ui.test.hasText("item40.bin"))
+        compose.onNodeWithText("item40.bin").assertIsDisplayed()
         compose.onNodeWithTag("test_storage_overview").assertDoesNotExist()
     }
 

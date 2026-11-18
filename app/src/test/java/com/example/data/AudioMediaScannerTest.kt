@@ -18,6 +18,17 @@ import org.robolectric.shadows.ShadowContentResolver
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AudioMediaScannerTest {
+    @org.junit.Before fun mountGrantedMediaVolume() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.READ_MEDIA_AUDIO, android.Manifest.permission.READ_MEDIA_VIDEO)
+        val storage = app.getSystemService(android.os.storage.StorageManager::class.java)
+        org.robolectric.Shadows.shadowOf(storage).addStorageVolume(
+            org.robolectric.shadows.StorageVolumeBuilder("emulated",java.io.File("/storage/emulated/0"),
+                "Internal storage",android.os.Process.myUserHandle(),android.os.Environment.MEDIA_MOUNTED)
+                .setIsPrimary(true).setIsEmulated(true).build())
+    }
+
     class AudioProvider : ContentProvider() {
         var deny = false
         var selectionSeen: String? = "not-called"

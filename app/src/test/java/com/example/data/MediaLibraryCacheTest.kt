@@ -15,6 +15,17 @@ import java.io.File
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class MediaLibraryCacheTest {
+    @org.junit.Before fun mountGrantedMediaVolume() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.READ_MEDIA_AUDIO, android.Manifest.permission.READ_MEDIA_VIDEO)
+        val storage = app.getSystemService(android.os.storage.StorageManager::class.java)
+        org.robolectric.Shadows.shadowOf(storage).addStorageVolume(
+            org.robolectric.shadows.StorageVolumeBuilder("emulated",java.io.File("/storage/emulated/0"),
+                "Internal storage",android.os.Process.myUserHandle(),android.os.Environment.MEDIA_MOUNTED)
+                .setIsPrimary(true).setIsEmulated(true).build())
+    }
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
     @Test fun completedVideoSurvivesRestartButPrivatePartialAndRemoteDoNot() {
         val video = VideoItem(id = 55, uri = Uri.parse("content://media/external/video/media/55"), title = "movie.mkv", path = "/storage/emulated/0/Download/movie.mkv", width = 3840, height = 2160, durationMs = 90000, sizeBytes = 123456, isHdr = true, hdrFormat = "HDR10", frameRate = 24f)

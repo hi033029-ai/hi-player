@@ -14,8 +14,11 @@ internal object LibraryAccessPolicy {
         val permission = if (Build.VERSION.SDK_INT >= 33) {
             if (audio) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_MEDIA_VIDEO
         } else Manifest.permission.READ_EXTERNAL_STORAGE
+        // A media grant is already authoritative. Avoid a second storage/AppOps
+        // query on the UI/scanner path when its result cannot change FULL access.
+        if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) return Scope.FULL
         return resolve(
-            mediaGranted = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED,
+            mediaGranted = false,
             allFiles = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager(),
             selectedVideos = !audio && Build.VERSION.SDK_INT >= 34 &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED,

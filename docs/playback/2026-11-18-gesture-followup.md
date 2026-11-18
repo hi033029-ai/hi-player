@@ -23,7 +23,7 @@ The user clarified that the repeated touches are **swipe attempts**, not attempt
 - Completed 21 GB registry regression: fresh mtime alone cannot select growing playback; an actual later size increase can.
 - Browser Compose regression: typed media reaches the host, submit/menu/tab dismissal clears focus, and Back while editing keeps page history intact.
 - Device suite now drives the **complete production `PlayerScreen`**, including overlay hit testing and real decoder surfaces, for completed MP4/Media3 and completed AVC MKV/LibVLC. Checks authoritative decoded seek positions, actual window brightness and Android audio volume.
-- Numeric GPU regression runs the production shader on dark/mid/high gray values in SDR/HDR shader modes, checking retained shadow detail, neutral gray and preserved pivot. This does not verify a physical HDR output chain.
+- Numeric GPU regressions run the production shader on gray references and on real RGBA16F textures in an ES3 context. The float test covers normalized PQ scene values corresponding to 0.5, 2, 20, 100, 203, 1000, 4000 and 10000 nits, plus headroom. It checks neutral luminance preservation, bounded contrast, unchanged black/RGB ratios, and that HDR Bright increases scene luminance. It does not verify the physical HDR output chain.
 - Real Gecko device test uses the production browser entry and local HTTP server: address submission, new/select tab, bookmark/Home reopening and direct video handoff.
 
 Build APK remains gated on API 24/30 device suites. No failing test is skipped. Hardware HDR10/Dolby Vision, the user's 4K remux and the reported phone ANR still require reproduction on that phone; emulator decoded playback and numerical shader tests are separate evidence.
