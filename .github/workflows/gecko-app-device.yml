@@ -33,9 +33,12 @@ jobs:
           name: gecko-matching-media3-decoders
           path: build/gecko-decoders
       - name: Generate deterministic test media
+        timeout-minutes: 5
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            timeout 180s sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
+            timeout 180s sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg
+          fi
           bash tools/generate_playback_fixtures.sh
       - name: Compile unpublished device-test APKs
         run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2
@@ -51,9 +54,9 @@ jobs:
           target: google_apis
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-window -memory 1536 -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: |
-            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest; fi; CLASS="$CLASS,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest"; gradle --no-daemon :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
+            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest; fi; CLASS="$CLASS,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest"; gradle --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
       - name: Upload reports only, never APKs
         if: always()
         uses: actions/upload-artifact@v4
