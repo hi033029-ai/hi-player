@@ -3,5 +3,7 @@
     <activity android:name="com.example.browser.gecko.GeckoMigrationTestActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsPictureInPicture="true" android:resizeableActivity="true" />
     <activity android:name="com.example.browser.gecko.GeckoFallbackTestActivity" android:exported="false" />
     <activity android:name="com.example.player.PlaybackSmokeActivity" android:exported="false" />
+    <activity android:name="com.example.player.PlaybackGestureActivity" android:exported="false" />
+    <activity android:name="com.example.browser.gecko.GeckoChromeTestActivity" android:exported="false" />
   </application>
 </manifest>

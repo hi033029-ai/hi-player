@@ -296,6 +296,7 @@ internal fun HiBrowserToolbar(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("browser_address_input")
                         .onFocusChanged { focused = it.isFocused; onFocusChange(it.isFocused) },
                 )
             }
@@ -607,6 +608,7 @@ private fun HiBrowserTabCardView(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("browser_tab_${tab.id}")
             .height(220.dp)
             .clip(shape)
             .background(palette.surface)
@@ -697,14 +699,13 @@ internal fun HiBrowserHome(
                 modifier = Modifier.fillMaxWidth()
                     .clip(cardShape)
                     .background(palette.surface)
-                    .border(1.dp, palette.surfaceBorder, cardShape)
                     .padding(18.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HiPlayerLogoBadge(size = 58.dp)
+                    HiPlayerLogoBadge(size = 44.dp)
                     Spacer(Modifier.width(14.dp))
                     Column {
-                        Text("Hi Browser", color = palette.textPrimary, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                        Text("Hi Browser", color = palette.textPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(2.dp))
                         Text("Your web, ready when you are", color = palette.textSecondary, fontSize = 13.sp)
                     }
@@ -729,7 +730,6 @@ internal fun HiBrowserHome(
             Column(
                 modifier = Modifier.fillMaxWidth().clip(cardShape)
                     .background(palette.surface)
-                    .border(1.dp, palette.surfaceBorder, cardShape)
                     .padding(14.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -765,7 +765,6 @@ internal fun HiBrowserHome(
             Column(
                 modifier = Modifier.fillMaxWidth().clip(cardShape)
                     .background(palette.surface)
-                    .border(1.dp, palette.surfaceBorder, cardShape)
                     .animateContentSize(animationSpec = tween(durationMillis = 180))
                     .padding(14.dp),
             ) {
@@ -900,7 +899,7 @@ private fun HiShortcutTile(
                         .fillMaxSize()
                         .clip(RoundedCornerShape(18.dp))
                         .background(palette.surfaceElevated)
-                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
+,
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = palette.textPrimary, modifier = Modifier.size(28.dp))
@@ -911,7 +910,7 @@ private fun HiShortcutTile(
                         .fillMaxSize()
                         .clip(RoundedCornerShape(18.dp))
                         .background(palette.surfaceElevated)
-                        .border(1.dp, palette.surfaceBorder, RoundedCornerShape(18.dp)),
+,
                     contentAlignment = Alignment.Center,
                 ) {
                     HiSiteIcon(url, label, 44.dp, rounded = true)

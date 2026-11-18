@@ -20,7 +20,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 
-private class FixtureServer(private val context: Context) : AutoCloseable {
+internal class FixtureServer(private val context: Context) : AutoCloseable {
     private val socket = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
     private val pool = Executors.newCachedThreadPool()
     val blockedHits = AtomicInteger()

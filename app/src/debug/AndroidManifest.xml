@@ -4,5 +4,6 @@
         <activity
             android:name=".player.PlaybackSmokeActivity"
             android:exported="false" />
+        <activity android:name="com.example.player.PlaybackGestureActivity" android:exported="false" />
     </application>
 </manifest>

@@ -56,6 +56,7 @@ internal fun GeckoBrowserShell(
     normalizeAddress: (String) -> String?,
     onVoiceSearch: () -> Unit,
     onMenu: () -> Unit,
+    onNavigate: ((String) -> Unit)? = null,
     find: GeckoFindController? = null,
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
@@ -99,12 +100,19 @@ internal fun GeckoBrowserShell(
         if (snapshot.fullscreen) coordinator.exitFullScreen() else coordinator.back()
     }
 
+    // Editing is the topmost local state, before page history or browser exit.
+    BackHandler(enabled = focused && find?.visible != true) {
+        focusManager.clearFocus(force = true)
+        focused = false
+    }
+
     fun navigate(text: String) {
         val url = normalizeAddress(text) ?: return
+        focusManager.clearFocus(force = true)
         focused = false
         address = url
         secureRouting?.leaveTab(activeId)
-        coordinator.load(url)
+        if (onNavigate != null) onNavigate(url) else coordinator.load(url)
     }
 
     Box(modifier.fillMaxSize()) {
@@ -125,7 +133,7 @@ internal fun GeckoBrowserShell(
                     store.saveShortcuts(store.shortcuts().filterNot { it.url == url })
                     shortcutRevision++
                 },
-                bottomInset = 72.dp,
+                bottomInset = with(density) { barHeightPx.toDp() }.coerceAtLeast(72.dp),
             )
         } else {
             pageContent(coordinator.controller)
@@ -154,7 +162,7 @@ internal fun GeckoBrowserShell(
                     onOpen = { focusManager.clearFocus(); navigate(it) },
                 )
             }
-            HiBrowserToolbar(
+            androidx.compose.runtime.key(activeId) { HiBrowserToolbar(
                 address = address,
                 onAddressChange = { address = it },
                 onFocusChange = { focused = it },
@@ -167,12 +175,12 @@ internal fun GeckoBrowserShell(
                 providers = providerNames,
                 selectedProvider = selectedProvider,
                 onProviderSelect = onProviderSelect,
-                onHome = { secureRouting?.leaveTab(activeId); coordinator.home(); address = "" },
+                onHome = { focusManager.clearFocus(force = true); secureRouting?.leaveTab(activeId); coordinator.home(); address = "" },
                 onVoiceSearch = onVoiceSearch,
                 onReloadOrStop = { if (secureUrl != null) secureRouting?.continueWebsite(activeId) else if (snapshot.loading) coordinator.stop() else coordinator.reload() },
-                onShowTabs = { showTabs = true },
-                onMenu = onMenu,
-            )
+                onShowTabs = { focusManager.clearFocus(force = true); showTabs = true },
+                onMenu = { focusManager.clearFocus(force = true); onMenu() },
+            ) }
         }
     }
     if (!home && secureUrl == null && snapshot.error != null) {

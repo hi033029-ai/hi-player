@@ -6,7 +6,6 @@ import java.util.concurrent.ConcurrentHashMap
 /** Tracks files that are still being written so Media3 can wait at EOF. */
 object DownloadingFilesRegistry {
     private const val STALL_TIMEOUT_MS = 12_000L
-    private const val FRESH_FINAL_NAME_WINDOW_MS = 90_000L
 
     private data class DownloadState(
         val lastKnownSize: Long,
@@ -64,42 +63,26 @@ object DownloadingFilesRegistry {
         if (path.isNotBlank()) activePaths.remove(path)
     }
 
-    /**
-     * Some downloaders write straight to `movie.mp4` instead of using a
-     * temporary suffix. Treat a recently modified Download video as growing
-     * until its writes have settled, then let normal local playback take over.
+    /** A final filename is growing only after an observed size increase.
+     * A recent mtime also describes a just-completed copy/download; routing it
+     * through the live extractor discards final Cues and can restrict seeking.
+     * Explicit app-owned and MediaStore-pending downloads are registered separately.
      */
     fun observeFinalNameDownload(key: String, sizeBytes: Long, lastModifiedMs: Long): Boolean {
         if (key.isBlank()) return false
         val now = System.currentTimeMillis()
-        val settled = settledFinalNames[key]
-        if (settled != null) {
-            val resumed = sizeBytes > settled.sizeBytes || lastModifiedMs > settled.lastModifiedMs
-            if (!resumed) {
-                if (now - lastModifiedMs > FRESH_FINAL_NAME_WINDOW_MS) {
-                    settledFinalNames.remove(key, settled)
-                }
-                return false
-            }
-            settledFinalNames.remove(key, settled)
-        }
         val existing = activePaths[key]
         if (existing == null) {
-            if (now - lastModifiedMs > FRESH_FINAL_NAME_WINDOW_MS) return false
-            activePaths[key] = DownloadState(sizeBytes, now)
+            val previous = settledFinalNames.put(key, SettledFinalName(sizeBytes, lastModifiedMs))
+            if (previous == null || sizeBytes <= previous.sizeBytes) return false
+            markDownloading(key, sizeBytes)
             return true
         }
         if (sizeBytes > existing.lastKnownSize) {
-            val elapsedMs = (now - existing.lastGrowthAtMs).coerceAtLeast(1L)
-            val speed = ((sizeBytes - existing.lastKnownSize) * 1_000L / elapsedMs)
-                .coerceAtLeast(0L)
-            activePaths[key] = DownloadState(sizeBytes, now, speed)
+            markDownloading(key, sizeBytes)
             return true
         }
-        if (now - existing.lastGrowthAtMs <= STALL_TIMEOUT_MS) return true
-        // The file has stopped growing long enough to be treated as an ordinary
-        // local video. Remember its final observation so the next periodic
-        // scan does not re-register the same recently created file.
+        if (key in ownedPaths || now - existing.lastGrowthAtMs <= STALL_TIMEOUT_MS) return true
         activePaths.remove(key, existing)
         settledFinalNames[key] = SettledFinalName(sizeBytes, lastModifiedMs)
         return false

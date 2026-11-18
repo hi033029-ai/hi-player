@@ -656,34 +656,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         return newLevel
     }
 
-    fun onVolumeGesture(delta: Float) {
-        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val currentRatio = currentVolume.toFloat() / maxVolume.toFloat()
+    private var gestureVolumeLevel: Float? = null
+    private var gestureSystemVolume: Int? = null
 
-        if (delta > 0 && currentRatio >= 1.0f) {
-            // Adjust volume boost (100% to 200%)
-            val currentBoost = engine.volumeBoostPercent.value
-            val newBoost = (currentBoost + (delta * 100).toInt()).coerceIn(0, 100)
-            engine.setVolumeBoost(newBoost)
-            persistVolumeBoost(newBoost)
-            _volumeLevel.value = 1.0f + (newBoost / 100f)
-        } else if (delta < 0 && engine.volumeBoostPercent.value > 0) {
-            // Decrease boost first
-            val currentBoost = engine.volumeBoostPercent.value
-            val newBoost = (currentBoost + (delta * 100).toInt()).coerceIn(0, 100)
-            engine.setVolumeBoost(newBoost)
-            persistVolumeBoost(newBoost)
-            _volumeLevel.value = 1.0f + (newBoost / 100f)
-        } else {
-            // Adjust system volume
-            val step = (delta * maxVolume).toInt()
-            val target = (currentVolume + step).coerceIn(0, maxVolume)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
-            persistPlayerVolume(target, maxVolume)
-            _volumeLevel.value = target.toFloat() / maxVolume.toFloat()
-        }
-        scheduleHudDismiss()
+    fun onVolumeGestureStart() {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        gestureSystemVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        gestureVolumeLevel = if (engine.volumeBoostPercent.value > 0) {
+            1f + engine.volumeBoostPercent.value / 100f
+        } else gestureSystemVolume!!.toFloat() / max
+    }
+
+    fun onVolumeGestureEnd() { gestureVolumeLevel = null; gestureSystemVolume = null }
+
+    fun onVolumeGesture(delta: Float) {
+        if (!delta.isFinite()) return
+        if (gestureVolumeLevel == null) onVolumeGestureStart()
+        // Retain fractional steps for the entire swipe. Rounding each motion
+        // event to an integer system-volume step made ordinary swipes do nothing.
+        val target = (gestureVolumeLevel!! + delta).coerceIn(0f, 2f)
+        gestureVolumeLevel = target
+        onVolumeGestureLevel(target)
     }
 
     /** Applies the complete gesture target without rereading a moving system level. */
@@ -692,11 +685,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val systemRatio = target.coerceAtMost(1f)
         val targetSystem = (systemRatio * maxVolume).roundToInt().coerceIn(0, maxVolume)
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetSystem, 0)
+        if (targetSystem != gestureSystemVolume) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetSystem, 0)
+            persistPlayerVolume(targetSystem, maxVolume)
+            if (gestureVolumeLevel != null) gestureSystemVolume = targetSystem
+        }
         val boost = ((target - 1f).coerceAtLeast(0f) * 100f).roundToInt().coerceIn(0, 100)
-        engine.setVolumeBoost(boost)
-        persistPlayerVolume(targetSystem, maxVolume)
-        persistVolumeBoost(boost)
+        if (boost != engine.volumeBoostPercent.value) {
+            engine.setVolumeBoost(boost)
+            persistVolumeBoost(boost)
+        }
         _volumeLevel.value = target
         scheduleHudDismiss()
     }
@@ -747,6 +745,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             engine.seekTo(target)
             saveCurrentProgress()
         }
+        _scrubTimeMs.value = null
+        _scrubDeltaMs.value = 0L
+    }
+
+    fun onScrubCancel() {
         _scrubTimeMs.value = null
         _scrubDeltaMs.value = 0L
     }

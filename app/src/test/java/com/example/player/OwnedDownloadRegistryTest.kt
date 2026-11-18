@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OwnedDownloadRegistryTest {
+    @Test fun recentlyCompletedFinalFileNeverEntersGrowingPlaybackWithoutWrites() {
+        val path = "/Download/completed-${System.nanoTime()}.mkv"
+        val now = System.currentTimeMillis()
+        assertFalse(DownloadingFilesRegistry.observeFinalNameDownload(path, 21_000_000_000L, now))
+        assertFalse(DownloadingFilesRegistry.observeFinalNameDownload(path, 21_000_000_000L, now))
+        assertFalse(DownloadingFilesRegistry.isDownloading(path))
+        try {
+            assertTrue(DownloadingFilesRegistry.observeFinalNameDownload(path, 21_001_000_000L, now))
+            assertTrue(DownloadingFilesRegistry.isDownloading(path))
+        } finally { DownloadingFilesRegistry.markComplete(path) }
+    }
+
     @Test fun reusingPartialPathDoesNotOpenPreviouslyCompletedMovie() {
         val path = "/private/reused-${System.nanoTime()}.mkv.part"
         try {

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -74,6 +75,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,6 +123,7 @@ fun ControlsOverlay(
     onToggleMute: () -> Unit = {},
     onOpenFile: () -> Unit,
     isHdrEnhanceActive: Boolean = false,
+    pictureModeLabel: String = "Original",
     onToggleHdrEnhance: () -> Unit = {},
     onLongPressHdrEnhance: () -> Unit = {},
     onHdrBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {},
@@ -251,13 +254,13 @@ fun ControlsOverlay(
                     // local Hi Player callbacks; no separate decoder/settings menu.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Start,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen)
                         PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip)
                         Column(
-                            modifier = Modifier.width(58.dp),
+                            modifier = Modifier.width(52.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             HdrIcon(
@@ -268,13 +271,13 @@ fun ControlsOverlay(
                                 modifier = Modifier.size(48.dp).onGloballyPositioned { onHdrBounds(it.boundsInWindow()) },
                             )
                             Text(
-                                text = "HDR",
+                                text = pictureModeLabel,
                                 color = Color.White.copy(alpha = 0.86f),
-                                fontSize = 8.sp,
-                                maxLines = 1,
+                                fontSize = 10.sp,
+                                maxLines = 2,
+                                textAlign = TextAlign.Center,
                             )
                         }
-                        Spacer(modifier = Modifier.weight(1f))
                         // Right-side group marked in the reference image.
                         PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed)
                         PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White)
@@ -482,19 +485,18 @@ private fun PlayerToolbarTextButton(
     tint: Color = Color.White
 ) {
     Column(
-        modifier = Modifier.width(58.dp).height(44.dp),
+        modifier = Modifier.width(52.dp).heightIn(min = 48.dp)
+            .clickable(onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        IconButton(onClick = onClick, modifier = Modifier.size(25.dp)) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(18.dp))
-        }
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
-            fontSize = 7.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            fontSize = 10.sp,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -530,7 +532,7 @@ private fun PlayerToolbarButton(
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
-            fontSize = 7.sp,
+            fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

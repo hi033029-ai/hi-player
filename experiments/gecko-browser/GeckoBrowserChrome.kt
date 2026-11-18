@@ -53,6 +53,7 @@ internal fun GeckoBrowserChrome(
     onVoiceSearch: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onNavigate: ((String) -> Unit)? = null,
     downloadsContent: @Composable (String) -> Unit,
     appNavigation: @Composable () -> Unit = {},
     permissionUi: GeckoPermissionUi? = null,
@@ -88,7 +89,7 @@ internal fun GeckoBrowserChrome(
     GeckoBrowserShell(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
-        normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch,
+        normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch, onNavigate = onNavigate,
         onMenu = { showMenu = true }, find = find, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, secureRouting = services?.secureRouting, pageContent = pageContent,
     )
     if (services != null) {
@@ -197,7 +198,7 @@ internal fun GeckoBrowserChrome(
         val history = remember(libraryRevision) { store.history().map { it.title to it.url } }
         HiBrowserLibrary(
             initialSection = section, appNavigation = appNavigation, bookmarks = bookmarks, history = history,
-            onOpen = { url -> coordinator.load(url); librarySection = null },
+            onOpen = { url -> if (onNavigate != null) onNavigate(url) else coordinator.load(url); librarySection = null },
             onRemove = { from, url ->
                 if (from == HiLibrarySection.BOOKMARKS) {
                     store.removeBookmark(url)

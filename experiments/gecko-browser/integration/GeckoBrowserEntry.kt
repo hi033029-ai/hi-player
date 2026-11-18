@@ -168,6 +168,7 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     catch (_: Exception) { voiceUnavailable = true }
                 },
                 onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
+                onNavigate = ::navigate,
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query,
                     onPlay = { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) },
                     onCancelGecko = services::cancelDownload,

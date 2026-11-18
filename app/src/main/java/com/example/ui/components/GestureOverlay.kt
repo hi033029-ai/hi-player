@@ -8,9 +8,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +57,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.HiAccentAmber
 import com.example.ui.theme.HiPrimaryCyan
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+
+private enum class SwipeMode { PENDING, SEEK, BRIGHTNESS, VOLUME, PINCH, HOLD, CANCELLED }
 
 @Composable
 fun GestureOverlay(
@@ -71,6 +77,9 @@ fun GestureOverlay(
     onScrubStart: () -> Unit,
     onScrubMove: (Long) -> Unit,
     onScrubEnd: () -> Unit,
+    onScrubCancel: () -> Unit = {},
+    onVolumeGestureStart: () -> Unit = {},
+    onVolumeGestureEnd: () -> Unit = {},
     brightnessLevel: Float?,
     volumeLevel: Float?,
     scrubTimeMs: Long?,
@@ -101,6 +110,9 @@ fun GestureOverlay(
     val currentOnScrubStart by rememberUpdatedState(onScrubStart)
     val currentOnScrubMove by rememberUpdatedState(onScrubMove)
     val currentOnScrubEnd by rememberUpdatedState(onScrubEnd)
+    val currentOnScrubCancel by rememberUpdatedState(onScrubCancel)
+    val currentOnVolumeStart by rememberUpdatedState(onVolumeGestureStart)
+    val currentOnVolumeEnd by rememberUpdatedState(onVolumeGestureEnd)
     val currentOnPinchZoom by rememberUpdatedState(onPinchZoom)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val currentOnLongPressEnd by rememberUpdatedState(onLongPressEnd)
@@ -108,123 +120,128 @@ fun GestureOverlay(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(isLocked) {
+            .pointerInput(isLocked, topExclusionDp) {
+                // One recognizer arbitrates tap, axis-locked swipe, hold and pinch.
+                // detectTransformGestures also consumes ONE-finger pan, even when
+                // its caller ignores pan. Running it beside drag detection starves
+                // seeking/brightness/volume depending on event ordering.
                 val topExclusionPx = topExclusionDp.toPx()
-                var longPressStarted = false
-                detectTapGestures(
-                    onPress = {
+                var singleTap: Job? = null
+                var lastTapUp = Long.MIN_VALUE
+                var lastTapPosition = Offset.Zero
+                try {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        if (down.position.y < topExclusionPx) return@awaitEachGesture
+                        down.consume()
+                        val doubleCandidate = lastTapUp != Long.MIN_VALUE &&
+                            down.uptimeMillis - lastTapUp <= viewConfiguration.doubleTapTimeoutMillis &&
+                            (down.position - lastTapPosition).getDistance() < 48.dp.toPx()
+                        if (doubleCandidate) singleTap?.cancel()
+                        var mode = SwipeMode.PENDING
+                        var seekStarted = false
+                        var volumeStarted = false
+                        var holdStarted = false
+                        var previous = down.position
+                        var eventTime = down.uptimeMillis
                         try {
-                            tryAwaitRelease()
+                            while (true) {
+                                val remainingHold = viewConfiguration.longPressTimeoutMillis - (eventTime - down.uptimeMillis)
+                                val event = if (!isLocked && mode == SwipeMode.PENDING) {
+                                    withTimeoutOrNull(remainingHold.coerceAtLeast(1L)) { awaitPointerEvent() }
+                                } else awaitPointerEvent()
+                                if (event == null) {
+                                    singleTap?.cancel(); lastTapUp = Long.MIN_VALUE
+                                    mode = SwipeMode.HOLD; holdStarted = true
+                                    currentOnLongPress(down.position.x, size.width.toFloat())
+                                    continue
+                                }
+                                eventTime = event.changes.maxOf { it.uptimeMillis }
+                                val pressed = event.changes.count { it.pressed }
+                                if (!isLocked && pressed >= 2) {
+                                    if (seekStarted) { currentOnScrubCancel(); seekStarted = false }
+                                    if (holdStarted) { currentOnLongPressEnd(); holdStarted = false }
+                                    singleTap?.cancel(); lastTapUp = Long.MIN_VALUE
+                                    mode = SwipeMode.PINCH
+                                    val zoom = event.calculateZoom()
+                                    if (zoom.isFinite() && zoom != 1f) currentOnPinchZoom(zoom)
+                                    event.changes.forEach { it.consume() }
+                                }
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                if (pressed == 0) {
+                                    if (mode == SwipeMode.SEEK) {
+                                        currentOnScrubEnd(); seekStarted = false
+                                    } else if (mode == SwipeMode.PENDING) {
+                                        if (doubleCandidate && !isLocked) {
+                                            lastTapUp = Long.MIN_VALUE
+                                            val side = when {
+                                                down.position.x < size.width / 3f -> "left"
+                                                down.position.x > size.width * 2f / 3f -> "right"
+                                                else -> "center"
+                                            }
+                                            when (side) {
+                                                "left" -> currentOnDoubleTapLeft()
+                                                "right" -> currentOnDoubleTapRight()
+                                                else -> currentOnDoubleTapCenter()
+                                            }
+                                            doubleTapSide = side
+                                            coroutineScope.launch {
+                                                doubleTapAnim.snapTo(.8f)
+                                                doubleTapAnim.animateTo(1.3f, tween(350))
+                                                doubleTapSide = null
+                                            }
+                                        } else {
+                                            val tapTime = eventTime
+                                            lastTapUp = tapTime; lastTapPosition = down.position
+                                            singleTap?.cancel()
+                                            singleTap = coroutineScope.launch {
+                                                delay(viewConfiguration.doubleTapTimeoutMillis)
+                                                if (lastTapUp == tapTime) currentOnSingleTap()
+                                            }
+                                        }
+                                    }
+                                    break
+                                }
+                                if (mode == SwipeMode.PINCH || mode == SwipeMode.HOLD) {
+                                    event.changes.forEach { it.consume() }
+                                    continue
+                                }
+                                if (change == null || !change.pressed || change.isConsumed) {
+                                    mode = SwipeMode.CANCELLED
+                                    break
+                                }
+                                val total = change.position - down.position
+                                var delta = change.position - previous
+                                previous = change.position
+                                if (mode == SwipeMode.PENDING && total.getDistance() > viewConfiguration.touchSlop) {
+                                    singleTap?.cancel(); lastTapUp = Long.MIN_VALUE
+                                    mode = when {
+                                        isLocked -> SwipeMode.CANCELLED
+                                        abs(total.x) > abs(total.y) -> SwipeMode.SEEK
+                                        down.position.x < size.width / 2f -> SwipeMode.BRIGHTNESS
+                                        else -> SwipeMode.VOLUME
+                                    }
+                                    if (mode == SwipeMode.SEEK) { currentOnScrubStart(); seekStarted = true }
+                                    if (mode == SwipeMode.VOLUME) { currentOnVolumeStart(); volumeStarted = true }
+                                    delta = total
+                                }
+                                when (mode) {
+                                    SwipeMode.SEEK -> currentOnScrubMove((total.x / density * 120f).toLong())
+                                    SwipeMode.BRIGHTNESS -> currentOnBrightnessDelta(-delta.y / size.height)
+                                    SwipeMode.VOLUME -> currentOnVolumeDelta(-delta.y / size.height)
+                                    else -> Unit
+                                }
+                                if (mode != SwipeMode.PENDING) change.consume()
+                            }
                         } finally {
-                            if (longPressStarted) {
-                                longPressStarted = false
-                                currentOnLongPressEnd()
-                            }
-                        }
-                    },
-                    onTap = { offset ->
-                        if (offset.y >= topExclusionPx) currentOnSingleTap()
-                    },
-                    onDoubleTap = { offset ->
-                        if (isLocked || offset.y < topExclusionPx) return@detectTapGestures
-                        val isLeft = offset.x < size.width / 3
-                        val isRight = offset.x > size.width * 2 / 3
-                        if (isLeft) {
-                            currentOnDoubleTapLeft()
-                            doubleTapSide = "left"
-                        } else if (isRight) {
-                            currentOnDoubleTapRight()
-                            doubleTapSide = "right"
-                        } else {
-                            currentOnDoubleTapCenter()
-                            doubleTapSide = "center"
-                        }
-                        coroutineScope.launch {
-                            doubleTapAnim.snapTo(0.8f)
-                            doubleTapAnim.animateTo(1.3f, tween(350))
-                            doubleTapSide = null
-                        }
-                    },
-                    onLongPress = { offset ->
-                        if (!isLocked && offset.y >= topExclusionPx) {
-                            longPressStarted = true
-                            currentOnLongPress(offset.x, size.width.toFloat())
-                        }
-                    },
-                )
-            }
-            .pointerInput(isLocked) {
-                val topExclusionPx = topExclusionDp.toPx()
-                if (!isLocked) {
-                    var isHorizontal = false
-                    var isVertical = false
-                    var isLeft = false
-                    var totalDragX = 0f
-                    var totalDragY = 0f
-                    var suppressed = false
-
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            suppressed = offset.y < topExclusionPx
-                            isLeft = offset.x < size.width / 2
-                            isHorizontal = false
-                            isVertical = false
-                            totalDragX = 0f
-                            totalDragY = 0f
-                        },
-                        onDrag = { change, dragAmount ->
-                            if (suppressed) return@detectDragGestures
-                            change.consume()
-                            totalDragX += dragAmount.x
-                            totalDragY += dragAmount.y
-
-                            if (!isHorizontal && !isVertical) {
-                                if (Math.abs(totalDragX) > 25f && Math.abs(totalDragX) > Math.abs(totalDragY)) {
-                                    isHorizontal = true
-                                    currentOnScrubStart()
-                                } else if (Math.abs(totalDragY) > 25f) {
-                                    isVertical = true
-                                }
-                            }
-
-                            if (isHorizontal) {
-                                // 1 pixel = 150ms of scrub
-                                val seekDeltaMs = (totalDragX * 120).toLong()
-                                currentOnScrubMove(seekDeltaMs)
-                            } else if (isVertical) {
-                                val delta = -dragAmount.y / size.height.toFloat()
-                                if (isLeft) {
-                                    currentOnBrightnessDelta(delta)
-                                } else {
-                                    currentOnVolumeDelta(delta)
-                                }
-                            }
-                        },
-                        onDragEnd = {
-                            if (isHorizontal) {
-                                currentOnScrubEnd()
-                            }
-                            isHorizontal = false
-                            isVertical = false
-                        },
-                        onDragCancel = {
-                            if (isHorizontal) {
-                                currentOnScrubEnd()
-                            }
-                            isHorizontal = false
-                            isVertical = false
-                        }
-                    )
-                }
-            }
-            .pointerInput(isLocked) {
-                if (!isLocked) {
-                    detectTransformGestures { _, _, zoom, _ ->
-                        if (zoom.isFinite() && zoom != 1f) {
-                            currentOnPinchZoom(zoom)
+                            // Pointer cancellation, rotation and a second finger must
+                            // clear a preview, never commit an accidental seek.
+                            if (seekStarted) currentOnScrubCancel()
+                            if (volumeStarted) currentOnVolumeEnd()
+                            if (holdStarted) currentOnLongPressEnd()
                         }
                     }
-                }
+                } finally { singleTap?.cancel() }
             }
     ) {
         // Double-tap visual feedback animation

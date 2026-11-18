@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
@@ -712,6 +713,9 @@ fun PlayerScreen(
                 onScrubStart = { playerViewModel.onScrubStart() },
                 onScrubMove = { delta -> playerViewModel.onScrubMove(delta) },
                 onScrubEnd = { playerViewModel.onScrubEnd() },
+                onScrubCancel = { playerViewModel.onScrubCancel() },
+                onVolumeGestureStart = { playerViewModel.onVolumeGestureStart() },
+                onVolumeGestureEnd = { playerViewModel.onVolumeGestureEnd() },
                 brightnessLevel = brightnessLevel,
                 volumeLevel = volumeLevel,
                 // PlayerScreen already renders the shared seek-preview HUD.
@@ -738,7 +742,7 @@ fun PlayerScreen(
                     nativeHoldSeekDirection = 0
                     holdSeekSide = null
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().testTag("player_gesture_surface"),
             )
         }
 
@@ -932,7 +936,8 @@ fun PlayerScreen(
             isMuted = isMuted,
             onToggleMute = { playerViewModel.toggleMute() },
             onOpenFile = { videoPickerLauncher.launch("video/*") },
-            isHdrEnhanceActive = managedHdrActive,
+            isHdrEnhanceActive = applyColorPresetToVideo,
+            pictureModeLabel = if (applyColorPresetToVideo) hdrColorPreset.name.removePrefix("HDR ").removeSuffix(" HDR") else "Original",
             isHdrSwitching = managedHdrSwitching,
             // Tap cycles the four main presets; long-press opens the full preset
             // and custom-color controls without replacing the quick action.

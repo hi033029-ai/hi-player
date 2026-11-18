@@ -68,7 +68,7 @@ import androidx.compose.material.icons.Icons''', 'shared platform tools imports'
     fun openAddress(value: String) {
         val url = normalizeAddress(value) ?: return
         services?.secureRouting?.leaveTab(coordinator.activeId)
-        coordinator.load(url)
+        if (onNavigate != null) onNavigate(url) else coordinator.load(url)
     }
     fun requestDefaultBrowser() {
         try {

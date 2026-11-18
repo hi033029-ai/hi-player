@@ -11,7 +11,7 @@ import androidx.media3.effect.BaseGlShaderProgram
 import androidx.media3.effect.GlEffect
 import androidx.media3.effect.GlShaderProgram
 
-/** Media3 supplies linear BT.2020 HDR (FP16) or linear BT.709 SDR to this stage.
+/** Media3 supplies linear BT.2020 HDR (FP16); SDR uses its configured working space.
  * Transfer/range conversion and any required tone mapping have ONE owner: Media3.
  * Never feed this shader a PQ-coded external OES texture or enable an SDR VLC filter.
  */
@@ -103,8 +103,13 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
                 if (uTargetCount>7) c=target(c,uTarget7);
                 if (uTargetCount==0) c*=uGain;
                 c*=uBrightness;
-                // A power contrast preserves black and avoids adding an SDR gray pedestal to HDR.
-                c=pow(max(c,vec3(0.0)),vec3(uContrast));
+                // Bound contrast around a working-space pivot. Raising normalized
+                // linear HDR channels to a power darkened ordinary scene values
+                // by ~50% (0.002^1.12), and changed their chromaticity. This single
+                // luminance gain preserves black/hue and stays within [1/k, k].
+                float luma = max(dot(c,uLuma),0.0);
+                float k = max(uContrast,0.01);
+                c *= (k*luma+0.18)/(luma+0.18*k);
                 c=mix(vec3(dot(c,uLuma)),c,uSaturation);
                 gl_FragColor=vec4(max(c,vec3(0.0)),pixel.a);
             }
