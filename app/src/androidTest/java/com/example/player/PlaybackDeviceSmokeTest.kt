@@ -119,6 +119,9 @@ class PlaybackDeviceSmokeTest {
     @Test(timeout = 100_000) fun completedMkvThroughAppRoutingRenders() = playMedia3("gecko_test.mkv", "video/x-matroska")
     @Test(timeout = 100_000) fun webmRenders() = playMedia3("playback_test.webm", "video/webm")
 
+    @Test(timeout = 100_000) fun nativeHdr10StartsWithHdrMetadataAndSeeks() =
+        playMedia3("compact_hdr10.mkv", "video/x-matroska", grade = false, expectedHdr = true)
+
     internal fun playMedia3(name: String, mime: String, grade: Boolean = mime.contains("matroska"), expectedHdr: Boolean? = null) {
         val file = fixture(name)
         val engine = AtomicReference<HiPlayerEngine>()

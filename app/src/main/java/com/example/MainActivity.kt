@@ -14,6 +14,7 @@ import android.os.Bundle
 import android.util.Rational
 import android.graphics.drawable.Icon
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.flow.collect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -176,6 +177,20 @@ class MainActivity : FragmentActivity() {
                 val palette = LocalHiPalette.current
                 val libraryRefreshing by libraryViewModel.isLoading.collectAsStateWithLifecycle()
                 val fileMoveProgress by fileManagerViewModel.deleteProgress.collectAsStateWithLifecycle()
+                val trashConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                    fileManagerViewModel.finishMediaTrashRequest(result.resultCode == android.app.Activity.RESULT_OK)
+                }
+                LaunchedEffect(fileManagerViewModel) {
+                    fileManagerViewModel.mediaTrashRequests.collect { request ->
+                        try {
+                            trashConsent.launch(androidx.activity.result.IntentSenderRequest.Builder(request.intentSender).build())
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            fileManagerViewModel.finishMediaTrashRequest(false)
+                        } catch (_: android.content.IntentSender.SendIntentException) {
+                            fileManagerViewModel.finishMediaTrashRequest(false)
+                        }
+                    }
+                }
                 val fileActionMessage by fileManagerViewModel.deleteResultMessage.collectAsStateWithLifecycle()
                 LaunchedEffect(fileActionMessage) {
                     fileActionMessage?.let {
@@ -493,8 +508,8 @@ class MainActivity : FragmentActivity() {
                                                         // Library overflow deletion must not inherit a stale
                                                         // Files multi-select toolbar while the recycle-bin move runs.
                                                         fileManagerViewModel.clearSelection()
-                                                        fileManagerViewModel.moveVideosToRecycleBin(selectedVideos) { movedPaths ->
-                                                            val moved = selectedVideos.filter { it.path in movedPaths }
+                                                        fileManagerViewModel.moveVideosToRecycleBin(selectedVideos) { movedKeys ->
+                                                            val moved = selectedVideos.filter { it.path.ifBlank { it.uri.toString() } in movedKeys }
                                                             libraryViewModel.removeVideoRecords(moved)
                                                         }
                                                     },

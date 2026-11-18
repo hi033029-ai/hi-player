@@ -30,6 +30,16 @@ for path in sys.argv[1:]:
     assert stream["color_primaries"] == "bt709", stream
     assert stream["color_range"] == "tv", stream
 PYVERIFY
+# Exercise native Main10/PQ metadata, decoder startup and seeking on CI at a
+# modest resolution. The UHD fixture below remains available for real panels.
+ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=320x180:rate=15' \
+  -t 18 -an -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -g 15 \
+  -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc -color_range tv \
+  -x265-params 'pools=2:frame-threads=2:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:hdr10=1:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1):max-cll=1000,400' \
+  -y "$out/compact_hdr10.mkv"
+ffprobe -v error -select_streams v:0 -show_entries stream=profile,color_transfer \
+  -of json "$out/compact_hdr10.mkv" | python3 -c 'import sys,json; s=json.load(sys.stdin)["streams"][0]; assert s["profile"] == "Main 10" and s["color_transfer"] == "smpte2084", s'
+
 # Optional physical-device fixtures. A 4K/Main10 decode is not emulated HDR evidence.
 if [ "${HI_PLAYER_PHYSICAL_FIXTURES:-false}" = true ]; then
   ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=3840x2160:rate=24' -t 20 \

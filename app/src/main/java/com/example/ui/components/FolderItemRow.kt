@@ -90,6 +90,8 @@ fun FolderItemRow(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
 
+            folder.location?.let { Text(it, fontSize = 11.sp, color = palette.textSecondary) }
+
             Spacer(modifier = Modifier.height(2.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -131,6 +133,7 @@ fun FolderGridCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    location: String? = null,
 ) {
     val palette = LocalHiPalette.current
 
@@ -168,6 +171,8 @@ fun FolderGridCard(
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
+
+        location?.let { Text(it, fontSize = 11.sp, color = palette.textSecondary) }
 
         Spacer(modifier = Modifier.height(2.dp))
 

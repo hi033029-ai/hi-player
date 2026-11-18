@@ -107,7 +107,9 @@ import com.example.player.shouldUseNativeHdrOutput
 import com.example.player.nextHdrCyclePreset
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
-import com.example.player.rememberSmoothSeekController
+import com.example.player.SmoothSeekController
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.key
 import com.example.viewmodel.ActiveSheet
 import com.example.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
@@ -139,7 +141,6 @@ fun PlayerScreen(
     val hdrColorModeManager = remember(activity, activePlayer) {
         activity?.let { HdrColorModeManager(it) }
     }
-    val smoothSeekController = rememberSmoothSeekController(activePlayer, playerViewModel.engine::clampSeekTarget)
 
     // Immersive playback: hide the status bar (battery/network/notification
     // icons) and nav bar while the player is on screen so nothing but the
@@ -160,6 +161,11 @@ fun PlayerScreen(
     }
 
     val currentVideo by playerViewModel.currentVideo.collectAsState()
+    val seekScope = rememberCoroutineScope()
+    val smoothSeekController = remember(activePlayer, usingVlc, currentVideo?.uri) {
+        SmoothSeekController(seekScope, { playerViewModel.engine.currentPositionMs.value },
+            playerViewModel.engine::clampSeekTarget, playerViewModel::seekTo)
+    }
     val isPlaying by playerViewModel.engine.isPlaying.collectAsState()
     val isBuffering by playerViewModel.engine.isBuffering.collectAsState()
     val currentPositionMs by playerViewModel.engine.currentPositionMs.collectAsState()
@@ -217,6 +223,7 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+    var touchingSeekBar by remember { mutableStateOf(false) }
     val controlsDensity = androidx.compose.ui.platform.LocalDensity.current
     var bottomControlsHeight by remember { mutableStateOf(174.dp) }
     var guideHdrBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
@@ -245,10 +252,15 @@ fun PlayerScreen(
         showHdrPresetMenu = false
         showHdrCustomizer = false
     }
-    var customHdrPreset by remember { mutableStateOf(ColorPresets.CUSTOM) }
+    val customHdrPreset by playerViewModel.customPicturePreset.collectAsState()
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
-    var hdrColorIntensity by remember { mutableStateOf(0.5f) }
-    var hdrColorIntensities by remember { mutableStateOf(emptyMap<HdrColor, Float>()) }
+    val hdrColorIntensities = remember(customHdrPreset.targetAdjustments) {
+        HdrColor.entries.associateWith { color ->
+            val hue = hdrColorHue(color.color)
+            val band = customHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
+            band?.let { (1.5f - it.red).coerceIn(0f, 1f) } ?: .5f
+        }
+    }
     var hdrInteractionTick by remember { mutableStateOf(0) }
 
     LaunchedEffect(usingVlc, vlcVideoSize) {
@@ -508,12 +520,7 @@ fun PlayerScreen(
             }
         }
         surface.onPresetSelected = { preset ->
-            playerViewModel.engine.setHdrColorPreset(preset)
-            if (preset.name == ColorPresets.HDR_DISABLED.name) {
-                playerViewModel.disableHdrEnhance()
-            } else if (!hdrEnhanceActive) {
-                playerViewModel.toggleHdrEnhance()
-            }
+            playerViewModel.selectPictureMode(preset)
         }
     }
 
@@ -575,8 +582,8 @@ fun PlayerScreen(
     }
 
     // Auto-hide controls after 3 seconds of inactivity during playback
-    LaunchedEffect(areControlsVisible, isPlaying, aspectRatioMode, isRatioTransitioning, playerTip.visible, showHdrPresetMenu, showHdrCustomizer) {
-        if (areControlsVisible && isPlaying && !isScreenLocked && !isRatioTransitioning && !playerTip.visible && !showHdrPresetMenu && !showHdrCustomizer) {
+    LaunchedEffect(areControlsVisible, isPlaying, touchingSeekBar, aspectRatioMode, isRatioTransitioning, playerTip.visible, showHdrPresetMenu, showHdrCustomizer) {
+        if (areControlsVisible && isPlaying && !touchingSeekBar && !isScreenLocked && !isRatioTransitioning && !playerTip.visible && !showHdrPresetMenu && !showHdrCustomizer) {
             delay(3000)
             if (!isRatioTransitioning) areControlsVisible = false
         }
@@ -590,8 +597,10 @@ fun PlayerScreen(
             val wasPlaying = playerViewModel.engine.isPlaying.value
             val previousSpeed = playerViewModel.engine.playbackSpeed.value
             try {
-                if (direction > 0) playerViewModel.engine.setPlaybackSpeed(4f)
-                else playerViewModel.engine.pause()
+                if (direction > 0) {
+                    playerViewModel.engine.setPlaybackSpeed(4f)
+                    playerViewModel.engine.play()
+                } else playerViewModel.engine.pause()
                 while (direction < 0) {
                     delay(500L)
                     playerViewModel.engine.seekRelative(-1_000L)
@@ -616,7 +625,7 @@ fun PlayerScreen(
         try {
             while (direction < 0) {
                 delay(500L)
-                activePlayer.seekTo((activePlayer.currentPosition - 1_000L).coerceAtLeast(0L))
+                playerViewModel.engine.seekRelative(-1_000L)
             }
             awaitCancellation()
         } finally {
@@ -682,7 +691,7 @@ fun PlayerScreen(
             )
         }
 
-        run {
+        key(currentVideo?.uri) {
             // Keep one Compose gesture owner above every rendering backend.
             // Native SurfaceViews remain non-clickable and the GLES view no
             // longer receives a competing touch stream.
@@ -692,15 +701,9 @@ fun PlayerScreen(
                     if (isScreenLocked) showLockedUnlockControl = !showLockedUnlockControl
                     else areControlsVisible = !areControlsVisible
                 },
-                onDoubleTapLeft = {
-                    if (usingVlc) playerViewModel.seekRelative(-10_000L)
-                    else smoothSeekController.seekBy(-10_000L)
-                },
+                onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) },
                 onDoubleTapCenter = { playerViewModel.togglePlayPause() },
-                onDoubleTapRight = {
-                    if (usingVlc) playerViewModel.seekRelative(10_000L)
-                    else smoothSeekController.seekBy(10_000L)
-                },
+                onDoubleTapRight = { smoothSeekController.seekBy(10_000L) },
                 isPlaying = isPlaying,
                 onBrightnessDelta = { delta ->
                     activity?.let { act ->
@@ -713,10 +716,12 @@ fun PlayerScreen(
                     }
                 },
                 onVolumeDelta = { delta -> playerViewModel.onVolumeGesture(delta) },
-                onScrubStart = { playerViewModel.onScrubStart() },
+                onScrubStart = { smoothSeekController.clear(); playerViewModel.onScrubStart() },
                 onScrubMove = { delta -> playerViewModel.onScrubMove(delta) },
                 onScrubEnd = { playerViewModel.onScrubEnd() },
                 onScrubCancel = { playerViewModel.onScrubCancel() },
+                onBrightnessGestureStart = playerViewModel::onBrightnessGestureStart,
+                onBrightnessGestureEnd = playerViewModel::onBrightnessGestureEnd,
                 onVolumeGestureStart = { playerViewModel.onVolumeGestureStart() },
                 onVolumeGestureEnd = { playerViewModel.onVolumeGestureEnd() },
                 brightnessLevel = brightnessLevel,
@@ -790,70 +795,11 @@ fun PlayerScreen(
         )
 
         SeekPreviewHud(
-            targetMs = scrubTimeMs,
-            deltaMs = scrubDeltaMs,
+            targetMs = scrubTimeMs ?: smoothSeekController.targetMs,
+            deltaMs = if (scrubTimeMs != null) scrubDeltaMs else smoothSeekController.offsetMs,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 70.dp),
-        )
-
-        HdrPresetMenu(
-            onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
-            visible = showHdrPresetMenu || showHdrCustomizer,
-            selected = hdrColorPreset,
-            customPreset = customHdrPreset,
-            customizing = showHdrCustomizer,
-            selectedColor = selectedHdrColor,
-            colorIntensity = hdrColorIntensity,
-            onColorSelected = {
-                selectedHdrColor = it
-                val savedIntensity = hdrColorIntensities[it] ?: 0.5f
-                hdrColorIntensity = savedIntensity
-                hdrInteractionTick++
-                // Selecting a swatch only selects its controls. It must not tint the
-                // picture, reset global controls or enable HDR by itself.
-            },
-            onColorIntensityChange = { intensity ->
-                hdrInteractionTick++
-                hdrColorIntensity = intensity
-                val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
-                hdrColorIntensities = updatedIntensities
-                val nextPreset = customHdrPreset.copy(
-                    name = ColorPresets.CUSTOM.name,
-                    targetHue = -1f,
-                    red = 1f,
-                    green = 1f,
-                    blue = 1f,
-                    targetAdjustments = hdrColorTargetAdjustments(updatedIntensities),
-                )
-                customHdrPreset = nextPreset
-                playerViewModel.engine.setHdrColorPreset(nextPreset)
-                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
-            },
-            onCustomize = {
-                showHdrCustomizer = true
-                hdrInteractionTick++
-            },
-            onCustomPresetChange = { preset ->
-                hdrInteractionTick++
-                customHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
-                playerViewModel.engine.setHdrColorPreset(customHdrPreset)
-                if (!hdrEnhanceActive) playerViewModel.toggleHdrEnhance()
-            },
-            onSelect = { preset ->
-                hdrInteractionTick++
-                playerViewModel.engine.setHdrColorPreset(preset)
-                if (preset.name == ColorPresets.HDR_DISABLED.name) {
-                    playerViewModel.disableHdrEnhance()
-                } else if (!hdrEnhanceActive) {
-                    playerViewModel.toggleHdrEnhance()
-                }
-                showHdrPresetMenu = false
-                showHdrCustomizer = false
-            },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 28.dp, bottom = 150.dp),
         )
 
         if (subtitleCueText.isNotEmpty() && !isScreenLocked) {
@@ -914,9 +860,13 @@ fun PlayerScreen(
             isBgPlayActive = isBgPlayActive,
             videoScale = videoScale,
             onTogglePlayPause = { playerViewModel.togglePlayPause() },
-            onSeekTo = { playerViewModel.seekTo(it) },
-            onRewind10 = { playerViewModel.seekRelative(-10_000L) },
-            onFastForward10 = { playerViewModel.seekRelative(10_000L) },
+            onSeekTo = playerViewModel::seekTo,
+            onSeekBarTouch = { touching ->
+                touchingSeekBar = touching
+                if (touching) smoothSeekController.clear()
+            },
+            onRewind10 = { smoothSeekController.seekBy(-10_000L) },
+            onFastForward10 = { smoothSeekController.seekBy(10_000L) },
             onPrevious = { playAdjacentVideo(-1) },
             onNext = { playAdjacentVideo(1) },
             onBack = onBack,
@@ -951,12 +901,7 @@ fun PlayerScreen(
                     showHdrCustomizer = false
                 } else {
                     val nextPreset = nextHdrCyclePreset(hdrColorPreset)
-                    playerViewModel.engine.setHdrColorPreset(nextPreset)
-                    if (nextPreset.name == ColorPresets.HDR_DISABLED.name) {
-                        playerViewModel.disableHdrEnhance()
-                    } else if (!hdrEnhanceActive) {
-                        playerViewModel.toggleHdrEnhance()
-                    }
+                    playerViewModel.selectPictureMode(nextPreset)
                 }
                 hdrInteractionTick++
             },
@@ -1012,6 +957,52 @@ fun PlayerScreen(
                 areControlsVisible = true
             }
         }
+
+        HdrPresetMenu(
+            onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
+            visible = showHdrPresetMenu || showHdrCustomizer,
+            selected = hdrColorPreset,
+            customPreset = customHdrPreset,
+            customizing = showHdrCustomizer,
+            selectedColor = selectedHdrColor,
+            colorIntensity = hdrColorIntensities.getValue(selectedHdrColor),
+            onColorSelected = {
+                selectedHdrColor = it
+                hdrInteractionTick++
+                // Selecting a swatch only selects its controls. It must not tint the
+                // picture, reset global controls or enable HDR by itself.
+            },
+            onColorIntensityChange = { intensity ->
+                hdrInteractionTick++
+                val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
+                val nextPreset = customHdrPreset.copy(
+                    name = ColorPresets.CUSTOM.name,
+                    targetHue = -1f,
+                    red = 1f,
+                    green = 1f,
+                    blue = 1f,
+                    targetAdjustments = hdrColorTargetAdjustments(updatedIntensities),
+                )
+                playerViewModel.selectPictureMode(nextPreset)
+            },
+            onCustomize = {
+                showHdrCustomizer = true
+                hdrInteractionTick++
+            },
+            onCustomPresetChange = { preset ->
+                hdrInteractionTick++
+                playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
+            },
+            onSelect = { preset ->
+                hdrInteractionTick++
+                playerViewModel.selectPictureMode(preset)
+                showHdrPresetMenu = false
+                showHdrCustomizer = false
+            },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 28.dp, bottom = if (areControlsVisible) bottomControlsHeight + 4.dp else 12.dp),
+        )
 
         // Local probing/decoder setup and picture-mode changes can also buffer.
         // A black surface alone must not leave the controls looking unresponsive.

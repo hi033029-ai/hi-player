@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ fun SeekPreviewHud(
             val sign = if (deltaSeconds >= 0L) "+" else ""
             Row(
                 modifier = Modifier
+                    .testTag("seek_preview_hud")
                     .background(Color(0xE60A0E18), RoundedCornerShape(12.dp))
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,

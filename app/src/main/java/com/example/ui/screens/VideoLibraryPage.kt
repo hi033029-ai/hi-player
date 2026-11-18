@@ -201,8 +201,9 @@ internal fun VideoLibraryPage(
             ?: "video:${video.id}:${video.title}"
     }
     val selectedVideos = remember(selectedVideoPaths, selectedFolderKeys, allVideos) {
+        val treeKeys = selectedFolderKeys.filter { it.startsWith("path:") }
         allVideos.filter { video ->
-            videoKey(video) in selectedVideoPaths || selectedFolderKeys.any { key ->
+            videoKey(video) in selectedVideoPaths || video.folderKey in selectedFolderKeys || treeKeys.any { key ->
                 videoBelongsToSelectedFolder(key, video.path, video.folderName)
             }
         }
@@ -326,9 +327,10 @@ internal fun VideoLibraryPage(
             count = selectedVideos.size,
             onClose = { exitVideoSelectionMode() },
             onSelectAll = {
-                selectedVideoPaths = selectionCandidates.map(::videoKey).toSet()
+                val folderOverview = navMode == LibraryNavMode.FOLDERS && selectedFolder == null && searchQuery.isBlank()
+                selectedVideoPaths = if (folderOverview) emptySet() else selectionCandidates.map(::videoKey).toSet()
                 selectedFolderKeys = when {
-                    navMode == LibraryNavMode.FOLDERS && selectedFolder == null && searchQuery.isBlank() -> folders.map { "name:${it.name}" }.toSet()
+                    folderOverview -> folders.map { it.key }.toSet()
                     navMode == LibraryNavMode.TREE_FOLDERS -> currentTreeNode?.childFolders.orEmpty().map { "path:${it.dirPath}" }.toSet()
                     else -> emptySet()
                 }
@@ -375,7 +377,7 @@ internal fun VideoLibraryPage(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = selectedFolder ?: "",
+                                            text = folders.firstOrNull { it.key == selectedFolder }?.name.orEmpty(),
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp,
                                             color = palette.textPrimary,
@@ -571,16 +573,17 @@ internal fun VideoLibraryPage(
                         }
                         itemsIndexed(
                             items = folders,
-                            key = { _, folder -> folder.name },
+                            key = { _, folder -> folder.key },
                             contentType = { _, _ -> "folder_card" }
                         ) { _, folder ->
                             FolderGridCard(
                                 name = folder.name,
+                                location = folder.location,
                                 videoCount = folder.videoCount,
                                 hasNewVideo = folder.hasNewVideo,
-                                isSelected = "name:${folder.name}" in selectedFolderKeys,
-                                onClick = { if (selectionMode) toggleFolderSelection("name:${folder.name}") else libraryViewModel.selectFolder(folder.name) },
-                                onLongClick = { toggleFolderSelection("name:${folder.name}") }
+                                isSelected = folder.key in selectedFolderKeys,
+                                onClick = { if (selectionMode) toggleFolderSelection(folder.key) else libraryViewModel.selectFolder(folder.key) },
+                                onLongClick = { toggleFolderSelection(folder.key) }
                             )
                         }
                     }
@@ -607,14 +610,14 @@ internal fun VideoLibraryPage(
                         }
                         itemsIndexed(
                             items = folders,
-                            key = { _, folder -> folder.name },
+                            key = { _, folder -> folder.key },
                             contentType = { _, _ -> "folder_item" }
                         ) { _, folder ->
                                     FolderItemRow(
                                         folder = folder,
-                                        isSelected = "name:${folder.name}" in selectedFolderKeys,
-                                onClick = { if (selectionMode) toggleFolderSelection("name:${folder.name}") else libraryViewModel.selectFolder(folder.name) },
-                                onLongClick = { toggleFolderSelection("name:${folder.name}") }
+                                        isSelected = folder.key in selectedFolderKeys,
+                                onClick = { if (selectionMode) toggleFolderSelection(folder.key) else libraryViewModel.selectFolder(folder.key) },
+                                onLongClick = { toggleFolderSelection(folder.key) }
                             )
                         }
                     }
@@ -967,7 +970,7 @@ internal fun VideoLibraryPage(
             modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingDeleteVideos = null },
             title = { Text("Delete video${if (videosToDelete.size == 1) "" else "s"}?") },
-            text = { Text("This moves ${videosToDelete.size} video file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. Folders and other files remain. Folder groups may include locations with the same name. You can restore the videos later.") },
+            text = { Text("This moves ${videosToDelete.size} video file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. Folders and other files remain. You can restore the videos later.") },
             confirmButton = {
                 TextButton(onClick = {
                     onMoveVideosToRecycleBin(videosToDelete)

@@ -78,6 +78,8 @@ fun GestureOverlay(
     onScrubMove: (Long) -> Unit,
     onScrubEnd: () -> Unit,
     onScrubCancel: () -> Unit = {},
+    onBrightnessGestureStart: () -> Unit = {},
+    onBrightnessGestureEnd: () -> Unit = {},
     onVolumeGestureStart: () -> Unit = {},
     onVolumeGestureEnd: () -> Unit = {},
     brightnessLevel: Float?,
@@ -111,6 +113,8 @@ fun GestureOverlay(
     val currentOnScrubMove by rememberUpdatedState(onScrubMove)
     val currentOnScrubEnd by rememberUpdatedState(onScrubEnd)
     val currentOnScrubCancel by rememberUpdatedState(onScrubCancel)
+    val currentOnBrightnessStart by rememberUpdatedState(onBrightnessGestureStart)
+    val currentOnBrightnessEnd by rememberUpdatedState(onBrightnessGestureEnd)
     val currentOnVolumeStart by rememberUpdatedState(onVolumeGestureStart)
     val currentOnVolumeEnd by rememberUpdatedState(onVolumeGestureEnd)
     val currentOnPinchZoom by rememberUpdatedState(onPinchZoom)
@@ -140,6 +144,7 @@ fun GestureOverlay(
                         if (doubleCandidate) singleTap?.cancel()
                         var mode = SwipeMode.PENDING
                         var seekStarted = false
+                        var brightnessStarted = false
                         var volumeStarted = false
                         var holdStarted = false
                         var previous = down.position
@@ -162,6 +167,8 @@ fun GestureOverlay(
                                     if (seekStarted) { currentOnScrubCancel(); seekStarted = false }
                                     if (holdStarted) { currentOnLongPressEnd(); holdStarted = false }
                                     singleTap?.cancel(); lastTapUp = Long.MIN_VALUE
+                                    if (brightnessStarted) { currentOnBrightnessEnd(); brightnessStarted = false }
+                                    if (volumeStarted) { currentOnVolumeEnd(); volumeStarted = false }
                                     mode = SwipeMode.PINCH
                                     val zoom = event.calculateZoom()
                                     if (zoom.isFinite() && zoom != 1f) currentOnPinchZoom(zoom)
@@ -226,6 +233,7 @@ fun GestureOverlay(
                                         else -> SwipeMode.VOLUME
                                     }
                                     if (mode == SwipeMode.SEEK) { currentOnScrubStart(); seekStarted = true }
+                                    if (mode == SwipeMode.BRIGHTNESS) { currentOnBrightnessStart(); brightnessStarted = true }
                                     if (mode == SwipeMode.VOLUME) { currentOnVolumeStart(); volumeStarted = true }
                                     delta = total
                                 }
@@ -241,6 +249,7 @@ fun GestureOverlay(
                             // Pointer cancellation, rotation and a second finger must
                             // clear a preview, never commit an accidental seek.
                             if (seekStarted) currentOnScrubCancel()
+                            if (brightnessStarted) currentOnBrightnessEnd()
                             if (volumeStarted) currentOnVolumeEnd()
                             if (holdStarted) currentOnLongPressEnd()
                         }

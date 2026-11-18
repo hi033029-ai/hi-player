@@ -38,6 +38,22 @@ class LastUsedPlaybackPreferencesTest {
         assertEquals("en-us", restored.preferredSubtitleLanguage)
         assertTrue(restored.subtitlesEnabled)
     }
+    @Test fun customPictureSurvivesReopenAndSwitchingBackToOriginal() = runBlocking {
+        val repository = PlayerPreferencesRepository(context)
+        val custom = com.example.player.ColorPresets.CUSTOM.copy(brightness = 1.24f,
+            targetAdjustments = listOf(com.example.player.ColorTargetAdjustment(.25f, 1.1f, 1.1f, 1.1f)))
+        repository.setPictureMode(custom)
+        val reopened = PlayerPreferencesRepository(context).settingsFlow.first()
+        assertTrue(reopened.enableHdrEnhance)
+        assertEquals(custom, reopened.picturePreset)
+        repository.setPictureMode(com.example.player.ColorPresets.HDR_DISABLED)
+        val original = repository.settingsFlow.first()
+        assertFalse(original.enableHdrEnhance)
+        assertEquals(custom, original.customPicturePreset)
+        repository.setHdrEnhance(true)
+        assertEquals(custom, repository.settingsFlow.first().picturePreset)
+    }
+
     @Test fun subtitlesOffPersistsAndRetainsPreferredLanguage() = runBlocking {
         val repository = PlayerPreferencesRepository(context)
         repository.setPreferredSubtitleTrack("ar", true)

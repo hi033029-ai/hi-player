@@ -31,6 +31,20 @@ class RecycleBinVisibilityTest {
         }
     }
 
+    @Test fun scanReleasesARecreatedFileWithoutDroppingAnInFlightMove() {
+        val reused = "/test-recycle/replaced.mp4"
+        val pending = "/test-recycle/pending.mp4"
+        try {
+            RecycleBinVisibility.begin(setOf(pending))
+            RecycleBinVisibility.loadCommitted(setOf(reused))
+            RecycleBinVisibility.loadCommitted(emptySet())
+            assertFalse(reused in RecycleBinVisibility.hiddenPaths.value)
+            assertTrue(pending in RecycleBinVisibility.hiddenPaths.value)
+        } finally {
+            RecycleBinVisibility.finish(setOf(pending), emptySet())
+        }
+    }
+
     @Test fun restoreReleasesCommittedVisibility() {
         val path = "/test-recycle/restored.flac"
         try {

@@ -1,5 +1,8 @@
 package com.example.data
 
+import com.example.player.ColorPreset
+import com.example.player.ColorPresets
+
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -100,7 +103,9 @@ data class AppPlayerSettings(
     val nightAudioMode: Boolean = false,
     val openSubtitlesApiKey: String = "",
     val openSubtitlesUsername: String = "",
-    val openSubtitlesPassword: String = ""
+    val openSubtitlesPassword: String = "",
+    val picturePreset: ColorPreset = ColorPresets.NATURAL_HDR,
+    val customPicturePreset: ColorPreset = ColorPresets.CUSTOM,
 )
 
 data class NamedSettingsProfile(val id: String, val name: String, val kind: String)
@@ -114,6 +119,8 @@ class PlayerPreferencesRepository(private val context: Context) {
         val REMUX_BUFFER = booleanPreferencesKey("remux_ultra_buffer")
         val TUNNELING = booleanPreferencesKey("enable_tunneling")
         val WIDE_COLOR_GAMUT = booleanPreferencesKey("wide_color_gamut")
+        val PICTURE_PRESET = stringPreferencesKey("picture_preset")
+        val CUSTOM_PICTURE = stringPreferencesKey("custom_picture")
         val HDR_ENHANCE = booleanPreferencesKey("hdr_enhance")
         val BG_PLAY = booleanPreferencesKey("background_play")
         val AUTO_PIP = booleanPreferencesKey("auto_pip")
@@ -170,7 +177,12 @@ class PlayerPreferencesRepository(private val context: Context) {
             prefs[Keys.EQUALIZER_BAND_4] ?: 0,
         ).map { it / 100f }
 
+        val customPicture = decodeCustomPicture(prefs[Keys.CUSTOM_PICTURE])
+        val presetName = prefs[Keys.PICTURE_PRESET]
         AppPlayerSettings(
+            customPicturePreset = customPicture,
+            picturePreset = if (presetName == ColorPresets.CUSTOM.name) customPicture
+                else ColorPresets.ALL.firstOrNull { it.name == presetName } ?: ColorPresets.NATURAL_HDR,
             themeMode = AppThemeMode.fromId(themeStr),
             isFirstLaunch = isFirst,
             hwAccelerationMode = hwMode,
@@ -230,7 +242,7 @@ class PlayerPreferencesRepository(private val context: Context) {
             Keys.EQUALIZER_BAND_3, Keys.EQUALIZER_BAND_4, Keys.AUDIO_DELAY_MS,
             Keys.SUBTITLE_OFFSET_MS, Keys.SUBTITLE_SIZE, Keys.SUBTITLE_FONT_FAMILY,
             Keys.SUBTITLE_COLOR_ARGB, Keys.SUBTITLE_COLOR, Keys.SUBTITLE_BACKGROUND_OPACITY,
-            Keys.SUBTITLE_VERTICAL_OFFSET, Keys.HDR_ENHANCE, Keys.WIDE_COLOR_GAMUT, Keys.NIGHT_AUDIO,
+            Keys.SUBTITLE_VERTICAL_OFFSET, Keys.PICTURE_PRESET, Keys.CUSTOM_PICTURE, Keys.HDR_ENHANCE, Keys.WIDE_COLOR_GAMUT, Keys.NIGHT_AUDIO,
         ).map { it.name }.toSet(),
         "theme" to listOf(
             Keys.THEME_MODE, Keys.CUSTOM_TEXT, Keys.CUSTOM_BACKGROUND, Keys.CUSTOM_PRIMARY,
@@ -241,7 +253,7 @@ class PlayerPreferencesRepository(private val context: Context) {
     private fun profileType(key: String): String = when (key) {
         Keys.AUDIO_DELAY_MS.name, Keys.SUBTITLE_OFFSET_MS.name, Keys.SUBTITLE_COLOR_ARGB.name -> "l"
         Keys.HDR_ENHANCE.name, Keys.WIDE_COLOR_GAMUT.name, Keys.NIGHT_AUDIO.name -> "b"
-        Keys.ASPECT_RATIO.name, Keys.EQUALIZER_PRESET.name, Keys.SUBTITLE_FONT_FAMILY.name,
+        Keys.PICTURE_PRESET.name, Keys.CUSTOM_PICTURE.name, Keys.ASPECT_RATIO.name, Keys.EQUALIZER_PRESET.name, Keys.SUBTITLE_FONT_FAMILY.name,
         Keys.SUBTITLE_COLOR.name, Keys.THEME_MODE.name, Keys.CUSTOM_TEXT.name,
         Keys.CUSTOM_BACKGROUND.name, Keys.CUSTOM_PRIMARY.name, Keys.CUSTOM_SURFACE.name -> "s"
         else -> "i"
@@ -334,6 +346,15 @@ class PlayerPreferencesRepository(private val context: Context) {
 
     suspend fun setWideColorGamut(enabled: Boolean) {
         context.dataStore.edit { it[Keys.WIDE_COLOR_GAMUT] = enabled }
+    }
+
+    suspend fun setPictureMode(preset: ColorPreset) {
+        context.dataStore.edit { prefs ->
+            val enabled = preset != ColorPresets.HDR_DISABLED
+            prefs[Keys.HDR_ENHANCE] = enabled
+            if (enabled) prefs[Keys.PICTURE_PRESET] = preset.name
+            if (preset.name == ColorPresets.CUSTOM.name) prefs[Keys.CUSTOM_PICTURE] = encodeCustomPicture(preset)
+        }
     }
 
     suspend fun setHdrEnhance(enabled: Boolean) {

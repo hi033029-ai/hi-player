@@ -940,7 +940,8 @@ internal fun RecycleBinView(
     onDeselectAll: () -> Unit,
     onToggle: (String) -> Unit,
     onRestore: () -> Unit,
-    onDeletePermanently: () -> Unit
+    onDeletePermanently: () -> Unit,
+    action: String? = null,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val selectedCount = selectedIds.size
@@ -955,7 +956,7 @@ internal fun RecycleBinView(
                 Text("Recycle Bin", color = palette.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Deleted files stay here until you restore them or permanently delete them.",
+                    "Restore selected files or erase them permanently. Android automatically expires items moved using its trash confirmation.",
                     color = palette.textSecondary,
                     fontSize = 12.sp
                 )
@@ -967,13 +968,14 @@ internal fun RecycleBinView(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
+        if (action != null) Text(action, color = palette.textPrimary)
         if (selectedCount > 0) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onRestore, modifier = Modifier.weight(1f)) { Text("Restore to device") }
-                TextButton(onClick = onDeletePermanently, modifier = Modifier.weight(1f)) {
+                Button(onClick = onRestore, enabled = action == null, modifier = Modifier.weight(1f)) { Text("Restore to device") }
+                TextButton(onClick = onDeletePermanently, enabled = action == null, modifier = Modifier.weight(1f)) {
                     Text("Delete permanently", color = Color(0xFFEF4444))
                 }
             }
@@ -1008,7 +1010,7 @@ internal fun RecycleBinView(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.name, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("Original: ${item.originalPath}", color = palette.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (item.originalPath.isNotBlank()) Text(item.originalPath, color = palette.textSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(formatRecycleBinSize(item.sizeBytes), color = palette.textSecondary, fontSize = 10.sp)
                             }
                             if (selected) Icon(Icons.Default.Check, contentDescription = "Selected", tint = palette.primary)

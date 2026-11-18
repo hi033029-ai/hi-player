@@ -75,7 +75,9 @@ data class VideoFolder(
     val name: String,
     val videoCount: Int,
     val sampleVideo: VideoItem?,
-    val hasNewVideo: Boolean = false
+    val hasNewVideo: Boolean = false,
+    val key: String = name,
+    val location: String? = null,
 )
 
 /**
@@ -336,34 +338,17 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
+        if (folder != null) list = list.filter { it.folderKey == folder }
         list = when (nav) {
-            LibraryNavMode.FOLDERS, LibraryNavMode.ALL_FOLDERS, LibraryNavMode.TREE_FOLDERS -> {
-                if (folder != null) {
-                    list.filter { it.folderName.equals(folder, ignoreCase = true) }
-                } else {
-                    list
-                }
-            }
-            LibraryNavMode.ALL_VIDEOS -> {
-                if (folder != null) {
-                    list.filter { it.folderName.equals(folder, ignoreCase = true) }
-                } else {
-                    list
-                }
-            }
             LibraryNavMode.RECENT -> {
-                val historyUris = history.map { it.uriString }.toSet()
-                list.filter { it.uri.toString() in historyUris }
+                val uris = history.map { it.uriString }.toSet()
+                list.filter { it.uri.toString() in uris }
             }
             LibraryNavMode.FAVORITES -> {
-                val favSet = favorites.map { it.uriString }.toSet()
-                val favList = list.filter { favSet.contains(it.uri.toString()) }
-                if (folder != null) {
-                    favList.filter { it.folderName.equals(folder, ignoreCase = true) }
-                } else {
-                    favList
-                }
+                val uris = favorites.map { it.uriString }.toSet()
+                list.filter { it.uri.toString() in uris }
             }
+            else -> list
         }
 
         // Apply Sorting
@@ -391,15 +376,20 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val folders = allVideos.map { videos ->
-        videos.groupBy { it.folderName }
-            .map { (name, group) ->
-                VideoFolder(
-                    name = name,
-                    videoCount = group.size,
-                    sampleVideo = group.firstOrNull(),
-                    hasNewVideo = group.any { it.isNewVideo }
-                )
-            }.sortedBy { it.name.lowercase() }
+        val groups = videos.groupBy { it.folderKey }
+        val nameCounts = groups.values.groupingBy { it.first().folderName }.eachCount()
+        groups.map { (key, group) ->
+            val first = group.first()
+            VideoFolder(
+                name = first.folderName,
+                videoCount = group.size,
+                sampleVideo = first,
+                hasNewVideo = group.any { it.isNewVideo },
+                key = key,
+                location = if (nameCounts[first.folderName] == 1) null
+                    else if (key.startsWith("dir:")) key.removePrefix("dir:") else "Imported media",
+            )
+        }.sortedWith(compareBy({ it.name.lowercase() }, { it.key }))
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
@@ -640,8 +630,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _searchQuery.value = query
     }
 
-    fun selectFolder(folderName: String?) {
-        _selectedFolder.value = folderName
+    fun selectFolder(key: String?) {
+        _selectedFolder.value = key
     }
 
     fun toggleFavorite(video: VideoItem, isFavorite: Boolean) {

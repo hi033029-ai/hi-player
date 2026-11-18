@@ -17,7 +17,11 @@ object RecycleBinVisibility {
         publish()
     }
     @Synchronized fun restored(path: String) { committed.remove(path); publish() }
-    @Synchronized fun loadCommitted(paths: Set<String>) { committed.addAll(paths); publish() }
+    @Synchronized fun loadCommitted(paths: Set<String>) {
+        committed.clear()
+        committed.addAll(paths)
+        publish()
+    }
     private fun publish() { _hiddenPaths.value = (pending + committed).toSet() }
 
     fun isHidden(path: String, hidden: Set<String>): Boolean = path.isNotBlank() &&

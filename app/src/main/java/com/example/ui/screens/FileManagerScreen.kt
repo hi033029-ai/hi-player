@@ -199,7 +199,8 @@ fun FileManagerScreen(
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var showRecycleBin by rememberSaveable { mutableStateOf(false) }
-    var showPermanentDeleteConfirm by remember { mutableStateOf(false) }
+    var pendingPermanentIds by remember { mutableStateOf<Set<String>?>(null) }
+    val binAction by fileManagerViewModel.binAction.collectAsStateWithLifecycle()
     var selectAllScope by remember { mutableStateOf(SelectAllScope.FOLDERS) }
     var renameTargetItem by remember { mutableStateOf<FileItem?>(null) }
     var renameText by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
@@ -565,11 +566,12 @@ fun FileManagerScreen(
                 RecycleBinView(
                     items = recycleBinItems,
                     selectedIds = selectedRecycleBinIds,
+                    action = binAction,
                     onSelectAll = { fileManagerViewModel.selectAllRecycleBin() },
                     onDeselectAll = { fileManagerViewModel.clearRecycleBinSelection() },
                     onToggle = { fileManagerViewModel.toggleRecycleBinSelection(it) },
                     onRestore = { fileManagerViewModel.restoreRecycleBinItems() },
-                    onDeletePermanently = { showPermanentDeleteConfirm = true }
+                    onDeletePermanently = { pendingPermanentIds = selectedRecycleBinIds.toSet() }
                 )
             } else if (isLoading) {
                 com.example.ui.components.ContentSkeleton(
@@ -1001,25 +1003,25 @@ fun FileManagerScreen(
         )
     }
 
-    if (showPermanentDeleteConfirm) {
+    pendingPermanentIds?.let { confirmedIds ->
         AlertDialog(
             modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-            onDismissRequest = { showPermanentDeleteConfirm = false },
+            onDismissRequest = { pendingPermanentIds = null },
             title = { Text("Delete permanently?", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "The selected Recycle Bin items will be erased permanently and cannot be restored.",
+                    "Permanently erase ${confirmedIds.size} selected item(s) from the Recycle Bin?",
                     color = palette.textSecondary
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    showPermanentDeleteConfirm = false
-                    fileManagerViewModel.permanentlyDeleteRecycleBinItems()
+                    pendingPermanentIds = null
+                    fileManagerViewModel.permanentlyDeleteRecycleBinItems(confirmedIds)
                 }) { Text("Delete permanently", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
+                TextButton(onClick = { pendingPermanentIds = null }) {
                     Text("Cancel", color = palette.textSecondary)
                 }
             },

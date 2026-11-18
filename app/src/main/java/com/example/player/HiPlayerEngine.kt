@@ -299,6 +299,13 @@ class HiPlayerEngine(
     val is4kContent = _is4kContent.asStateFlow()
 
     /** HDR enhancement state. Native HDR output is managed by HdrColorModeManager. */
+    fun setPictureMode(enabled: Boolean, preset: ColorPreset) {
+        if (_hdrEnhanceActive.value == enabled && _hdrColorPreset.value == preset) return
+        _hdrEnhanceActive.value = enabled
+        _hdrColorPreset.value = preset
+        applyVideoGrade()
+    }
+
     fun setHdrEnhanceActive(enabled: Boolean) {
         _hdrEnhanceActive.value = enabled
         applyVideoGrade()

@@ -23,7 +23,8 @@ data class FileItem(
     val childCount: Int = 0,
     val fileType: FileType = FileType.OTHER,
     val extension: String = file.extension.lowercase(Locale.ROOT),
-    val hasNewVideo: Boolean = false
+    val hasNewVideo: Boolean = false,
+    val mediaUri: android.net.Uri? = null,
 ) {
     val isPendingDownload: Boolean
         get() = PendingDownloadFormat.isPending(name)

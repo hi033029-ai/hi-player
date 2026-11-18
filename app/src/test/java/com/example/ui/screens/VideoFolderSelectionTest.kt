@@ -11,9 +11,12 @@ class VideoFolderSelectionTest {
         assertFalse(videoBelongsToSelectedFolder("path:/storage/Movies", "", "Movies"))
     }
 
-    @Test fun flatFolderUsesTheDisplayedFolderName() {
-        assertTrue(videoBelongsToSelectedFolder("name:Download", "/one/Download/a.mp4", "Download"))
-        assertTrue(videoBelongsToSelectedFolder("name:Download", "/two/Download/b.mp4", "Download"))
-        assertFalse(videoBelongsToSelectedFolder("name:Download", "/one/Downloads/a.mp4", "Downloads"))
+    @Test fun flatFolderMatchesOnlyItsDirectFilesEvenWhenNamesRepeat() {
+        val key = com.example.model.videoFolderKey("/one/Download/a.mp4", "Download")
+        assertTrue(videoBelongsToSelectedFolder(key, "/one/Download/b.mp4", "Download"))
+        assertFalse(videoBelongsToSelectedFolder(key, "/two/Download/a.mp4", "Download"))
+        assertFalse(videoBelongsToSelectedFolder(key, "/one/Download/child/a.mp4", "child"))
+        assertFalse(videoBelongsToSelectedFolder(key, "", "Download"))
+        assertTrue(videoBelongsToSelectedFolder("name:Download", "", "Download"))
     }
 }

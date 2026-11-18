@@ -38,6 +38,11 @@ data class VideoTrackInfo(
     val trackIndex: Int
 )
 
+/** MediaStore names can be shared by several directories on the same device. */
+internal fun videoFolderKey(path: String, folderName: String): String =
+    if (path.startsWith('/')) "dir:" + path.substringBeforeLast('/').ifEmpty { "/" }
+    else "name:$folderName"
+
 data class VideoItem(
     val id: Long = 0L,
     val uri: Uri = Uri.EMPTY,
@@ -68,6 +73,8 @@ data class VideoItem(
     val downloadSpeedBytesPerSecond: Long = 0L,
     val isNewVideo: Boolean = false
 ) {
+    internal val folderKey get() = videoFolderKey(path, folderName)
+
     val resolutionBadge: VideoResolutionBadge
         get() {
             val maxDim = maxOf(width, height)

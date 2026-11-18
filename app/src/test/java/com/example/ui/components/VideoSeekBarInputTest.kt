@@ -73,6 +73,27 @@ class VideoSeekBarInputTest {
         compose.runOnIdle { assertEquals(8_000L, soughtPosition) }
     }
 
+    @Test fun growingDurationKeepsTheTouchedTimelineAndReleasesControls() {
+        var duration by mutableLongStateOf(10_000L)
+        var sought = -1L
+        val touches = mutableListOf<Boolean>()
+        compose.setContent {
+            HiVideoSeekBar(0L, duration, 0L, { sought = it },
+                Modifier.size(300.dp, 48.dp).testTag("growing_seek"), onTouchChanged = { touches += it })
+        }
+        val bar = compose.onNodeWithTag("growing_seek")
+        bar.performTouchInput { down(Offset(width * .2f, height / 2f)) }
+        compose.runOnIdle { duration = 20_000L }
+        bar.performTouchInput {
+            moveTo(Offset(width * .8f, height / 2f), delayMillis = 100)
+            up()
+        }
+        compose.runOnIdle {
+            assertEquals(8_000L, sought)
+            assertEquals(listOf(true, false), touches)
+        }
+    }
+
     @Test fun cancelledScrubDoesNotSeek() = discardedGesture { cancel() }
 
     @Test fun secondFingerDiscardsTheScrub() = discardedGesture {

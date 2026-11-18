@@ -1,5 +1,8 @@
 package com.example.viewmodel
 
+import com.example.player.ColorPreset
+import com.example.player.ColorPresets
+
 import android.app.Application
 import android.content.Context
 import android.media.AudioManager
@@ -126,6 +129,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     // can cancel it before a closed player screen is prepared again.
     private var playRequestJob: Job? = null
 
+    private val _customPicturePreset = MutableStateFlow(ColorPresets.CUSTOM)
+    val customPicturePreset = _customPicturePreset.asStateFlow()
+    private var pictureSaveJob: Job? = null
+    private var pendingPicture: ColorPreset? = null
+
     init {
         engine.onVideoEnded = { playAdjacentVideo(1) }
         startProgressSync()
@@ -138,9 +146,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // it here so a change takes effect immediately while a video is open.
         viewModelScope.launch {
             preferencesRepo.settingsFlow
-                .map { it.enableHdrEnhance }
+                .map { settings -> (if (settings.enableHdrEnhance) settings.picturePreset else ColorPresets.HDR_DISABLED) to settings.customPicturePreset }
                 .distinctUntilChanged()
-                .collect { enabled -> engine.setHdrEnhanceActive(enabled) }
+                .collect { (selected, custom) ->
+                    if (pendingPicture != null && pendingPicture != selected) return@collect
+                    pendingPicture = null
+                    _customPicturePreset.value = custom
+                    engine.setPictureMode(selected != ColorPresets.HDR_DISABLED, selected)
+                }
         }
 
         // Keep every global player control in sync with DataStore. Per-video
@@ -199,6 +212,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playRequestJob = viewModelScope.launch {
             // These are independent local reads. Fetch them together so player
             // preparation is not delayed by settings I/O followed by DAO I/O.
+            pictureSaveJob?.join()
             brightnessSaveJob?.join()
             volumeSaveJob?.join()
             languageSaveJob?.join()
@@ -215,7 +229,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             restorePlayerControls(settings)
             // applyConfiguration creates a fresh ExoPlayer, so reapply the
             // persisted picture mode to the replacement instance.
-            engine.setHdrEnhanceActive(settings.enableHdrEnhance)
+            val selected = pendingPicture ?: if (settings.enableHdrEnhance) settings.picturePreset else ColorPresets.HDR_DISABLED
+            engine.setPictureMode(selected != ColorPresets.HDR_DISABLED, selected)
 
             val record = recordDeferred.await()
             val startPos = startPositionOverride?.coerceAtLeast(0L) ?: com.example.player.playbackResumePosition(
@@ -609,20 +624,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     val hdrEnhanceActive = engine.hdrEnhanceActive
 
-    fun toggleHdrEnhance() {
-        val enabled = !engine.hdrEnhanceActive.value
-        engine.setHdrEnhanceActive(enabled)
-        // Keep the in-player HDR control and the app Settings switch in sync.
-        // A later player recreation must not silently revert the user's choice.
-        viewModelScope.launch {
-            preferencesRepo.setHdrEnhance(enabled)
-        }
-    }
-
-    fun disableHdrEnhance() {
-        engine.setHdrEnhanceActive(false)
-        viewModelScope.launch {
-            preferencesRepo.setHdrEnhance(false)
+    fun selectPictureMode(preset: ColorPreset) {
+        pendingPicture = preset
+        if (preset.name == ColorPresets.CUSTOM.name) _customPicturePreset.value = preset
+        engine.setPictureMode(preset != ColorPresets.HDR_DISABLED, preset)
+        pictureSaveJob?.cancel()
+        pictureSaveJob = viewModelScope.launch {
+            preferencesRepo.setPictureMode(preset)
+            if (pendingPicture == preset) pendingPicture = null
         }
     }
 
@@ -639,6 +648,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Gesture Handlers
+    private var brightnessGestureActive = false
+
+    fun onBrightnessGestureStart() {
+        brightnessGestureActive = true
+        _volumeLevel.value = null
+        hudDismissJob?.cancel()
+    }
+
+    fun onBrightnessGestureEnd() {
+        brightnessGestureActive = false
+        scheduleHudDismiss()
+    }
+
     fun onBrightnessGesture(delta: Float, windowBrightness: Float): Float {
         val current = when {
             windowBrightness >= 0f -> windowBrightness
@@ -664,6 +686,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var gestureSystemVolume: Int? = null
 
     fun onVolumeGestureStart() {
+        _brightnessLevel.value = null
+        hudDismissJob?.cancel()
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
         gestureSystemVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         gestureVolumeLevel = if (engine.volumeBoostPercent.value > 0) {
@@ -671,7 +695,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         } else gestureSystemVolume!!.toFloat() / max
     }
 
-    fun onVolumeGestureEnd() { gestureVolumeLevel = null; gestureSystemVolume = null }
+    fun onVolumeGestureEnd() {
+        gestureVolumeLevel = null
+        gestureSystemVolume = null
+        scheduleHudDismiss()
+    }
 
     fun onVolumeGesture(delta: Float) {
         if (!delta.isFinite()) return
@@ -705,11 +733,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun persistPlayerBrightness(level: Float) {
         _playerBrightness.value = level
-        pendingBrightnessPercent = (level * 100f).roundToInt().coerceIn(1, 100)
-        lastPlayerControls.edit().putInt("brightness", pendingBrightnessPercent!!).apply()
+        val percent = (level * 100f).roundToInt().coerceIn(1, 100)
+        if (pendingBrightnessPercent == percent) return
+        pendingBrightnessPercent = percent
+        lastPlayerControls.edit().putInt("brightness", percent).apply()
         brightnessSaveJob?.cancel()
         brightnessSaveJob = viewModelScope.launch {
-            preferencesRepo.setPlayerBrightnessPercent((level * 100f).roundToInt())
+            preferencesRepo.setPlayerBrightnessPercent(percent)
         }
     }
 
@@ -731,16 +761,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun onScrubStart() {
+        _brightnessLevel.value = null
+        _volumeLevel.value = null
         scrubOriginMs = engine.currentPositionMs.value
         _scrubTimeMs.value = scrubOriginMs
         _scrubDeltaMs.value = 0L
     }
 
     fun onScrubMove(deltaMs: Long) {
-        val total = engine.durationMs.value
-        val requested = (scrubOriginMs + deltaMs).coerceAtLeast(0L)
-        val target = if (total > 0L) requested.coerceAtMost(total) else requested
-        _scrubDeltaMs.value = deltaMs
+        val target = engine.clampSeekTarget(scrubOriginMs + deltaMs)
+        _scrubDeltaMs.value = target - scrubOriginMs
         _scrubTimeMs.value = target
     }
 
@@ -759,6 +789,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun scheduleHudDismiss() {
+        if (brightnessGestureActive || gestureVolumeLevel != null) return
         hudDismissJob?.cancel()
         hudDismissJob = viewModelScope.launch {
             delay(1500)

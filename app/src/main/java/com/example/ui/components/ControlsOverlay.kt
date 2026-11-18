@@ -63,6 +63,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -82,6 +83,9 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -147,6 +151,7 @@ fun ControlsOverlay(
     onAspectRatioSelected: (AspectRatioMode) -> Unit = {},
     onCycleSpeed: () -> Unit,
     onBottomControlsHeight: (Int) -> Unit = {},
+    onSeekBarTouch: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
@@ -319,6 +324,8 @@ fun ControlsOverlay(
                             durationMs = durationMs,
                             bufferedPositionMs = bufferedPositionMs,
                             onSeekTo = onSeekTo,
+                            mediaUri = video?.uri,
+                            onTouchChanged = onSeekBarTouch,
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("player_seekbar")
@@ -386,10 +393,15 @@ internal fun HiVideoSeekBar(
     durationMs: Long,
     bufferedPositionMs: Long,
     onSeekTo: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mediaUri: android.net.Uri? = null,
+    onTouchChanged: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val currentOnSeekTo by rememberUpdatedState(onSeekTo)
+    val currentOnTouchChanged by rememberUpdatedState(onTouchChanged)
+    val latestDuration by rememberUpdatedState(durationMs)
+    var gestureDuration by remember { mutableLongStateOf(0L) }
     // While the user is actively dragging, track the scrub fraction locally
     // so the thumb tracks the finger smoothly instead of jumping on every
     // upstream position update, and show a live time preview above it.
@@ -400,24 +412,27 @@ internal fun HiVideoSeekBar(
     val bufferedFraction = if (durationMs > 0) (bufferedPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
     val displayFraction = if (dragFraction >= 0f) dragFraction else playedFraction
 
-    Column(modifier = modifier) {
-        if (dragFraction >= 0f && durationMs > 0) {
-            Text(
-                text = formatDuration((dragFraction * durationMs).toLong()),
-                color = HiPrimaryCyan,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.Start)
-            )
+    Box(modifier = modifier.semantics {
+        if (durationMs > 0) {
+            progressBarRangeInfo = ProgressBarRangeInfo(displayFraction, 0f..1f)
+            setProgress { value ->
+                if (!value.isFinite()) return@setProgress false
+                currentOnSeekTo((value.coerceIn(0f, 1f) * durationMs).toLong())
+                true
+            }
         }
+    }) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .pointerInput(durationMs) {
-                    if (durationMs <= 0) return@pointerInput
+                .pointerInput(mediaUri) {
                     awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val down = awaitFirstDown()
+                        val durationAtDown = latestDuration
+                        if (durationAtDown <= 0 || size.width == 0) return@awaitEachGesture
+                        gestureDuration = durationAtDown
+                        currentOnTouchChanged(true)
                         val startX = down.position.x
                         var lastX = startX
                         var isHorizontalDrag = false
@@ -459,15 +474,25 @@ internal fun HiVideoSeekBar(
                             if (finishedNormally && !movedPastSlop && size.width > 0) {
                                 val seekX = if (isHorizontalDrag) lastX else startX
                                 val fraction = (seekX / size.width.toFloat()).coerceIn(0f, 1f)
-                                currentOnSeekTo((fraction * durationMs).toLong())
+                                currentOnSeekTo((fraction * durationAtDown).toLong())
                             }
                         } finally {
                             dragFraction = -1f
+                            currentOnTouchChanged(false)
                         }
                     }
                 },
             contentAlignment = Alignment.CenterStart
         ) {
+            if (dragFraction >= 0f) {
+                Text(
+                    text = formatDuration((dragFraction * gestureDuration).toLong()),
+                    color = HiPrimaryCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
