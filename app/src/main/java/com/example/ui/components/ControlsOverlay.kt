@@ -68,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -145,6 +146,7 @@ fun ControlsOverlay(
     onLongPressAspectRatio: () -> Unit = {},
     onAspectRatioSelected: (AspectRatioMode) -> Unit = {},
     onCycleSpeed: () -> Unit,
+    onBottomControlsHeight: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiMetrics = LocalHiUiMetrics.current
@@ -256,6 +258,7 @@ fun ControlsOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
+                        .onSizeChanged { onBottomControlsHeight(it.height) }
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
@@ -546,7 +549,6 @@ private fun PlayerToolbarTextButton(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
             fontSize = 10.sp,
-            maxLines = 2,
             textAlign = TextAlign.Center,
         )
     }
@@ -584,7 +586,6 @@ private fun PlayerToolbarButton(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
             fontSize = 10.sp,
-            maxLines = 2,
             textAlign = TextAlign.Center,
         )
     }

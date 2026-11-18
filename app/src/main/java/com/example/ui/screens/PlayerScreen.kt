@@ -217,6 +217,8 @@ fun PlayerScreen(
     val scrubDeltaMs by playerViewModel.scrubDeltaMs.collectAsState()
 
     var areControlsVisible by remember { mutableStateOf(true) }
+    val controlsDensity = androidx.compose.ui.platform.LocalDensity.current
+    var bottomControlsHeight by remember { mutableStateOf(174.dp) }
     var guideHdrBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var guideRootOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_visual_guide_v2")
@@ -897,6 +899,7 @@ fun PlayerScreen(
 
         // 2. UI Controls Overlay Layer
         ControlsOverlay(
+            onBottomControlsHeight = { bottomControlsHeight = with(controlsDensity) { it.toDp() } },
             isVisible = areControlsVisible,
             isLocked = isScreenLocked,
             showLockedUnlockControl = showLockedUnlockControl,
@@ -1045,8 +1048,8 @@ fun PlayerScreen(
                 onClick = { playerViewModel.playCurrentVideoFromStart() },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 62.dp, bottom = 174.dp)
-                    .height(28.dp),
+                    .padding(end = 16.dp, bottom = if (areControlsVisible) bottomControlsHeight + 8.dp else 32.dp)
+                    .heightIn(min = 48.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White.copy(alpha = 0.92f),
                     contentColor = Color.Black,
