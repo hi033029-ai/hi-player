@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import com.example.ui.theme.hiContainerBorder
+import com.example.ui.theme.HiCardShape
+import com.example.ui.theme.HiThumbnailShape
 
 import android.content.Intent
 import android.net.Uri
@@ -17,6 +19,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -106,6 +110,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -190,7 +196,7 @@ internal fun SelectionCheckCircle(isSelected: Boolean, modifier: Modifier = Modi
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun ArchiveItemCard(
     archive: FileItem,
@@ -204,23 +210,28 @@ fun ArchiveItemCard(
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
     val ext = archive.extension.uppercase(Locale.ROOT)
+    val badgeTint = if (archive.isApk) {
+        if (palette.isDark) Color(0xFF63D8AE) else Color(0xFF13734B)
+    } else palette.secondary
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy", Locale.US) }
     val dateStr = if (archive.lastModified > 0) dateFormat.format(Date(archive.lastModified)) else ""
 
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clip(HiCardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onInspect, onLongClick = onLongClick)
             .testTag("archive_card_${archive.name}"),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent),
-        border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
+        shape = HiCardShape,
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.selectionSurface else palette.surface),
+        border = BorderStroke(if (isSelected) 1.dp else 0.5.dp, if (isSelected) palette.primary else palette.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showSelectionControl) {
@@ -230,22 +241,20 @@ fun ArchiveItemCard(
             // Archive Type Badge Icon
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.secondary.copy(alpha = 0.2f))
-                    .border(1.dp, palette.secondary.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                    .size(48.dp)
+                    .background(badgeTint.copy(alpha = 0.12f), HiThumbnailShape),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         imageVector = if (archive.isApk) Icons.Default.Android else Icons.Default.FolderZip,
                         contentDescription = if (archive.isApk) "APK" else "Archive",
-                        tint = if (archive.isApk) Color(0xFF34D399) else palette.secondary,
+                        tint = badgeTint,
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
                         text = if (archive.isApk) "APK" else ext.ifEmpty { "ZIP" },
-                        color = if (archive.isApk) Color(0xFF34D399) else palette.secondary,
+                        color = badgeTint,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -258,51 +267,54 @@ fun ArchiveItemCard(
                 Text(
                     text = archive.name,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     color = palette.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
                     Text(
                         text = archive.formattedSize,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = palette.secondary,
                         fontWeight = FontWeight.Medium
                     )
                     if (dateStr.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("•", fontSize = 10.sp, color = palette.textSecondary)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(dateStr, fontSize = 10.sp, color = palette.textSecondary)
+                        Text(dateStr, fontSize = 11.sp, color = palette.textSecondary)
                     }
                 }
             }
 
-            // Quick Extract Button
-            IconButton(
-                onClick = onExtract,
-                modifier = Modifier
-                    .size(32.dp)
-                    .testTag("extract_archive_${archive.name}")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Unarchive,
-                    contentDescription = "Extract",
-                    tint = palette.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            if (onMenuClick != null) {
-                IconButton(onClick = onMenuClick, modifier = Modifier.size(32.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Quick Extract Button
+                IconButton(
+                    onClick = onExtract,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("extract_archive_${archive.name}")
+                ) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More options",
-                        tint = palette.textSecondary,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = Icons.Default.Unarchive,
+                        contentDescription = "Extract",
+                        tint = palette.primary,
+                        modifier = Modifier.size(18.dp)
                     )
+                }
+
+                if (onMenuClick != null) {
+                    IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options",
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -323,10 +335,10 @@ fun DocumentItemCard(
     val palette = com.example.ui.theme.LocalHiPalette.current
     val ext = doc.extension.uppercase(Locale.ROOT)
     val badgeColor = when (doc.extension) {
-        "pdf" -> Color(0xFFEF4444)
-        "doc", "docx" -> Color(0xFF3B82F6)
-        "xls", "xlsx" -> Color(0xFF10B981)
-        "ppt", "pptx" -> Color(0xFFF97316)
+        "pdf" -> if (palette.isDark) Color(0xFFFF9A9A) else Color(0xFFB3261E)
+        "doc", "docx" -> if (palette.isDark) Color(0xFF8BB5FF) else Color(0xFF245FD6)
+        "xls", "xlsx" -> if (palette.isDark) Color(0xFF63D8AE) else Color(0xFF13734B)
+        "ppt", "pptx" -> if (palette.isDark) Color(0xFFFFC084) else Color(0xFFA64D0B)
         "srt", "vtt", "ass" -> palette.primary
         else -> palette.textSecondary
     }
@@ -334,17 +346,19 @@ fun DocumentItemCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clip(HiCardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onOpen, onLongClick = onLongClick)
             .testTag("doc_card_${doc.name}"),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent),
-        border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
+        shape = HiCardShape,
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.selectionSurface else palette.surface),
+        border = BorderStroke(if (isSelected) 1.dp else 0.5.dp, if (isSelected) palette.primary else palette.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showSelectionControl) {
@@ -353,10 +367,8 @@ fun DocumentItemCard(
             }
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(badgeColor.copy(alpha = 0.2f))
-                    .border(1.dp, badgeColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                    .size(48.dp)
+                    .background(badgeColor.copy(alpha = 0.12f), HiThumbnailShape),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -381,15 +393,16 @@ fun DocumentItemCard(
                 Text(
                     text = doc.name,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     color = palette.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = doc.formattedSize,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = badgeColor,
                     fontWeight = FontWeight.Medium
                 )
@@ -403,7 +416,7 @@ fun DocumentItemCard(
             )
 
             if (onMenuClick != null) {
-                IconButton(onClick = onMenuClick, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "More options",
@@ -432,17 +445,19 @@ fun FolderItemCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clip(HiCardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .testTag("folder_card_${folder.name}"),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else palette.surfaceElevated),
-        border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
+        shape = HiCardShape,
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.selectionSurface else palette.surface),
+        border = BorderStroke(if (isSelected) 1.dp else 0.5.dp, if (isSelected) palette.primary else palette.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showSelectionControl) {
@@ -451,10 +466,8 @@ fun FolderItemCard(
             }
             Box(
                 modifier = Modifier
-                    .width(48.dp)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(8.dp)).hiContainerBorder(RoundedCornerShape(8.dp))
-                    .background(palette.primary.copy(alpha = 0.15f)),
+                    .size(48.dp)
+                    .background(palette.selectionSurface, HiThumbnailShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -465,21 +478,22 @@ fun FolderItemCard(
                 )
             }
 
-            Spacer(modifier = Modifier.width(18.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = folder.name,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     color = palette.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = folder.formattedSize,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     color = palette.primary,
                     fontWeight = FontWeight.Normal
                 )
@@ -496,7 +510,7 @@ fun FolderItemCard(
             }
 
             if (onMenuClick != null) {
-                IconButton(onClick = onMenuClick, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "More options",
@@ -516,7 +530,7 @@ fun FolderItemCard(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun GenericFileItemCard(
     item: FileItem,
@@ -528,11 +542,13 @@ fun GenericFileItemCard(
     showSelectionControl: Boolean = false,
 ) {
     val palette = com.example.ui.theme.LocalHiPalette.current
+    val greenTint = if (palette.isDark) Color(0xFF63D8AE) else Color(0xFF13734B)
+    val audioTint = if (palette.isDark) Color(0xFFD1ACFF) else Color(0xFF7040AC)
     val (icon, badgeBg, badgeTint, baseTypeLabel) = when {
-        item.isApk -> Quadruple(Icons.Default.Android, Color(0xFF34D399).copy(alpha = 0.2f), Color(0xFF34D399), "APK")
+        item.isApk -> Quadruple(Icons.Default.Android, greenTint.copy(alpha = 0.12f), greenTint, "APK")
         item.fileType == FileType.VIDEO -> Quadruple(Icons.Default.Movie, palette.primary.copy(alpha = 0.2f), palette.primary, "VIDEO")
-        item.fileType == FileType.AUDIO -> Quadruple(Icons.Default.MusicNote, Color(0xFFC084FC).copy(alpha = 0.2f), Color(0xFFC084FC), "AUDIO")
-        item.fileType == FileType.IMAGE -> Quadruple(Icons.Default.Image, Color(0xFF34D399).copy(alpha = 0.2f), Color(0xFF34D399), "IMAGE")
+        item.fileType == FileType.AUDIO -> Quadruple(Icons.Default.MusicNote, audioTint.copy(alpha = 0.12f), audioTint, "AUDIO")
+        item.fileType == FileType.IMAGE -> Quadruple(Icons.Default.Image, greenTint.copy(alpha = 0.12f), greenTint, "IMAGE")
         else -> Quadruple(Icons.AutoMirrored.Filled.InsertDriveFile, palette.surfaceBorder, palette.textSecondary, item.extension.uppercase(Locale.ROOT))
     }
     val typeLabel = if (item.isPendingDownload) "DOWNLOADING" else baseTypeLabel
@@ -540,16 +556,18 @@ fun GenericFileItemCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clip(HiCardShape)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.primary.copy(alpha = 0.16f) else palette.surfaceElevated),
-        border = if (isSelected) BorderStroke(1.dp, palette.primary) else null,
+        shape = HiCardShape,
+        colors = CardDefaults.cardColors(containerColor = if (isSelected) palette.selectionSurface else palette.surface),
+        border = BorderStroke(if (isSelected) 1.dp else 0.5.dp, if (isSelected) palette.primary else palette.surfaceBorder),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showSelectionControl) {
@@ -561,35 +579,36 @@ fun GenericFileItemCard(
                 fallbackIcon = icon,
                 fallbackBackground = badgeBg,
                 fallbackTint = badgeTint,
-                modifier = Modifier.size(38.dp),
+                modifier = Modifier.size(48.dp),
             )
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.displayName,
+                Text(
+                    text = item.displayName,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
                     color = palette.textPrimary,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
                     Text(
                         text = item.formattedSize,
-                        fontSize = 11.sp,
-                        color = badgeTint,
+                        fontSize = 12.sp,
+                        color = palette.textSecondary,
                         fontWeight = FontWeight.Medium
                     )
                     if (typeLabel.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("•", fontSize = 10.sp, color = palette.textSecondary)
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = typeLabel,
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = palette.textSecondary
                         )
                     }
@@ -604,7 +623,7 @@ fun GenericFileItemCard(
             )
 
             if (onMenuClick != null) {
-                IconButton(onClick = onMenuClick, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
                         contentDescription = "More options",

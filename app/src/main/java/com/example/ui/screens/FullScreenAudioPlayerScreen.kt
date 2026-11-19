@@ -124,7 +124,7 @@ fun FullScreenAudioPlayerScreen(
                     trackColor = palette.primary.copy(alpha = 0.24f),
                     onScrub = { scrub = it },
                     onSeekFraction = { fraction -> onSeek((fraction * total).toLong()) },
-                    modifier = Modifier.fillMaxWidth().height(40.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {

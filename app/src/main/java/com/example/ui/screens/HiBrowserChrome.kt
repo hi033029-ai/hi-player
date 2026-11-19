@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -431,16 +433,16 @@ internal fun HiBrowserMenuSheet(
     }
 }
 
-/** A row of same-size menu tiles that scrolls left to right when it doesn't fit. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> Unit) {
     val palette = LocalHiPalette.current
-    Row(
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items.forEach { item ->
             Column(
@@ -462,15 +464,13 @@ private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> 
                     modifier = Modifier.size(26.dp),
                 )
                 Spacer(Modifier.height(6.dp))
-                Box(modifier = Modifier.height(30.dp), contentAlignment = Alignment.TopCenter) {
+                Box(modifier = Modifier.heightIn(min = 30.dp), contentAlignment = Alignment.TopCenter) {
                     Text(
                         item.label,
                         color = if (item.enabled) palette.textPrimary else palette.textTertiary,
                         fontSize = 12.sp,
                         lineHeight = 14.sp,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -551,7 +551,7 @@ internal fun HiBrowserTabSwitcher(
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Adaptive(minSize = 152.dp * androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)),
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

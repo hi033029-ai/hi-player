@@ -2,6 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import com.example.data.AppPlayerSettings
 import com.example.data.AppThemeMode
 
@@ -57,48 +58,49 @@ data class HiThemePalette(
     val textSecondary: Color,
     val textTertiary: Color,
     val isDark: Boolean
-)
+) {
+    val selectionSurface: Color
+        get() = primary.copy(alpha = primary.alpha * 0.12f).compositeOver(surface)
+}
 
-// 1. Monochrome Dark: Background: #000000 | Accent: #FFFFFF | Text: #FFFFFF | Subtext: #8A8A8A
+// Neutral surfaces keep artwork prominent while making card boundaries visible.
 val MonochromeDarkPalette = HiThemePalette(
-    background = Color(0xFF000000),
-    surface = Color(0xFF000000),
-    surfaceElevated = Color(0xFF121212),
-    surfaceBorder = visibleThemeBorder(Color(0xFF121212), Color.White, true),
-    primary = Color(0xFFFFFFFF),
-    secondary = Color(0xFFCCCCCC),
-    textPrimary = Color(0xFFFFFFFF),
-    textSecondary = Color(0xFF8A8A8A),
-    textTertiary = Color(0xFF5A6578),
+    background = Color(0xFF0C0E12),
+    surface = Color(0xFF171A20),
+    surfaceElevated = Color(0xFF22262E),
+    surfaceBorder = visibleThemeBorder(Color(0xFF171A20), Color.White, true),
+    primary = Color(0xFFF2F4F8),
+    secondary = Color(0xFFCED5E0),
+    textPrimary = Color(0xFFF2F4F8),
+    textSecondary = Color(0xFFB1BAC8),
+    textTertiary = Color(0xFF96A1B2),
     isDark = true
 )
 
-// 2. Monochrome Light: Background: #FFFFFF | Accent: #000000 | Text: #000000 | Subtext: #8A8A8A
 val MonochromeLightPalette = HiThemePalette(
-    background = Color(0xFFFFFFFF),
+    background = Color(0xFFF3F5F8),
     surface = Color(0xFFFFFFFF),
-    surfaceElevated = Color(0xFFF5F5F5),
-    surfaceBorder = visibleThemeBorder(Color(0xFFF5F5F5), Color.Black, false),
-    primary = Color(0xFF000000),
-    secondary = Color(0xFF333333),
-    textPrimary = Color(0xFF000000),
-    textSecondary = Color(0xFF8A8A8A),
-    textTertiary = Color(0xFFAAAAAA),
+    surfaceElevated = Color(0xFFE9EDF2),
+    surfaceBorder = visibleThemeBorder(Color.White, Color.Black, false),
+    primary = Color(0xFF202631),
+    secondary = Color(0xFF495568),
+    textPrimary = Color(0xFF171D27),
+    textSecondary = Color(0xFF515D6E),
+    textTertiary = Color(0xFF586577),
     isDark = false
 )
 
-// 3. Ice Blue: Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate
 val IceBluePalette = HiThemePalette(
-    background = Color(0xFFB5D8EB),
-    backgroundGradient = listOf(Color(0xFFB5D8EB), Color(0xFFA5CCE2)),
-    surface = Color(0xFFC7E3F2),
-    surfaceElevated = Color(0xFFD8ECF7),
-    surfaceBorder = visibleThemeBorder(Color(0xFFD8ECF7), Color(0xFF0056B3), false),
-    primary = Color(0xFF0056B3),
-    secondary = Color(0xFF1E3A8A),
-    textPrimary = Color(0xFF0F172A),
-    textSecondary = Color(0xFF334155),
-    textTertiary = Color(0xFF64748B),
+    background = Color(0xFFEDF3FB),
+    backgroundGradient = listOf(Color(0xFFEDF3FB), Color(0xFFE6F0FB)),
+    surface = Color(0xFFFAFCFF),
+    surfaceElevated = Color(0xFFDFEAF8),
+    surfaceBorder = visibleThemeBorder(Color(0xFFFAFCFF), Color(0xFF245FD6), false),
+    primary = Color(0xFF245FD6),
+    secondary = Color(0xFF22676E),
+    textPrimary = Color(0xFF172B46),
+    textSecondary = Color(0xFF455B76),
+    textTertiary = Color(0xFF536780),
     isDark = false
 )
 

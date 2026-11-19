@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -25,8 +26,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.ColorLens
@@ -60,6 +65,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.activity.compose.BackHandler
@@ -79,6 +85,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,6 +98,9 @@ import com.example.R
 import com.example.data.AppThemeMode
 import com.example.data.HwAccelerationMode
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiCardShape
+import com.example.ui.theme.HiThumbnailShape
+import com.example.ui.theme.contrastContentColor
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.theme.getCustomPalette
 import com.example.ui.components.DiscoverSourceSettings
@@ -151,6 +163,7 @@ fun SettingsScreen(
         ) {
             SettingsCollapsibleSection(
                 title = "Google account",
+                icon = Icons.Default.AccountCircle,
                 subtitle = "Your Hi Player profile and sign-in",
                 expanded = showAccountSources,
                 onToggle = { showAccountSources = !showAccountSources }
@@ -159,6 +172,7 @@ fun SettingsScreen(
             }
             SettingsCollapsibleSection(
                 title = "Connections",
+                icon = Icons.Default.CloudQueue,
                 subtitle = "Cloud drives, network folders and media servers",
                 expanded = showConnections,
                 onToggle = { showConnections = !showConnections }
@@ -173,120 +187,105 @@ fun SettingsScreen(
             // 1. Theme & Appearance (Horizontal Form)
             SettingsCollapsibleSection(
                 title = "Themes & appearance",
+                icon = Icons.Default.Palette,
                 subtitle = "Choose presets or customize your colors",
                 expanded = showThemes,
                 onToggle = { showThemes = !showThemes }
             ) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                elevation = CardDefaults.cardElevation(0.dp)
-            ) {
-                Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        text = "CHOOSE APP THEME",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.primary,
-                        letterSpacing = 0.8.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
-                    )
-                    Text(
-                        text = "Swipe horizontally to preview & pick your visual experience",
-                        fontSize = 11.5.sp,
-                        color = palette.textSecondary,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
-                    )
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Text(
+                    text = "Choose a theme",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.textPrimary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
+                )
+                Text(
+                    text = "System follows your device’s appearance.",
+                    fontSize = 12.sp,
+                    color = palette.textSecondary,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp)
+                )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                    // Horizontal Theme Selector
-                    com.example.ui.components.HorizontalThemeSelector(
-                        selectedTheme = settings.themeMode,
-                        customPalette = getCustomPalette(settings),
-                        onThemeSelected = { mode ->
-                            libraryViewModel.setThemeMode(mode)
-                            showCustomTheme = mode == AppThemeMode.CUSTOM
-                        },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)
-                    )
+                // Horizontal Theme Selector
+                com.example.ui.components.HorizontalThemeSelector(
+                    selectedTheme = settings.themeMode,
+                    customPalette = getCustomPalette(settings),
+                    onThemeSelected = { mode ->
+                        libraryViewModel.setThemeMode(mode)
+                        showCustomTheme = mode == AppThemeMode.CUSTOM
+                    },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)
+                )
 
-                    Text(
-                        text = if (showCustomTheme) "Hide customization" else "Customize theme",
-                        color = palette.primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(horizontal = 14.dp, vertical = 4.dp)
-                            .clickable { showCustomTheme = !showCustomTheme },
-                    )
-                    if (showCustomTheme) {
-                        ThemeCustomizationPanel(
-                            settings = settings,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            onChange = { text, background, primary, surface, textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity ->
-                                libraryViewModel.setCustomThemeColors(
-                                    text, background, primary, surface,
-                                    textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity,
-                                )
-                            },
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    onClick = { showCustomTheme = !showCustomTheme },
+                    modifier = Modifier.padding(horizontal = 6.dp).heightIn(min = 48.dp),
+                ) {
+                    Text(if (showCustomTheme) "Hide customization" else "Customize theme",
+                        color = palette.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
+                if (showCustomTheme) {
+                    ThemeCustomizationPanel(
+                        settings = settings,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        onChange = { text, background, primary, surface, textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity ->
+                            libraryViewModel.setCustomThemeColors(
+                                text, background, primary, surface,
+                                textOpacity, backgroundOpacity, primaryOpacity, surfaceOpacity,
+                            )
+                        },
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
             }
 
             // 2. Global Text Size
             SettingsCollapsibleSection(
                 title = "Text size",
+                icon = Icons.Default.FormatSize,
                 subtitle = "Adjust text used throughout the player",
                 expanded = showTextSize,
                 onToggle = { showTextSize = !showTextSize }
             ) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                elevation = CardDefaults.cardElevation(0.dp)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Player text size",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = palette.textPrimary
-                        )
-                        Text(
-                            text = "${settings.uiTextSizeSp}sp",
-                            fontSize = 13.sp,
-                            color = palette.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Slider(
-                        value = settings.uiTextSizeSp.toFloat(),
-                        onValueChange = { libraryViewModel.setUiTextSize(it.roundToInt()) },
-                        valueRange = 12f..24f,
-                        steps = 11,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_ui_text_size_slider")
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Player text size",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = palette.textPrimary
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Small", fontSize = 11.sp, color = palette.textSecondary)
-                        Text("Large", fontSize = 11.sp, color = palette.textSecondary)
-                    }
+                    Text(
+                        text = "${settings.uiTextSizeSp}sp",
+                        fontSize = 13.sp,
+                        color = palette.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Slider(
+                    value = settings.uiTextSizeSp.toFloat(),
+                    onValueChange = { libraryViewModel.setUiTextSize(it.roundToInt()) },
+                    valueRange = 12f..24f,
+                    steps = 11,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_ui_text_size_slider")
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Small", fontSize = 11.sp, color = palette.textSecondary)
+                    Text("Large", fontSize = 11.sp, color = palette.textSecondary)
                 }
             }
             }
@@ -294,61 +293,56 @@ fun SettingsScreen(
             // 3. Hardware Decoder Mode
             SettingsCollapsibleSection(
                 title = "Decoder & hardware acceleration",
+                icon = Icons.Default.Memory,
                 subtitle = "Choose automatic, hardware, or software decoding",
                 expanded = showDecoder,
                 onToggle = { showDecoder = !showDecoder }
             ) {
-            Card(
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    HwAccelerationMode.entries.forEach { hwMode ->
-                        val isSelected = settings.hwAccelerationMode == hwMode
-                        Card(
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                HwAccelerationMode.entries.forEach { hwMode ->
+                    val isSelected = settings.hwAccelerationMode == hwMode
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { libraryViewModel.setHwAccelerationMode(hwMode) }
+                            .testTag("settings_hw_${hwMode.id}"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) palette.primary.copy(alpha = 0.15f) else Color.Transparent
+                        ),
+                        border = null,
+                        elevation = CardDefaults.cardElevation(0.dp)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { libraryViewModel.setHwAccelerationMode(hwMode) }
-                                .testTag("settings_hw_${hwMode.id}"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) palette.primary.copy(alpha = 0.15f) else Color.Transparent
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                            elevation = CardDefaults.cardElevation(0.dp)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = hwMode.displayName,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = palette.textPrimary
-                                    )
-                                    Text(
-                                        text = hwMode.description,
-                                        fontSize = 11.sp,
-                                        color = palette.textSecondary,
-                                        lineHeight = 15.sp
-                                    )
-                                }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = hwMode.displayName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = palette.textPrimary
+                                )
+                                Text(
+                                    text = hwMode.description,
+                                    fontSize = 11.sp,
+                                    color = palette.textSecondary,
+                                    lineHeight = 15.sp
+                                )
+                            }
 
-                                if (isSelected) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = palette.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = palette.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
                     }
@@ -359,38 +353,33 @@ fun SettingsScreen(
             // 4. Playback & Multitasking
             SettingsCollapsibleSection(
                 title = "Playback & multitasking",
+                icon = Icons.Default.Headphones,
                 subtitle = "Background audio and picture-in-picture",
                 expanded = showPlayback,
                 onToggle = { showPlayback = !showPlayback }
             ) {
-            Card(
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated)
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SettingsSwitchItem(
-                        icon = Icons.Default.Headphones,
-                        title = "Background Audio Playback",
-                        subtitle = "Keep listening when app is minimized or screen locked",
-                        checked = settings.backgroundPlayEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) pendingPlaybackPermission = "background"
-                            else libraryViewModel.setBackgroundPlay(false)
-                        }
-                    )
-                    HorizontalDivider(color = palette.surfaceBorder)
-                    SettingsSwitchItem(
-                        icon = Icons.Default.PictureInPictureAlt,
-                        title = "Auto Picture-in-Picture",
-                        subtitle = "Enter PiP automatically when returning to Home screen",
-                        checked = settings.autoPipEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) pendingPlaybackPermission = "pip"
-                            else libraryViewModel.setAutoPip(false)
-                        }
-                    )
-                }
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SettingsSwitchItem(
+                    icon = Icons.Default.Headphones,
+                    title = "Background Audio Playback",
+                    subtitle = "Keep listening when app is minimized or screen locked",
+                    checked = settings.backgroundPlayEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) pendingPlaybackPermission = "background"
+                        else libraryViewModel.setBackgroundPlay(false)
+                    }
+                )
+                HorizontalDivider(color = palette.surfaceBorder)
+                SettingsSwitchItem(
+                    icon = Icons.Default.PictureInPictureAlt,
+                    title = "Auto Picture-in-Picture",
+                    subtitle = "Enter PiP automatically when returning to Home screen",
+                    checked = settings.autoPipEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) pendingPlaybackPermission = "pip"
+                        else libraryViewModel.setAutoPip(false)
+                    }
+                )
             }
             }
 
@@ -427,6 +416,7 @@ fun SettingsScreen(
 @Composable
 private fun SettingsCollapsibleSection(
     title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     subtitle: String,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -434,35 +424,43 @@ private fun SettingsCollapsibleSection(
 ) {
     val palette = LocalHiPalette.current
     Card(
-        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
+        border = BorderStroke(0.5.dp, palette.surfaceBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = palette.surfaceElevated),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = HiCardShape,
+        colors = CardDefaults.cardColors(containerColor = palette.surface),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(modifier = Modifier.animateContentSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onToggle)
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
+                    .heightIn(min = 76.dp)
+                    .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+                    .clickable(role = Role.Button, onClick = onToggle)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(title, color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(subtitle, color = palette.textSecondary, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Box(Modifier.size(40.dp).background(palette.selectionSurface, HiThumbnailShape),
+                    contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = palette.primary, modifier = Modifier.size(22.dp))
                 }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, color = palette.textPrimary, fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, color = palette.textSecondary, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(8.dp))
                 Icon(
                     imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Hide $title" else "Show $title",
-                    tint = palette.primary,
+                    contentDescription = null,
+                    tint = palette.textSecondary,
                     modifier = Modifier.size(22.dp)
                 )
             }
             if (expanded) {
-                HorizontalDivider(color = palette.surfaceBorder)
+                HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = palette.surfaceBorder.copy(alpha = 0.55f))
                 Column(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
                     content = content
@@ -481,9 +479,10 @@ private fun SettingsSwitchItem(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val palette = LocalHiPalette.current
-    val uiMetrics = LocalHiUiMetrics.current
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -498,32 +497,34 @@ private fun SettingsSwitchItem(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
                     color = palette.textPrimary,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
                     text = subtitle,
                     color = palette.textSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 2,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
+        Spacer(Modifier.width(10.dp))
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = contrastContentColor(palette.primary, palette.surface),
                 checkedTrackColor = palette.primary,
                 checkedBorderColor = palette.primary,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = Color(0xFF94A3B8),
-                uncheckedBorderColor = Color(0xFF94A3B8)
+                uncheckedThumbColor = palette.textSecondary,
+                uncheckedTrackColor = palette.surfaceElevated,
+                uncheckedBorderColor = palette.surfaceBorder
             )
         )
     }

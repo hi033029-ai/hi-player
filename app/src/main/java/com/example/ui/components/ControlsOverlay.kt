@@ -110,7 +110,6 @@ fun ControlsOverlay(
     isLocked: Boolean,
     showLockedUnlockControl: Boolean,
     isPlaying: Boolean,
-    isBuffering: Boolean,
     currentPositionMs: Long,
     durationMs: Long,
     bufferedPositionMs: Long,
@@ -171,7 +170,7 @@ fun ControlsOverlay(
                 IconButton(
                     onClick = onToggleLock,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp)
                         .testTag("unlock_screen_button")
                 ) {
                     Icon(
@@ -270,14 +269,15 @@ fun ControlsOverlay(
                     // Restore the original left/right utility groups. On a narrow
                     // screen this row scrolls instead of squeezing labels or targets.
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val utilityCellWidth = (maxWidth / 6).coerceIn(48.dp, 58.dp)
+                        val labelScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                        val utilityCellWidth = (maxWidth / 6).coerceIn(48.dp * labelScale, 58.dp * labelScale)
                         val utilityWidth = maxOf(maxWidth, utilityCellWidth * 6)
                         Row(
                             modifier = Modifier.horizontalScroll(rememberScrollState()).width(utilityWidth),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, width = utilityCellWidth)
-                            PlayerToolbarTextButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip, width = utilityCellWidth)
+                            PlayerToolbarButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, width = utilityCellWidth)
+                            PlayerToolbarButton(Icons.Default.PictureInPictureAlt, "Floating Window", onEnterPip, width = utilityCellWidth)
                             Column(
                                 modifier = Modifier.width(utilityCellWidth),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -288,20 +288,20 @@ fun ControlsOverlay(
                                     onClick = onToggleHdrEnhance,
                                     onLongClick = onLongPressHdrEnhance,
                                     modifier = Modifier.size(48.dp)
-                                        .semantics { stateDescription = pictureModeLabel }
+                                        .semantics { stateDescription = if (isHdrSwitching) "Switching" else if (isHdrEnhanceActive) "On, $pictureModeLabel" else "Off" }
                                         .onGloballyPositioned { onHdrBounds(it.boundsInWindow()) },
                                 )
                                 Text(
-                                    text = "HDR",
+                                    text = if (isHdrEnhanceActive) "HDR on" else "HDR off",
                                     color = Color.White.copy(alpha = 0.86f),
                                     fontSize = 10.sp,
                                     textAlign = TextAlign.Center,
                                 )
                             }
                             Spacer(Modifier.weight(1f))
-                            PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, width = utilityCellWidth)
-                            PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White, width = utilityCellWidth)
-                            PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer, width = utilityCellWidth)
+                            PlayerToolbarButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, width = utilityCellWidth)
+                            PlayerToolbarButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White, width = utilityCellWidth)
+                            PlayerToolbarButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer, width = utilityCellWidth)
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -555,30 +555,6 @@ internal fun HiVideoSeekBar(
     }
 }
 
-@Composable
-private fun PlayerToolbarTextButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: Color = Color.White,
-    width: Dp = 58.dp,
-) {
-    Column(
-        modifier = Modifier.width(width).heightIn(min = 60.dp)
-            .clickable(onClick = onClick).padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.86f),
-            fontSize = 10.sp,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PlayerToolbarButton(
@@ -586,12 +562,13 @@ private fun PlayerToolbarButton(
     label: String,
     onClick: () -> Unit,
     tint: Color = Color.White,
+    width: Dp = 58.dp,
     testTag: String = "",
     onLongClick: (() -> Unit)? = null,
 ) {
     Column(
         modifier = Modifier
-            .width(58.dp)
+            .width(width)
             .heightIn(min = 60.dp)
             .testTag(testTag)
             .combinedClickable(

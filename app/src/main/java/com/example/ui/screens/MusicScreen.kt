@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -102,6 +104,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,6 +120,8 @@ import com.example.model.VideoItem
 import com.example.ui.components.AudioTrackThumbnail
 import com.example.ui.components.reorderableDrag
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiCardShape
+import com.example.ui.theme.HiThumbnailShape
 import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.MusicViewModel
 import kotlinx.coroutines.flow.flowOf
@@ -358,17 +364,17 @@ fun MusicScreen(
                 ) {
                     gridItems(groupedAudio.entries.toList(), key = { entry -> "audio_collection_${entry.key}" }) { entry ->
                         Card(
-                            border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .combinedClickable(
                                     onClick = { if (audioSelectionMode && pageMode == "Folders") toggleAudioFolder(entry.value) else if (!audioSelectionMode) selectedCollection = entry.key },
                                     onLongClick = if (pageMode == "Folders") ({ toggleAudioFolder(entry.value) }) else null,
                                 ),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = HiCardShape,
                             colors = CardDefaults.cardColors(containerColor = if (audioSelectionMode && pageMode == "Folders" &&
                                 entry.value.isNotEmpty() && entry.value.all { audioLibraryKey(it) in selectedAudioKeys })
-                                palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated),
+                                palette.selectionSurface else palette.surface),
                             elevation = CardDefaults.cardElevation(0.dp),
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
@@ -386,7 +392,7 @@ fun MusicScreen(
                                 Text(
                                     text = entry.key,
                                     color = palette.textPrimary,
-                                    fontSize = 13.sp,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
@@ -395,7 +401,7 @@ fun MusicScreen(
                                 Text(
                                     text = "${entry.value.size} ${if (entry.value.size == 1) "track" else "tracks"}",
                                     color = palette.textSecondary,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                 )
                             }
                         }
@@ -608,128 +614,95 @@ fun AudioTrackCard(
     reorderModifier: Modifier = Modifier,
 ) {
     val palette = LocalHiPalette.current
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .then(if (isSelected || isMultiSelected) Modifier.hiContainerBorder(RoundedCornerShape(12.dp), selected = true) else Modifier)
-            .background(if (isSelected || isMultiSelected) palette.primary.copy(alpha = 0.08f) else palette.surfaceElevated)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp)
-            .testTag("audio_track_${track.id}"),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Audio Track Thumbnail
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    if (isSelected) palette.primary.copy(alpha = 0.25f)
-                    else palette.surfaceElevated
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            AudioTrackThumbnail(
-                track = track,
-                modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(8.dp)
-            )
-
-            if (isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = "Playing",
-                        tint = palette.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+    var menuExpanded by remember(track.id) { mutableStateOf(false) }
+    val actions: @Composable () -> Unit = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (showReorderHandle) {
+                Icon(Icons.Default.DragHandle, "Hold to reorder audio", tint = palette.textSecondary,
+                    modifier = Modifier.size(48.dp).then(reorderModifier).padding(12.dp))
+            }
+            if (onDelete != null && !isMultiSelected) {
+                Box {
+                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.MoreVert, "Audio options", tint = palette.textSecondary)
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("Move to Recycle Bin") }, onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        })
+                    }
                 }
             }
         }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.5.sp,
-                color = if (isSelected) palette.primary else palette.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = track.artist,
-                    modifier = Modifier.weight(1f),
-                    fontSize = 11.5.sp,
-                    color = palette.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "•", fontSize = 10.sp, color = palette.textSecondary)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = track.album,
-                    modifier = Modifier.weight(1f),
-                    fontSize = 11.sp,
-                    color = palette.textSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+    }
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val compact = maxWidth < (300f * LocalDensity.current.fontScale.coerceAtLeast(1f)).dp
+        val highlighted = isSelected || isMultiSelected
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(HiCardShape)
+                .hiContainerBorder(HiCardShape, selected = highlighted)
+                .background(if (highlighted) palette.selectionSurface else palette.surface)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .semantics { selected = highlighted }
+                .testTag("audio_track_${track.id}"),
+        ) {
+            if (compact) {
+                AudioCardArtwork(track, isPlaying, Modifier.fillMaxWidth().aspectRatio(1.5f), RoundedCornerShape(0.dp))
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    AudioCardDetails(track)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(track.durationFormatted, fontSize = 12.sp, color = palette.textSecondary, modifier = Modifier.weight(1f))
+                        actions()
+                    }
+                }
+            } else {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    AudioCardArtwork(track, isPlaying, Modifier.size(56.dp))
+                    Spacer(Modifier.width(12.dp))
+                    AudioCardDetails(track, Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        actions()
+                        Text(track.durationFormatted, fontSize = 12.sp, color = palette.textSecondary)
+                    }
+                }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        if (showReorderHandle) {
-            Icon(Icons.Default.DragHandle, "Hold to reorder audio", tint = palette.textSecondary,
-                modifier = Modifier.size(32.dp).then(reorderModifier))
+@Composable
+private fun AudioCardDetails(track: AudioItem, modifier: Modifier = Modifier) {
+    val palette = LocalHiPalette.current
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(track.title, color = palette.textPrimary, fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(listOf(track.artist, track.album).filter { it.isNotBlank() }.joinToString(" · "),
+            color = palette.textSecondary, fontSize = 12.sp, lineHeight = 18.sp,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (track.audioFormat.isNotBlank()) {
+            Text(track.audioFormat, color = palette.primary, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.background(palette.selectionSurface, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp))
         }
-        if (onDelete != null && !isMultiSelected) Box {
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(Icons.Default.MoreVert, "Audio options", tint = palette.textSecondary)
-            }
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                DropdownMenuItem(text = { Text("Move to Recycle Bin") }, onClick = {
-                    menuExpanded = false
-                    onDelete()
-                })
-            }
-        }
+    }
+}
 
-        Column(modifier = Modifier.widthIn(max = 80.dp), horizontalAlignment = Alignment.End) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
-                    .background(palette.primary.copy(alpha = 0.15f))
-                    .padding(horizontal = 5.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = track.audioFormat,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 9.sp,
-                    color = palette.primary,
-                    fontWeight = FontWeight.Bold
-                )
+@Composable
+private fun AudioCardArtwork(
+    track: AudioItem,
+    playing: Boolean,
+    modifier: Modifier,
+    shape: androidx.compose.ui.graphics.Shape = HiThumbnailShape,
+) {
+    Box(modifier.clip(shape)) {
+        AudioTrackThumbnail(track, Modifier.fillMaxSize(), shape = shape)
+        if (playing) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.GraphicEq, "Playing", tint = Color.White, modifier = Modifier.size(24.dp))
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = track.durationFormatted,
-                fontSize = 11.sp,
-                color = palette.textSecondary
-            )
         }
     }
 }
@@ -808,7 +781,7 @@ fun WavyNowPlayingBottomSheet(
             endColor = palette.secondary,
             trackColor = palette.primary.copy(alpha = 0.24f),
             onSeekFraction = { fraction -> onSeek((fraction * total).toLong()) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(40.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
         )
     }
 }

@@ -35,11 +35,11 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
     darkColorScheme(
         primary = palette.primary,
         onPrimary = contrastContentColor(palette.primary, palette.surface),
-        primaryContainer = palette.surfaceElevated,
+        primaryContainer = palette.selectionSurface,
         onPrimaryContainer = palette.textPrimary,
         secondary = palette.secondary,
         onSecondary = contrastContentColor(palette.secondary, palette.surface),
-        secondaryContainer = palette.surfaceElevated,
+        secondaryContainer = palette.selectionSurface,
         onSecondaryContainer = palette.textPrimary,
         tertiary = palette.secondary,
         onTertiary = contrastContentColor(palette.secondary, palette.surface),
@@ -49,17 +49,25 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
         onSurface = palette.textPrimary,
         surfaceVariant = palette.surfaceElevated,
         onSurfaceVariant = palette.textSecondary,
-        outline = palette.surfaceBorder
+        outline = palette.surfaceBorder,
+        outlineVariant = palette.surfaceBorder.copy(alpha = 0.55f),
+        surfaceContainerLowest = palette.background,
+        surfaceContainerLow = palette.surface,
+        surfaceContainer = palette.surface,
+        surfaceContainerHigh = palette.surfaceElevated,
+        surfaceContainerHighest = palette.surfaceElevated,
+        surfaceBright = palette.surfaceElevated,
+        surfaceDim = palette.background,
     )
 } else {
     lightColorScheme(
         primary = palette.primary,
         onPrimary = contrastContentColor(palette.primary, palette.surface),
-        primaryContainer = palette.surfaceElevated,
+        primaryContainer = palette.selectionSurface,
         onPrimaryContainer = palette.textPrimary,
         secondary = palette.secondary,
         onSecondary = contrastContentColor(palette.secondary, palette.surface),
-        secondaryContainer = palette.surfaceElevated,
+        secondaryContainer = palette.selectionSurface,
         onSecondaryContainer = palette.textPrimary,
         tertiary = palette.secondary,
         onTertiary = contrastContentColor(palette.secondary, palette.surface),
@@ -69,7 +77,15 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
         onSurface = palette.textPrimary,
         surfaceVariant = palette.surfaceElevated,
         onSurfaceVariant = palette.textSecondary,
-        outline = palette.surfaceBorder
+        outline = palette.surfaceBorder,
+        outlineVariant = palette.surfaceBorder.copy(alpha = 0.55f),
+        surfaceContainerLowest = palette.background,
+        surfaceContainerLow = palette.surface,
+        surfaceContainer = palette.surface,
+        surfaceContainerHigh = palette.surfaceElevated,
+        surfaceContainerHighest = palette.surfaceElevated,
+        surfaceBright = palette.surface,
+        surfaceDim = palette.background,
     )
 }
 
@@ -108,6 +124,7 @@ fun HiPlayerTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
+            shapes = HiShapes,
             content = content
         )
     }

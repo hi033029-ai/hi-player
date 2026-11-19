@@ -53,25 +53,30 @@ fun NeonSeekBar(
     val trackHeight by animateDpAsState(if (scrubbing) 8.dp else 4.dp, tween(160), label = "seekTrack")
     val thumbRadius by animateDpAsState(if (scrubbing) 10.dp else 7.dp, tween(160), label = "seekThumb")
     val glow by animateFloatAsState(if (scrubbing) 0.45f else 0.25f, tween(160), label = "seekGlow")
+    val insetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.toPx() }
+    fun fractionAt(x: Float, width: Int): Float {
+        val inset = minOf(insetPx, width / 2f)
+        return ((x - inset) / (width - 2f * inset).coerceAtLeast(1f)).coerceIn(0f, 1f)
+    }
     Canvas(
         modifier
             .fillMaxWidth()
-            .height(32.dp)
+            .height(48.dp)
             .testTag("audio_neon_seekbar")
             .semantics {
                 contentDescription = "Music playback position"
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
                 if (enabled) setProgress { target -> currentOnSeek(target.coerceIn(0f, 1f)); true }
             }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, insetPx) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> currentOnSeek((offset.x / size.width).coerceIn(0f, 1f)) }
+                detectTapGestures { offset -> currentOnSeek(fractionAt(offset.x, size.width)) }
             }
-            .pointerInput(enabled) {
+            .pointerInput(enabled, insetPx) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
-                        dragFraction = (offset.x / size.width).coerceIn(0f, 1f); currentOnScrub(dragFraction)
+                        dragFraction = fractionAt(offset.x, size.width); currentOnScrub(dragFraction)
                     },
                     onDragEnd = {
                         dragFraction?.let(currentOnSeek); dragFraction = null; currentOnScrub(null)
@@ -79,14 +84,14 @@ fun NeonSeekBar(
                     onDragCancel = { dragFraction = null; currentOnScrub(null) },
                     onHorizontalDrag = { change, _ ->
                         change.consume()
-                        dragFraction = (change.position.x / size.width).coerceIn(0f, 1f); currentOnScrub(dragFraction)
+                        dragFraction = fractionAt(change.position.x, size.width); currentOnScrub(dragFraction)
                     },
                 )
             }
     ) {
         val thumbR = thumbRadius.toPx()
-        val left = thumbR
-        val width = (size.width - thumbR * 2f).coerceAtLeast(1f)
+        val left = minOf(10.dp.toPx(), size.width / 2f)
+        val width = (size.width - left * 2f).coerceAtLeast(1f)
         val h = trackHeight.toPx()
         val top = (size.height - h) / 2f
         val radius = CornerRadius(h / 2f)

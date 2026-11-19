@@ -48,7 +48,7 @@ fun PlayerGestureCoach(state: FirstUseTipState, hdrBounds: Rect?, rootOrigin: Of
         "In Videos or Music, swipe left or right across the library to change its view. You can also tap its tabs.",
         "In the video player, double-tap the left or right side to seek 10 seconds. Double-tap the centre to play or pause.",
         "While watching, swipe up or down on the left for brightness, or on the right for volume.",
-        "Tap the highlighted HDR button for picture presets. Choose Customize there for whole-picture and individual-colour controls. Device HDR support varies."
+        "Tap HDR to switch picture enhancement on or off. Touch and hold it to choose a preset or customize the picture."
     )
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.76f))

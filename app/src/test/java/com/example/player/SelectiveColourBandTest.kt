@@ -38,12 +38,10 @@ class SelectiveColourBandTest {
         assertTrue(ColorPresets.ALL.filterNot { it.isIdentityTransform() }.all { it.contrast <= 1.05f })
     }
 
-    @Test fun quickHdrPresetCycleWrapsAndReturnsToOriginalFromCustomPresets() {
-        assertEquals(ColorPresets.VIVID_HDR, nextHdrCyclePreset(ColorPresets.HDR_DISABLED))
-        assertEquals(ColorPresets.CINEMATIC, nextHdrCyclePreset(ColorPresets.VIVID_HDR))
-        assertEquals(ColorPresets.HDR_BRIGHT, nextHdrCyclePreset(ColorPresets.CINEMATIC))
-        assertEquals(ColorPresets.HDR_DISABLED, nextHdrCyclePreset(ColorPresets.HDR_BRIGHT))
-        assertEquals(ColorPresets.HDR_DISABLED, nextHdrCyclePreset(ColorPresets.CUSTOM))
+    @Test fun togglingOffReturnsOriginalAndTogglingOnRestoresCustomGrade() {
+        val custom = ColorPresets.CUSTOM.copy(saturation = 1.1f)
+        assertEquals(ColorPresets.HDR_DISABLED, toggledPicturePreset(true, custom))
+        assertEquals(custom, toggledPicturePreset(false, custom))
     }
 
     @Test fun dolbyVisionIsRecognizedFromMimeOrCodecWhenTransferMetadataIsMissing() {

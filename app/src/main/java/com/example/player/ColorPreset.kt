@@ -53,16 +53,8 @@ object ColorPresets {
     val ALL = listOf(HDR_DISABLED, VIVID_HDR, CINEMATIC, HDR_BRIGHT, NATURAL_HDR, WARM, COOL, EYE_COMFORT)
 }
 
-internal fun nextHdrCyclePreset(current: ColorPreset): ColorPreset {
-    val cycle = listOf(
-        ColorPresets.HDR_DISABLED,
-        ColorPresets.VIVID_HDR,
-        ColorPresets.CINEMATIC,
-        ColorPresets.HDR_BRIGHT,
-    )
-    val currentIndex = cycle.indexOfFirst { it.name == current.name }
-    return cycle[(currentIndex + 1 + cycle.size) % cycle.size]
-}
+internal fun toggledPicturePreset(active: Boolean, lastEnhanced: ColorPreset): ColorPreset =
+    if (active) ColorPresets.HDR_DISABLED else lastEnhanced
 
 /** Midpoint is unchanged; a modest gain only affects pixels in this hue band. */
 fun selectiveExposureAdjustment(hue: Float, intensity: Float): ColorTargetAdjustment? {

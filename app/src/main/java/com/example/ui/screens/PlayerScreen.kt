@@ -99,6 +99,8 @@ import com.example.ui.GlVideoSurface
 import com.example.ui.VlcHdrVideoSurface
 import com.example.ui.NativeHdrPlayerSurface
 import com.example.player.HdrColorModeManager
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import com.example.player.FirstFrameRevealPolicy
 import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
@@ -848,7 +850,6 @@ fun PlayerScreen(
             isLocked = isScreenLocked,
             showLockedUnlockControl = showLockedUnlockControl,
             isPlaying = isPlaying,
-            isBuffering = isBuffering,
             currentPositionMs = currentPositionMs,
             durationMs = durationMs,
             bufferedPositionMs = bufferedPositionMs,
@@ -891,16 +892,10 @@ fun PlayerScreen(
             isHdrEnhanceActive = applyColorPresetToVideo,
             pictureModeLabel = if (applyColorPresetToVideo) hdrColorPreset.name.removePrefix("HDR ").removeSuffix(" HDR") else "Original",
             isHdrSwitching = managedHdrSwitching,
-            // Opening the chooser is non-destructive. Apply a grade only after the
-            // user explicitly selects one of the visible presets.
             onToggleHdrEnhance = {
-                if (showHdrPresetMenu || showHdrCustomizer) {
-                    showHdrPresetMenu = false
-                    showHdrCustomizer = false
-                } else {
-                    showHdrPresetMenu = true
-                    showHdrCustomizer = false
-                }
+                showHdrPresetMenu = false
+                showHdrCustomizer = false
+                playerViewModel.togglePictureEnhancement()
             },
             onHdrBounds = { guideHdrBounds = it },
             onLongPressHdrEnhance = {
@@ -1003,40 +998,13 @@ fun PlayerScreen(
                 .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
         )
 
-        // Local probing/decoder setup and picture-mode changes can also buffer.
-        // A black surface alone must not leave the controls looking unresponsive.
-        // Exact seeks in long-GOP local files may need a short decoder preroll.
-        // Keep the last presented picture visible instead of covering every seek
-        // with a full loading card; retain feedback for startup, growing files,
-        // and network playback where waiting for data is actionable.
-        if (isBuffering && !isPlaying && playerError == null && !isScreenLocked &&
-            (isNetworkStream || isGrowingDownload || !firstFrameRendered)
-        ) {
-            Card(
-                modifier = Modifier.align(Alignment.Center),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xB8141E2E))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White
-                    )
-                    Column {
-                        Text(if (isNetworkStream) "Buffering" else "Loading video", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Speed, contentDescription = null, tint = Color.White.copy(alpha = 0.72f), modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (isNetworkStream) "Waiting for network data" else "Preparing playback", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp)
-                        }
-                    }
-                }
-            }
+        if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center).size(24.dp)
+                    .semantics { contentDescription = "Buffering stream" },
+                strokeWidth = 2.dp,
+                color = Color.White,
+            )
         }
 
         if (showStartOverPrompt && !isScreenLocked) {

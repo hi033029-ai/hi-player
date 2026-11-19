@@ -5,12 +5,16 @@ import com.example.ui.theme.hiContainerBorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,21 +22,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiCardShape
+import com.example.ui.theme.HiThumbnailShape
 import com.example.viewmodel.VideoFolder
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun FolderItemRow(
     folder: VideoFolder,
@@ -47,31 +53,30 @@ fun FolderItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
-            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
+            .heightIn(min = 76.dp)
+            .clip(HiCardShape).hiContainerBorder(HiCardShape, selected = isSelected)
+            .background(if (isSelected) palette.selectionSurface else palette.surface)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp)
+            .semantics { selected = isSelected }
+            .padding(horizontal = 12.dp, vertical = 12.dp)
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Plain folder icon; selection is communicated through theme-colored text.
         Box(
             modifier = Modifier
-                .width(36.dp)
-                .height(36.dp),
+                .size(48.dp)
+                .background(palette.selectionSurface, HiThumbnailShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Folder,
-                contentDescription = folder.name,
-                tint = if (isSelected) palette.primary
-                else if (palette.isDark) Color(0xFF94A3B8)
-                else Color(0xFF94A3B8),
+                contentDescription = null,
+                tint = palette.primary,
                 modifier = Modifier.size(24.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         // Folder Name and Video Count
         Column(
@@ -79,22 +84,25 @@ fun FolderItemRow(
         ) {
             Text(
                 text = folder.name,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Normal,
-                color = if (folder.name.equals("Download", ignoreCase = true) || isSelected) {
-                    palette.primary
-                } else {
-                    palette.textPrimary
-                },
-                maxLines = 1,
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.textPrimary,
+                maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
 
-            folder.location?.let { Text(it, fontSize = 11.sp, color = palette.textSecondary) }
+            folder.location?.let {
+                Text(it, fontSize = 12.sp, color = palette.textSecondary,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
                 Text(
                     text = countText,
@@ -103,15 +111,14 @@ fun FolderItemRow(
                     fontWeight = FontWeight.Normal
                 )
                 if (hasNewVideo) {
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "NEW",
+                        text = "New",
                         modifier = Modifier
-                            .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                            .background(palette.selectionSurface, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.primary
                     )
                 }
             }
@@ -123,7 +130,7 @@ fun FolderItemRow(
  * Grid-shaped folder tile, used when the library's grid/list toggle is set
  * to grid mode (previously the toggle had no effect at all on folder listings).
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun FolderGridCard(
     name: String,
@@ -140,24 +147,25 @@ fun FolderGridCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
-            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
+            .clip(HiCardShape).hiContainerBorder(HiCardShape, selected = isSelected)
+            .background(if (isSelected) palette.selectionSurface else palette.surface)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 10.dp, horizontal = 8.dp)
+            .semantics { selected = isSelected }
+            .padding(14.dp)
             .testTag("folder_grid_$name"),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.Start
     ) {
         Box(
             modifier = Modifier
-                .size(56.dp)
-                .background(Color.Transparent),
+                .size(48.dp)
+                .background(palette.selectionSurface, HiThumbnailShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Folder,
-                contentDescription = name,
-                tint = if (isSelected) palette.primary else Color(0xFF94A3B8),
-                modifier = Modifier.size(30.dp)
+                contentDescription = null,
+                tint = palette.primary,
+                modifier = Modifier.size(26.dp)
             )
         }
 
@@ -165,36 +173,39 @@ fun FolderGridCard(
 
         Text(
             text = name,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (isSelected) palette.primary else palette.textPrimary,
-            maxLines = 1,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.textPrimary,
+            maxLines = 2,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
 
-        location?.let { Text(it, fontSize = 11.sp, color = palette.textSecondary) }
+        location?.let {
+            Text(it, fontSize = 12.sp, color = palette.textSecondary,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = if (videoCount == 1) "1 video" else "$videoCount videos",
-                fontSize = 11.5.sp,
+                fontSize = 12.sp,
                 color = palette.textSecondary
             )
             if (hasNewVideo) {
-                Spacer(modifier = Modifier.width(5.dp))
                 Text(
-                    text = "NEW",
+                    text = "New",
                     modifier = Modifier
-                        .background(Color(0xFF16A34A), RoundedCornerShape(5.dp))
+                        .background(palette.selectionSurface, RoundedCornerShape(5.dp))
                         .padding(horizontal = 5.dp, vertical = 1.dp),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.primary
                 )
             }
         }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.PaddingValues
@@ -499,7 +500,10 @@ internal fun VideoLibraryPage(
             // 4. PLAN SHEET CONTENT CANVAS
             // Keep branch-specific fillMaxSize() lists below the toolbar/header.
             // A weighted canvas prevents them from drawing underneath the controls.
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                // Match the adaptive grids using actual content width, padding, and gaps.
+                val folderColumns = ((maxWidth.value - 24f + 10f) / (gridMinSize + 10f))
+                    .toInt().coerceAtLeast(1)
             Column(Modifier.fillMaxSize()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasFullDownloadAccess && allVideos.any { it.isPartialDownload }) {
                 Row(
@@ -649,7 +653,7 @@ internal fun VideoLibraryPage(
                         }
                         if (node.childFolders.isNotEmpty()) {
                             if (viewMode == LibraryViewMode.GRADLE_GRID) {
-                                val columns = (360 / gridMinSize).coerceIn(1, 3)
+                                val columns = folderColumns
                                 val rows = node.childFolders.chunked(columns)
                                 items(rows, key = { row -> row.first().dirPath }) { row ->
                                     Row(
@@ -668,7 +672,7 @@ internal fun VideoLibraryPage(
                                                 )
                                             }
                                         }
-                                        if (row.size == 1) {
+                                        repeat(columns - row.size) {
                                             Box(modifier = Modifier.weight(1f))
                                         }
                                     }

@@ -43,7 +43,6 @@ class PlayerTransportActionsTest {
                     isLocked = false,
                     showLockedUnlockControl = false,
                     isPlaying = false,
-                    isBuffering = false,
                     currentPositionMs = 20_000L,
                     durationMs = 120_000L,
                     bufferedPositionMs = 30_000L,

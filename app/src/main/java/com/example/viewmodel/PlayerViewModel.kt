@@ -624,6 +624,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     val hdrEnhanceActive = engine.hdrEnhanceActive
 
+    private var lastEnhancedPreset = ColorPresets.NATURAL_HDR
+
+    fun togglePictureEnhancement() {
+        val current = pendingPicture ?: engine.hdrColorPreset.value
+        val active = com.example.player.shouldApplyColorPreset(current,
+            pendingPicture != null || engine.hdrEnhanceActive.value)
+        if (active) lastEnhancedPreset = current
+        selectPictureMode(com.example.player.toggledPicturePreset(active, lastEnhancedPreset))
+    }
+
     fun selectPictureMode(preset: ColorPreset) {
         pendingPicture = preset
         if (preset.name == ColorPresets.CUSTOM.name) _customPicturePreset.value = preset

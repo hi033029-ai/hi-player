@@ -2,13 +2,16 @@ package com.example.ui.components
 
 import com.example.ui.theme.hiContainerBorder
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,8 +32,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -49,19 +50,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.model.VideoItem
 import com.example.model.VideoResolutionBadge
 import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiCardShape
+import com.example.ui.theme.HiThumbnailShape
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun VideoItemCard(
     video: VideoItem,
@@ -78,316 +80,323 @@ fun VideoItemCard(
     modifier: Modifier = Modifier,
     reorderHandle: (@Composable () -> Unit)? = null,
 ) {
-    val context = LocalContext.current
     val palette = LocalHiPalette.current
-    var menuExpanded by remember { mutableStateOf(false) }
-    val compactScreen = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 360
+    var menuExpanded by remember(video.id) { mutableStateOf(false) }
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val compactScreen = maxWidth < 360.dp
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
-            .testTag("video_card_${video.id}")
-    ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .clip(HiCardShape)
+                .hiContainerBorder(HiCardShape, selected = isSelected)
+                .semantics { selected = isSelected }
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .background(if (isSelected) palette.selectionSurface else palette.surface)
+                .testTag("video_card_${video.id}")
         ) {
-            // Video Thumbnail with Duration & 4K badge
-            Box(
+            Row(
                 modifier = Modifier
-                    .width(if (compactScreen) 96.dp else 118.dp)
-                    .height(if (compactScreen) 68.dp else 76.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.surface)
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                VideoThumbnail(
-                    video = video,
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(8.dp),
-                    contentScale = ContentScale.Crop
-                )
-
-                // Dark gradient overlay for badge readability
+                // Video Thumbnail with Duration & 4K badge
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color(0x99000000))
-                            )
-                        )
-                )
-
-                // Play icon in center
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .align(Alignment.Center)
-                        .background(Color(0x80000000), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
+                        .width(if (compactScreen) 96.dp else 116.dp)
+                        .aspectRatio(1.45f)
+                        .clip(HiThumbnailShape)
+                        .background(palette.surface)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                    VideoThumbnail(
+                        video = video,
+                        modifier = Modifier.fillMaxSize(),
+                        shape = HiThumbnailShape,
+                        contentScale = ContentScale.Crop
                     )
-                }
 
-                // 4K / HDR Badge
-                if (video.resolutionBadge == VideoResolutionBadge.UHD_4K || video.isHdr) {
+                    // Dark gradient overlay for badge readability
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(3.dp)
+                            .fillMaxSize()
                             .background(
-                                Brush.horizontalGradient(
-                                    listOf(Color(0xFFFFB300), Color(0xFFFF6D00))
-                                ),
-                                RoundedCornerShape(3.dp)
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color(0x99000000))
+                                )
                             )
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                    ) {
-                        Text(
-                            text = if (video.isHdr) "4K HDR" else "4K UHD",
-                            color = Color.Black,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                } else if (video.resolutionBadge == VideoResolutionBadge.FHD_1080P) {
+                    )
+
+                    // Play icon in center
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(3.dp)
-                            .background(Color(0xCC0284C7), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 3.dp, vertical = 1.dp)
+                            .size(28.dp)
+                            .align(Alignment.Center)
+                            .background(Color(0x80000000), RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "1080p",
-                            color = Color.White,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                if (video.isNewVideo && !video.isPartialDownload) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(3.dp)
-                            .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                // A partially downloaded file stays identifiable by its own
-                // filename. Do not add a transfer label, progress bar, speed,
-                // or state badge to the video library card.
-                if (!video.isPartialDownload) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(3.dp)
-                            .background(Color(0xCC000000), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 3.dp, vertical = 1.5.dp)
-                    ) {
-                        Text(
-                            text = video.formattedDuration,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            // Video Details (Plan sheet columns)
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 2.dp)
-            ) {
-                Text(
-                    text = video.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.5.sp
-                    ),
-                    color = palette.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (!video.isPartialDownload) {
-                    if (progressFraction > 0f) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        LinearProgressIndicator(
-                            progress = { progressFraction },
-                            modifier = Modifier.fillMaxWidth().height(3.dp),
-                            color = palette.primary,
-                            trackColor = palette.surfaceBorder,
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = video.formattedSize,
-                            fontSize = 11.sp,
-                            color = palette.textSecondary
-                        )
-                        Text(
-                            text = "•",
-                            fontSize = 11.sp,
-                            color = palette.textSecondary
-                        )
+                    // 4K / HDR Badge
+                    if (video.resolutionBadge == VideoResolutionBadge.UHD_4K || video.isHdr) {
                         Box(
                             modifier = Modifier
-                                .background(palette.primary.copy(alpha = 0.12f), RoundedCornerShape(3.dp))
+                                .align(Alignment.TopStart)
+                                .padding(3.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFFFFB300), Color(0xFFFF6D00))
+                                    ),
+                                    RoundedCornerShape(3.dp)
+                                )
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(
-                                text = video.codec,
-                                fontSize = 10.sp,
-                                color = palette.primary,
+                                text = when {
+                                    video.isHdr && video.resolutionBadge == VideoResolutionBadge.UHD_4K -> "4K HDR"
+                                    video.isHdr -> "HDR"
+                                    else -> "4K UHD"
+                                },
+                                color = Color.Black,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    } else if (video.resolutionBadge == VideoResolutionBadge.FHD_1080P) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(3.dp)
+                                .background(Color(0xCC0284C7), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "1080p",
+                                color = Color.White,
+                                fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Folder,
-                            contentDescription = "Folder",
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = video.folderName,
-                            fontSize = 10.5.sp,
-                            color = palette.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    if (video.isNewVideo && !video.isPartialDownload) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(3.dp)
+                                .background(Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text("NEW", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // A partially downloaded file stays identifiable by its own
+                    // filename. Do not add a transfer label, progress bar, speed,
+                    // or state badge to the video library card.
+                    if (!video.isPartialDownload) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(3.dp)
+                                .background(Color(0xCC000000), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 3.dp, vertical = 1.5.dp)
+                        ) {
+                            Text(
+                                text = video.formattedDuration,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
 
-            }
+                Spacer(modifier = Modifier.width(10.dp))
 
-            reorderHandle?.invoke()
-
-            // Favorite Quick Icon
-            IconButton(
-                onClick = { onFavoriteToggle(video.isFavorite) },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = if (video.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                    contentDescription = "Favorite",
-                    tint = if (video.isFavorite) Color(0xFFFF2A55) else palette.textTertiary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Quick Actions Menu
-            Box {
-                IconButton(
-                    onClick = { menuExpanded = true },
-                    modifier = Modifier.size(32.dp)
+                // Video details
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 2.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Options",
-                        tint = palette.textSecondary,
-                        modifier = Modifier.size(18.dp)
+                    Text(
+                        text = video.title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        ),
+                        color = palette.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    if (!video.isPartialDownload) {
+                        if (progressFraction > 0f) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { progressFraction.coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth().height(3.dp),
+                                color = palette.primary,
+                                trackColor = palette.surfaceBorder,
+                            )
+                        }
+
+
+                        Spacer(modifier = Modifier.height(3.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = video.formattedSize,
+                                fontSize = 12.sp,
+                                color = palette.textSecondary
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .background(palette.selectionSurface, RoundedCornerShape(5.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = video.codec,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 11.sp,
+                                    color = palette.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Folder,
+                                contentDescription = "Folder",
+                                tint = palette.textSecondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = video.folderName,
+                                fontSize = 12.sp,
+                                color = palette.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
                 }
 
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    modifier = Modifier.background(palette.surfaceElevated)
-                ) {
-                    DropdownMenuItem(
-                        leadingIcon = {
-                            Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
-                        },
-                        text = { Text("Play in Background", color = palette.textPrimary, fontSize = 13.sp) },
-                        onClick = {
-                            menuExpanded = false
-                            onPlayInBackground()
-                        }
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = {
-                            Icon(Icons.Default.Replay, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
-                        },
-                        text = { Text("Play from start", color = palette.textPrimary, fontSize = 13.sp) },
-                        onClick = {
-                            menuExpanded = false
-                            onPlayFromStart()
-                        }
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    reorderHandle?.invoke()
+
+                    // Favorite Quick Icon
+                    IconButton(
+                        onClick = { onFavoriteToggle(video.isFavorite) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (video.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = if (video.isFavorite) "Remove from Favorites" else "Add to Favorites",
+                            tint = if (video.isFavorite) Color(0xFFFF2A55) else palette.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // Quick Actions Menu
+                    Box {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.size(48.dp)
+                        ) {
                             Icon(
-                                if (video.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = null,
-                                tint = if (video.isFavorite) Color(0xFFFF2A55) else palette.primary,
-                                modifier = Modifier.size(16.dp)
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Options",
+                                tint = palette.textSecondary,
+                                modifier = Modifier.size(18.dp)
                             )
-                        },
-                        text = {
-                            Text(
-                                if (video.isFavorite) "Remove from Favorites" else "Add to Favorites",
-                                color = palette.textPrimary,
-                                fontSize = 13.sp
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                            modifier = Modifier.background(palette.surfaceElevated)
+                        ) {
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                                },
+                                text = { Text("Play in Background", color = palette.textPrimary, fontSize = 13.sp) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onPlayInBackground()
+                                }
                             )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onFavoriteToggle(video.isFavorite)
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(Icons.Default.Replay, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                                },
+                                text = { Text("Play from start", color = palette.textPrimary, fontSize = 13.sp) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onPlayFromStart()
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(
+                                        if (video.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                        contentDescription = null,
+                                        tint = if (video.isFavorite) Color(0xFFFF2A55) else palette.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        if (video.isFavorite) "Remove from Favorites" else "Add to Favorites",
+                                        color = palette.textPrimary,
+                                        fontSize = 13.sp
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onFavoriteToggle(video.isFavorite)
+                                }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp)) },
+                                text = { Text("Rename", color = palette.textPrimary, fontSize = 13.sp) },
+                                onClick = { menuExpanded = false; onRename() }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp)) },
+                                text = { Text("Delete", color = Color(0xFFEF4444), fontSize = 13.sp) },
+                                onClick = { menuExpanded = false; onDelete() }
+                            )
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(Icons.Default.Info, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                                },
+                                text = { Text("Properties", color = palette.textPrimary, fontSize = 13.sp) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onShowDetails()
+                                }
+                            )
                         }
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp)) },
-                        text = { Text("Rename", color = palette.textPrimary, fontSize = 13.sp) },
-                        onClick = { menuExpanded = false; onRename() }
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp)) },
-                        text = { Text("Delete", color = Color(0xFFEF4444), fontSize = 13.sp) },
-                        onClick = { menuExpanded = false; onDelete() }
-                    )
-                    DropdownMenuItem(
-                        leadingIcon = {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = palette.primary, modifier = Modifier.size(16.dp))
-                        },
-                        text = { Text("Properties", color = palette.textPrimary, fontSize = 13.sp) },
-                        onClick = {
-                            menuExpanded = false
-                            onShowDetails()
-                        }
-                    )
+                    }
                 }
             }
         }
@@ -411,16 +420,16 @@ fun VideoGridCard(
     modifier: Modifier = Modifier,
     reorderHandle: (@Composable () -> Unit)? = null,
 ) {
-    val context = LocalContext.current
     val palette = LocalHiPalette.current
-    var menuExpanded by remember { mutableStateOf(false) }
+    var menuExpanded by remember(video.id) { mutableStateOf(false) }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp)).hiContainerBorder(RoundedCornerShape(10.dp))
+            .clip(HiCardShape).hiContainerBorder(HiCardShape, selected = isSelected)
+            .semantics { selected = isSelected }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .background(if (isSelected) palette.primary.copy(alpha = 0.14f) else palette.surfaceElevated)
+            .background(if (isSelected) palette.selectionSurface else palette.surface)
             .testTag("video_grid_card_${video.id}")
     ) {
         Column(
@@ -430,7 +439,7 @@ fun VideoGridCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(105.dp)
+                    .aspectRatio(16f / 9f)
                     .background(Color.Transparent)
             ) {
                 VideoThumbnail(
@@ -482,7 +491,11 @@ fun VideoGridCard(
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
-                            text = if (video.isHdr) "4K HDR" else "4K UHD",
+                            text = when {
+                                video.isHdr && video.resolutionBadge == VideoResolutionBadge.UHD_4K -> "4K HDR"
+                                video.isHdr -> "HDR"
+                                else -> "4K UHD"
+                            },
                             color = Color.Black,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Black
@@ -541,38 +554,44 @@ fun VideoGridCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
+                Text(
+                    text = video.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.textPrimary,
+                    maxLines = 2,
+                    minLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = video.title,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp
-                        ),
-                        color = palette.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    reorderHandle?.invoke()
+                    Column(Modifier.weight(1f)) {
+                        if (!video.isPartialDownload) {
+                            Text(video.formattedSize, color = palette.textSecondary,
+                                style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(video.codec, color = palette.textSecondary,
+                                style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
 
                     Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Options",
-                                tint = palette.textSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            reorderHandle?.invoke()
+                            IconButton(
+                                onClick = { menuExpanded = true },
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
 
                         DropdownMenu(
@@ -630,35 +649,13 @@ fun VideoGridCard(
                     if (progressFraction > 0f) {
                         Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
-                            progress = { progressFraction },
+                            progress = { progressFraction.coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth().height(3.dp),
                             color = palette.primary,
                             trackColor = palette.surfaceBorder,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = video.formattedSize,
-                            fontSize = 10.sp,
-                            color = palette.textSecondary
-                        )
-                        Text(
-                            text = video.codec,
-                            fontSize = 10.sp,
-                            color = palette.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
         }
