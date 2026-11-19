@@ -721,7 +721,20 @@ fun PlayerScreen(
                 onScrubEnd = { playerViewModel.onScrubEnd() },
                 onScrubCancel = { playerViewModel.onScrubCancel() },
                 onBrightnessGestureStart = playerViewModel::onBrightnessGestureStart,
-                onBrightnessGestureEnd = playerViewModel::onBrightnessGestureEnd,
+                onBrightnessGestureEnd = {
+                    playerViewModel.onBrightnessGestureEnd()
+                    // Re-apply the committed level after release. Some devices
+                    // deliver a preference-state update in the same frame as the
+                    // final pointer event; writing the final value here prevents
+                    // that update from visually undoing a completed swipe.
+                    playerViewModel.playerBrightness.value?.let { level ->
+                        activity?.let { act ->
+                            val attributes = act.window.attributes
+                            attributes.screenBrightness = level
+                            act.window.attributes = attributes
+                        }
+                    }
+                },
                 onVolumeGestureStart = { playerViewModel.onVolumeGestureStart() },
                 onVolumeGestureEnd = { playerViewModel.onVolumeGestureEnd() },
                 brightnessLevel = brightnessLevel,

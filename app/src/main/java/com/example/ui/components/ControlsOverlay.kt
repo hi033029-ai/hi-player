@@ -260,6 +260,12 @@ fun ControlsOverlay(
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                 ) {
+                    // Five transport buttons fit comfortably in landscape, but on
+                    // a portrait phone they form a wide invisible touch barrier
+                    // across the exact left/right zones used for brightness and
+                    // volume swipes. Keep the familiar three-button transport in
+                    // narrow windows and reserve previous/next for wider layouts.
+                    val narrowTransport = maxWidth < 600.dp
                     PlayerTransportControls(
                         isPlaying = isPlaying,
                         onTogglePlayPause = onTogglePlayPause,
@@ -267,7 +273,8 @@ fun ControlsOverlay(
                         onNext = onNext,
                         onRewind10 = onRewind10,
                         onFastForward10 = onFastForward10,
-                        compact = maxHeight < 340.dp,
+                        compact = maxHeight < 340.dp || narrowTransport,
+                        showAdjacent = !narrowTransport,
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
@@ -325,7 +332,9 @@ fun ControlsOverlay(
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val labelScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
                         val utilityCellWidth = (maxWidth / 5).coerceIn(48.dp * labelScale, 64.dp * labelScale)
-                        val utilityWidth = maxOf(maxWidth, utilityCellWidth * 10)
+                        val narrowUtilities = maxWidth < 600.dp
+                        val utilityCount = if (narrowUtilities) 12 else 10
+                        val utilityWidth = maxOf(maxWidth, utilityCellWidth * utilityCount)
                         Row(
                             modifier = Modifier.horizontalScroll(rememberScrollState()).width(utilityWidth),
                             verticalAlignment = Alignment.CenterVertically,
@@ -368,6 +377,15 @@ fun ControlsOverlay(
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
+                            }
+                            if (narrowUtilities) {
+                                // Previous/next move out of the centre gesture
+                                // lanes on phones, but remain available in the
+                                // scrollable toolbar instead of disappearing.
+                                PlayerToolbarButton(Icons.Default.SkipPrevious, "Previous", onPrevious,
+                                    width = utilityCellWidth, testTag = "bottom_previous_file_button")
+                                PlayerToolbarButton(Icons.Default.SkipNext, "Next", onNext,
+                                    width = utilityCellWidth, testTag = "bottom_next_file_button")
                             }
                             PlayerToolbarButton(Icons.Default.ScreenRotation, "Rotate", onRotateScreen, width = utilityCellWidth)
                             PlayerToolbarButton(Icons.Default.PictureInPictureAlt, "PiP", onEnterPip, width = utilityCellWidth)
@@ -602,6 +620,7 @@ private fun PlayerTransportControls(
     onRewind10: () -> Unit,
     onFastForward10: () -> Unit,
     compact: Boolean = false,
+    showAdjacent: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val sideSize = if (compact) 48.dp else 52.dp
@@ -614,8 +633,10 @@ private fun PlayerTransportControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 2.dp),
     ) {
-        SkipButton(Icons.Default.SkipPrevious, onPrevious, Modifier.testTag("previous_file_button"),
-            contentDescription = "Previous video", size = sideSize, iconSize = 23.dp)
+        if (showAdjacent) {
+            SkipButton(Icons.Default.SkipPrevious, onPrevious, Modifier.testTag("previous_file_button"),
+                contentDescription = "Previous video", size = sideSize, iconSize = 23.dp)
+        }
         SkipButton(Icons.Default.Replay10, onRewind10, Modifier.testTag("rewind_10_button"),
             contentDescription = "Rewind 10 seconds", size = sideSize, iconSize = 24.dp)
         PlayPauseButton(
@@ -629,8 +650,10 @@ private fun PlayerTransportControls(
         )
         SkipButton(Icons.Default.Forward10, onFastForward10, Modifier.testTag("forward_10_button"),
             contentDescription = "Forward 10 seconds", size = sideSize, iconSize = 24.dp)
-        SkipButton(Icons.Default.SkipNext, onNext, Modifier.testTag("next_file_button"),
-            contentDescription = "Next video", size = sideSize, iconSize = 23.dp)
+        if (showAdjacent) {
+            SkipButton(Icons.Default.SkipNext, onNext, Modifier.testTag("next_file_button"),
+                contentDescription = "Next video", size = sideSize, iconSize = 23.dp)
+        }
     }
 }
 
