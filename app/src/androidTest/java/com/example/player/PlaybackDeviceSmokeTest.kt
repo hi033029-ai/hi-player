@@ -41,10 +41,13 @@ class PlaybackDeviceSmokeTest {
     private fun fixture(name: String) = File(context.cacheDir, "test-${System.nanoTime()}-$name").apply {
         context.assets.open(name).use { input -> outputStream().use { output -> input.copyTo(output) } }
     }
-    private fun await(message: String, timeout: Long = 25_000, condition: () -> Boolean) {
+    private fun await(message: String, timeout: Long = 25_000, detail: () -> String = { "" }, condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + timeout
-        while (SystemClock.elapsedRealtime() < deadline && !condition()) Thread.sleep(50)
-        assertTrue(message, condition())
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (condition()) return
+            Thread.sleep(50)
+        }
+        if (!condition()) fail(message + detail())
     }
     private class Heartbeat {
         val maxDelayMs = AtomicLong()
@@ -196,10 +199,29 @@ class PlaybackDeviceSmokeTest {
                     assertEquals("Input HDR metadata lost", it, engine.get().isHdrContent.value)
                     assertNotEquals("No output-frame metadata callback observed", "Unknown", engine.get().lastCodecOutputColor)
                 }
-                scenario.onActivity { engine.get().seekTo(12_000) }
-                await("Forward seek did not decode") { engine.get().lastRenderedPresentationMs in 11_800..18_000 }
-                scenario.onActivity { engine.get().seekTo(3_000) }
-                await("Backward seek did not decode") { engine.get().lastRenderedPresentationMs in 2_800..7_000 }
+                val playback = engine.get()
+                fun checkSeek(targetMs: Long, window: LongRange) {
+                    var before = 0L
+                    scenario.onActivity {
+                        before = playback.renderedFrameSequence
+                        playback.seekTo(targetMs)
+                    }
+                    await("$name did not render after seeking to $targetMs ms", detail = {
+                        " (movie=${playback.currentPositionMs.value}, framePts=${playback.lastRenderedPresentationMs}, " +
+                            "frames=$before->${playback.renderedFrameSequence}, error=${failure.get()})"
+                    }) {
+                        // With GL grading, frame PTS can be relative to the new
+                        // processor stream. The engine publishes movie time after
+                        // a decoded frame acknowledges the seek.
+                        playback.renderedFrameSequence > before && playback.currentPositionMs.value in window &&
+                            (grade || playback.lastRenderedPresentationMs in window)
+                    }
+                }
+                if (grade) scenario.onActivity { playback.pause() }
+                checkSeek(12_000, 11_800L..18_000L)
+                if (grade) scenario.onActivity { playback.play() }
+                checkSeek(3_000, 2_800L..7_000L)
+                assertNull("Playback failed while seeking", failure.get())
                 scenario.onActivity { engine.get().pauseForAppBackground(); engine.get().resumeAfterAppForeground() }
                 heartbeat.check()
                 scenario.onActivity { engine.get().release() }
