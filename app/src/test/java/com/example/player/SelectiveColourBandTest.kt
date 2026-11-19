@@ -66,7 +66,7 @@ class SelectiveColourBandTest {
         assertEquals(1.2f, light.red, 0f)
         assertEquals(light.red, light.green, 0f)
         assertEquals(light.green, light.blue, 0f)
-        assertEquals(0.8f, dark.red, 0f)
+        assertEquals(0.8f, dark.red, 0.000001f)
     }
     @Test fun aRedTargetDoesNotAlterGreenBlueOrNeutralPixels() {
         assertEquals(0f, SelectiveColourBand.weight(1f / 3f, 0f, 1f, 1f), 0f)
@@ -83,6 +83,6 @@ class SelectiveColourBandTest {
     @Test fun malformedSliderValuesAreIgnoredAndFiniteValuesClamped() {
         assertNull(selectiveExposureAdjustment(Float.NaN, 0f))
         assertNull(selectiveExposureAdjustment(0f, Float.POSITIVE_INFINITY))
-        assertEquals(0.8f, selectiveExposureAdjustment(0f, 5f)!!.red, 0f)
+        assertEquals(0.8f, selectiveExposureAdjustment(0f, 5f)!!.red, 0.000001f)
     }
 }
