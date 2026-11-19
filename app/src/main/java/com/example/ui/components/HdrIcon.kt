@@ -43,11 +43,17 @@ fun HdrIcon(
         contentAlignment = Alignment.Center,
     ) {
         if (isSwitching) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White)
-        } else {
-            Icon(Icons.Filled.AutoAwesome, contentDescription = null,
-                tint = if (isActive) Color(0xFFFFC94A) else Color.White.copy(alpha = 0.7f),
-                modifier = Modifier.size(22.dp))
+            CircularProgressIndicator(
+                Modifier.size(30.dp),
+                strokeWidth = 1.5.dp,
+                color = Color.White.copy(alpha = 0.55f),
+            )
         }
+        Icon(
+            Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = if (isActive) Color(0xFFFFC94A) else Color.White.copy(alpha = 0.70f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

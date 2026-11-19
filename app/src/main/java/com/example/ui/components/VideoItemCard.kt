@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,7 +61,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.HiCardShape
 import com.example.ui.theme.HiThumbnailShape
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoItemCard(
     video: VideoItem,
@@ -251,8 +249,7 @@ fun VideoItemCard(
 
 
                         Spacer(modifier = Modifier.height(3.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        Column(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Text(

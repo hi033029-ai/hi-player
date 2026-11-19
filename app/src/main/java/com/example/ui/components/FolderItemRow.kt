@@ -8,8 +8,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,7 +36,7 @@ import com.example.ui.theme.HiCardShape
 import com.example.ui.theme.HiThumbnailShape
 import com.example.viewmodel.VideoFolder
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderItemRow(
     folder: VideoFolder,
@@ -99,8 +97,7 @@ fun FolderItemRow(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
@@ -130,7 +127,7 @@ fun FolderItemRow(
  * Grid-shaped folder tile, used when the library's grid/list toggle is set
  * to grid mode (previously the toggle had no effect at all on folder listings).
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderGridCard(
     name: String,
@@ -188,8 +185,7 @@ fun FolderGridCard(
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(

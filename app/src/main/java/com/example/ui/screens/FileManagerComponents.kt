@@ -19,8 +19,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -196,7 +194,7 @@ internal fun SelectionCheckCircle(isSelected: Boolean, modifier: Modifier = Modi
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArchiveItemCard(
     archive: FileItem,
@@ -274,8 +272,7 @@ fun ArchiveItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Column(
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(
@@ -530,7 +527,7 @@ fun FolderItemCard(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GenericFileItemCard(
     item: FileItem,
@@ -595,8 +592,7 @@ fun GenericFileItemCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Column(
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(

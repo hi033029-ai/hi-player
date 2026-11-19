@@ -25,7 +25,6 @@ import com.example.connections.*
 import com.example.model.VideoItem
 import com.example.ui.theme.LocalHiPalette
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PersonalStorageBrowser(kind: String, onDismiss: () -> Unit, onPlay: (VideoItem) -> Unit,
     model: StorageBrowserViewModel = viewModel()) {
@@ -57,14 +56,14 @@ internal fun PersonalStorageBrowser(kind: String, onDismiss: () -> Unit, onPlay:
                         }
                         if (status?.account?.isNotBlank() == true) Text(status.account)
                         if (provider != null && provider.clientId.isBlank()) Text("Setup required: the developer must register ${provider.label} and configure its public OAuth app ID. Sign-in is not enabled in this build.", modifier = Modifier.padding(vertical = 8.dp))
-                        FlowRow {
+                        Column(horizontalAlignment = Alignment.Start) {
                             TextButton(enabled = status?.busy != true && (provider == null || provider.clientId.isNotBlank()), onClick = { if (provider == null) setupSmb = true else PersonalCloud.connect(context, provider) }) { Text(if (session == null) "Connect" else "Reconnect") }
                             if (status?.busy == true) TextButton(onClick = { PersonalCloud.cancel(checkNotNull(provider)) }) { Text("Cancel sign-in") }
                             if (session != null) TextButton(onClick = { disconnect = true }) { Text("Disconnect") }
                         }
                         status?.message?.let { Text(it, modifier = Modifier.padding(vertical = 8.dp)) }
                         if (session != null) {
-                            FlowRow {
+                            Column(horizontalAlignment = Alignment.Start) {
                                 TextButton(enabled = !state.busy, onClick = { model.load() }) { Text("Refresh") }
                                 if (state.busy) TextButton(onClick = model::stop) { Text("Stop loading") }
                             }

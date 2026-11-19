@@ -846,7 +846,7 @@ fun PlayerScreen(
         // 2. UI Controls Overlay Layer
         ControlsOverlay(
             onBottomControlsHeight = { bottomControlsHeight = with(controlsDensity) { it.toDp() } },
-            isVisible = areControlsVisible,
+            isVisible = areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer,
             isLocked = isScreenLocked,
             showLockedUnlockControl = showLockedUnlockControl,
             isPlaying = isPlaying,
@@ -990,12 +990,10 @@ fun PlayerScreen(
             },
             onSelect = { preset ->
                 playerViewModel.selectPictureMode(preset)
-                showHdrPresetMenu = false
-                showHdrCustomizer = false
             },
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
         )
 
         if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {

@@ -3,36 +3,49 @@ package com.example.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
 import com.example.ui.theme.LocalHiPalette
+
+private val HdrMenuShape = RoundedCornerShape(18.dp)
 
 @Composable
 fun HdrPresetMenu(
@@ -60,28 +73,39 @@ fun HdrPresetMenu(
     if (customizing) {
         Column(
             modifier = modifier
-                .fillMaxWidth(0.76f)
-                .widthIn(max = 320.dp)
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
                 .heightIn(max = 420.dp)
+                .navigationBarsPadding()
+                .clip(HdrMenuShape)
+                .background(Color(0xF20A0F19), HdrMenuShape)
+                .border(1.dp, Color.White.copy(alpha = 0.18f), HdrMenuShape)
                 .verticalScroll(rememberScrollState())
-                .background(Color.Black.copy(alpha = 0.30f))
-                .padding(horizontal = 7.dp, vertical = 5.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .testTag("hdr_customizer"),
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("Customize HDR", color = Color.White, fontSize = 14.sp)
-                TextButton(onClick = {
+            HdrMenuHeader(
+                title = "Customize HDR",
+                subtitle = "Adjust your settings, then tap Done to apply",
+                onDone = {
                     onApplyCustomPreset(customPreset)
                     onClose()
-                }) { Text("Done", color = Color.White) }
-            }
+                },
+            )
             com.example.ui.components.FirstUseTip(
                 com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
                 "Adjust only what you choose",
                 "Whole-picture sliders affect the frame. Choose a colour below, then move its Light–Dark slider to adjust matching pixels only. The middle keeps the original colour.",
-                overVideo = true)
-            Text("Whole picture", color = Color.White, fontSize = 9.sp)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                overVideo = true,
+            )
+            Text(
+                "Whole picture",
+                color = Color.White.copy(alpha = 0.78f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f) {
                     onCustomPresetChange(customPreset.copy(brightness = it))
                 }
@@ -89,7 +113,7 @@ fun HdrPresetMenu(
                     onCustomPresetChange(customPreset.copy(saturation = it))
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CustomSlider(Modifier.weight(1f), "Vibrance", customPreset.vibrance, 0f..2f) {
                     onCustomPresetChange(customPreset.copy(vibrance = it))
                 }
@@ -98,25 +122,39 @@ fun HdrPresetMenu(
                 }
             }
             Text(
-                text = "Selected colour only • ${selectedColor.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                text = "Selected colour · ${selectedColor.displayName}",
                 color = selectedColor.color,
-                fontSize = 9.sp,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 2.dp),
             )
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 HdrColor.entries.forEach { color ->
+                    val isSelected = color == selectedColor
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
-                            .background(color.color, androidx.compose.foundation.shape.CircleShape)
-                            .clickable { onColorSelected(color) }
-                            .then(
-                                if (color == selectedColor) Modifier.border(2.dp, Color(0xFF111827), androidx.compose.foundation.shape.CircleShape)
-                                else Modifier
-                            ),
-                    )
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.RadioButton) { onColorSelected(color) }
+                            .semantics {
+                                contentDescription = "${color.displayName} colour adjustment"
+                                selected = isSelected
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .background(color.color, CircleShape)
+                                .then(
+                                    if (isSelected) Modifier.border(3.dp, Color.White, CircleShape)
+                                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                                ),
+                        )
+                    }
                 }
             }
             Slider(
@@ -124,7 +162,7 @@ fun HdrPresetMenu(
                 onValueChange = { colorIntensityDraft = it },
                 onValueChangeFinished = { onColorIntensityChange(colorIntensityDraft) },
                 valueRange = 0f..1f,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(40.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = palette.primary,
                     activeTrackColor = palette.primary,
@@ -134,50 +172,162 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.White, fontSize = 8.sp)
-                Text("Original", color = Color.White, fontSize = 8.sp)
-                Text("Dark", color = Color.White, fontSize = 8.sp)
+                Text("Light", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
+                Text("Original", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("Dark", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
             }
         }
     } else {
         Column(
             modifier = modifier
-                .background(Color.Black.copy(alpha = 0.30f))
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .widthIn(max = 720.dp)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .clip(HdrMenuShape)
+                .background(Color(0xF20A0F19), HdrMenuShape)
+                .border(1.dp, Color.White.copy(alpha = 0.18f), HdrMenuShape)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .testTag("hdr_preset_menu"),
         ) {
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            HdrMenuHeader(
+                title = "Picture mode",
+                subtitle = "${hdrPresetDisplayName(selected)} selected · tap another mode to preview",
+                onDone = onClose,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 ColorPresets.ALL.forEach { preset ->
-                    val isSelected = preset.name == selected.name
-                    Text(
-                        text = preset.name,
-                        color = if (isSelected) palette.primary else Color.White,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .background(
-                                if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent,
-                                RoundedCornerShape(18.dp),
-                            )
-                            .clickable { onSelect(preset) }
-                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                    HdrPresetOption(
+                        title = hdrPresetDisplayName(preset),
+                        subtitle = hdrPresetSubtitle(preset),
+                        selected = preset.name == selected.name,
+                        testTag = "hdr_preset_${preset.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')}",
+                        onClick = { onSelect(preset) },
                     )
                 }
-                Text(
-                    text = "Customize",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onCustomize)
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                HdrPresetOption(
+                    title = "Customize",
+                    subtitle = "Fine controls",
+                    selected = selected.name == ColorPresets.CUSTOM.name,
+                    testTag = "hdr_preset_customize",
+                    onClick = onCustomize,
                 )
             }
         }
     }
 }
 
-enum class HdrColor(val color: Color) {
-    RED(Color(0xFFE53935)), ORANGE(Color(0xFFFB8C00)), YELLOW(Color(0xFFFDD835)),
-    GREEN(Color(0xFF43A047)), CYAN(Color(0xFF00ACC1)), BLUE(Color(0xFF1E88E5)),
-    PURPLE(Color(0xFF8E24AA)), PINK(Color(0xFFD81B60)),
+@Composable
+private fun HdrMenuHeader(
+    title: String,
+    subtitle: String,
+    onDone: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            Text(
+                subtitle,
+                color = Color.White.copy(alpha = 0.70f),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("Done", color = LocalHiPalette.current.primary, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun HdrPresetOption(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    val palette = LocalHiPalette.current
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = Modifier
+            .widthIn(min = 112.dp)
+            .heightIn(min = 60.dp)
+            .clip(shape)
+            .background(
+                if (selected) palette.primary.copy(alpha = 0.18f)
+                else Color.White.copy(alpha = 0.07f),
+            )
+            .border(
+                1.dp,
+                if (selected) palette.primary.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.12f),
+                shape,
+            )
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
+            .testTag(testTag)
+            .padding(horizontal = 13.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = title,
+            color = if (selected) palette.primary else Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        Text(
+            text = if (selected) "Selected" else subtitle,
+            color = Color.White.copy(alpha = 0.66f),
+            fontSize = 10.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun hdrPresetDisplayName(preset: ColorPreset): String = when (preset.name) {
+    ColorPresets.HDR_DISABLED.name -> "Original"
+    ColorPresets.VIVID_HDR.name -> "Vivid"
+    ColorPresets.CINEMATIC.name -> "Cinema"
+    ColorPresets.HDR_BRIGHT.name -> "Bright"
+    ColorPresets.NATURAL_HDR.name -> "Natural"
+    else -> preset.name
+}
+
+private fun hdrPresetSubtitle(preset: ColorPreset): String = when (preset.name) {
+    ColorPresets.HDR_DISABLED.name -> "Native output"
+    ColorPresets.VIVID_HDR.name -> "More colour"
+    ColorPresets.CINEMATIC.name -> "Balanced tone"
+    ColorPresets.HDR_BRIGHT.name -> "Brighter image"
+    ColorPresets.NATURAL_HDR.name -> "Gentle boost"
+    ColorPresets.WARM.name -> "Warmer tone"
+    ColorPresets.COOL.name -> "Cooler tone"
+    ColorPresets.EYE_COMFORT.name -> "Reduced blue"
+    else -> "Picture preset"
+}
+
+enum class HdrColor(val color: Color, val displayName: String) {
+    RED(Color(0xFFE53935), "Red"),
+    ORANGE(Color(0xFFFB8C00), "Orange"),
+    YELLOW(Color(0xFFFDD835), "Yellow"),
+    GREEN(Color(0xFF43A047), "Green"),
+    CYAN(Color(0xFF00ACC1), "Cyan"),
+    BLUE(Color(0xFF1E88E5), "Blue"),
+    PURPLE(Color(0xFF8E24AA), "Purple"),
+    PINK(Color(0xFFD81B60), "Pink"),
 }
 
 @Composable
@@ -193,22 +343,21 @@ private fun CustomSlider(
         Text(
             text = "$label ${"%.2f".format(draft)}",
             color = Color.White,
-            fontSize = 8.sp,
+            fontSize = 11.sp,
+            maxLines = 1,
         )
         Slider(
             value = draft,
             onValueChange = { draft = it },
             onValueChangeFinished = { onValueChange(draft) },
             valueRange = range,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(20.dp),
+            modifier = Modifier.fillMaxWidth().height(36.dp),
             colors = SliderDefaults.colors(
                 thumbColor = Color.White,
                 activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.38f),
+                inactiveTrackColor = Color.White.copy(alpha = 0.30f),
                 activeTickColor = Color.White,
-                inactiveTickColor = Color.White.copy(alpha = 0.55f),
+                inactiveTickColor = Color.White.copy(alpha = 0.50f),
             ),
         )
     }

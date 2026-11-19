@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -433,47 +432,68 @@ internal fun HiBrowserMenuSheet(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HiMenuTileRow(items: List<HiMenuAction>, onClick: (HiMenuAction) -> Unit) {
-    val palette = LocalHiPalette.current
-    FlowRow(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items.forEach { item ->
-            Column(
-                modifier = Modifier
-                    .width(84.dp)
-                    .clip(RoundedCornerShape(18.dp)).hiContainerBorder(RoundedCornerShape(18.dp))
-                    .background(if (item.checked == true) palette.primary.copy(alpha = 0.16f) else palette.surface)
-                    .clickable(enabled = item.enabled) { onClick(item) }
-                    .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    item.icon,
-                    contentDescription = null,
-                    tint = when {
-                        !item.enabled -> palette.textTertiary
-                        else -> palette.primary
-                    },
-                    modifier = Modifier.size(26.dp),
-                )
-                Spacer(Modifier.height(6.dp))
-                Box(modifier = Modifier.heightIn(min = 30.dp), contentAlignment = Alignment.TopCenter) {
-                    Text(
-                        item.label,
-                        color = if (item.enabled) palette.textPrimary else palette.textTertiary,
-                        fontSize = 12.sp,
-                        lineHeight = 14.sp,
-                        textAlign = TextAlign.Center,
-                    )
+        val gap = 8.dp
+        val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val minimumTileWidth = 84.dp * fontScale
+        val columns = ((maxWidth.value + gap.value) / (minimumTileWidth.value + gap.value))
+            .toInt()
+            .coerceAtLeast(1)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            items.chunked(columns).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    rowItems.forEach { item ->
+                        HiMenuTile(
+                            item = item,
+                            onClick = { onClick(item) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(columns - rowItems.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HiMenuTile(item: HiMenuAction, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = LocalHiPalette.current
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .hiContainerBorder(RoundedCornerShape(18.dp))
+            .background(if (item.checked == true) palette.primary.copy(alpha = 0.16f) else palette.surface)
+            .clickable(enabled = item.enabled, onClick = onClick)
+            .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            item.icon,
+            contentDescription = null,
+            tint = if (item.enabled) palette.primary else palette.textTertiary,
+            modifier = Modifier.size(26.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(modifier = Modifier.heightIn(min = 30.dp), contentAlignment = Alignment.TopCenter) {
+            Text(
+                item.label,
+                color = if (item.enabled) palette.textPrimary else palette.textTertiary,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

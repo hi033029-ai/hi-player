@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -26,13 +27,29 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = Color(0xFF00D4FF)) {
+fun PlayPauseButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF00D4FF),
+    size: Dp = 48.dp,
+    iconSize: Dp = 28.dp,
+    containerColor: Color = Color.Transparent,
+) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (pressed) 0.8f else 1f, tween(110), label = "playPauseScale")
-    IconButton(onClick = { pressed = true; onClick() }, modifier = modifier.size(48.dp).scale(scale).clip(CircleShape)) {
+    IconButton(
+        onClick = { pressed = true; onClick() },
+        modifier = modifier
+            .size(size)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(containerColor),
+    ) {
         AnimatedContent(
             targetState = isPlaying,
             transitionSpec = { (scaleIn(initialScale = 0.55f) + fadeIn()) togetherWith (scaleOut(targetScale = 0.55f) + fadeOut()) },
@@ -42,7 +59,7 @@ fun PlayPauseButton(isPlaying: Boolean, onClick: () -> Unit, modifier: Modifier 
                 if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = if (playing) "Pause" else "Play",
                 tint = tint,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(iconSize),
             )
         }
     }
@@ -56,11 +73,13 @@ fun SkipButton(
     modifier: Modifier = Modifier,
     tint: Color = Color.White,
     contentDescription: String? = null,
+    size: Dp = 48.dp,
+    iconSize: Dp = 22.dp,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (pressed) 0.78f else 1f, tween(100), label = "skipScale")
-    IconButton(onClick = { pressed = true; onClick() }, modifier = modifier.size(48.dp).scale(scale)) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))
+    IconButton(onClick = { pressed = true; onClick() }, modifier = modifier.size(size).scale(scale)) {
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
     }
     LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(100); pressed = false } }
 }

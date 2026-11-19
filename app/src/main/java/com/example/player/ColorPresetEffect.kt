@@ -103,13 +103,15 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
                 if (uTargetCount>7) c=target(c,uTarget7);
                 if (uTargetCount==0) c*=uGain;
                 c*=uBrightness;
-                // Bound contrast around a working-space pivot. Raising normalized
-                // linear HDR channels to a power darkened ordinary scene values
-                // by ~50% (0.002^1.12), and changed their chromaticity. This single
-                // luminance gain preserves black/hue and stays within [1/k, k].
+                // Preserve the HDR toe. Enhancement presets may lift highlights,
+                // but they must never make an already-dark scene darker. Raising
+                // linear HDR channels to a power previously crushed ordinary scene
+                // values and made the HDR switch look almost black.
                 float luma = max(dot(c,uLuma),0.0);
                 float k = max(uContrast,0.01);
-                c *= (k*luma+0.18)/(luma+0.18*k);
+                float contrastGain = (k*luma+0.18)/(luma+0.18*k);
+                if (k >= 1.0) contrastGain = max(1.0, contrastGain);
+                c *= contrastGain;
                 c=mix(vec3(dot(c,uLuma)),c,uSaturation);
                 gl_FragColor=vec4(max(c,vec3(0.0)),pixel.a);
             }

@@ -153,6 +153,24 @@ class FirstUseExperienceTest {
         compose.onNodeWithText("Got it").performClick()
         compose.onNodeWithText("Whole picture").assertIsDisplayed()
     }
+    @Test @Config(qualifiers = "w800dp-h360dp")
+    fun hdrPresetPanelKeepsNamesAndSelectionVisibleInLandscape() {
+        val selected = mutableStateOf(com.example.player.ColorPresets.HDR_DISABLED)
+        compose.setContent { HiPlayerTheme {
+            Box(Modifier.size(800.dp, 360.dp)) {
+                com.example.ui.HdrPresetMenu(
+                    visible = true,
+                    selected = selected.value,
+                    onSelect = { selected.value = it },
+                )
+            }
+        } }
+        compose.onNodeWithText("Picture mode").assertIsDisplayed()
+        compose.onNodeWithText("Original").assertIsDisplayed()
+        compose.onNodeWithText("Vivid").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("hdr_preset_hdr_vivid").assertIsSelected()
+        compose.onNodeWithText("Vivid selected · tap another mode to preview").assertIsDisplayed()
+    }
     @Test fun skippingPermissionsFinishesSetupWithoutAnotherSetupPage() {
         var finished = 0
         compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> finished++ }) } }

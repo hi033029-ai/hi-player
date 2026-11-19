@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,7 +34,6 @@ import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -197,8 +195,8 @@ fun GestureOverlay(
                                             }
                                             doubleTapSide = side
                                             coroutineScope.launch {
-                                                doubleTapAnim.snapTo(.8f)
-                                                doubleTapAnim.animateTo(1.3f, tween(350))
+                                                doubleTapAnim.snapTo(.90f)
+                                                doubleTapAnim.animateTo(1.06f, tween(320))
                                                 doubleTapSide = null
                                             }
                                         } else {
@@ -261,7 +259,7 @@ fun GestureOverlay(
         if (doubleTapSide != null) {
             Box(
                 modifier = Modifier
-                    .size(if (doubleTapSide == "center") 112.dp else 96.dp)
+                    .size(if (doubleTapSide == "center") 82.dp else 88.dp)
                     .align(
                         when (doubleTapSide) {
                             "left" -> Alignment.CenterStart
@@ -269,12 +267,13 @@ fun GestureOverlay(
                             else -> Alignment.Center
                         }
                     )
-                    .background(Color(0xCC0A0E18), CircleShape),
+                    .background(Color(0xB80A0E18), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
+                Column(
                     modifier = Modifier.scale(doubleTapAnim.value),
-                    contentAlignment = Alignment.Center
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
                     Icon(
                         imageVector = when (doubleTapSide) {
@@ -284,7 +283,17 @@ fun GestureOverlay(
                         },
                         contentDescription = null,
                         tint = HiPrimaryCyan,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier.size(34.dp)
+                    )
+                    Text(
+                        text = when (doubleTapSide) {
+                            "left" -> "−10 sec"
+                            "right" -> "+10 sec"
+                            else -> if (isPlaying) "Pause" else "Play"
+                        },
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
@@ -295,49 +304,46 @@ fun GestureOverlay(
             visible = brightnessLevel != null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 32.dp)
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 24.dp)
         ) {
             brightnessLevel?.let { level ->
                 val percent = (level * 100).toInt()
-                Box(
+                Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
-                        .background(Color(0xCC111624))
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(14.dp)).hiContainerBorder(RoundedCornerShape(14.dp))
+                        .background(Color(0xD9111624))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.BrightnessHigh,
+                        contentDescription = "Brightness",
+                        tint = HiAccentAmber,
+                        modifier = Modifier.size(25.dp),
+                    )
+                    Spacer(modifier = Modifier.width(9.dp))
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier.width(112.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.BrightnessHigh,
-                            contentDescription = "Brightness",
-                            tint = HiAccentAmber,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Brightness", color = Color.White, fontSize = 11.sp)
+                            Text("$percent%", color = HiAccentAmber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
-                                .width(8.dp)
-                                .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(level.coerceIn(0f, 1f))
-                                    .align(Alignment.BottomCenter)
-                                    .background(HiAccentAmber)
+                                    .fillMaxWidth(level.coerceIn(0f, 1f))
+                                    .height(5.dp)
+                                    .background(HiAccentAmber, RoundedCornerShape(3.dp))
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "$percent%",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
@@ -348,54 +354,59 @@ fun GestureOverlay(
             visible = volumeLevel != null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp)
         ) {
             volumeLevel?.let { level ->
                 val isBoosted = level > 1.0f
                 val percent = (level * 100).toInt()
-                Box(
+                Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
-                        .background(Color(0xCC111624))
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(14.dp)).hiContainerBorder(RoundedCornerShape(14.dp))
+                        .background(Color(0xD9111624))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Icon(
+                        imageVector = when {
+                            level <= 0f -> Icons.Default.VolumeMute
+                            level <= 0.5f -> Icons.Default.VolumeDown
+                            else -> Icons.Default.VolumeUp
+                        },
+                        contentDescription = "Volume",
+                        tint = if (isBoosted) HiAccentAmber else HiPrimaryCyan,
+                        modifier = Modifier.size(25.dp),
+                    )
+                    Spacer(modifier = Modifier.width(9.dp))
                     Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier.width(112.dp),
                     ) {
-                        Icon(
-                            imageVector = when {
-                                level <= 0f -> Icons.Default.VolumeMute
-                                level <= 0.5f -> Icons.Default.VolumeDown
-                                else -> Icons.Default.VolumeUp
-                            },
-                            contentDescription = "Volume",
-                            tint = if (isBoosted) HiAccentAmber else HiPrimaryCyan,
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (isBoosted) "Volume boost" else "Volume", color = Color.White, fontSize = 11.sp)
+                            Text(
+                                "$percent%",
+                                color = if (isBoosted) HiAccentAmber else HiPrimaryCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
-                                .width(8.dp)
-                                .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight((level / 2.0f).coerceIn(0f, 1f))
-                                    .align(Alignment.BottomCenter)
-                                    .background(if (isBoosted) HiAccentAmber else HiPrimaryCyan)
+                                    .fillMaxWidth((level / 2.0f).coerceIn(0f, 1f))
+                                    .height(5.dp)
+                                    .background(
+                                        if (isBoosted) HiAccentAmber else HiPrimaryCyan,
+                                        RoundedCornerShape(3.dp),
+                                    )
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (isBoosted) "$percent% Boost" else "$percent%",
-                            color = if (isBoosted) HiAccentAmber else Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
             }
