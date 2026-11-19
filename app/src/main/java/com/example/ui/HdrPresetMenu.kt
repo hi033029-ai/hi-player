@@ -141,7 +141,7 @@ fun HdrPresetMenu(
                             .clickable(role = Role.RadioButton) { onColorSelected(color) }
                             .semantics {
                                 contentDescription = "${color.displayName} colour adjustment"
-                                selected = isSelected
+                                this.selected = isSelected
                             },
                         contentAlignment = Alignment.Center,
                     ) {
