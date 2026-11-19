@@ -42,6 +42,14 @@ class GeckoChromeDeviceTest {
                 compose.onNodeWithTag("browser_tab_1").performClick()
                 compose.waitUntil(20_000) { pageIs { it.url == server.root+"/page" } }
                 compose.onNodeWithContentDescription("Browser home").performClick()
+                // The home surface and its bookmark row are composed after the
+                // Gecko tab snapshot switches to the blank start page. Waiting
+                // for that observable UI state avoids racing the transition on
+                // slower emulators and mirrors what a user can actually tap.
+                compose.waitUntil(20_000) {
+                    compose.onAllNodesWithTag("browser_bookmark_0")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
                 compose.onNodeWithTag("browser_bookmark_0").performClick()
                 compose.waitUntil(20_000) { pageIs { it.url == server.root+"/page" } }
                 compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/video.mp4")
