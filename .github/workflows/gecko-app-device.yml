@@ -70,8 +70,19 @@ jobs:
           name: playback-device-fixtures
           path: app/src/debug/assets
       - name: Compile unpublished device-test APKs
-        run: gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2
+        run: |
+          if [ '${{ matrix.api }}' = '24' ]; then
+            GECKO_ENABLED=false
+          else
+            GECKO_ENABLED=true
+          fi
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest \
+            -PHI_PLAYER_GECKO_ENABLED="$GECKO_ENABLED" \
+            -PHI_PLAYER_GECKO_DEVICE_TEST=true \
+            -PHI_PLAYER_GECKOVIEW_ABI=x86_64 \
+            -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=2
       - name: Review APK size and native packaging
+        if: matrix.api == 30
         run: HI_PLAYER_EXPECTED_APK_ABI=x86_64 python3 tools/check_gecko_apk.py
       - name: Enable hardware virtualization
         run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
@@ -84,10 +95,23 @@ jobs:
           profile: pixel_2
           disable-animations: true
           # API 24's package installer needs extra headroom for the ~190 MiB
-          # Gecko-enabled test APK; otherwise adb install-write times out.
+          # emulator. Its compatibility build omits GeckoView; API 30 verifies
+          # the complete Gecko-enabled package and native libraries.
           emulator-options: -no-window -memory 3072 -partition-size 4096 -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
           script: |
-            if [ '${{ matrix.api }}' = '24' ]; then CLASS=com.example.browser.gecko.GeckoFallbackDeviceTest; else CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest; fi; CLASS="$CLASS,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest"; gradle --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
+            if [ '${{ matrix.api }}' = '24' ]; then
+              GECKO_ENABLED=false
+              CLASS=com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest
+            else
+              GECKO_ENABLED=true
+              CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest
+            fi
+            gradle --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" :app:connectedDebugAndroidTest \
+              -PHI_PLAYER_GECKO_ENABLED="$GECKO_ENABLED" \
+              -PHI_PLAYER_GECKO_DEVICE_TEST=true \
+              -PHI_PLAYER_GECKOVIEW_ABI=x86_64 \
+              -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 \
+              -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
       - name: Upload reports only, never APKs
         if: always()
         uses: actions/upload-artifact@v4
