@@ -2,7 +2,7 @@ package com.example.player
 
 import android.content.Intent
 import android.media.MediaCodecList
-import android.media.MediaCodecInfo
+import android.media.MediaExtractor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -122,32 +122,36 @@ class PlaybackDeviceSmokeTest {
     @Test(timeout = 100_000) fun webmRenders() = playMedia3("playback_test.webm", "video/webm")
 
     @Test(timeout = 100_000) fun nativeHdr10StartsWithHdrMetadataAndSeeks() =
-        playMedia3(
-            "compact_hdr10.mkv", "video/x-matroska", grade = false, expectedHdr = true,
-            requireHdrFrame = platformAdvertisesHdr10Hevc()
-        )
+        playMedia3("compact_hdr10.mkv", "video/x-matroska", grade = false, expectedHdr = true)
 
     /** Generic CI emulators often expose HEVC Main only, despite parsing HDR10 metadata. */
-    private fun platformAdvertisesHdr10Hevc(): Boolean = MediaCodecList(MediaCodecList.ALL_CODECS)
-        .codecInfos.asSequence()
-        .filterNot { it.isEncoder }
-        .filter { info -> info.supportedTypes.any { it.equals("video/hevc", ignoreCase = true) } }
-        .any { info ->
-            runCatching {
-                info.getCapabilitiesForType("video/hevc").profileLevels.any {
-                    it.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
-                }
-            }.getOrDefault(false)
+    private fun platformSupportsFixture(file: File): Boolean {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            val format = (0 until extractor.trackCount).asSequence()
+                .map(extractor::getTrackFormat)
+                .firstOrNull { it.getString(android.media.MediaFormat.KEY_MIME)?.equals("video/hevc", true) == true }
+                ?: return false
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.asSequence()
+                .filterNot { it.isEncoder }
+                .filter { info -> info.supportedTypes.any { it.equals("video/hevc", ignoreCase = true) } }
+                .any { info -> runCatching {
+                    info.getCapabilitiesForType("video/hevc").isFormatSupported(format)
+                }.getOrDefault(false) }
+        } finally {
+            extractor.release()
         }
+    }
 
     internal fun playMedia3(
         name: String,
         mime: String,
         grade: Boolean = mime.contains("matroska"),
-        expectedHdr: Boolean? = null,
-        requireHdrFrame: Boolean = true
+        expectedHdr: Boolean? = null
     ) {
         val file = fixture(name)
+        val renderHdrOnThisDevice = expectedHdr != true || platformSupportsFixture(file)
         val engine = AtomicReference<HiPlayerEngine>()
         val failure = AtomicReference<String>()
         val frames = AtomicLong()
@@ -172,7 +176,7 @@ class PlaybackDeviceSmokeTest {
                     playback.getPlayer().setVideoSurfaceView(view)
                     playback.prepareMedia(Uri.fromFile(file), mediaMimeType = mime)
                 }
-                if (expectedHdr == true && !requireHdrFrame) {
+                if (expectedHdr == true && !renderHdrOnThisDevice) {
                     // A software emulator can parse the BT.2020/PQ stream and
                     // expose its metadata while having no Main10 decoder. Do
                     // not call this a rendered-HDR pass: verify the app kept

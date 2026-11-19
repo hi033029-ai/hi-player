@@ -1832,7 +1832,23 @@ class HiPlayerEngine(
     }
 
     private fun updateVideoOutputInfo() {
-        val format = exoPlayer?.videoFormat
+        val player = exoPlayer
+        val outputFormat = player?.videoFormat
+        // Some decoders fail before ExoPlayer can publish videoFormat. Keep
+        // using the selected source track's color metadata in that case so
+        // HDR identification and its controls do not silently become SDR.
+        val trackFormats = player?.currentTracks?.groups.orEmpty()
+            .asSequence()
+            .filter { it.type == C.TRACK_TYPE_VIDEO }
+            .flatMap { group -> (0 until group.length).asSequence().map { index ->
+                Triple(group.getTrackFormat(index), group.isTrackSelected(index), group.isTrackSupported(index))
+            } }
+            .toList()
+        val sourceFormat = trackFormats.firstOrNull { it.second }?.first
+            ?: trackFormats.firstOrNull { it.third }?.first
+            ?: trackFormats.firstOrNull()?.first
+        val format = outputFormat?.takeIf { hasKnownVideoColorMetadata(it) || sourceFormat == null }
+            ?: sourceFormat ?: outputFormat
         _isHdrContent.value = isHdrVideoFormat(format)
         _isVideoColorMetadataKnown.value = hasKnownVideoColorMetadata(format)
         _is4kContent.value = (format?.width ?: 0) >= 3840 || (format?.height ?: 0) >= 2160
