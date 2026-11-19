@@ -82,12 +82,18 @@ class HdrColorModeManager(private val activity: Activity) {
     }
 
     private fun evaluateAndRequest(tracks: Tracks) {
-        val isHdr = tracks.groups.any { group ->
-            (0 until group.length).any { i ->
-                group.isTrackSelected(i) && isHdrVideoFormat(group.getTrackFormat(i))
+        val selectedVideoFormats = tracks.groups.flatMap { group ->
+            (0 until group.length).mapNotNull { i ->
+                group.getTrackFormat(i).takeIf { format ->
+                    group.isTrackSelected(i) && format.sampleMimeType?.startsWith("video/") == true
+                }
             }
         }
-        requestColorMode(isHdr)
+        // A freshly rebuilt ExoPlayer reports empty tracks before preparation.
+        // Preserve the current Activity mode through that gap; the next selected
+        // video-track callback will explicitly choose HDR or SDR for the new item.
+        if (selectedVideoFormats.isEmpty()) return
+        requestColorMode(selectedVideoFormats.any(::isHdrVideoFormat))
     }
 
     fun requestColorMode(hdrDesired: Boolean) {
@@ -131,8 +137,16 @@ class HdrColorModeManager(private val activity: Activity) {
         }
     }
 
-    fun release() {
+    /** Remove track observation without changing the current Activity window mode. */
+    fun detach(resetWindowMode: Boolean = false) {
         attachedPlayer?.let { player -> trackListener?.let(player::removeListener) }
+        attachedPlayer = null
+        trackListener = null
+        if (resetWindowMode) requestColorMode(false)
+    }
+
+    fun release() {
+        detach(resetWindowMode = false)
         mainHandler.removeCallbacksAndMessages(null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             activity.window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT

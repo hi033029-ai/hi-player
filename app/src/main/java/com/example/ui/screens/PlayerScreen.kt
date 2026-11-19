@@ -104,7 +104,6 @@ import com.example.player.ColorPresets
 import com.example.player.ColorTargetAdjustment
 import com.example.player.shouldApplyColorPreset
 import com.example.player.shouldUseNativeHdrOutput
-import com.example.player.nextHdrCyclePreset
 import com.example.player.formatSpeedLabel
 import com.example.player.nextPlaybackSpeed
 import com.example.player.SmoothSeekController
@@ -138,7 +137,7 @@ fun PlayerScreen(
     val usingVlc by playerViewModel.engine.usesVlc.collectAsState()
     val vlcVideoSize by playerViewModel.engine.vlcVideoSize.collectAsState()
     val vlcFirstFrame by playerViewModel.engine.vlcFirstFrame.collectAsState()
-    val hdrColorModeManager = remember(activity, activePlayer) {
+    val hdrColorModeManager = remember(activity) {
         activity?.let { HdrColorModeManager(it) }
     }
 
@@ -210,9 +209,15 @@ fun PlayerScreen(
 
     // Attach before the first selected HDR track reaches the surface so the
     // window is already in HDR output mode when MediaCodec renders frame one.
-    DisposableEffect(hdrColorModeManager, activePlayer, usingVlc) {
-        if (!usingVlc) hdrColorModeManager?.attach(activePlayer)
+    DisposableEffect(hdrColorModeManager) {
         onDispose { hdrColorModeManager?.release() }
+    }
+    DisposableEffect(hdrColorModeManager, activePlayer, usingVlc) {
+        if (usingVlc) hdrColorModeManager?.detach(resetWindowMode = true)
+        else hdrColorModeManager?.attach(activePlayer)
+        // Player replacement is a pipeline transition, not an Activity HDR-mode
+        // lifecycle boundary. Detach the old listener without resetting the window.
+        onDispose { hdrColorModeManager?.detach(resetWindowMode = false) }
     }
 
     // HUD States
@@ -254,14 +259,16 @@ fun PlayerScreen(
     }
     val customHdrPreset by playerViewModel.customPicturePreset.collectAsState()
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
-    val hdrColorIntensities = remember(customHdrPreset.targetAdjustments) {
+    var draftCustomHdrPreset by remember(showHdrCustomizer, customHdrPreset) {
+        mutableStateOf(customHdrPreset)
+    }
+    val hdrColorIntensities = remember(draftCustomHdrPreset.targetAdjustments) {
         HdrColor.entries.associateWith { color ->
             val hue = hdrColorHue(color.color)
-            val band = customHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
-            band?.let { (1.5f - it.red).coerceIn(0f, 1f) } ?: .5f
+            val band = draftCustomHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
+            band?.let { ((1.2f - it.red) / 0.4f).coerceIn(0f, 1f) } ?: .5f
         }
     }
-    var hdrInteractionTick by remember { mutableStateOf(0) }
 
     LaunchedEffect(usingVlc, vlcVideoSize) {
         if (usingVlc) {
@@ -448,15 +455,6 @@ fun PlayerScreen(
         if (showZoomOverlay) {
             delay(900)
             showZoomOverlay = false
-        }
-    }
-
-    LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrInteractionTick) {
-        // Customisation and its first-use guide stay open until explicitly closed.
-        if (showHdrPresetMenu && !showHdrCustomizer) {
-            delay(3_000)
-            showHdrPresetMenu = false
-            showHdrCustomizer = false
         }
     }
 
@@ -893,23 +891,21 @@ fun PlayerScreen(
             isHdrEnhanceActive = applyColorPresetToVideo,
             pictureModeLabel = if (applyColorPresetToVideo) hdrColorPreset.name.removePrefix("HDR ").removeSuffix(" HDR") else "Original",
             isHdrSwitching = managedHdrSwitching,
-            // Tap cycles the four main presets; long-press opens the full preset
-            // and custom-color controls without replacing the quick action.
+            // Opening the chooser is non-destructive. Apply a grade only after the
+            // user explicitly selects one of the visible presets.
             onToggleHdrEnhance = {
                 if (showHdrPresetMenu || showHdrCustomizer) {
                     showHdrPresetMenu = false
                     showHdrCustomizer = false
                 } else {
-                    val nextPreset = nextHdrCyclePreset(playerViewModel.engine.hdrColorPreset.value)
-                    playerViewModel.selectPictureMode(nextPreset)
+                    showHdrPresetMenu = true
+                    showHdrCustomizer = false
                 }
-                hdrInteractionTick++
             },
             onHdrBounds = { guideHdrBounds = it },
             onLongPressHdrEnhance = {
                 showHdrPresetMenu = true
                 showHdrCustomizer = false
-                hdrInteractionTick++
             },
             onToggleSubtitles = {
                 // CC now opens the caption picker on a normal tap. Cycling tracks
@@ -962,20 +958,23 @@ fun PlayerScreen(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
             selected = hdrColorPreset,
-            customPreset = customHdrPreset,
+            customPreset = draftCustomHdrPreset,
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
             colorIntensity = hdrColorIntensities.getValue(selectedHdrColor),
             onColorSelected = {
                 selectedHdrColor = it
-                hdrInteractionTick++
                 // Selecting a swatch only selects its controls. It must not tint the
                 // picture, reset global controls or enable HDR by itself.
             },
             onColorIntensityChange = { intensity ->
-                hdrInteractionTick++
                 val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
                 val nextPreset = customHdrPreset.copy(
+                    brightness = draftCustomHdrPreset.brightness,
+                    contrast = draftCustomHdrPreset.contrast,
+                    saturation = draftCustomHdrPreset.saturation,
+                    vibrance = draftCustomHdrPreset.vibrance,
+                    sharpness = draftCustomHdrPreset.sharpness,
                     name = ColorPresets.CUSTOM.name,
                     targetHue = -1f,
                     red = 1f,
@@ -983,18 +982,18 @@ fun PlayerScreen(
                     blue = 1f,
                     targetAdjustments = hdrColorTargetAdjustments(updatedIntensities),
                 )
-                playerViewModel.selectPictureMode(nextPreset)
+                draftCustomHdrPreset = nextPreset
             },
             onCustomize = {
                 showHdrCustomizer = true
-                hdrInteractionTick++
             },
             onCustomPresetChange = { preset ->
-                hdrInteractionTick++
+                draftCustomHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
+            },
+            onApplyCustomPreset = { preset ->
                 playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
             },
             onSelect = { preset ->
-                hdrInteractionTick++
                 playerViewModel.selectPictureMode(preset)
                 showHdrPresetMenu = false
                 showHdrCustomizer = false
@@ -1006,7 +1005,13 @@ fun PlayerScreen(
 
         // Local probing/decoder setup and picture-mode changes can also buffer.
         // A black surface alone must not leave the controls looking unresponsive.
-        if (isBuffering && !isPlaying && playerError == null && !isScreenLocked) {
+        // Exact seeks in long-GOP local files may need a short decoder preroll.
+        // Keep the last presented picture visible instead of covering every seek
+        // with a full loading card; retain feedback for startup, growing files,
+        // and network playback where waiting for data is actionable.
+        if (isBuffering && !isPlaying && playerError == null && !isScreenLocked &&
+            (isNetworkStream || isGrowingDownload || !firstFrameRendered)
+        ) {
             Card(
                 modifier = Modifier.align(Alignment.Center),
                 shape = RoundedCornerShape(12.dp),

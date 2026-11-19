@@ -22,6 +22,10 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -38,6 +42,7 @@ fun HdrPresetMenu(
     customPreset: ColorPreset = ColorPresets.CUSTOM,
     customizing: Boolean = false,
     onCustomize: () -> Unit = {},
+    onApplyCustomPreset: (ColorPreset) -> Unit = {},
     onCustomPresetChange: (ColorPreset) -> Unit = {},
     selectedColor: HdrColor = HdrColor.RED,
     colorIntensity: Float = 0.5f,
@@ -48,6 +53,9 @@ fun HdrPresetMenu(
 ) {
     if (!visible) return
     val palette = LocalHiPalette.current
+    var colorIntensityDraft by remember(selectedColor, colorIntensity) {
+        mutableFloatStateOf(colorIntensity)
+    }
 
     if (customizing) {
         Column(
@@ -62,7 +70,10 @@ fun HdrPresetMenu(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Text("Customize HDR", color = Color.White, fontSize = 14.sp)
-                TextButton(onClick = onClose) { Text("Done", color = Color.White) }
+                TextButton(onClick = {
+                    onApplyCustomPreset(customPreset)
+                    onClose()
+                }) { Text("Done", color = Color.White) }
             }
             com.example.ui.components.FirstUseTip(
                 com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
@@ -109,8 +120,9 @@ fun HdrPresetMenu(
                 }
             }
             Slider(
-                value = colorIntensity,
-                onValueChange = onColorIntensityChange,
+                value = colorIntensityDraft,
+                onValueChange = { colorIntensityDraft = it },
+                onValueChangeFinished = { onColorIntensityChange(colorIntensityDraft) },
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth(),
                 colors = SliderDefaults.colors(
@@ -135,11 +147,16 @@ fun HdrPresetMenu(
         ) {
             Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                 ColorPresets.ALL.forEach { preset ->
+                    val isSelected = preset.name == selected.name
                     Text(
                         text = preset.name,
-                        color = Color.White,
+                        color = if (isSelected) palette.primary else Color.White,
                         fontSize = 14.sp,
                         modifier = Modifier
+                            .background(
+                                if (isSelected) palette.primary.copy(alpha = 0.16f) else Color.Transparent,
+                                RoundedCornerShape(18.dp),
+                            )
                             .clickable { onSelect(preset) }
                             .padding(horizontal = 16.dp, vertical = 11.dp),
                     )
@@ -172,14 +189,16 @@ private fun CustomSlider(
     onValueChange: (Float) -> Unit,
 ) {
     Column(modifier = modifier) {
+        var draft by remember(value) { mutableFloatStateOf(value) }
         Text(
-            text = "$label ${"%.2f".format(value)}",
+            text = "$label ${"%.2f".format(draft)}",
             color = Color.White,
             fontSize = 8.sp,
         )
         Slider(
-            value = value,
-            onValueChange = onValueChange,
+            value = draft,
+            onValueChange = { draft = it },
+            onValueChangeFinished = { onValueChange(draft) },
             valueRange = range,
             modifier = Modifier
                 .fillMaxWidth()
