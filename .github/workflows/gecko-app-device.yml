@@ -98,20 +98,7 @@ jobs:
           # emulator. Its compatibility build omits GeckoView; API 30 verifies
           # the complete Gecko-enabled package and native libraries.
           emulator-options: -no-window -memory 3072 -partition-size 4096 -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            if [ '${{ matrix.api }}' = '24' ]; then
-              GECKO_ENABLED=false
-              CLASS=com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest
-            else
-              GECKO_ENABLED=true
-              CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest
-            fi
-            gradle --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" :app:connectedDebugAndroidTest \
-              -PHI_PLAYER_GECKO_ENABLED="$GECKO_ENABLED" \
-              -PHI_PLAYER_GECKO_DEVICE_TEST=true \
-              -PHI_PLAYER_GECKOVIEW_ABI=x86_64 \
-              -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 \
-              -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
+          script: if [ '${{ matrix.api }}' = '24' ]; then GECKO_ENABLED=false; CLASS=com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest; else GECKO_ENABLED=true; CLASS=com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest,com.example.player.PlaybackDeviceSmokeTest,com.example.player.PlaybackGestureDeviceTest,com.example.player.ColorPresetGpuTest,com.example.filemanager.RecycleBinDeviceTest; fi; gradle --no-daemon -Dorg.gradle.jvmargs="-Xmx2g -Dfile.encoding=UTF-8" :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED="$GECKO_ENABLED" -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 -Pandroid.testInstrumentationRunnerArguments.class="$CLASS"
       - name: Upload reports only, never APKs
         if: always()
         uses: actions/upload-artifact@v4
