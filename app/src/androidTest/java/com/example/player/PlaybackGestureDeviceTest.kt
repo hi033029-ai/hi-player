@@ -10,7 +10,6 @@ import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipe
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -75,7 +74,15 @@ class PlaybackGestureDeviceTest {
                 surface.performTouchInput { up() }
                 compose.waitUntil(20_000) { engine.currentPositionMs.value > before + 5_000 }
                 val forward = engine.currentPositionMs.value
-                surface.performTouchInput { swipe(Offset(width*.7f,height*.4f),Offset(width*.35f,height*.4f),400) }
+                surface.performTouchInput {
+                    down(Offset(width * .7f, height * .4f))
+                    moveTo(Offset(width * .35f, height * .4f), delayMillis = 180)
+                }
+                compose.onNodeWithTag("seek_preview_hud").assertIsDisplayed()
+                val reversePreview = activity.model.scrubTimeMs.value
+                assertNotNull("Reverse swipe did not publish a seek target", reversePreview)
+                assertTrue("Reverse preview did not move earlier: $reversePreview after $forward", reversePreview!! < forward - 5_000)
+                surface.performTouchInput { up() }
                 compose.waitUntil(20_000) { engine.currentPositionMs.value < forward - 5_000 }
                 assertNull("Swiping must not leave a stale preview",activity.model.scrubTimeMs.value)
                 assertNull(engine.playerError.value)
