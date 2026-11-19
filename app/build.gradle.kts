@@ -64,6 +64,11 @@ android {
     buildConfigField("String", "DROPBOX_APP_KEY", "\"$dropboxAppKey\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
+  installation {
+    // The CI instrumentation APK includes GeckoView and LibVLC native code;
+    // Android 7 needs longer than ddmlib's default silence timeout to install it.
+    timeOutInMs = 10 * 60 * 1_000
+  }
   splits {
     abi {
       isEnable = !bundleBuildRequested
