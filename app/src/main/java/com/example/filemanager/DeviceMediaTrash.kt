@@ -42,16 +42,35 @@ internal class DeviceMediaTrash(private val context: Context) {
         }
         // Register only a specific provider row. A collection or a missing path
         // must never become a bulk operation.
-        val uri = media?.takeIf { it.lastPathSegment?.toLongOrNull() != null }
-            ?: item.path.takeIf { it.startsWith('/') }?.let { path ->
-                resolver.query(MediaStore.Files.getContentUri("external"),
-                    arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME),
-                    "${MediaStore.MediaColumns.DATA} = ?", arrayOf(path), null)?.use { cursor ->
-                    if (!cursor.moveToFirst()) null else ContentUris.withAppendedId(
-                        MediaStore.Files.getContentUri(cursor.getString(1)), cursor.getLong(0))
-                }
-            } ?: return null
-        return Entry(uri, item.name, item.path, item.sizeBytes, System.currentTimeMillis())
+        val specific = media?.let {
+            val segments = it.pathSegments
+            val itemCollection = (segments.size == 4 && segments[2] == "media" && segments[1] in setOf("images", "audio", "video")) ||
+                (segments.size == 3 && segments[1] in setOf("file", "downloads"))
+            val id = segments.lastOrNull()?.toLongOrNull()
+            if (itemCollection && id != null) ContentUris.withAppendedId(MediaStore.Files.getContentUri(segments.first()), id)
+            else null
+        }
+        if (specific == null && !item.path.startsWith('/')) return null
+        val projection = arrayOf(BaseColumns._ID, MediaStore.MediaColumns.VOLUME_NAME,
+            MediaStore.Files.FileColumns.MEDIA_TYPE, MediaStore.MediaColumns.DATA,
+            MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+        val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val selection = if (specific == null) "${MediaStore.MediaColumns.DATA} = ?" else null
+        val args = if (specific == null) arrayOf(item.path) else null
+        return resolver.query(specific ?: collection, projection, selection, args, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val volume = cursor.getString(1) ?: return@use null
+            val base = when (cursor.getInt(2)) {
+                MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaStore.Video.Media.getContentUri(volume)
+                MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO -> MediaStore.Audio.Media.getContentUri(volume)
+                MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> MediaStore.Images.Media.getContentUri(volume)
+                else -> return@use null
+            }
+            val path = cursor.getString(3).orEmpty()
+            if (item.path.isNotBlank() && path.isNotBlank() && path != item.path) return@use null
+            Entry(ContentUris.withAppendedId(base, cursor.getLong(0)), cursor.getString(4) ?: item.name,
+                path.ifBlank { item.path }, cursor.getLong(5), System.currentTimeMillis())
+        }
     }
 
     @RequiresApi(30)

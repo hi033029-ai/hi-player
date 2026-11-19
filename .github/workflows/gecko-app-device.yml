@@ -25,8 +25,10 @@ jobs:
         timeout-minutes: 15
         run: |
           if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            # Use the primary archive when the runner's regional mirror stalls.
+            sudo sed -i 's|^URIs:.*|URIs: https://archive.ubuntu.com/ubuntu|' /etc/apt/sources.list.d/ubuntu.sources
             timeout 240s sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
-            timeout 600s sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg
+            timeout 600s sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 --no-install-recommends install -y ffmpeg
           fi
           bash tools/generate_playback_fixtures.sh
       - uses: actions/upload-artifact@v4
@@ -38,6 +40,7 @@ jobs:
             app/src/debug/assets/growing_test.mkv
             app/src/debug/assets/playback_test.webm
             app/src/debug/assets/grading_reference.mp4
+            app/src/debug/assets/compact_hdr10.mkv
           if-no-files-found: error
           retention-days: 3
   device:

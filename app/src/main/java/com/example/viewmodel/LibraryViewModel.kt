@@ -96,10 +96,8 @@ data class TreeFolderNode(
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
-    data class DeleteProgress(val total: Int, val completed: Int, val failed: Int)
     private var downloadsObserver: FileObserver? = null
     private var periodicRefreshJob: Job? = null
-    private var deleteVideosJob: Job? = null
     // Fast polling only runs while files are still being written; otherwise the
     // MediaStore and Downloads observers report changes and a slow safety scan
     // runs. Re-scanning the whole library every 5 s made lists stutter.
@@ -173,8 +171,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val allVideos = combine(_allVideos, com.example.data.RecycleBinVisibility.hiddenPaths) { videos, hidden ->
         videos.filterNot { com.example.data.RecycleBinVisibility.isHidden(it.path, hidden) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    private val _deleteProgress = MutableStateFlow<DeleteProgress?>(null)
-    val deleteProgress = _deleteProgress.asStateFlow()
     private val _hiddenContinueUris = MutableStateFlow(readHiddenContinueUris())
 
     private val _isLoading = MutableStateFlow(true)
@@ -769,40 +765,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deleteVideos(videos: Collection<VideoItem>) {
-        if (videos.isEmpty()) return
-        val items = videos.toList()
-        deleteVideosJob?.cancel()
-        _deleteProgress.value = DeleteProgress(items.size, 0, 0)
-        deleteVideosJob = viewModelScope.launch(Dispatchers.IO) {
-            var completed = 0
-            var failed = 0
-            for (video in items) {
-                try {
-                    if (video.path.isNotBlank() && File(video.path).exists()) {
-                        File(video.path).delete()
-                    }
-                    if (video.uri != Uri.EMPTY && video.uri.scheme == "content") {
-                        getApplication<Application>().contentResolver.delete(video.uri, null, null)
-                    }
-                    videoDao.deleteRecord(video.uri.toString())
-                    completed++
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failed++
-                }
-                withContext(Dispatchers.Main) {
-                    _deleteProgress.value = DeleteProgress(items.size, completed, failed)
-                }
-            }
-            withContext(Dispatchers.Main) {
-                _deleteProgress.value = null
-                refreshVideos(silent = true)
-            }
-        }
-    }
-
     fun removeVideoRecords(videos: Collection<VideoItem>) {
         if (videos.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -813,13 +775,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 refreshVideos(silent = true)
             }
         }
-    }
-
-    fun cancelDeleteVideos() {
-        deleteVideosJob?.cancel()
-        deleteVideosJob = null
-        _deleteProgress.value = null
-        refreshVideos(silent = true)
     }
 
     fun renameVideo(video: VideoItem, requestedName: String) {

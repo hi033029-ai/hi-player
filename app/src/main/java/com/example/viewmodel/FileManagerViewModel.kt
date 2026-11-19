@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.system.Os
+import android.system.OsConstants
 import android.os.Environment
 import android.os.Build
 import android.provider.MediaStore
@@ -480,21 +482,21 @@ class FileManagerViewModel internal constructor(application: Application, val ro
         // Metadata must be durable BEFORE removing the source. If the process
         // stops immediately after rename, the item is still discoverable/restorable.
         try { writeRecycleBinMetadata(entryDir, item, id) }
-        catch (_: Exception) { entryDir.deleteRecursively(); return false }
+        catch (_: Exception) { removeEntryTree(entryDir); return false }
         if (item.file.renameTo(payload)) return true
         // Recursive copy+delete may partially delete a folder on failure. Refuse
         // that fallback rather than risking an incomplete recoverable copy.
-        if (item.isDirectory || !item.file.canWrite()) { entryDir.deleteRecursively(); return false }
+        if (item.isDirectory || !item.file.canWrite()) { removeEntryTree(entryDir); return false }
         try {
             val staging = File(entryDir, "copying")
             copyRecursivelyWithProgress(item.file, staging, onBytesCopied)
             currentCoroutineContext().ensureActive()
             if (staging.renameTo(payload) && item.file.delete()) return true
         } catch (error: CancellationException) {
-            entryDir.deleteRecursively() // Original is still intact.
+            removeEntryTree(entryDir) // Original is still intact.
             throw error
         } catch (_: Exception) { /* Original remains; remove incomplete copy only. */ }
-        entryDir.deleteRecursively()
+        removeEntryTree(entryDir)
         return false
     }
 
@@ -504,11 +506,13 @@ class FileManagerViewModel internal constructor(application: Application, val ro
         onBytesCopied: suspend (Long) -> Unit,
     ) {
         currentCoroutineContext().ensureActive()
+        if (OsConstants.S_ISLNK(Os.lstat(source.path).st_mode)) throw java.io.IOException("Cannot copy a file link")
         if (source.isDirectory) {
             if (!destination.exists() && !destination.mkdirs()) {
                 throw IllegalStateException("Couldn't create recycle-bin folder")
             }
-            source.listFiles()?.forEach { child ->
+            val children = source.listFiles() ?: throw java.io.IOException("Cannot read this folder")
+            children.forEach { child ->
                 copyRecursivelyWithProgress(child, File(destination, child.name), onBytesCopied)
             }
             return
@@ -548,24 +552,26 @@ class FileManagerViewModel internal constructor(application: Application, val ro
 
     private fun readRecycleBinItems(): List<RecycleBinItem> {
         val local = recycleBinRoots
-        .asSequence()
-        .flatMap { root -> root.listFiles()?.asSequence() ?: emptySequence() }
-        .filter { it.isDirectory && File(it, "payload").exists() }
-        .mapNotNull { entry ->
-            val props = Properties()
-            runCatching { FileInputStream(File(entry, "metadata.properties")).use { props.load(it) } }.getOrNull()
-                ?: return@mapNotNull null
-            RecycleBinItem(
-                id = props.getProperty("id") ?: entry.name,
-                name = props.getProperty("name") ?: File(props.getProperty("originalPath") ?: "").name,
-                originalPath = props.getProperty("originalPath") ?: return@mapNotNull null,
-                sizeBytes = props.getProperty("sizeBytes")?.toLongOrNull() ?: 0L,
-                isDirectory = props.getProperty("isDirectory") == "true",
-                deletedAt = props.getProperty("deletedAt")?.toLongOrNull() ?: entry.lastModified(),
-                entryPath = entry.absolutePath,
-            )
-        }
-        .toList()
+            .asSequence()
+            .flatMap { root -> root.listFiles()?.asSequence() ?: emptySequence() }
+            .filter { entry ->
+                runCatching { OsConstants.S_ISDIR(Os.lstat(entry.path).st_mode) && File(entry, "payload").exists() }.getOrDefault(false)
+            }
+            .mapNotNull { entry ->
+                val props = Properties()
+                runCatching { FileInputStream(File(entry, "metadata.properties")).use { props.load(it) } }.getOrNull()
+                    ?: return@mapNotNull null
+                RecycleBinItem(
+                    id = props.getProperty("id") ?: entry.name,
+                    name = props.getProperty("name") ?: File(props.getProperty("originalPath") ?: "").name,
+                    originalPath = props.getProperty("originalPath") ?: return@mapNotNull null,
+                    sizeBytes = props.getProperty("sizeBytes")?.toLongOrNull() ?: 0L,
+                    isDirectory = props.getProperty("isDirectory") == "true",
+                    deletedAt = props.getProperty("deletedAt")?.toLongOrNull() ?: entry.lastModified(),
+                    entryPath = entry.absolutePath,
+                )
+            }
+            .toList()
         val system = deviceTrash.visibleEntries().map {
             RecycleBinItem(it.uri.toString(), it.name, it.path, it.bytes, false, it.added, "", it.uri)
         }
@@ -574,7 +580,7 @@ class FileManagerViewModel internal constructor(application: Application, val ro
 
     private fun recycleBinPayload(item: RecycleBinItem): File = File(item.entryPath, "payload")
 
-    private fun restoreRecycleBinItem(item: RecycleBinItem): File? {
+    private suspend fun restoreRecycleBinItem(item: RecycleBinItem): File? {
         val payload = recycleBinPayload(item)
         if (!payload.exists()) return null
         val original = File(item.originalPath)
@@ -585,12 +591,14 @@ class FileManagerViewModel internal constructor(application: Application, val ro
             val parent = target.parentFile ?: return null
             val stage = File(parent, ".hi-restore-${UUID.randomUUID()}")
             try {
-                if (!payload.copyRecursively(stage, overwrite = false) || target.exists() || !stage.renameTo(target)) return null
+                copyRecursivelyWithProgress(payload, stage) { }
+                currentCoroutineContext().ensureActive()
+                if (target.exists() || !stage.renameTo(target)) return null
             } finally {
-                if (stage.exists()) stage.deleteRecursively()
+                if (stage.exists()) removeEntryTree(stage)
             }
         }
-        File(item.entryPath).deleteRecursively()
+        removeEntryTree(File(item.entryPath))
         return target
     }
 
@@ -604,8 +612,19 @@ class FileManagerViewModel internal constructor(application: Application, val ro
         return candidate
     }
 
+    // A moved directory may contain a link to a file or folder outside the bin.
+    // Remove links as entries and never traverse their targets.
+    private fun removeEntryTree(file: File): Boolean {
+        val mode = runCatching { Os.lstat(file.path).st_mode }.getOrNull() ?: return false
+        if (OsConstants.S_ISDIR(mode)) {
+            val children = file.listFiles() ?: return false
+            if (!children.all(::removeEntryTree)) return false
+        }
+        return file.delete()
+    }
+
     private fun permanentlyDeleteRecycleBinItem(item: RecycleBinItem): Boolean =
-        File(item.entryPath).deleteRecursively()
+        removeEntryTree(File(item.entryPath))
 
     fun cancelDelete() {
         if (deviceTrash.awaitingConsent) return
@@ -629,7 +648,7 @@ class FileManagerViewModel internal constructor(application: Application, val ro
     }
 
     private fun isSafeStorageItem(file: File): Boolean =
-        runCatching { isListedStorageItem(file.canonicalFile) && file.exists() }.getOrDefault(false)
+        runCatching { isListedStorageItem(file.canonicalFile) && !OsConstants.S_ISLNK(Os.lstat(file.path).st_mode) }.getOrDefault(false)
 
     private fun File.canonicalPathOrAbsolute(): String =
         runCatching { canonicalPath }.getOrElse { absolutePath }

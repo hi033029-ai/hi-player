@@ -900,7 +900,7 @@ fun PlayerScreen(
                     showHdrPresetMenu = false
                     showHdrCustomizer = false
                 } else {
-                    val nextPreset = nextHdrCyclePreset(hdrColorPreset)
+                    val nextPreset = nextHdrCyclePreset(playerViewModel.engine.hdrColorPreset.value)
                     playerViewModel.selectPictureMode(nextPreset)
                 }
                 hdrInteractionTick++
@@ -1001,7 +1001,7 @@ fun PlayerScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 28.dp, bottom = if (areControlsVisible) bottomControlsHeight + 4.dp else 12.dp),
+                .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
         )
 
         // Local probing/decoder setup and picture-mode changes can also buffer.

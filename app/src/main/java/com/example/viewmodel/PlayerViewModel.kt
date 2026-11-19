@@ -628,9 +628,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         pendingPicture = preset
         if (preset.name == ColorPresets.CUSTOM.name) _customPicturePreset.value = preset
         engine.setPictureMode(preset != ColorPresets.HDR_DISABLED, preset)
+        val custom = _customPicturePreset.value
         pictureSaveJob?.cancel()
         pictureSaveJob = viewModelScope.launch {
-            preferencesRepo.setPictureMode(preset)
+            preferencesRepo.setPictureMode(preset, custom)
             if (pendingPicture == preset) pendingPicture = null
         }
     }

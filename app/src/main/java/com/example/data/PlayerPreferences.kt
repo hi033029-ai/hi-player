@@ -348,12 +348,13 @@ class PlayerPreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.WIDE_COLOR_GAMUT] = enabled }
     }
 
-    suspend fun setPictureMode(preset: ColorPreset) {
+    suspend fun setPictureMode(preset: ColorPreset, custom: ColorPreset? = null) {
         context.dataStore.edit { prefs ->
             val enabled = preset != ColorPresets.HDR_DISABLED
             prefs[Keys.HDR_ENHANCE] = enabled
             if (enabled) prefs[Keys.PICTURE_PRESET] = preset.name
-            if (preset.name == ColorPresets.CUSTOM.name) prefs[Keys.CUSTOM_PICTURE] = encodeCustomPicture(preset)
+            val savedCustom = if (preset.name == ColorPresets.CUSTOM.name) preset else custom
+            if (savedCustom != null) prefs[Keys.CUSTOM_PICTURE] = encodeCustomPicture(savedCustom)
         }
     }
 

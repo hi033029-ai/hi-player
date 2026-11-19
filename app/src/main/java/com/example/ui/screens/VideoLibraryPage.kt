@@ -53,7 +53,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -161,7 +160,6 @@ internal fun VideoLibraryPage(
     val availableContinueWatching by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
     val continueWatchingVideos = if (canShowLibrary) availableContinueWatching else emptyList()
     val playerSettings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
-    val deleteProgress by libraryViewModel.deleteProgress.collectAsStateWithLifecycle()
     val gridTransformState = androidx.compose.foundation.gestures.rememberTransformableState { zoomChange, _, _ ->
         if (viewMode == LibraryViewMode.GRADLE_GRID && zoomChange.isFinite() && kotlin.math.abs(zoomChange - 1f) > 0.005f) {
             libraryViewModel.setGridMinSize((gridMinSize / zoomChange).roundToInt())
@@ -939,44 +937,18 @@ internal fun VideoLibraryPage(
         )
     }
 
-    deleteProgress?.let { progress ->
-        val remaining = (progress.total - progress.completed - progress.failed).coerceAtLeast(0)
-        AlertDialog(
-            modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-            onDismissRequest = { libraryViewModel.cancelDeleteVideos() },
-            title = { Text("Deleting videos", color = palette.textPrimary, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Deleted ${progress.completed} of ${progress.total}", color = palette.textPrimary)
-                    Text("Remaining: $remaining", color = palette.textSecondary, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    LinearProgressIndicator(
-                        progress = { if (progress.total == 0) 1f else (progress.completed + progress.failed).toFloat() / progress.total },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = palette.primary
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { libraryViewModel.cancelDeleteVideos() }) {
-                    Text("Cancel", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
     pendingDeleteVideos?.let { videosToDelete ->
         AlertDialog(
             modifier = androidx.compose.ui.Modifier.hiContainerBorder(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
             onDismissRequest = { pendingDeleteVideos = null },
-            title = { Text("Delete video${if (videosToDelete.size == 1) "" else "s"}?") },
+            title = { Text("Move to Recycle Bin?") },
             text = { Text("This moves ${videosToDelete.size} video file${if (videosToDelete.size == 1) "" else "s"} to Recycle Bin. Folders and other files remain. You can restore the videos later.") },
             confirmButton = {
                 TextButton(onClick = {
                     onMoveVideosToRecycleBin(videosToDelete)
                     exitVideoSelectionMode()
                     pendingDeleteVideos = null
-                }) { Text("Delete", color = Color(0xFFEF4444)) }
+                }) { Text("Move to Recycle Bin") }
             },
             dismissButton = { TextButton(onClick = { pendingDeleteVideos = null }) { Text("Cancel") } }
         )
