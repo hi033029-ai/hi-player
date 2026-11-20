@@ -91,7 +91,7 @@ data class AppPlayerSettings(
     val equalizerBandsDb: List<Float> = List(5) { 0f },
     val audioDelayMs: Long = 0L,
     val subtitleOffsetMs: Long = 0L,
-    val uiTextSizeSp: Int = 14,
+    val uiTextSizeSp: Int = 12,
     val customThemeTextHex: String = "#0F172A",
     val customThemeBackgroundHex: String = "#F8FAFC",
     val customThemePrimaryHex: String = "#0056B3",
