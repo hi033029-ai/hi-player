@@ -111,7 +111,7 @@ fun HdrPresetMenu(
             )
             com.example.ui.components.FirstUseTip(
                 com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
-                "Selective colour & HDR controls",
+                "Adjust only what you choose",
                 "Whole-picture sliders adjust the full frame. Pick any colour below to brighten or dull only matching pixels without tinting the whole screen.",
                 overVideo = true,
             )
@@ -251,8 +251,8 @@ fun HdrPresetMenu(
                 .testTag("hdr_preset_menu"),
         ) {
             HdrMenuHeader(
-                title = "HDR Presets",
-                subtitle = "${hdrPresetDisplayName(selected)} · swipe horizontally to choose",
+                title = "Picture mode",
+                subtitle = "${hdrPresetDisplayName(selected)} selected · tap another mode to preview",
                 onDone = onClose,
             )
             LazyRow(
