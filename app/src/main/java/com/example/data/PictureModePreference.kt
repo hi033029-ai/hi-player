@@ -17,7 +17,7 @@ internal fun encodeCustomPicture(p: ColorPreset): String = JSONObject().apply {
     put("blue", p.blue.toDouble())
     put("targetHue", p.targetHue.toDouble())
     put("bands", JSONArray().apply {
-        p.targetAdjustments.forEach { b -> put(JSONArray(listOf(b.hue, b.red, b.green, b.blue))) }
+        p.targetAdjustments.forEach { b -> put(JSONArray(listOf(b.hue, b.red, b.green, b.blue, b.saturation))) }
     })
 }.toString()
 
@@ -36,7 +36,8 @@ internal fun decodeCustomPicture(raw: String?): ColorPreset {
             targetAdjustments = (0 until minOf(8, bands.length())).map { i ->
                 val band = bands.getJSONArray(i)
                 fun component(index: Int, max: Float) = band.getDouble(index).toFloat().also { require(it in 0f..max) }
-                ColorTargetAdjustment(component(0, 1f), component(1, 2f), component(2, 2f), component(3, 2f))
+                ColorTargetAdjustment(component(0, 1f), component(1, 2f), component(2, 2f),
+                    component(3, 2f), if (band.length() >= 5) component(4, 2f) else 1f)
             },
         )
     }.getOrDefault(ColorPresets.CUSTOM)

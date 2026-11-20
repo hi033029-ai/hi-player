@@ -89,7 +89,14 @@ class PlaybackGestureDeviceTest {
 
                 val beforeSkip = engine.currentPositionMs.value
                 surface.performTouchInput { doubleClick(Offset(width * .78f, height * .4f)) }
-                compose.waitUntil(20_000) { engine.currentPositionMs.value in (beforeSkip + 8_500)..(beforeSkip + 11_500) }
+                val expectedSkip = (beforeSkip + 8_500)..(beforeSkip + 11_500)
+                try {
+                    compose.waitUntil(20_000) { engine.currentPositionMs.value in expectedSkip }
+                } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+                    throw AssertionError("Paused double-tap from $beforeSkip expected $expectedSkip, " +
+                        "observed ${engine.currentPositionMs.value}, duration=${engine.durationMs.value}, " +
+                        "playing=${engine.isPlaying.value}, vlc=${engine.usesVlc.value}", timeout)
+                }
                 assertFalse("A paused double-tap seek started playback", engine.isPlaying.value)
 
                 // Reach a genuine decoder EOF, then use the same public action

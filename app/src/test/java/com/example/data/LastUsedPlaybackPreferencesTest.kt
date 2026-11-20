@@ -54,6 +54,15 @@ class LastUsedPlaybackPreferencesTest {
         assertEquals(custom, repository.settingsFlow.first().picturePreset)
     }
 
+    @Test fun perColourSaturationPersistsAndOlderFourValueBandsRemainNeutral() {
+        val custom = com.example.player.ColorPresets.CUSTOM.copy(targetAdjustments = listOf(
+            com.example.player.ColorTargetAdjustment(.33f, 1.1f, 1.1f, 1.1f, .4f)
+        ))
+        assertEquals(custom, decodeCustomPicture(encodeCustomPicture(custom)))
+        val oldFormat = """{"bands":[[0.33,1.1,1.1,1.1]]}"""
+        assertEquals(1f, decodeCustomPicture(oldFormat).targetAdjustments.single().saturation, 0f)
+    }
+
     @Test fun subtitlesOffPersistsAndRetainsPreferredLanguage() = runBlocking {
         val repository = PlayerPreferencesRepository(context)
         repository.setPreferredSubtitleTrack("ar", true)

@@ -69,7 +69,10 @@ fun HdrPresetMenu(
     colorIntensity: Float = 0.5f,
     colorIntensities: Map<HdrColor, Float> = emptyMap(),
     onColorSelected: (HdrColor) -> Unit = {},
-    onColorIntensityChange: (Float) -> Unit = {},
+    colorSaturations: Map<HdrColor, Float> = emptyMap(),
+    onBandChange: (Float, Float) -> Unit = { _, _ -> },
+    enhancementActive: Boolean = false,
+    onToggleEnhancement: () -> Unit = {},
     onClose: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -78,10 +81,11 @@ fun HdrPresetMenu(
         mutableFloatStateOf(colorIntensity)
     }
     if (customizing) {
-        val percent = ((0.5f - colorIntensityDraft) * 200f).roundToInt()
+        val saturation = colorSaturations[selectedColor] ?: 1f
+        val percent = ((0.5f - colorIntensityDraft) * 40f).roundToInt()
         val intensityLabel = when {
             percent > 2 -> "Bright +$percent%"
-            percent < -2 -> "Dull $percent%"
+            percent < -2 -> "Dark $percent%"
             else -> "Original 0%"
         }
         Column(
@@ -152,7 +156,7 @@ fun HdrPresetMenu(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                if (abs(colorIntensityDraft - 0.5f) > 0.01f) {
+                if (abs(colorIntensityDraft - 0.5f) > 0.001f || abs(saturation - 1f) > 0.001f) {
                     Text(
                         text = "Reset colour",
                         color = HiPrimaryCyan,
@@ -162,7 +166,7 @@ fun HdrPresetMenu(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 colorIntensityDraft = 0.5f
-                                onColorIntensityChange(0.5f)
+                                onBandChange(0.5f, 1f)
                             }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
@@ -174,7 +178,7 @@ fun HdrPresetMenu(
             ) {
                 HdrColor.entries.forEach { color ->
                     val isSelected = color == selectedColor
-                    val isModified = abs((colorIntensities[color] ?: 0.5f) - 0.5f) > 0.01f
+                    val isModified = abs((colorIntensities[color] ?: 0.5f) - 0.5f) > 0.001f || abs((colorSaturations[color] ?: 1f) - 1f) > 0.001f
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -211,9 +215,8 @@ fun HdrPresetMenu(
                 value = colorIntensityDraft,
                 onValueChange = {
                     colorIntensityDraft = it
-                    onColorIntensityChange(it)
                 },
-                onValueChangeFinished = { onColorIntensityChange(colorIntensityDraft) },
+                onValueChangeFinished = { onBandChange(colorIntensityDraft, saturation) },
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth().height(34.dp),
                 colors = SliderDefaults.colors(
@@ -225,7 +228,10 @@ fun HdrPresetMenu(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Bright", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
                 Text("Original", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                Text("Dull", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                Text("Dark", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+            }
+            CustomSlider(Modifier.fillMaxWidth(), "${selectedColor.displayName} · Dull to rich", saturation, 0f..2f) {
+                onBandChange(colorIntensityDraft, it)
             }
         }
     } else {
@@ -252,6 +258,8 @@ fun HdrPresetMenu(
         ) {
             HdrMenuHeader(
                 title = "Picture mode",
+                secondaryActionLabel = if (enhancementActive) "Turn off" else "Turn on",
+                onSecondaryAction = onToggleEnhancement,
                 subtitle = "${hdrPresetDisplayName(selected)} selected · tap another mode to preview",
                 onDone = onClose,
             )

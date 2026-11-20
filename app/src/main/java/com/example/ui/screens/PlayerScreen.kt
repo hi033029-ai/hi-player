@@ -275,11 +275,10 @@ fun PlayerScreen(
     var draftCustomHdrPreset by remember(showHdrCustomizer, customHdrPreset) {
         mutableStateOf(customHdrPreset)
     }
-    val hdrColorIntensities = remember(draftCustomHdrPreset.targetAdjustments) {
+    val colourBands = remember(draftCustomHdrPreset.targetAdjustments) {
         HdrColor.entries.associateWith { color ->
             val hue = hdrColorHue(color.color)
-            val band = draftCustomHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
-            com.example.player.selectiveIntensityFromAdjustment(band)
+            draftCustomHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
         }
     }
 
@@ -994,27 +993,23 @@ fun PlayerScreen(
             customPreset = draftCustomHdrPreset,
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
-            colorIntensity = hdrColorIntensities.getValue(selectedHdrColor),
-                colorIntensities = hdrColorIntensities,
+            colorIntensity = com.example.player.selectiveIntensityFromAdjustment(colourBands[selectedHdrColor]),
+            colorIntensities = colourBands.mapValues { com.example.player.selectiveIntensityFromAdjustment(it.value) },
+            colorSaturations = colourBands.mapValues { it.value?.saturation ?: 1f },
+            enhancementActive = applyColorPresetToVideo,
+            onToggleEnhancement = playerViewModel::togglePictureEnhancement,
             onColorSelected = {
                 selectedHdrColor = it
                 // Selecting a swatch only selects its controls. It must not tint the
                 // picture, reset global controls or enable HDR by itself.
             },
-            onColorIntensityChange = { intensity ->
-                val updatedIntensities = hdrColorIntensities + (selectedHdrColor to intensity)
-                val nextPreset = customHdrPreset.copy(
-                    brightness = draftCustomHdrPreset.brightness,
-                    contrast = draftCustomHdrPreset.contrast,
-                    saturation = draftCustomHdrPreset.saturation,
-                    vibrance = draftCustomHdrPreset.vibrance,
-                    sharpness = draftCustomHdrPreset.sharpness,
-                    name = ColorPresets.CUSTOM.name,
-                    targetHue = -1f,
-                    red = 1f,
-                    green = 1f,
-                    blue = 1f,
-                    targetAdjustments = hdrColorTargetAdjustments(updatedIntensities),
+            onBandChange = { intensity, saturation ->
+                val hue = hdrColorHue(selectedHdrColor.color)
+                val otherBands = draftCustomHdrPreset.targetAdjustments.filterNot { kotlin.math.abs(it.hue - hue) < .001f }
+                val gain = 1.2f - 0.4f * intensity
+                val neutral = kotlin.math.abs(gain - 1f) < .001f && kotlin.math.abs(saturation - 1f) < .001f
+                val nextPreset = draftCustomHdrPreset.copy(
+                    targetAdjustments = if (neutral) otherBands else otherBands + ColorTargetAdjustment(hue, gain, gain, gain, saturation),
                 )
                 draftCustomHdrPreset = nextPreset
                 playerViewModel.selectPictureMode(nextPreset)
@@ -1248,14 +1243,6 @@ private fun computeVideoRatioScale(
                 1f to (containerRatio / targetRatio)
             }
         }
-    }
-}
-
-private fun hdrColorTargetAdjustments(
-    intensities: Map<HdrColor, Float>
-): List<ColorTargetAdjustment> {
-    return intensities.mapNotNull { (color, intensity) ->
-        com.example.player.selectiveExposureAdjustment(hdrColorHue(color.color), intensity)
     }
 }
 

@@ -2,6 +2,7 @@ package com.example.viewmodel
 
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
+import com.example.player.isIdentityTransform
 
 import android.app.Application
 import android.content.Context
@@ -643,6 +644,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectPictureMode(preset: ColorPreset) {
         pendingPicture = preset
+        if (preset != ColorPresets.HDR_DISABLED && !preset.isIdentityTransform()) {
+            lastEnhancedPreset = preset
+        }
         if (preset.name == ColorPresets.CUSTOM.name) _customPicturePreset.value = preset
         engine.setPictureMode(preset != ColorPresets.HDR_DISABLED, preset)
         val custom = _customPicturePreset.value

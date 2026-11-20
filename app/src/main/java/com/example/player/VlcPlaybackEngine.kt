@@ -73,6 +73,9 @@ class VlcPlaybackEngine(
     private var descriptor: ParcelFileDescriptor? = null
     private var loadedRevision = -1L
     private var pendingResumeMs = 0L
+    // Worker only. While paused, ignore pre-seek samples and accept the native
+    // clock (or time event) near the latest requested presentation time.
+    private var pausedSeekMs: Long? = null
     private var buffering = false
     @Volatile private var firstFrameRevision = -1L
     private var displayedPictures = 0
@@ -241,6 +244,7 @@ class VlcPlaybackEngine(
                 nativePlayer.media = media
             } finally { media.release() }
             pendingResumeMs = lastGoodMs.takeIf { it > 0 } ?: next.startMs
+            pausedSeekMs = null
             buffering = true
             displayedPictures = 0
             reportedTracks = null
@@ -275,7 +279,7 @@ class VlcPlaybackEngine(
         when (type) {
             MediaPlayer.Event.Opening -> buffering = true
             MediaPlayer.Event.TimeChanged -> {
-                if (pendingResumeMs == 0L) {
+                if (pausedSeekMs == null && pendingResumeMs == 0L) {
                     lastGoodMs = (changedTime ?: nativePlayer.time).coerceAtLeast(0L)
                 }
             }
@@ -306,12 +310,12 @@ class VlcPlaybackEngine(
                 fail(token, IllegalStateException("Native playback failed")); return
             }
         }
-        publishOnWorker(nativePlayer, token)
+        publishOnWorker(nativePlayer, token, changedTime)
     }
 
-    private fun publishOnWorker(nativePlayer: MediaPlayer, token: Long) {
+    private fun publishOnWorker(nativePlayer: MediaPlayer, token: Long, changedTime: Long? = null) {
         if (released || token != loadedRevision || token != revision.get()) return
-        val time = nativePlayer.time.coerceAtLeast(0)
+        val time = nativePlayer.time
         // A vout/layout event is not proof that a frame was displayed.
         val media = nativePlayer.media
         val displayedCount = try { media?.stats?.displayedPictures ?: 0 }
@@ -322,7 +326,15 @@ class VlcPlaybackEngine(
             firstFrameRevision = token
             postMain(token) { main.removeCallbacks(watchdog); onFirstFrame() }
         }
-        if (displayed && pendingResumeMs == 0L) lastGoodMs = time
+        if (pendingResumeMs == 0L) {
+            val target = pausedSeekMs
+            if (target != null) {
+                // A paused vout need not display another picture for its
+                // timeline to change. Delayed events may describe an older seek.
+                if (time >= 0 && kotlin.math.abs(time - target) <= 1_000) lastGoodMs = time
+                else if (changedTime != null && changedTime >= 0 && kotlin.math.abs(changedTime - target) <= 1_000) lastGoodMs = changedTime
+            } else if (displayed && time >= 0) lastGoodMs = time
+        }
         val duration = nativePlayer.length.coerceAtLeast(0)
         val state = State(nativePlayer.isPlaying, buffering,
             if (pendingResumeMs > 0) pendingResumeMs else lastGoodMs,
@@ -336,7 +348,7 @@ class VlcPlaybackEngine(
             if (!released && token == loadedRevision && token == revision.get()) player?.let(action)
         }
     }
-    fun play() { wantsPlayback = true; active { it.play() } }
+    fun play() { wantsPlayback = true; active { pausedSeekMs = null; it.play() } }
     fun pause() { wantsPlayback = false; active { it.pause() } }
     fun togglePlayPause() { if (wantsPlayback) pause() else play() }
     fun stop() {
@@ -350,15 +362,9 @@ class VlcPlaybackEngine(
         val target = positionMs.coerceAtLeast(0)
         active {
             if (it.isSeekable) {
-                // setTime returns LibVLC's accepted movie time. Publish that
-                // acknowledgement immediately: Android 7 can keep a paused
-                // vout's displayed-picture count unchanged until playback
-                // resumes, even though the native seek has completed.
-                val applied = it.setTime(target)
-                if (applied >= 0L) {
-                    lastGoodMs = applied
-                    publishOnWorker(it, loadedRevision)
-                }
+                pausedSeekMs = target.takeUnless { wantsPlayback }
+                it.setTime(target)
+                publishOnWorker(it, loadedRevision)
             } else {
                 postMain(revision.get()) { onSeekUnavailable(target) }
             }
