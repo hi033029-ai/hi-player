@@ -50,7 +50,7 @@ class GeckoChromeDeviceTest {
                     compose.onAllNodesWithTag("browser_bookmark_0")
                         .fetchSemanticsNodes().isNotEmpty()
                 }
-                compose.onNodeWithTag("browser_bookmark_0").performClick()
+                compose.onNodeWithTag("browser_bookmark_0").performScrollTo().performClick()
                 compose.waitUntil(20_000) { pageIs { it.url == server.root+"/page" } }
                 compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/video.mp4")
                 compose.onNodeWithTag("browser_address_input").performImeAction()
