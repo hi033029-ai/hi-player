@@ -68,7 +68,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
+import com.example.ui.theme.AppAlertDialog as AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -502,7 +502,7 @@ fun FileManagerScreen(
                     IconButton(onClick = { showFileToolsMenu = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "File tools", tint = palette.textPrimary)
                     }
-                    androidx.compose.material3.DropdownMenu(expanded = showFileToolsMenu, onDismissRequest = { showFileToolsMenu = false }) {
+                    com.example.ui.theme.AppDropdownMenu(expanded = showFileToolsMenu, onDismissRequest = { showFileToolsMenu = false }) {
                         androidx.compose.material3.DropdownMenuItem(text = { Text("Refresh") }, onClick = {
                             showFileToolsMenu = false; showQuickPanels = true; fileManagerViewModel.refreshAll()
                         })

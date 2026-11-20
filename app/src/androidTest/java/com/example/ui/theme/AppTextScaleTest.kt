@@ -38,6 +38,9 @@ class AppTextScaleTest {
                         HiPlayerTheme(uiTextScale = scale) {
                             Text("Library", Modifier.testTag("nested"), style = MaterialTheme.typography.bodyLarge)
                         }
+                        AppDialog(onDismissRequest = {}) {
+                            Text("Library", Modifier.testTag("dialog"), style = MaterialTheme.typography.bodyLarge)
+                        }
                         Text("Player controls", Modifier.testTag("player"), fontSize = 16.sp)
                     }
                 }
@@ -48,6 +51,7 @@ class AppTextScaleTest {
         fun widths(): Pair<Int, Int> {
             val root = width("root")
             assertEquals(root, width("nested"))
+            assertEquals(root, width("dialog"))
             return root to width("player")
         }
 

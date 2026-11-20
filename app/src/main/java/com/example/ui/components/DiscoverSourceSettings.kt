@@ -21,7 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.AlertDialog
+import com.example.ui.theme.AppAlertDialog as AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -109,7 +109,7 @@ fun DiscoverSourceSettings(
         NetworkMediaBrowser(kind, discoverViewModel, onDismiss = { browserKind = null },
             onManage = { browserKind = null; manage = true }, onPlay = onPlayMedia)
     }
-    if (manage) androidx.compose.ui.window.Dialog(onDismissRequest = { manage = false },
+    if (manage) com.example.ui.theme.AppDialog(onDismissRequest = { manage = false },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         androidx.compose.material3.Surface(Modifier.fillMaxSize(), color = palette.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {

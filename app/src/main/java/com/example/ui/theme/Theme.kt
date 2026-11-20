@@ -27,7 +27,9 @@ data class HiUiMetrics(
 private const val COMPACT_APP_FONT_SCALE = 0.80f
 
 // Nested appearance themes use the same device density as the app root.
-private val LocalUnscaledDensity = compositionLocalOf<Density?> { null }
+internal val LocalUnscaledDensity = compositionLocalOf<Density?> { null }
+
+internal val LocalAppDensity = compositionLocalOf<Density?> { null }
 
 val LocalHiUiMetrics = compositionLocalOf {
     HiUiMetrics(
@@ -126,6 +128,7 @@ fun HiPlayerTheme(
         LocalHiPalette provides palette,
         LocalHiUiMetrics provides uiMetrics,
         LocalUnscaledDensity provides baseDensity,
+        LocalAppDensity provides scaledDensity,
         LocalDensity provides scaledDensity
     ) {
         MaterialTheme(

@@ -2,6 +2,7 @@ package com.example.browser.gecko
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import com.example.ui.theme.AppAlertDialog as AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier

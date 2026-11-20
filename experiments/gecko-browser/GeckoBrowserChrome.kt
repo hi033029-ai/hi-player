@@ -117,7 +117,7 @@ internal fun GeckoBrowserChrome(
         GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
-            androidx.compose.material3.AlertDialog(
+            com.example.ui.theme.AppAlertDialog(
                 onDismissRequest = services::dismissDownloadNotice,
                 title = { androidx.compose.material3.Text("Download unavailable") },
                 text = { androidx.compose.material3.Text(notice) },
@@ -140,13 +140,13 @@ internal fun GeckoBrowserChrome(
             onDismiss = { showClearData = false },
         )
         when (services.clearData.state) {
-            GeckoClearDataState.CLEARING -> androidx.compose.material3.AlertDialog(
+            GeckoClearDataState.CLEARING -> com.example.ui.theme.AppAlertDialog(
                 onDismissRequest = {},
                 title = { androidx.compose.material3.Text("Clearing browsing data") },
                 text = { androidx.compose.material3.LinearProgressIndicator() },
                 confirmButton = {},
             )
-            GeckoClearDataState.COMPLETE, GeckoClearDataState.FAILED -> androidx.compose.material3.AlertDialog(
+            GeckoClearDataState.COMPLETE, GeckoClearDataState.FAILED -> com.example.ui.theme.AppAlertDialog(
                 onDismissRequest = services.clearData::dismissResult,
                 title = { androidx.compose.material3.Text(if (services.clearData.state == GeckoClearDataState.COMPLETE) "Clear request finished" else "Some data could not be cleared") },
                 text = { androidx.compose.material3.Text(if (services.clearData.state == GeckoClearDataState.COMPLETE) "Open-tab history clearing was requested. Device-browser sign-ins are unchanged." else "Please try again. Some data may already have been cleared.") },
@@ -233,13 +233,13 @@ internal fun GeckoBrowserChrome(
             onDismiss = { librarySection = null },
         )
     }
-    if (clearFailed) androidx.compose.material3.AlertDialog(
+    if (clearFailed) com.example.ui.theme.AppAlertDialog(
         onDismissRequest = { clearFailed = false },
         title = { androidx.compose.material3.Text("Could not update history") },
         text = { androidx.compose.material3.Text("Please try again.") },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { clearFailed = false }) { androidx.compose.material3.Text("OK") } },
     )
-    qrNotice?.let { notice -> androidx.compose.material3.AlertDialog(
+    qrNotice?.let { notice -> com.example.ui.theme.AppAlertDialog(
         onDismissRequest = { qrNotice = null },
         title = { androidx.compose.material3.Text("QR scanner") },
         text = { androidx.compose.material3.Text(notice) },
