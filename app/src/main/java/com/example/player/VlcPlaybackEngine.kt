@@ -249,9 +249,19 @@ class VlcPlaybackEngine(
             // with the generation that happens to be current at callback delivery.
             nativePlayer.setEventListener { event ->
                 val type = event.type
+                // LibVLC reports a paused seek through TimeChanged even on
+                // Android 7 builds where no new picture is counted until
+                // playback resumes. Keep the event's timeline value so the
+                // public position does not remain stuck at the last rendered
+                // frame while the decoder is correctly paused.
+                val changedTime = if (type == MediaPlayer.Event.TimeChanged) {
+                    event.timeChanged
+                } else {
+                    null
+                }
                 worker.post {
                     if (!released && loadedRevision == token && revision.get() == token) {
-                        handleEvent(nativePlayer, type, token)
+                        handleEvent(nativePlayer, type, token, changedTime)
                     }
                 }
             }
@@ -261,9 +271,14 @@ class VlcPlaybackEngine(
           catch (error: Exception) { fail(token, error) }
     }
 
-    private fun handleEvent(nativePlayer: MediaPlayer, type: Int, token: Long) {
+    private fun handleEvent(nativePlayer: MediaPlayer, type: Int, token: Long, changedTime: Long? = null) {
         when (type) {
             MediaPlayer.Event.Opening -> buffering = true
+            MediaPlayer.Event.TimeChanged -> {
+                if (pendingResumeMs == 0L) {
+                    lastGoodMs = (changedTime ?: nativePlayer.time).coerceAtLeast(0L)
+                }
+            }
             MediaPlayer.Event.Playing -> {
                 buffering = false
                 if (pendingResumeMs > 0) {
@@ -334,8 +349,19 @@ class VlcPlaybackEngine(
     fun seekTo(positionMs: Long) {
         val target = positionMs.coerceAtLeast(0)
         active {
-            if (it.isSeekable) it.setTime(target)
-            else postMain(revision.get()) { onSeekUnavailable(target) }
+            if (it.isSeekable) {
+                // setTime returns LibVLC's accepted movie time. Publish that
+                // acknowledgement immediately: Android 7 can keep a paused
+                // vout's displayed-picture count unchanged until playback
+                // resumes, even though the native seek has completed.
+                val applied = it.setTime(target)
+                if (applied >= 0L) {
+                    lastGoodMs = applied
+                    publishOnWorker(it, loadedRevision)
+                }
+            } else {
+                postMain(revision.get()) { onSeekUnavailable(target) }
+            }
         }
     }
     // Color grading belongs to one color-aware Media3 processor. VLC adjust is
