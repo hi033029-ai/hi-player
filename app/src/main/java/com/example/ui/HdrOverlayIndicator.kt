@@ -3,10 +3,6 @@ package com.example.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,16 +45,6 @@ fun HdrOverlayIndicator(
         animationSpec = tween(durationMillis = 240),
         label = "hdr_indicator_accent",
     )
-    val pulseTransition = rememberInfiniteTransition(label = "hdr_pulse")
-    val glowAlpha by pulseTransition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "hdr_glow_alpha",
-    )
 
     AnimatedVisibility(
         visible = visible,
@@ -73,7 +59,7 @@ fun HdrOverlayIndicator(
                 .background(Color(0xDC0A0F19), shape)
                 .border(
                     width = 1.dp,
-                    color = accent.copy(alpha = if (hdrActive) glowAlpha else 0.35f),
+                    color = accent.copy(alpha = if (hdrActive) 0.85f else 0.35f),
                     shape = shape,
                 )
                 .padding(horizontal = 14.dp, vertical = 8.dp),
@@ -88,7 +74,7 @@ fun HdrOverlayIndicator(
                     modifier = Modifier
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(accent.copy(alpha = if (hdrActive) glowAlpha else 0.55f)),
+                        .background(accent.copy(alpha = if (hdrActive) 0.85f else 0.55f)),
                 )
                 Text(
                     text = if (hdrActive) "HDR ON" else "HDR OFF",
