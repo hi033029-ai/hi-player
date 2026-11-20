@@ -255,6 +255,17 @@ fun PlayerScreen(
     var nativeHoldSeekDirection by remember(activePlayer) { mutableStateOf(0) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
+    var showHdrStatusOverlay by remember { mutableStateOf(false) }
+    var hasInitializedHdrOverlay by remember { mutableStateOf(false) }
+    LaunchedEffect(hdrColorPreset, applyColorPresetToVideo) {
+        if (!hasInitializedHdrOverlay) {
+            hasInitializedHdrOverlay = true
+            return@LaunchedEffect
+        }
+        showHdrStatusOverlay = true
+        kotlinx.coroutines.delay(1800L)
+        showHdrStatusOverlay = false
+    }
     androidx.activity.compose.BackHandler(enabled = showHdrPresetMenu || showHdrCustomizer) {
         showHdrPresetMenu = false
         showHdrCustomizer = false
@@ -268,7 +279,7 @@ fun PlayerScreen(
         HdrColor.entries.associateWith { color ->
             val hue = hdrColorHue(color.color)
             val band = draftCustomHdrPreset.targetAdjustments.firstOrNull { kotlin.math.abs(it.hue - hue) < .001f }
-            band?.let { ((1.2f - it.red) / 0.4f).coerceIn(0f, 1f) } ?: .5f
+            com.example.player.selectiveIntensityFromAdjustment(band)
         }
     }
 
@@ -968,7 +979,14 @@ fun PlayerScreen(
                 areControlsVisible = true
             }
         }
-
+            com.example.ui.HdrOverlayIndicator(
+                visible = showHdrStatusOverlay,
+                hdrActive = applyColorPresetToVideo,
+                preset = hdrColorPreset,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 56.dp),
+            )
         HdrPresetMenu(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
@@ -977,6 +995,7 @@ fun PlayerScreen(
             customizing = showHdrCustomizer,
             selectedColor = selectedHdrColor,
             colorIntensity = hdrColorIntensities.getValue(selectedHdrColor),
+                colorIntensities = hdrColorIntensities,
             onColorSelected = {
                 selectedHdrColor = it
                 // Selecting a swatch only selects its controls. It must not tint the
@@ -998,12 +1017,14 @@ fun PlayerScreen(
                     targetAdjustments = hdrColorTargetAdjustments(updatedIntensities),
                 )
                 draftCustomHdrPreset = nextPreset
+                playerViewModel.selectPictureMode(nextPreset)
             },
             onCustomize = {
                 showHdrCustomizer = true
             },
             onCustomPresetChange = { preset ->
                 draftCustomHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
+                playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
             },
             onApplyCustomPreset = { preset ->
                 playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
