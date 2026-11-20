@@ -107,9 +107,9 @@ import androidx.compose.material.icons.Icons''', 'shared platform tools imports'
                     }
                 },
                 HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage)''', 'translation shortcut secure browser and QR actions')
-    result[key] = replace_once(result[key], '    if (clearFailed) androidx.compose.material3.AlertDialog(', '''    platformNotice?.let { message -> androidx.compose.material3.AlertDialog(
+    result[key] = replace_once(result[key], '    if (clearFailed) com.example.ui.theme.AppAlertDialog(', '''    platformNotice?.let { message -> com.example.ui.theme.AppAlertDialog(
         onDismissRequest = { platformNotice = null }, title = { androidx.compose.material3.Text("Browser") },
         text = { androidx.compose.material3.Text(message) },
         confirmButton = { androidx.compose.material3.TextButton(onClick = { platformNotice = null }) { androidx.compose.material3.Text("OK") } }) }
-    if (clearFailed) androidx.compose.material3.AlertDialog(''', 'platform action feedback')
+    if (clearFailed) com.example.ui.theme.AppAlertDialog(''', 'platform action feedback')
     return result
