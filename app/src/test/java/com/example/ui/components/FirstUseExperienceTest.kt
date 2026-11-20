@@ -168,6 +168,7 @@ class FirstUseExperienceTest {
                 selected = com.example.player.ColorPresets.CUSTOM,
                 customPreset = draft,
                 customizing = true,
+                onSelect = {},
                 onApplyCustomPreset = { applied = it },
                 onClose = { closeCount++ },
             )
