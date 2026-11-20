@@ -86,8 +86,17 @@ internal fun GeckoBrowserChrome(
     val onPage = current.url.isNotBlank() && services?.secureRouting?.route(coordinator.activeId) == null
     val bookmarkUrl = if (onPage) GeckoTabPersistence.safeUrl(current.url) else ""
     val saved = bookmarkUrl.isNotEmpty() && bookmarkEntries.any { it.url == bookmarkUrl }
-    fun refreshBookmarks() {
-        bookmarkEntries = store.bookmarks()
+    fun addBookmark(entry: OrbitBrowserEntry) {
+        store.addBookmark(entry)
+        // SharedPreferences.apply() is intentionally asynchronous. Update the
+        // observable list from the user action instead of immediately reading
+        // storage back and briefly restoring stale data.
+        bookmarkEntries = listOf(entry) + bookmarkEntries.filterNot { it.url == entry.url }
+        libraryRevision++
+    }
+    fun removeBookmark(url: String) {
+        store.removeBookmark(url)
+        bookmarkEntries = bookmarkEntries.filterNot { it.url == url }
         libraryRevision++
     }
 
@@ -192,9 +201,8 @@ internal fun GeckoBrowserChrome(
                 HiMenuAction("Back", Icons.Default.ArrowBack, enabled = onPage && current.canGoBack) { coordinator.back() },
                 HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = onPage && current.canGoForward) { coordinator.forward() },
                 HiMenuAction(if (saved) "Remove bookmark" else "Add bookmark", if (saved) Icons.Default.Star else Icons.Default.StarBorder, enabled = bookmarkUrl.isNotEmpty(), checked = saved) {
-                    if (saved) store.removeBookmark(bookmarkUrl)
-                    else store.addBookmark(OrbitBrowserEntry(current.title.ifBlank { bookmarkUrl }, bookmarkUrl))
-                    refreshBookmarks()
+                    if (saved) removeBookmark(bookmarkUrl)
+                    else addBookmark(OrbitBrowserEntry(current.title.ifBlank { bookmarkUrl }, bookmarkUrl))
                 },
                 HiMenuAction("Exit browser", Icons.Default.PowerSettingsNew) { onExit() },
                 HiMenuAction("Reload", Icons.Default.Refresh, enabled = onPage) { coordinator.reload() },
@@ -210,8 +218,7 @@ internal fun GeckoBrowserChrome(
             onOpen = { url -> if (onNavigate != null) onNavigate(url) else coordinator.load(url); librarySection = null },
             onRemove = { from, url ->
                 if (from == HiLibrarySection.BOOKMARKS) {
-                    store.removeBookmark(url)
-                    refreshBookmarks()
+                    removeBookmark(url)
                 } else {
                     coordinator.removeHistory(url) { success -> clearFailed = !success; libraryRevision++ }
                 }
