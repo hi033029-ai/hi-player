@@ -61,6 +61,7 @@ internal fun GeckoBrowserShell(
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
     historyRevision: Int = 0,
+    bookmarks: List<Pair<String, String>>? = null,
     secureRouting: GeckoSecureRouting? = null,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it, Modifier.fillMaxSize()) },
 ) {
@@ -78,7 +79,9 @@ internal fun GeckoBrowserShell(
     var history by remember { mutableStateOf(emptyList<OrbitBrowserEntry>()) }
     val focusManager = LocalFocusManager.current
     val shortcuts = remember(shortcutRevision) { store.shortcuts().map { it.title to it.url } }
-    val bookmarks = remember(historyRevision) { store.bookmarks().map { it.title to it.url } }
+    val displayedBookmarks = bookmarks ?: remember(historyRevision) {
+        store.bookmarks().map { it.title to it.url }
+    }
     val scrollChrome = coordinator.controller.scrollChrome
     var barHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -122,7 +125,7 @@ internal fun GeckoBrowserShell(
             HiBrowserHome(
                 isPrivate = activeTab.privateTab,
                 shortcuts = shortcuts,
-                bookmarks = bookmarks,
+                bookmarks = displayedBookmarks,
                 adBlockEnabled = store.adBlock,
                 onVisit = ::navigate,
                 onAddShortcut = { name, url ->

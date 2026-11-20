@@ -71,6 +71,7 @@ internal fun GeckoBrowserChrome(
     var clearing by remember { mutableStateOf(false) }
     var clearFailed by remember { mutableStateOf(false) }
     var qrNotice by remember { mutableStateOf<String?>(null) }
+    var bookmarkEntries by remember(store) { mutableStateOf(store.bookmarks()) }
     fun startGoogleSignIn() {
         services?.secureRouting?.decision(
             coordinator.activeId,
@@ -84,13 +85,21 @@ internal fun GeckoBrowserChrome(
     LaunchedEffect(coordinator.activeId, current.url, current.loading) { find.pageChanged(coordinator.activeId, current.url, current.loading) }
     val onPage = current.url.isNotBlank() && services?.secureRouting?.route(coordinator.activeId) == null
     val bookmarkUrl = if (onPage) GeckoTabPersistence.safeUrl(current.url) else ""
-    val saved = bookmarkUrl.isNotEmpty() && store.isBookmarked(bookmarkUrl)
+    val saved = bookmarkUrl.isNotEmpty() && bookmarkEntries.any { it.url == bookmarkUrl }
+    fun refreshBookmarks() {
+        bookmarkEntries = store.bookmarks()
+        libraryRevision++
+    }
 
     GeckoBrowserShell(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch, onNavigate = onNavigate,
-        onMenu = { showMenu = true }, find = find, modifier = modifier, permissionUi = services?.permissions ?: permissionUi, historyRevision = libraryRevision, secureRouting = services?.secureRouting, pageContent = pageContent,
+        onMenu = { showMenu = true }, find = find, modifier = modifier,
+        permissionUi = services?.permissions ?: permissionUi,
+        historyRevision = libraryRevision,
+        bookmarks = bookmarkEntries.map { it.title to it.url },
+        secureRouting = services?.secureRouting, pageContent = pageContent,
     )
     if (services != null) {
         LaunchedEffect(coordinator.revision) { services.secureRouting.prune(coordinator.tabs.map { it.id }.toSet()) }
@@ -185,7 +194,7 @@ internal fun GeckoBrowserChrome(
                 HiMenuAction(if (saved) "Remove bookmark" else "Add bookmark", if (saved) Icons.Default.Star else Icons.Default.StarBorder, enabled = bookmarkUrl.isNotEmpty(), checked = saved) {
                     if (saved) store.removeBookmark(bookmarkUrl)
                     else store.addBookmark(OrbitBrowserEntry(current.title.ifBlank { bookmarkUrl }, bookmarkUrl))
-                    libraryRevision++
+                    refreshBookmarks()
                 },
                 HiMenuAction("Exit browser", Icons.Default.PowerSettingsNew) { onExit() },
                 HiMenuAction("Reload", Icons.Default.Refresh, enabled = onPage) { coordinator.reload() },
@@ -194,7 +203,7 @@ internal fun GeckoBrowserChrome(
         )
     }
     librarySection?.let { section ->
-        val bookmarks = remember(libraryRevision) { store.bookmarks().map { it.title to it.url } }
+        val bookmarks = bookmarkEntries.map { it.title to it.url }
         val history = remember(libraryRevision) { store.history().map { it.title to it.url } }
         HiBrowserLibrary(
             initialSection = section, appNavigation = appNavigation, bookmarks = bookmarks, history = history,
@@ -202,7 +211,7 @@ internal fun GeckoBrowserChrome(
             onRemove = { from, url ->
                 if (from == HiLibrarySection.BOOKMARKS) {
                     store.removeBookmark(url)
-                    libraryRevision++
+                    refreshBookmarks()
                 } else {
                     coordinator.removeHistory(url) { success -> clearFailed = !success; libraryRevision++ }
                 }

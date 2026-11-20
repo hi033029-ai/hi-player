@@ -5,7 +5,9 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -57,6 +59,40 @@ class GeckoBrowserChromeTest {
             assertTrue(store.savedTabs().all { it.id != coordinator.activeId })
             coordinator.close()
         }
+    }
+
+    @Test fun addingBookmarkUpdatesHomeWithoutRecreatingBrowser() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).edit().clear().commit()
+        val store = OrbitBrowserStore(context)
+        val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { tab, changed ->
+            object : GeckoManagedSession<GeckoView> {
+                override fun attach(view: GeckoView) = Unit
+                override fun detach() = Unit
+                override fun load(url: String) {
+                    changed(GeckoTabSnapshot(tab.id, tab.privateTab, url, title = "Saved page"))
+                }
+                override fun reload() = Unit
+                override fun stop() = Unit
+                override fun back() = Unit
+                override fun forward() = Unit
+                override fun exitFullScreen() = Unit
+                override fun purgeHistory() = Unit
+                override fun setDesktop(enabled: Boolean) = Unit
+                override fun close() = Unit
+            }
+        }
+        compose.setContent { HiPlayerTheme {
+            GeckoBrowserChrome(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {}, {},
+                downloadsContent = { Text("Downloads") }, pageContent = { Text("Gecko page") })
+        } }
+        compose.runOnIdle { coordinator.load("https://example.org/saved") }
+        compose.onNodeWithContentDescription("Browser menu").performClick()
+        compose.onNodeWithContentDescription("Add bookmark").performClick()
+        compose.runOnIdle { assertTrue(store.isBookmarked("https://example.org/saved")) }
+        compose.onNodeWithContentDescription("Browser home").performClick()
+        compose.onNodeWithTag("browser_bookmark_0").assertIsDisplayed()
+        compose.runOnIdle { coordinator.close() }
     }
 
     @Test fun pageToolsLiveInTheBrowserMenuInsteadOfFloatingOverThePage() {
