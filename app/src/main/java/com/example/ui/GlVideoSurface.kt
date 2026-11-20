@@ -614,6 +614,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
         private var targetRedsHandle = 0
         private var targetGreensHandle = 0
         private var targetBluesHandle = 0
+        private var targetSatsHandle = 0
         private var passThroughHandle = 0
         private var preset = ColorPresets.NEUTRAL
         var surface: Surface? = null
@@ -643,6 +644,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
             targetRedsHandle = GLES20.glGetUniformLocation(program, "uTargetReds[0]")
             targetGreensHandle = GLES20.glGetUniformLocation(program, "uTargetGreens[0]")
             targetBluesHandle = GLES20.glGetUniformLocation(program, "uTargetBlues[0]")
+            targetSatsHandle = GLES20.glGetUniformLocation(program, "uTargetSats")
             passThroughHandle = GLES20.glGetUniformLocation(program, "uPassThrough")
 
             val ids = IntArray(1)
@@ -701,6 +703,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 GLES20.glUniform1fv(targetRedsHandle, adjustments.size, adjustments.map { it.red }.toFloatArray(), 0)
                 GLES20.glUniform1fv(targetGreensHandle, adjustments.size, adjustments.map { it.green }.toFloatArray(), 0)
                 GLES20.glUniform1fv(targetBluesHandle, adjustments.size, adjustments.map { it.blue }.toFloatArray(), 0)
+                GLES20.glUniform1fv(targetSatsHandle, adjustments.size, adjustments.map { it.saturation }.toFloatArray(), 0)
             }
             vertexBuffer.position(0)
             GLES20.glEnableVertexAttribArray(positionHandle)
@@ -784,6 +787,7 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                 uniform float uTargetReds[8];
                 uniform float uTargetGreens[8];
                 uniform float uTargetBlues[8];
+                uniform float uTargetSats[8];
                 uniform int uPassThrough;
                 varying vec2 vTexCoord;
                 void main() {
@@ -822,7 +826,10 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                             adjustedColor.r *= uTargetReds[i];
                             adjustedColor.g *= uTargetGreens[i];
                             adjustedColor.b *= uTargetBlues[i];
-                            adjustmentSum += (adjustedColor - color) * hueMask;
+                        vec3 scaled = adjustedColor;
+                        float targetLuma = dot(scaled, vec3(0.2126, 0.7152, 0.0722));
+                        vec3 satAdjusted = mix(vec3(targetLuma), scaled, uTargetSats[i]);
+                            adjustmentSum += (satAdjusted - color) * hueMask;
                             maskSum += hueMask;
                         }
                         // Overlapping neighbouring bands do not multiply or compound changes.
