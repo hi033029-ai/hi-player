@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -87,8 +89,13 @@ class GeckoBrowserChromeTest {
                 downloadsContent = { Text("Downloads") }, pageContent = { Text("Gecko page") })
         } }
         compose.runOnIdle { coordinator.load("https://example.org/saved") }
+        compose.waitUntil(5_000) {
+            coordinator.activeSnapshot.url == "https://example.org/saved"
+        }
+        compose.waitForIdle()
         compose.onNodeWithContentDescription("Browser menu").performClick()
-        compose.onNodeWithContentDescription("Add bookmark").performClick()
+        compose.onNodeWithContentDescription("Add bookmark")
+            .assertIsEnabled().assertHasClickAction().performClick()
         compose.onNodeWithContentDescription("Browser home").performClick()
         compose.onNodeWithTag("browser_bookmark_0").performScrollTo().assertIsDisplayed()
         compose.waitUntil(5_000) { store.isBookmarked("https://example.org/saved") }
