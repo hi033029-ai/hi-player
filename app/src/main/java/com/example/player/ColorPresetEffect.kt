@@ -16,10 +16,14 @@ import androidx.media3.effect.GlShaderProgram
  * Never feed this shader a PQ-coded external OES texture or enable an SDR VLC filter.
  */
 @UnstableApi
-class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
-    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Shader(useHdr, preset)
+class ColorPresetEffect(initial: ColorPreset) : GlEffect {
+    // The UI publishes immutable settings; each GL frame sees a single complete grade.
+    @Volatile private var current = initial
+    internal fun update(preset: ColorPreset) { current = preset }
 
-    private class Shader(private val hdr: Boolean, private val preset: ColorPreset) : BaseGlShaderProgram(hdr, 1) {
+    override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram = Shader(useHdr) { current }
+
+    private class Shader(private val hdr: Boolean, private val settings: () -> ColorPreset) : BaseGlShaderProgram(hdr, 1) {
         private val program = try {
             GlProgram(VERTEX, FRAGMENT).apply {
                 setBufferAttribute("aPosition", GlUtil.getNormalizedCoordinateBounds(), 4)
@@ -36,6 +40,7 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
 
         override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
             try {
+                val preset = settings()
                 program.use()
                 program.setSamplerTexIdUniform("uTexture", inputTexId, 0)
                 program.setFloatsUniform("uGain", floatArrayOf(preset.red, preset.green, preset.blue))

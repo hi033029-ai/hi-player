@@ -22,13 +22,12 @@ internal object VideoEffectRedraw {
         if (command != null) {
             player.setVideoEffects(command)
         } else {
-            // Older Media3 cannot replay a processed frame. Re-prepare the SAME
-            // item/renderer once for this explicit paused preset change. Retain
-            // the exact position, track overrides, volume and paused state.
-            val position = player.currentPosition
-            player.stop()
-            player.seekTo(position)
-            player.prepare()
+            // A seek to exactly the current millisecond can be elided. Alternate
+            // between adjacent milliseconds so repeated edits never advance the film.
+            val here = player.currentPosition.coerceAtLeast(0L)
+            val end = player.duration
+            val adjacent = if (here % 2 == 0L && (end < 0L || here + 1 < end)) here + 1 else (here - 1).coerceAtLeast(0)
+            player.seekTo(adjacent)
         }
     }
 }

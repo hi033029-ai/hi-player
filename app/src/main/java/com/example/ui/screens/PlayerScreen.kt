@@ -1,5 +1,14 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
+import android.view.SurfaceView
+import androidx.compose.foundation.Image
+import kotlin.math.roundToInt
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.example.ui.copyPictureFrame
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -239,10 +248,56 @@ fun PlayerScreen(
     val isMuted by playerViewModel.isMuted.collectAsState()
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember(currentVideo?.uri, usingVlc) { mutableStateOf(false) }
-    var videoWidth by remember { mutableStateOf(0) }
-    var videoHeight by remember { mutableStateOf(0) }
-    var videoPixelWidthHeightRatio by remember { mutableStateOf(1f) }
-    var videoRotationDegrees by remember { mutableStateOf(0) }
+    var surfaceView by remember { mutableStateOf<SurfaceView?>(null) }
+    var heldFrame by remember(currentVideo?.uri) { mutableStateOf<Bitmap?>(null) }
+    var replacement by remember(currentVideo?.uri) { mutableStateOf<ExoPlayer?>(null) }
+    var pendingGrade by remember(currentVideo?.uri) { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun changePicture(willGrade: Boolean, apply: () -> Unit) {
+        // Coalesce slider moves while the old frame is being copied.
+        val engine = playerViewModel.engine
+        val currentlyGraded = shouldApplyColorPreset(engine.hdrColorPreset.value, engine.hdrEnhanceActive.value)
+        if (pendingGrade != null || (firstFrameRendered && willGrade != currentlyGraded)) {
+            pendingGrade = apply
+        } else {
+            apply()
+        }
+    }
+
+    LaunchedEffect(currentVideo?.uri, pendingGrade != null) {
+        if (pendingGrade == null) return@LaunchedEffect
+        val secure = activity?.window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
+        val view = surfaceView
+        if (heldFrame == null && view != null && !secure) {
+            heldFrame = copyPictureFrame(view)
+            if (heldFrame != null) {
+                // Allow the overlay to be composed and drawn before releasing the old surface.
+                withFrameNanos { }
+                withFrameNanos { }
+            }
+        }
+        val engine = playerViewModel.engine
+        val previousPlayer = engine.playerInstance.value
+        val wasVlc = engine.usesVlc.value
+        pendingGrade?.invoke()
+        if (previousPlayer !== engine.playerInstance.value || wasVlc != engine.usesVlc.value) {
+            replacement = if (heldFrame != null) engine.playerInstance.value else null
+        } else if (replacement == null) {
+            heldFrame = null
+        }
+        pendingGrade = null
+    }
+    LaunchedEffect(heldFrame, playerError) {
+        if (heldFrame == null) return@LaunchedEffect
+        if (playerError == null) delay(3500)
+        heldFrame = null
+        replacement = null
+    }
+
+    var videoWidth by remember(currentVideo?.uri) { mutableStateOf(0) }
+    var videoHeight by remember(currentVideo?.uri) { mutableStateOf(0) }
+    var videoPixelWidthHeightRatio by remember(currentVideo?.uri) { mutableStateOf(1f) }
+    var videoRotationDegrees by remember(currentVideo?.uri) { mutableStateOf(0) }
     var subtitleCueText by remember { mutableStateOf(emptyList<String>()) }
     var glSurfaceRef by remember { mutableStateOf<GlVideoSurface?>(null) }
     var containerSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
@@ -257,7 +312,7 @@ fun PlayerScreen(
     var showHdrCustomizer by remember { mutableStateOf(false) }
     var showHdrStatusOverlay by remember { mutableStateOf(false) }
     var hasInitializedHdrOverlay by remember { mutableStateOf(false) }
-    LaunchedEffect(hdrColorPreset, applyColorPresetToVideo) {
+    LaunchedEffect(hdrColorPreset.name, applyColorPresetToVideo) {
         if (!hasInitializedHdrOverlay) {
             hasInitializedHdrOverlay = true
             return@LaunchedEffect
@@ -272,7 +327,7 @@ fun PlayerScreen(
     }
     val customHdrPreset by playerViewModel.customPicturePreset.collectAsState()
     var selectedHdrColor by remember { mutableStateOf(HdrColor.RED) }
-    var draftCustomHdrPreset by remember(showHdrCustomizer, customHdrPreset) {
+    var draftCustomHdrPreset by remember(showHdrCustomizer, currentVideo?.uri) {
         mutableStateOf(customHdrPreset)
     }
     val colourBands = remember(draftCustomHdrPreset.targetAdjustments) {
@@ -294,15 +349,28 @@ fun PlayerScreen(
         if (usingVlc) firstFrameRendered = vlcFirstFrame
     }
 
-    DisposableEffect(activePlayer) {
+    DisposableEffect(activePlayer, usingVlc, applyColorPresetToVideo, currentVideo?.uri) {
         val player = activePlayer
-        val listener = object : androidx.media3.common.Player.Listener {
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                videoWidth = videoSize.width
-                videoHeight = videoSize.height
-                videoPixelWidthHeightRatio = videoSize.pixelWidthHeightRatio
-                videoRotationDegrees = videoSize.unappliedRotationDegrees
+        fun updatePictureSize(size: VideoSize) {
+            if (usingVlc) return
+            // Graded output can report the surface dimensions. Size the surface
+            // from the input track to avoid feeding its own dimensions back into layout.
+            val format = player.videoFormat
+            if (applyColorPresetToVideo && format != null && format.width > 0 && format.height > 0) {
+                videoWidth = format.width
+                videoHeight = format.height
+                videoPixelWidthHeightRatio = format.pixelWidthHeightRatio
+                videoRotationDegrees = format.rotationDegrees
+            } else if (size.width > 0 && size.height > 0) {
+                videoWidth = size.width
+                videoHeight = size.height
+                videoPixelWidthHeightRatio = size.pixelWidthHeightRatio
+                videoRotationDegrees = size.unappliedRotationDegrees
             }
+        }
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) = updatePictureSize(videoSize)
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) = updatePictureSize(player.videoSize)
 
             override fun onCues(cueGroup: CueGroup) {
                 subtitleCueText = cueGroup.cues
@@ -310,22 +378,23 @@ fun PlayerScreen(
             }
         }
         player.addListener(listener)
-        videoWidth = player.videoSize.width
-        videoHeight = player.videoSize.height
-        videoPixelWidthHeightRatio = player.videoSize.pixelWidthHeightRatio
-        videoRotationDegrees = player.videoSize.unappliedRotationDegrees
+        updatePictureSize(player.videoSize)
         onDispose { player.removeListener(listener) }
     }
 
     // Keep the cover for a new item/backend until its first frame, but do not
     // reset it for a same-video picture-mode pipeline replacement.
-    DisposableEffect(activePlayer, usingVlc) {
+    DisposableEffect(activePlayer, usingVlc, currentVideo?.uri) {
         if (usingVlc) {
             onDispose { }
         } else {
         val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
+                if (replacement === player) {
+                    heldFrame = null
+                    replacement = null
+                }
                 firstFrameRendered = true
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -684,9 +753,22 @@ fun PlayerScreen(
                 scaleY = ratioScale.second * videoScale
             }
         if (usingVlc) {
-            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, modifier = videoSurfaceModifier)
+            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, modifier = videoSurfaceModifier) { surfaceView = it }
         } else {
-            NativeHdrPlayerSurface(activePlayer, modifier = videoSurfaceModifier)
+            // Give Media3 a buffer shaped like the source. Its final GL pass fits into
+            // that buffer; Android then maps the picture to the selected display bounds.
+            val fit = if (applyColorPresetToVideo) {
+                computeVideoRatioScale(containerSize, videoWidth, videoHeight, AspectRatioMode.FIT,
+                    videoPixelWidthHeightRatio, videoRotationDegrees)
+            } else 1f to 1f
+            val buffer = if (applyColorPresetToVideo && containerSize.width > 0 && containerSize.height > 0) {
+                IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
+                    (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
+            } else null
+            NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
+                scaleX = videoScale * ratioScale.first / fit.first,
+                scaleY = videoScale * ratioScale.second / fit.second,
+                onSurface = { surfaceView = it })
         }
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -701,6 +783,11 @@ fun PlayerScreen(
                     .alpha(surfaceMaskAlpha)
                     .background(Color.Black)
             )
+        }
+
+        heldFrame?.let { frame ->
+            Image(frame.asImageBitmap(), contentDescription = null, modifier = videoSurfaceModifier,
+                contentScale = ContentScale.FillBounds)
         }
 
         key(currentVideo?.uri) {
@@ -997,7 +1084,7 @@ fun PlayerScreen(
             colorIntensities = colourBands.mapValues { com.example.player.selectiveIntensityFromAdjustment(it.value) },
             colorSaturations = colourBands.mapValues { it.value?.saturation ?: 1f },
             enhancementActive = applyColorPresetToVideo,
-            onToggleEnhancement = playerViewModel::togglePictureEnhancement,
+            onToggleEnhancement = { changePicture(!applyColorPresetToVideo, playerViewModel::togglePictureEnhancement) },
             onColorSelected = {
                 selectedHdrColor = it
                 // Selecting a swatch only selects its controls. It must not tint the
@@ -1012,20 +1099,20 @@ fun PlayerScreen(
                     targetAdjustments = if (neutral) otherBands else otherBands + ColorTargetAdjustment(hue, gain, gain, gain, saturation),
                 )
                 draftCustomHdrPreset = nextPreset
-                playerViewModel.selectPictureMode(nextPreset)
+                changePicture(shouldApplyColorPreset(nextPreset, true)) { playerViewModel.selectPictureMode(nextPreset) }
             },
             onCustomize = {
                 showHdrCustomizer = true
             },
             onCustomPresetChange = { preset ->
                 draftCustomHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
-                playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
+                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
             },
             onApplyCustomPreset = { preset ->
-                playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name))
+                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
             },
             onSelect = { preset ->
-                playerViewModel.selectPictureMode(preset)
+                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset) }
                 showHdrPresetMenu = false
                 showHdrCustomizer = false
             },
@@ -1222,8 +1309,14 @@ private fun computeVideoRatioScale(
     }
     return when (mode) {
         AspectRatioMode.STRETCH -> 1f to 1f
-        AspectRatioMode.FIT,
-        AspectRatioMode.ORIGINAL -> if (videoRatio > containerRatio) {
+        AspectRatioMode.ORIGINAL -> {
+            val rotated = normalizedRotation == 90 || normalizedRotation == 270
+            val width = if (rotated) videoHeight.toFloat() else videoWidth * safePixelRatio
+            val height = if (rotated) videoWidth * safePixelRatio else videoHeight.toFloat()
+            val scale = minOf(1f, container.width / width, container.height / height)
+            (width * scale / container.width) to (height * scale / container.height)
+        }
+        AspectRatioMode.FIT -> if (videoRatio > containerRatio) {
             1f to (containerRatio / videoRatio)
         } else {
             (videoRatio / containerRatio) to 1f

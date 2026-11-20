@@ -52,8 +52,8 @@ class ColorPresetGpuTest {
             GLES20.glViewport(0,0,8,1)
             listOf(false,true).forEach { hdr ->
                 val preset = ColorPresets.CUSTOM.copy(contrast = 1.15f)
-                val shader = ColorPresetEffect(preset)
-                    .toGlShaderProgram(InstrumentationRegistry.getInstrumentation().targetContext,hdr) as BaseGlShaderProgram
+                val effect = ColorPresetEffect(preset)
+                val shader = effect.toGlShaderProgram(InstrumentationRegistry.getInstrumentation().targetContext,hdr) as BaseGlShaderProgram
                 try {
                     shader.configure(8,1); shader.drawFrame(textures[0],0)
                     val output = ByteBuffer.allocateDirect(32)
@@ -68,6 +68,13 @@ class ColorPresetGpuTest {
                     }
                     assertEquals(0,output.get(0).toInt() and 255)
                     assertTrue("Pivot luminance must not darken",(output.get(12).toInt() and 255) >= 46)
+
+                    // A slider move updates the already configured program on the next frame.
+                    effect.update(ColorPresets.CUSTOM.copy(brightness = .5f))
+                    shader.drawFrame(textures[0], 33_333L)
+                    GLES20.glReadPixels(0,0,8,1,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,output)
+                    val expectedAfterEdit = expectedGray(128 / 255f, ColorPresets.CUSTOM.copy(brightness = .5f), hdr) * 255f
+                    assertEquals(expectedAfterEdit.toDouble(), (output.get(20).toInt() and 255).toDouble(), 3.0)
                 } finally { shader.release() }
             }
         } finally {

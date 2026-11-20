@@ -48,10 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
-import com.example.player.valuesSummary
 import com.example.ui.theme.HiPrimaryCyan
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 private val HdrMenuShape = RoundedCornerShape(16.dp)
 
@@ -82,12 +80,6 @@ fun HdrPresetMenu(
     }
     if (customizing) {
         val saturation = colorSaturations[selectedColor] ?: 1f
-        val percent = ((0.5f - colorIntensityDraft) * 40f).roundToInt()
-        val intensityLabel = when {
-            percent > 2 -> "Bright +$percent%"
-            percent < -2 -> "Dark $percent%"
-            else -> "Original 0%"
-        }
         Column(
             modifier = modifier
                 .widthIn(max = 560.dp)
@@ -103,7 +95,7 @@ fun HdrPresetMenu(
         ) {
             HdrMenuHeader(
                 title = "Customize HDR",
-                subtitle = customPreset.valuesSummary(),
+                subtitle = "Live preview",
                 secondaryActionLabel = "Reset",
                 onSecondaryAction = {
                     onCustomPresetChange(ColorPresets.CUSTOM)
@@ -151,7 +143,7 @@ fun HdrPresetMenu(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Colour · ${selectedColor.displayName} ($intensityLabel)",
+                    text = "Colour · ${selectedColor.displayName}",
                     color = selectedColor.color,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -215,8 +207,8 @@ fun HdrPresetMenu(
                 value = colorIntensityDraft,
                 onValueChange = {
                     colorIntensityDraft = it
+                    onBandChange(it, saturation)
                 },
-                onValueChangeFinished = { onBandChange(colorIntensityDraft, saturation) },
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth().height(34.dp),
                 colors = SliderDefaults.colors(
@@ -272,8 +264,6 @@ fun HdrPresetMenu(
                 itemsIndexed(ColorPresets.ALL, key = { _, preset -> preset.name }) { _, preset ->
                     HdrPresetOption(
                         title = hdrPresetDisplayName(preset),
-                        subtitle = hdrPresetSubtitle(preset),
-                        values = preset.valuesSummary(),
                         selected = preset.name == selected.name,
                         testTag = "hdr_preset_${preset.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')}",
                         onClick = { onSelect(preset) },
@@ -282,8 +272,6 @@ fun HdrPresetMenu(
                 item(key = "customize_hdr") {
                     HdrPresetOption(
                         title = "Customize",
-                        subtitle = "All colours · Bright/Dull",
-                        values = customPreset.valuesSummary(),
                         selected = selected.name == ColorPresets.CUSTOM.name,
                         testTag = "hdr_preset_customize",
                         onClick = onCustomize,
@@ -339,8 +327,6 @@ private fun HdrMenuHeader(
 @Composable
 private fun HdrPresetOption(
     title: String,
-    subtitle: String,
-    values: String,
     selected: Boolean,
     testTag: String,
     onClick: () -> Unit,
@@ -348,8 +334,8 @@ private fun HdrPresetOption(
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = Modifier
-            .widthIn(min = 128.dp, max = 186.dp)
-            .heightIn(min = 66.dp)
+            .widthIn(min = 84.dp, max = 186.dp)
+            .heightIn(min = 48.dp)
             .clip(shape)
             .background(
                 if (selected) HiPrimaryCyan.copy(alpha = 0.18f)
@@ -373,21 +359,6 @@ private fun HdrPresetOption(
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
-        Text(
-            text = if (selected) "Active · $subtitle" else subtitle,
-            color = Color.White.copy(alpha = 0.68f),
-            fontSize = 9.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = values,
-            color = Color.White.copy(alpha = 0.56f),
-            fontSize = 8.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp),
-        )
     }
 }
 
@@ -398,18 +369,6 @@ private fun hdrPresetDisplayName(preset: ColorPreset): String = when (preset.nam
     ColorPresets.HDR_BRIGHT.name -> "Bright"
     ColorPresets.NATURAL_HDR.name -> "Natural"
     else -> preset.name
-}
-
-private fun hdrPresetSubtitle(preset: ColorPreset): String = when (preset.name) {
-    ColorPresets.HDR_DISABLED.name -> "Native output"
-    ColorPresets.VIVID_HDR.name -> "More colour"
-    ColorPresets.CINEMATIC.name -> "Balanced tone"
-    ColorPresets.HDR_BRIGHT.name -> "Brighter image"
-    ColorPresets.NATURAL_HDR.name -> "Gentle boost"
-    ColorPresets.WARM.name -> "Warmer tone"
-    ColorPresets.COOL.name -> "Cooler tone"
-    ColorPresets.EYE_COMFORT.name -> "Reduced blue"
-    else -> "Picture preset"
 }
 
 enum class HdrColor(val color: Color, val displayName: String) {
@@ -434,7 +393,7 @@ private fun CustomSlider(
     Column(modifier = modifier) {
         var draft by remember(value) { mutableFloatStateOf(value) }
         Text(
-            text = "$label ${"%.2f".format(draft)}",
+            text = label,
             color = Color.White,
             fontSize = 9.5.sp,
             maxLines = 1,
@@ -445,7 +404,6 @@ private fun CustomSlider(
                 draft = it
                 onValueChange(it)
             },
-            onValueChangeFinished = { onValueChange(draft) },
             valueRange = range,
             modifier = Modifier.fillMaxWidth().height(32.dp),
             colors = SliderDefaults.colors(

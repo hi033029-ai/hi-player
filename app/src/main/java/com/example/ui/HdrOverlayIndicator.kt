@@ -29,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
-import com.example.player.valuesSummary
 import com.example.ui.theme.HiPrimaryCyan
 
 /** Animated, touch-transparent on-screen indicator shown when HDR is toggled ON/OFF or a preset changes. */
@@ -90,12 +89,6 @@ fun HdrOverlayIndicator(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Text(
-                text = preset.valuesSummary(),
-                color = Color.White.copy(alpha = 0.72f),
-                fontSize = 9.sp,
-                maxLines = 1,
-            )
         }
     }
 }

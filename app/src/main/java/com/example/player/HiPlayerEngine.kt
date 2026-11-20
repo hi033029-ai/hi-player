@@ -137,6 +137,15 @@ class HiPlayerEngine(
     private var desiredAutoPlay = true
     private var activeMimeType: String? = null
     private var appliedPreset: ColorPreset? = null
+    private var liveGrade: ColorPresetEffect? = null
+    private var redrawScheduled = false
+    private val flushGradeRedraw = Runnable {
+        redrawScheduled = false
+        exoPlayer?.takeIf { liveGrade != null && !it.playWhenReady && it.playbackState == Player.STATE_READY }?.let {
+            VideoEffectRedraw.request(it)
+            requestPausedVideoFrame(it)
+        }
+    }
     private var videoEffectsInitialized = false
     private var rebuildingGradePipeline = false
     private var pendingVideoPreparation: (() -> Unit)? = null
@@ -369,9 +378,15 @@ class HiPlayerEngine(
             return
         }
         if (preset != null && appliedPreset != preset) {
-            player.setVideoEffects(listOf(ColorPresetEffect(preset)))
-            if (!player.playWhenReady && player.playbackState == Player.STATE_READY) {
-                VideoEffectRedraw.request(player)
+            val effect = liveGrade
+            if (effect == null) {
+                liveGrade = ColorPresetEffect(preset).also { player.setVideoEffects(listOf(it)) }
+            } else {
+                effect.update(preset)
+            }
+            if (!player.playWhenReady && !redrawScheduled) {
+                redrawScheduled = true
+                mainHandler.postDelayed(flushGradeRedraw, 40)
             }
             appliedPreset = preset
             videoEffectsInitialized = true
@@ -1927,6 +1942,9 @@ class HiPlayerEngine(
     }
 
     fun release(forReplacement: Boolean = false) {
+        mainHandler.removeCallbacks(flushGradeRedraw)
+        redrawScheduled = false
+        liveGrade = null
         pendingVideoPreparation = null
         surfaceWaitTimeout?.let(mainHandler::removeCallbacks)
         if (!forReplacement) { routingRevision++; routingTimeout?.let(mainHandler::removeCallbacks); vlcPlayback?.release(); vlcPlayback = null; _usesVlc.value = false }

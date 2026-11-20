@@ -13,7 +13,7 @@ import com.example.player.VlcPlaybackEngine
  * Compose's GestureOverlay sits above this non-interactive native surface.
  */
 @Composable
-fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier) {
+fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier, onSurface: (SurfaceView) -> Unit = {}) {
     AndroidView(
         factory = { context ->
             SurfaceView(context).apply {
@@ -33,6 +33,7 @@ fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier)
             }
         },
         update = { surface ->
+            onSurface(surface)
             surface.isClickable = false
             surface.isLongClickable = false
             engine.attachSurface(surface)
