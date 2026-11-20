@@ -22,12 +22,13 @@ data class HiUiMetrics(
     val logoSize: Dp,
     val titleTextSize: androidx.compose.ui.unit.TextUnit
 )
+private const val COMPACT_APP_FONT_SCALE = 0.85f
 
 val LocalHiUiMetrics = compositionLocalOf {
     HiUiMetrics(
-        headerHeight = 64.dp,
-        logoSize = 38.dp,
-        titleTextSize = 24f.sp
+        headerHeight = 56.dp,
+        logoSize = 32.dp,
+        titleTextSize = 18f.sp
     )
 }
 
@@ -107,13 +108,13 @@ fun HiPlayerTheme(
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,
-        fontScale = (baseDensity.fontScale * uiTextScale).coerceAtLeast(0.75f)
+        fontScale = (baseDensity.fontScale * uiTextScale * COMPACT_APP_FONT_SCALE).coerceAtLeast(0.65f)
     )
 
     val uiMetrics = HiUiMetrics(
-        headerHeight = (64.dp * uiTextScale).coerceIn(56.dp, 88.dp),
-        logoSize = (38.dp * uiTextScale).coerceIn(34.dp, 52.dp),
-        titleTextSize = 24.sp
+        headerHeight = (56.dp * uiTextScale).coerceIn(48.dp, 76.dp),
+        logoSize = (32.dp * uiTextScale).coerceIn(28.dp, 46.dp),
+        titleTextSize = 18.sp
     )
 
     CompositionLocalProvider(
