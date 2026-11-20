@@ -536,7 +536,7 @@ class HiPlayerEngine(
     private var dolbyVisionRetryAttempted = false
     private var pendingResumePositionMs: Long = 0L
     private var activeGrowingUri: Uri? = null
-    @Volatile private var downloadedSeekEndMs = 0L
+    private var downloadedSeekEndMs: Long? = null
     private var growingRetryJob: Job? = null
     private var growingRetryAttempts = 0
     private var growingPlaybackReachedReady = false
@@ -1147,7 +1147,7 @@ class HiPlayerEngine(
             growingRetryJob?.cancel()
             growingRetryJob = null
             growingRetryAttempts = 0
-            downloadedSeekEndMs = 0
+            downloadedSeekEndMs = null
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
             growingPlaybackReachedReady = false
             growingPlaybackGraceUntilMs = if (activeGrowingUri != null) {
@@ -1461,9 +1461,15 @@ class HiPlayerEngine(
         val growing = uri?.let(::isGrowingDownloadUri) == true
         // The Matroska map resolves the target to a downloaded keyframe's REAL
         // Cluster offset. Decoder-buffer length is not the downloaded seek frontier.
-        if (growing && PendingDownloadFormat.originalName(uri?.lastPathSegment.orEmpty()).let {
-                it.endsWith(".mkv", true) || it.endsWith(".webm", true) || it.endsWith(".mk3d", true)
-            }) return positionMs.coerceIn(0L, maxOf(downloadedSeekEndMs, player.currentPosition))
+        if (growing) {
+            val current = player.currentPosition.coerceAtLeast(0L)
+            if (!player.isCurrentMediaItemSeekable) return current
+            // The extractor identifies Matroska even for a numeric MediaStore URI.
+            downloadedSeekEndMs?.let { frontier ->
+                if (durationBounded >= current && frontier <= current) return current
+                return durationBounded.coerceAtMost(frontier)
+            }
+        }
         return GrowingSeekBounds.clamp(durationBounded, player.currentPosition, player.bufferedPosition, growing)
     }
 
@@ -1479,6 +1485,7 @@ class HiPlayerEngine(
         }
         val player = exoPlayer ?: return
         val clamped = clampSeekTarget(positionMs)
+        if (activeGrowingUri != null && player.currentPosition == clamped) return
         playbackEnded = false
         val seek = decodedSeekRevision.incrementAndGet()
         val expectVideo = !_isBackgroundPlayActive.value && activeMimeType?.startsWith("audio/") != true

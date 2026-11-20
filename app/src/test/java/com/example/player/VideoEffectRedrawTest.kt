@@ -12,21 +12,24 @@ class VideoEffectRedrawTest {
         var position = 7_350L
         var started = false
         var redraws = 0
-        var prepares = 0
+        var seeks = 0
         val player = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader, arrayOf(ExoPlayer::class.java)) { _, method, args ->
             when (method.name) {
                 "getCurrentPosition" -> position
-                "stop" -> { position = 0; null }
-                "seekTo" -> { position = args!!.last() as Long; null }
+                "getDuration" -> 30_000L
+                "stop", "prepare" -> error("Redrawing must keep the prepared player")
+                "seekTo" -> { seeks++; position = args!!.last() as Long; null }
                 "setVideoEffects" -> { redraws++; null }
-                "prepare" -> { prepares++; null }
                 "play", "setPlayWhenReady" -> { started = true; null }
                 else -> null
             }
         } as ExoPlayer
         VideoEffectRedraw.request(player)
+        assertEquals("Redraw or seek to the adjacent frame time", 1, redraws + seeks)
+        assertTrue(position in 7_350L..7_351L)
+        VideoEffectRedraw.request(player)
         assertEquals(7_350L, position)
         assertFalse("A preset change must not start paused audio", started)
-        assertEquals("Use either native redraw or one older-API re-prepare", 1, redraws + prepares)
+        assertEquals(2, redraws + seeks)
     }
 }

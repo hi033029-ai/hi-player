@@ -181,8 +181,10 @@ internal class GrowingMkvClusterIndex(
                     val size = header.size
                     val declaredEnd = size?.let { safeAdd(header.bodyOffset, it) }
                     val endOffset = if (header.elementId == CLUSTER_ELEMENT_ID) {
+                        if (declaredEnd != null && declaredEnd > safeDownloadedBytes) break
                         val cluster = scanCluster(randomAccess, header.bodyOffset,
                             minOf(declaredEnd ?: safeDownloadedBytes, safeDownloadedBytes))
+                        if (declaredEnd == null && cluster.first == null && isDownloading()) break
                         cluster.second?.let { timeUs -> insertCheckpoint(SeekPoint(timeUs, offset)) }
                         // Unknown-size Cluster ends only at a parsed level-one header.
                         declaredEnd ?: cluster.first ?: break
@@ -225,6 +227,7 @@ internal class GrowingMkvClusterIndex(
     }
 
     fun latestTimeUs(): Long? = snapshot.lastOrNull()?.timeUs
+    fun isStillDownloading(): Boolean = isDownloading()
 
     override fun close() { source?.close(); source = null }
 
@@ -473,7 +476,7 @@ internal class GrowingMkvSeekMap(
     private val clusterIndex: GrowingMkvClusterIndex,
 ) : SeekMap {
     override fun isSeekable(): Boolean =
-        original.isSeekable || clusterIndex.snapshot.size >= MIN_CLUSTERS_FOR_SEEK
+        (!clusterIndex.isStillDownloading() && original.isSeekable) || clusterIndex.snapshot.size >= MIN_CLUSTERS_FOR_SEEK
 
     override fun getDurationUs(): Long =
         original.durationUs.takeUnless { it == androidx.media3.common.C.TIME_UNSET }
@@ -481,9 +484,9 @@ internal class GrowingMkvSeekMap(
             ?: androidx.media3.common.C.TIME_UNSET
 
     override fun getSeekPoints(timeUs: Long): SeekMap.SeekPoints {
-        if (original.isSeekable) return original.getSeekPoints(timeUs)
-        val point = clusterIndex.seekPointAtOrBefore(timeUs)
-            ?: return original.getSeekPoints(timeUs)
+        // Front-loaded Cues can point beyond the bytes currently on disk.
+        if (!clusterIndex.isStillDownloading() && original.isSeekable) return original.getSeekPoints(timeUs)
+        val point = clusterIndex.seekPointAtOrBefore(timeUs) ?: SeekPoint.START
         return SeekMap.SeekPoints(point)
     }
 

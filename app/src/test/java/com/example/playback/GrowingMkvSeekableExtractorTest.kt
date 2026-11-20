@@ -144,6 +144,33 @@ class GrowingMkvSeekableExtractorTest {
         assertTrue(shouldUseNativeHdrOutput(ColorPresets.VIVID_HDR, enhancementEnabled = false))
     }
 
+    @Test fun partialClusterWithCompleteKeyframeAndFutureCuesCannotBeSeekedUntilAppended() {
+        val timestamp = element(byteArrayOf(0xE7.toByte()), unsignedBytes(2000))
+        val keyframe = element(byteArrayOf(0xA3.toByte()), byteArrayOf(0x81.toByte(), 0, 0, 0x80.toByte(), 1))
+        val padding = element(byteArrayOf(0xEC.toByte()), ByteArray(12))
+        val tail = element(byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75), timestamp + keyframe + padding)
+        val source = MemoryByteSource(minimalMkv(cluster(0), cluster(1000), tail.copyOf(tail.size - 1)))
+        var growing = true
+        val index = GrowingMkvClusterIndex({ source }, { growing })
+        val cue = androidx.media3.extractor.SeekPoint(20_000_000, 1_000_000)
+        val embedded = object : SeekMap {
+            override fun isSeekable() = true
+            override fun getDurationUs() = cue.timeUs
+            override fun getSeekPoints(timeUs: Long) = SeekMap.SeekPoints(cue)
+        }
+        val map = GrowingMkvSeekMap(embedded, index)
+        assertFalse(map.isSeekable)
+        index.scanAvailable()
+        assertTrue(map.isSeekable)
+        assertEquals(1_000_000L, map.getSeekPoints(cue.timeUs).first.timeUs)
+        source.append(tail.takeLast(1).toByteArray())
+        index.scanAvailable()
+        assertEquals(2_000_000L, map.getSeekPoints(cue.timeUs).first.timeUs)
+        assertEquals(0L, map.getSeekPoints(0).first.timeUs)
+        growing = false
+        assertEquals(cue, map.getSeekPoints(cue.timeUs).first)
+    }
+
     @Test fun unknownSizeClustersEndAtParsedSiblingNotPayloadMagic() {
         val first = cluster(0)
         val unknown = first.copyOf().also { it[4] = 0xFF.toByte() }

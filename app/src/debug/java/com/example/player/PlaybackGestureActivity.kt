@@ -22,10 +22,13 @@ class PlaybackGestureActivity : ComponentActivity() {
         setContent { HiPlayerTheme { PlayerScreen(model,onBack = { finish() },onEnterPip = {}) } }
         val file = File(requireNotNull(intent.getStringExtra("fixture")))
         val savedAtEnd = intent.getBooleanExtra("saved_at_end", false)
+        val growing = com.example.model.PendingDownloadFormat.isPending(file.name)
+        val name = com.example.model.PendingDownloadFormat.originalName(file.name)
         model.playVideo(VideoItem(uri = Uri.fromFile(file), title = "Playback gesture fixture",
             durationMs = if (savedAtEnd) 32_000L else 0L,
             lastPositionMs = if (savedAtEnd) 32_000L else 0L,
-            mimeType = if (file.extension == "mkv") "video/x-matroska" else "video/mp4"),
+            isPartialDownload = growing,
+            mimeType = if (name.endsWith(".mkv")) "video/x-matroska" else "video/mp4"),
             startPositionOverride = if (savedAtEnd) null else 0L)
     }
 }

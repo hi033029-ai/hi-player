@@ -3,6 +3,8 @@ package com.example.player
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.net.Uri
+import com.example.playback.createGrowingMkvClusterIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
@@ -25,6 +27,60 @@ class PlaybackGestureDeviceTest {
     @get:Rule val compose = createEmptyComposeRule()
     @Test(timeout = 100_000) fun completedMp4SwipesReachMedia3AndDeviceControls() = exercise("gecko_test.mp4",false)
     @Test(timeout = 100_000) fun completedMkvSwipesReachLibVlcAndDeviceControls() = exercise("gecko_test.mkv",true)
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test(timeout = 100_000) fun partialMkvSwipesAndDoubleTapsSeekBothWaysBeforeDownloadCompletes() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val full = File.createTempFile("gesture-source-", ".mkv", context.cacheDir)
+        val partial = File.createTempFile("gesture-prefix-", ".mkv.part", context.cacheDir)
+        try {
+            context.assets.open("growing_test.mkv").use { input -> full.outputStream().use { input.copyTo(it) } }
+            val points = createGrowingMkvClusterIndex(context, Uri.fromFile(full), { false }).use { it.scanAvailable() }
+            val split = points.indexOfFirst { it.timeUs >= 16_000_000 }
+            assertTrue("Fixture must contain multiple seekable clusters", split > 1)
+            val frontier = points[split - 1].timeUs / 1000
+            partial.writeBytes(full.readBytes().copyOf(points[split].position.toInt()))
+            DownloadingFilesRegistry.markOwnedDownloading(partial.absolutePath, partial.length())
+            ActivityScenario.launch<PlaybackGestureActivity>(Intent(context, PlaybackGestureActivity::class.java)
+                .putExtra("fixture", partial.absolutePath)).use { scenario ->
+                lateinit var engine: HiPlayerEngine
+                scenario.onActivity { engine = it.model.engine }
+                compose.waitUntil(40_000) { engine.renderedFrameSequence > 0 && engine.currentPositionMs.value > 250 }
+                scenario.onActivity { engine.pause() }
+                assertFalse(engine.usesVlc.value)
+                val surface = compose.onNodeWithTag("player_gesture_surface")
+                fun seekGesture(range: LongRange, gesture: androidx.compose.ui.test.TouchInjectionScope.() -> Unit) {
+                    val sequence = engine.renderedFrameSequence
+                    surface.performTouchInput(gesture)
+                    compose.waitUntil(12_000) {
+                        engine.playerError.value != null ||
+                            (engine.renderedFrameSequence > sequence && engine.currentPositionMs.value in range)
+                    }
+                    assertNull(engine.playerError.value)
+                }
+                val start = engine.currentPositionMs.value
+                seekGesture((start + 8_500)..(start + 11_500)) { doubleClick(Offset(width * .78f, height * .4f)) }
+                seekGesture(0L..(start + 1_000)) { doubleClick(Offset(width * .22f, height * .4f)) }
+                seekGesture((frontier - 1_500)..(frontier + 500)) {
+                    down(Offset(width * .2f, height * .4f))
+                    moveTo(Offset(width * .85f, height * .4f), delayMillis = 180)
+                    up()
+                }
+                seekGesture(0L..2_000L) {
+                    down(Offset(width * .85f, height * .4f))
+                    moveTo(Offset(width * .2f, height * .4f), delayMillis = 180)
+                    up()
+                }
+                scenario.onActivity { engine.play() }
+                compose.waitUntil(10_000) { engine.isPlaying.value && engine.currentPositionMs.value > 1_000 }
+                assertNull(engine.playerError.value)
+            }
+        } finally {
+            DownloadingFilesRegistry.completeOwned(partial.absolutePath)
+            partial.delete()
+            full.delete()
+        }
+    }
+
     private fun exercise(name: String, vlc: Boolean) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val file = File(context.cacheDir,"${System.nanoTime()}-$name")
