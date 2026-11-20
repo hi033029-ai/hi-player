@@ -101,7 +101,7 @@ fun HdrPresetMenu(
             Text(
                 "Whole picture",
                 color = Color.White.copy(alpha = 0.78f),
-                fontSize = 12.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
             )
@@ -124,7 +124,7 @@ fun HdrPresetMenu(
             Text(
                 text = "Selected colour · ${selectedColor.displayName}",
                 color = selectedColor.color,
-                fontSize = 12.sp,
+                fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -172,9 +172,9 @@ fun HdrPresetMenu(
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
-                Text("Original", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Text("Dark", color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
+                Text("Light", color = Color.White.copy(alpha = 0.78f), fontSize = 8.sp)
+                Text("Original", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                Text("Dark", color = Color.White.copy(alpha = 0.78f), fontSize = 8.sp)
             }
         }
     } else {
@@ -234,14 +234,14 @@ private fun HdrMenuHeader(
             Text(
                 title,
                 color = Color.White,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
             Text(
                 subtitle,
                 color = Color.White.copy(alpha = 0.70f),
-                fontSize = 11.sp,
+                fontSize = 9.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -285,14 +285,14 @@ private fun HdrPresetOption(
         Text(
             text = title,
             color = if (selected) palette.primary else Color.White,
-            fontSize = 13.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
         Text(
             text = if (selected) "Selected" else subtitle,
             color = Color.White.copy(alpha = 0.66f),
-            fontSize = 10.sp,
+            fontSize = 9.sp,
             maxLines = 1,
         )
     }
@@ -343,7 +343,7 @@ private fun CustomSlider(
         Text(
             text = "$label ${"%.2f".format(draft)}",
             color = Color.White,
-            fontSize = 11.sp,
+            fontSize = 8.sp,
             maxLines = 1,
         )
         Slider(

@@ -2,10 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.Modifier
@@ -27,15 +24,15 @@ class PlayerTransportActionsTest {
     val compose = createComposeRule()
 
     @Test
-    fun portraitKeepsCoreTransportClearOfGestureLanes() = exerciseTransport(expectWideTransport = false)
+    fun portraitKeepsTheClassicFiveButtonTransportRow() = exerciseTransport()
 
     @Test @Config(qualifiers = "w800dp-h360dp")
-    fun landscapeKeepsTransportAndUtilitiesSeparate() = exerciseTransport(expectWideTransport = true)
+    fun landscapeKeepsTheClassicFiveButtonTransportRow() = exerciseTransport()
 
     @Test
-    fun enlargedTextRetainsEveryTransportAction() = exerciseTransport(1.5f, expectWideTransport = false)
+    fun enlargedTextRetainsEveryTransportAction() = exerciseTransport(1.5f)
 
-    private fun exerciseTransport(textScale: Float = 1f, expectWideTransport: Boolean) {
+    private fun exerciseTransport(textScale: Float = 1f) {
         val actions = mutableListOf<String>()
         compose.setContent {
             HiPlayerTheme(uiTextScale = textScale) {
@@ -77,12 +74,8 @@ class PlayerTransportActionsTest {
             }
         }
 
-        val coreTags = listOf("rewind_10_button", "bottom_play_pause_button", "forward_10_button")
-        val adjacentTags = listOf("previous_file_button", "next_file_button")
-        val tags = if (expectWideTransport) {
-            listOf("previous_file_button", "rewind_10_button", "bottom_play_pause_button",
-                "forward_10_button", "next_file_button")
-        } else coreTags
+        val tags = listOf("previous_file_button", "rewind_10_button", "bottom_play_pause_button",
+            "forward_10_button", "next_file_button")
         val root = compose.onNodeWithTag("controls_root").fetchSemanticsNode().boundsInRoot
         val allTargets = tags + listOf("bottom_lock_button", "bottom_aspect_button",
             "bottom_subtitles_cc_button", "bottom_audio_tracks_button")
@@ -98,24 +91,9 @@ class PlayerTransportActionsTest {
             compose.onNodeWithTag(it).assertHasClickAction().performTouchInput { click() }
         }
 
-        if (expectWideTransport) {
-            compose.onNodeWithTag("bottom_previous_file_button").assertDoesNotExist()
-            compose.onNodeWithTag("bottom_next_file_button").assertDoesNotExist()
-        } else {
-            adjacentTags.forEach { compose.onNodeWithTag(it).assertDoesNotExist() }
-            compose.onNodeWithTag("bottom_previous_file_button")
-                .performScrollTo().assertHasClickAction().performClick()
-            compose.onNodeWithTag("bottom_next_file_button")
-                .performScrollTo().assertHasClickAction().performClick()
-        }
-
         compose.runOnIdle {
             assertEquals(
-                if (expectWideTransport) {
-                    listOf("previousVideo", "rewind10", "play", "forward10", "nextVideo")
-                } else {
-                    listOf("rewind10", "play", "forward10", "previousVideo", "nextVideo")
-                },
+                listOf("previousVideo", "rewind10", "play", "forward10", "nextVideo"),
                 actions,
             )
         }

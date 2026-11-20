@@ -238,7 +238,7 @@ fun PlayerScreen(
     val playerTip = com.example.ui.components.rememberFirstUseTip("video_player_visual_guide_v2")
     val isMuted by playerViewModel.isMuted.collectAsState()
     var showLockedUnlockControl by remember { mutableStateOf(false) }
-    var firstFrameRendered by remember { mutableStateOf(false) }
+    var firstFrameRendered by remember(currentVideo?.uri, usingVlc) { mutableStateOf(false) }
     var videoWidth by remember { mutableStateOf(0) }
     var videoHeight by remember { mutableStateOf(0) }
     var videoPixelWidthHeightRatio by remember { mutableStateOf(1f) }
@@ -307,10 +307,9 @@ fun PlayerScreen(
         onDispose { player.removeListener(listener) }
     }
 
-    // Keep the native surface path, but mask the initial surface/HDR negotiation
-    // until Media3 confirms that the first decoded frame is on screen.
-    DisposableEffect(activePlayer, currentVideo?.uri, usingVlc) {
-        firstFrameRendered = if (usingVlc) vlcFirstFrame else false
+    // Keep the cover for a new item/backend until its first frame, but do not
+    // reset it for a same-video picture-mode pipeline replacement.
+    DisposableEffect(activePlayer, usingVlc) {
         if (usingVlc) {
             onDispose { }
         } else {
@@ -330,8 +329,11 @@ fun PlayerScreen(
         // The listener can be registered after Media3 has already rendered the
         // first frame when the screen is restored. Do not leave the video hidden
         // in that case.
-        firstFrameRendered = player.videoSize.width > 0 &&
+        if (!firstFrameRendered && player.videoSize.width > 0 &&
             (player.playbackState == Player.STATE_READY || player.currentPosition > 0)
+        ) {
+            firstFrameRendered = true
+        }
         onDispose { player.removeListener(listener) }
         }
     }
@@ -859,10 +861,11 @@ fun PlayerScreen(
         // 2. UI Controls Overlay Layer
         ControlsOverlay(
             onBottomControlsHeight = { bottomControlsHeight = with(controlsDensity) { it.toDp() } },
-            isVisible = areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer,
+            isVisible = areControlsVisible,
             isLocked = isScreenLocked,
             showLockedUnlockControl = showLockedUnlockControl,
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             currentPositionMs = currentPositionMs,
             durationMs = durationMs,
             bufferedPositionMs = bufferedPositionMs,
@@ -906,9 +909,13 @@ fun PlayerScreen(
             pictureModeLabel = if (applyColorPresetToVideo) hdrColorPreset.name.removePrefix("HDR ").removeSuffix(" HDR") else "Original",
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
-                showHdrPresetMenu = false
-                showHdrCustomizer = false
-                playerViewModel.togglePictureEnhancement()
+                if (showHdrPresetMenu || showHdrCustomizer) {
+                    showHdrPresetMenu = false
+                    showHdrCustomizer = false
+                } else {
+                    showHdrPresetMenu = true
+                    showHdrCustomizer = false
+                }
             },
             onHdrBounds = { guideHdrBounds = it },
             onLongPressHdrEnhance = {
@@ -1003,10 +1010,12 @@ fun PlayerScreen(
             },
             onSelect = { preset ->
                 playerViewModel.selectPictureMode(preset)
+                showHdrPresetMenu = false
+                showHdrCustomizer = false
             },
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .align(Alignment.BottomStart)
+                .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
         )
 
         if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {

@@ -842,16 +842,18 @@ class GlVideoSurface(context: Context) : GLSurfaceView(context) {
                     float adjustedMinChannel = min(color.r, min(color.g, color.b));
                     float colorfulness = adjustedMaxChannel - adjustedMinChannel;
                     color += (color - vec3(luminance)) * (uVibrance - 1.0) * (1.0 - colorfulness);
-                    // A small four-tap unsharp mask keeps the control lightweight
-                    // while making the sharpness slider visibly affect the frame.
-                    vec2 pixel = vec2(0.0015, 0.0015);
-                    vec3 blur = (
-                        texture2D(uTexture, vTexCoord + vec2(pixel.x, 0.0)).rgb +
-                        texture2D(uTexture, vTexCoord - vec2(pixel.x, 0.0)).rgb +
-                        texture2D(uTexture, vTexCoord + vec2(0.0, pixel.y)).rgb +
-                        texture2D(uTexture, vTexCoord - vec2(0.0, pixel.y)).rgb
-                    ) * 0.25;
-                    color += (color - blur) * uSharpness;
+                    // Avoid four extra texture reads for every default preset,
+                    // while retaining the unsharp mask when explicitly requested.
+                    if (uSharpness > 0.0001) {
+                        vec2 pixel = vec2(0.0015, 0.0015);
+                        vec3 blur = (
+                            texture2D(uTexture, vTexCoord + vec2(pixel.x, 0.0)).rgb +
+                            texture2D(uTexture, vTexCoord - vec2(pixel.x, 0.0)).rgb +
+                            texture2D(uTexture, vTexCoord + vec2(0.0, pixel.y)).rgb +
+                            texture2D(uTexture, vTexCoord - vec2(0.0, pixel.y)).rgb
+                        ) * 0.25;
+                        color += (color - blur) * uSharpness;
+                    }
                     gl_FragColor = vec4(clamp(color, 0.0, 1.0), tex.a);
                 }
             """

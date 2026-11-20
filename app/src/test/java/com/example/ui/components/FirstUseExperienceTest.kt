@@ -153,6 +153,31 @@ class FirstUseExperienceTest {
         compose.onNodeWithText("Got it").performClick()
         compose.onNodeWithText("Whole picture").assertIsDisplayed()
     }
+    @Test fun hdrCustomizerDoneAppliesTheCurrentCustomValuesOnce() {
+        val draft = com.example.player.ColorPresets.CUSTOM.copy(
+            brightness = 1.18f,
+            saturation = 1.35f,
+            vibrance = 1.12f,
+            sharpness = 0.2f,
+        )
+        var applied: com.example.player.ColorPreset? = null
+        var closeCount = 0
+        compose.setContent { HiPlayerTheme { Box(Modifier.size(360.dp, 640.dp)) {
+            com.example.ui.HdrPresetMenu(
+                visible = true,
+                selected = com.example.player.ColorPresets.CUSTOM,
+                customPreset = draft,
+                customizing = true,
+                onApplyCustomPreset = { applied = it },
+                onClose = { closeCount++ },
+            )
+        } } }
+        compose.onNodeWithText("Done").performClick()
+        compose.runOnIdle {
+            assertEquals(draft, applied)
+            assertEquals(1, closeCount)
+        }
+    }
     @Test @Config(qualifiers = "w800dp-h360dp")
     fun hdrPresetPanelKeepsNamesAndSelectionVisibleInLandscape() {
         val selected = mutableStateOf(com.example.player.ColorPresets.HDR_DISABLED)

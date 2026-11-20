@@ -34,6 +34,13 @@ class SelectiveColourBandTest {
         assertFalse(ColorPresets.HDR_BRIGHT.isIdentityTransform())
     }
 
+    @Test fun everyBuiltInPresetHasItsOwnTransformAndDoesNotDarkenExposure() {
+        val transformsWithoutNames = ColorPresets.ALL.map { it.copy(name = "") }
+        assertEquals(ColorPresets.ALL.size, transformsWithoutNames.distinct().size)
+        assertTrue(ColorPresets.ALL.all { it.brightness >= 1f })
+        assertTrue(ColorPresets.ALL.filterNot { it.isIdentityTransform() }.all { it.contrast >= 1f })
+    }
+
     @Test fun builtInGradesKeepContrastNearNeutralToPreserveHdrShadows() {
         assertTrue(ColorPresets.ALL.filterNot { it.isIdentityTransform() }.all { it.contrast <= 1.05f })
     }

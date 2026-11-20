@@ -87,11 +87,15 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
             void main() {
                 vec4 pixel = texture2D(uTexture, vTexCoord);
                 vec3 c = pixel.rgb;
-                vec3 mean = (texture2D(uTexture, vTexCoord+vec2(uTexel.x,0)).rgb
-                    +texture2D(uTexture, vTexCoord-vec2(uTexel.x,0)).rgb
-                    +texture2D(uTexture, vTexCoord+vec2(0,uTexel.y)).rgb
-                    +texture2D(uTexture, vTexCoord-vec2(0,uTexel.y)).rgb)*0.25;
-                c = max(vec3(0.0), c+(c-mean)*uSharpness);
+                // The four extra 4K texture reads are unnecessary for every
+                // built-in preset (and a fresh custom preset) where sharpness is 0.
+                if (uSharpness > 0.0001) {
+                    vec3 mean = (texture2D(uTexture, vTexCoord+vec2(uTexel.x,0)).rgb
+                        +texture2D(uTexture, vTexCoord-vec2(uTexel.x,0)).rgb
+                        +texture2D(uTexture, vTexCoord+vec2(0,uTexel.y)).rgb
+                        +texture2D(uTexture, vTexCoord-vec2(0,uTexel.y)).rgb)*0.25;
+                    c = max(vec3(0.0), c+(c-mean)*uSharpness);
+                }
                 // Selective controls operate once, in the same linear working space.
                 if (uTargetCount>0) c=target(c,uTarget0);
                 if (uTargetCount>1) c=target(c,uTarget1);
