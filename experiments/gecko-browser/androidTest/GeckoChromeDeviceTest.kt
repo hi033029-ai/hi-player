@@ -34,7 +34,8 @@ class GeckoChromeDeviceTest {
                 compose.waitUntil(90_000) { pageIs { it.title == "Integrated Gecko ready" && !it.loading } }
                 compose.onNodeWithTag("browser_address_input").assertIsNotFocused()
                 compose.onNodeWithContentDescription("Browser menu").performClick()
-                compose.onNodeWithContentDescription("Add bookmark").performClick()
+                compose.onNodeWithContentDescription("Add bookmark")
+                    .performScrollTo().assertIsDisplayed().performClick()
                 compose.onNodeWithContentDescription("Open tabs, 1 tab").performClick()
                 compose.onNodeWithContentDescription("New tab").performClick()
                 compose.onNodeWithText("Hi Browser").assertIsDisplayed()

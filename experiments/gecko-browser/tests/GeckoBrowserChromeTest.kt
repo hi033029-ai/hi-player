@@ -95,6 +95,7 @@ class GeckoBrowserChromeTest {
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Browser menu").performClick()
         compose.onNodeWithContentDescription("Add bookmark")
+            .performScrollTo().assertIsDisplayed()
             .assertIsEnabled().assertHasClickAction().performClick()
         compose.waitUntil(5_000) { store.isBookmarked("https://example.org/saved") }
         compose.waitForIdle()
