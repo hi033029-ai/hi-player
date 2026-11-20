@@ -157,32 +157,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
         }
 
-        // Keep every global player control in sync with DataStore. Per-video
-        // state such as resume position and aspect ratio is intentionally kept
-        // in Room, while these controls apply to every playback session.
-        viewModelScope.launch {
-            preferencesRepo.settingsFlow.collect { settings ->
-                _subtitleStyle.value = SubtitleStyleConfig(
-                    fontSizeSp = settings.subtitleTextSizeSp,
-                    fontFamily = settings.subtitleFontFamily,
-                    textColorHex = settings.subtitleTextColorArgb,
-                    bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
-                    verticalOffsetDp = settings.subtitleVerticalOffsetDp,
-                )
-                applyRememberedBrightness(settings.playerBrightnessPercent)
-                engine.setVolumeBoost(savedVolumeBoost(settings.volumeBoostPercent))
-                engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
-                engine.setAudioDelay(settings.audioDelayMs)
-                engine.setSubtitleOffset(settings.subtitleOffsetMs)
-                engine.setEqualizerPreset(settings.equalizerPreset)
-                if (settings.equalizerPreset == "Custom") {
-                    settings.equalizerBandsDb.forEachIndexed { index, gainDb ->
-                        engine.setCustomEqualizerBand(index, gainDb)
-                    }
-                }
-            }
+        observeSetting({ subtitleStyleFor(it) }) { _subtitleStyle.value = it }
+        observeSetting({ it.playerBrightnessPercent }, ::applyRememberedBrightness)
+        observeSetting({ it.volumeBoostPercent }) { engine.setVolumeBoost(savedVolumeBoost(it)) }
+        observeSetting({ it.playbackSpeedPercent }) { engine.setPlaybackSpeed(it / 100f) }
+        observeSetting({ it.audioDelayMs }, engine::setAudioDelay)
+        observeSetting({ it.subtitleOffsetMs }, engine::setSubtitleOffset)
+        observeSetting({ it.equalizerPreset to it.equalizerBandsDb }) { (preset, bands) ->
+            engine.setEqualizerPreset(preset)
+            if (preset == "Custom") bands.forEachIndexed(engine::setCustomEqualizerBand)
         }
     }
+
+    private fun <T> observeSetting(read: (com.example.data.AppPlayerSettings) -> T, apply: (T) -> Unit) {
+        viewModelScope.launch {
+            preferencesRepo.settingsFlow.map { read(it) }.distinctUntilChanged().collect { apply(it) }
+        }
+    }
+
+    private fun subtitleStyleFor(settings: com.example.data.AppPlayerSettings) = SubtitleStyleConfig(
+        fontSizeSp = settings.subtitleTextSizeSp,
+        fontFamily = settings.subtitleFontFamily,
+        textColorHex = settings.subtitleTextColorArgb,
+        bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
+        verticalOffsetDp = settings.subtitleVerticalOffsetDp,
+    )
 
     private var playbackQueue: List<VideoItem> = emptyList()
     private var pendingPlaybackQueue: List<VideoItem>? = null
@@ -707,6 +706,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var gestureVolumeLevel: Float? = null
     private var gestureSystemVolume: Int? = null
 
+    /** Use Android's stream steps and safety policy with the player's inline HUD. */
+    fun handleVideoVolumeKey(event: android.view.KeyEvent): Boolean {
+        val direction = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> AudioManager.ADJUST_RAISE
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> AudioManager.ADJUST_LOWER
+            android.view.KeyEvent.KEYCODE_VOLUME_MUTE -> AudioManager.ADJUST_TOGGLE_MUTE
+            else -> return false
+        }
+        if (event.action == android.view.KeyEvent.ACTION_UP) return true
+        if (event.action != android.view.KeyEvent.ACTION_DOWN) return false
+        if (direction == AudioManager.ADJUST_TOGGLE_MUTE && event.repeatCount > 0) return true
+        try {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
+        } catch (_: SecurityException) {
+            // The device can disallow volume changes in its current audio policy.
+        }
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        persistPlayerVolume(volume, max)
+        _volumeLevel.value = volume.toFloat() / max
+        scheduleHudDismiss()
+        return true
+    }
+
     fun onVolumeGestureStart() {
         _brightnessLevel.value = null
         hudDismissJob?.cancel()
@@ -851,13 +874,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         lastPlayerControls.getInt("volume_boost", fallback).coerceIn(0, 100)
 
     private fun restorePlayerControls(settings: com.example.data.AppPlayerSettings) {
-        _subtitleStyle.value = SubtitleStyleConfig(
-            fontSizeSp = settings.subtitleTextSizeSp,
-            fontFamily = settings.subtitleFontFamily,
-            textColorHex = settings.subtitleTextColorArgb,
-            bgOpacity = settings.subtitleBackgroundOpacityPercent / 100f,
-            verticalOffsetDp = settings.subtitleVerticalOffsetDp,
-        )
+        _subtitleStyle.value = subtitleStyleFor(settings)
         applyRememberedBrightness(settings.playerBrightnessPercent)
         val preferredAudio = lastPlayerControls.getString("audio_language", null) ?: settings.preferredAudioLanguage
         engine.setRememberedTrackPreferences(preferredAudio, settings.preferredSubtitleLanguage, settings.subtitlesEnabled)

@@ -3,8 +3,6 @@ package com.example.ui.components
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -23,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessHigh
@@ -45,9 +42,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -60,6 +58,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+private enum class TapFeedback { REWIND, FORWARD, PLAY, PAUSE }
 
 private enum class SwipeMode { PENDING, SEEK, BRIGHTNESS, VOLUME, PINCH, HOLD, CANCELLED }
 
@@ -97,11 +97,19 @@ fun GestureOverlay(
     // ratio (and other top-bar) buttons look like they "did nothing" when
     // tapped. Taps/drags starting in this band are now ignored so they fall
     // through to the buttons instead.
-    topExclusionDp: androidx.compose.ui.unit.Dp = 64.dp
+    topExclusionDp: androidx.compose.ui.unit.Dp = 64.dp,
+    doubleTapOffsetMs: Long? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    var doubleTapSide by remember { mutableStateOf<String?>(null) } // "left" or "right"
-    val doubleTapAnim = remember { Animatable(0f) }
+    var feedback by remember { mutableStateOf<TapFeedback?>(null) }
+    var feedbackRevision by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val playingNow by rememberUpdatedState(isPlaying)
+    LaunchedEffect(feedbackRevision) {
+        if (feedback != null) {
+            delay(640)
+            feedback = null
+        }
+    }
     val currentOnSingleTap by rememberUpdatedState(onSingleTap)
     val currentOnDoubleTapLeft by rememberUpdatedState(onDoubleTapLeft)
     val currentOnDoubleTapCenter by rememberUpdatedState(onDoubleTapCenter)
@@ -184,22 +192,19 @@ fun GestureOverlay(
                                     } else if (mode == SwipeMode.PENDING) {
                                         if (doubleCandidate && !isLocked) {
                                             lastTapUp = Long.MIN_VALUE
-                                            val side = when {
-                                                down.position.x < size.width / 3f -> "left"
-                                                down.position.x > size.width * 2f / 3f -> "right"
-                                                else -> "center"
+                                            val action = when {
+                                                down.position.x < size.width / 3f -> TapFeedback.REWIND
+                                                down.position.x > size.width * 2f / 3f -> TapFeedback.FORWARD
+                                                playingNow -> TapFeedback.PAUSE
+                                                else -> TapFeedback.PLAY
                                             }
-                                            when (side) {
-                                                "left" -> currentOnDoubleTapLeft()
-                                                "right" -> currentOnDoubleTapRight()
+                                            when (action) {
+                                                TapFeedback.REWIND -> currentOnDoubleTapLeft()
+                                                TapFeedback.FORWARD -> currentOnDoubleTapRight()
                                                 else -> currentOnDoubleTapCenter()
                                             }
-                                            doubleTapSide = side
-                                            coroutineScope.launch {
-                                                doubleTapAnim.snapTo(.90f)
-                                                doubleTapAnim.animateTo(1.05f, tween(260))
-                                                doubleTapSide = null
-                                            }
+                                            feedback = action
+                                            feedbackRevision++
                                         } else {
                                             val tapTime = eventTime
                                             lastTapUp = tapTime; lastTapPosition = down.position
@@ -256,47 +261,37 @@ fun GestureOverlay(
                 } finally { singleTap?.cancel() }
             }
     ) {
-        // Double-tap visual feedback animation
-        if (doubleTapSide != null) {
-            Box(
-                modifier = Modifier
-                    .size(if (doubleTapSide == "center") 74.dp else 78.dp)
-                    .align(
-                        when (doubleTapSide) {
-                            "left" -> Alignment.CenterStart
-                            "right" -> Alignment.CenterEnd
-                            else -> Alignment.Center
-                        }
-                    )
-                    .background(Color(0xB80A0E18), CircleShape)
-                    .hiContainerBorder(CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier.scale(doubleTapAnim.value),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+        feedback?.let { action ->
+            val alignment = when (action) {
+                TapFeedback.REWIND -> Alignment.CenterStart
+                TapFeedback.FORWARD -> Alignment.CenterEnd
+                else -> Alignment.Center
+            }
+            val iconSize = with(LocalDensity.current) { 16.sp.toDp() }.coerceIn(12.dp, 24.dp)
+            val label = when (action) {
+                TapFeedback.PLAY -> "Play"
+                TapFeedback.PAUSE -> "Pause"
+                else -> {
+                    val delta = doubleTapOffsetMs ?: if (action == TapFeedback.REWIND) -10_000L else 10_000L
+                    val sign = if (delta < 0) "−" else if (delta > 0) "+" else ""
+                    "${sign}${abs(delta) / 1000}s"
+                }
+            }
+            androidx.compose.animation.AnimatedContent(targetState = action, modifier = Modifier
+                .align(alignment).padding(horizontal = 18.dp), label = "doubleTapAction") { shown ->
+                Row(
+                    Modifier.testTag("double_tap_hud").background(Color(0xDD141922), RoundedCornerShape(50))
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = when (doubleTapSide) {
-                            "left" -> Icons.Default.FastRewind
-                            "right" -> Icons.Default.FastForward
-                            else -> if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow
-                        },
-                        contentDescription = null,
-                        tint = HiPrimaryCyan,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = when (doubleTapSide) {
-                            "left" -> "−10s"
-                            "right" -> "+10s"
-                            else -> if (isPlaying) "Pause" else "Play"
-                        },
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Icon(when (shown) {
+                        TapFeedback.REWIND -> Icons.Default.FastRewind
+                        TapFeedback.FORWARD -> Icons.Default.FastForward
+                        TapFeedback.PLAY -> Icons.Default.PlayArrow
+                        TapFeedback.PAUSE -> Icons.Default.Pause
+                    }, contentDescription = null, tint = HiPrimaryCyan, modifier = Modifier.size(iconSize))
+                    Spacer(Modifier.width(4.dp))
+                    Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

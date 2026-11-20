@@ -25,6 +25,11 @@ internal object PlaybackLoudness {
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         if (max <= 0) return
+        // A volume restored during playback startup must never unmute a silent output.
+        if (audio.isStreamMute(AudioManager.STREAM_MUSIC) || audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+            remember(context, 0)
+            return
+        }
         // Keep Android's own output/safe-volume restrictions authoritative.
         runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, (saved * max / 100f).roundToInt().coerceIn(0, max), 0) }
         capture(context)

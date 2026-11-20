@@ -4,6 +4,19 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
+import android.view.KeyEvent
+import android.view.SurfaceView
+import android.view.ViewGroup
+import androidx.core.view.descendants
+import androidx.media3.ui.PlayerView
+import com.example.data.PlayerPreferencesRepository
+import com.example.data.dataStore
+import com.example.data.PlaybackLoudness
+import com.example.model.AspectRatioMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import com.example.playback.createGrowingMkvClusterIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -78,6 +91,91 @@ class PlaybackGestureDeviceTest {
             DownloadingFilesRegistry.completeOwned(partial.absolutePath)
             partial.delete()
             full.delete()
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test(timeout = 100_000) fun vividPartialVideoResizesAndVolumeKeysPreservePicture() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = PlayerPreferencesRepository(context)
+        val saved = runBlocking { context.dataStore.data.first() }
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val originalVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val partial = File.createTempFile("graded-prefix-", ".mkv.part", context.cacheDir)
+        try {
+            val bytes = context.assets.open("growing_test.mkv").use { it.readBytes() }
+            partial.writeBytes(bytes.copyOf(bytes.size / 2))
+            DownloadingFilesRegistry.markOwnedDownloading(partial.absolutePath, partial.length())
+            runBlocking { preferences.setPictureMode(ColorPresets.VIVID_HDR) }
+            PlaybackLoudness.remember(context, 75)
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            ActivityScenario.launch<PlaybackGestureActivity>(Intent(context, PlaybackGestureActivity::class.java)
+                .putExtra("fixture", partial.absolutePath)).use { scenario ->
+                lateinit var host: PlaybackGestureActivity
+                scenario.onActivity { host = it }
+                val engine = host.model.engine
+                compose.waitUntil(40_000) { engine.renderedFrameSequence > 0 && engine.currentPositionMs.value > 250 }
+                assertEquals(ColorPresets.VIVID_HDR, engine.hdrColorPreset.value)
+                assertEquals(0, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+                lateinit var view: SurfaceView
+                scenario.onActivity {
+                    val playerView = (it.window.decorView as ViewGroup).descendants.filterIsInstance<PlayerView>().first()
+                    view = playerView.videoSurfaceView as SurfaceView
+                }
+                fun selectRatio(mode: AspectRatioMode) {
+                    scenario.onActivity { it.model.setAspectRatio(mode) }
+                    compose.waitUntil(8_000) {
+                        var matches = false
+                        scenario.onActivity {
+                            val buffer = view.holder.surfaceFrame
+                            matches = view.height > 0 && buffer.height() > 0 &&
+                                kotlin.math.abs(view.width.toFloat() / view.height - mode.targetRatio!!) < .02f &&
+                                kotlin.math.abs(buffer.width().toFloat() / buffer.height() - 640f / 360f) < .02f
+                        }
+                        matches
+                    }
+                }
+                selectRatio(AspectRatioMode.IMAX_ORIGINAL)
+                selectRatio(AspectRatioMode.CINEMA_21_9)
+                fun pictureVisible(): Boolean = runBlocking {
+                    val bitmap = withContext(Dispatchers.Main) { com.example.ui.copyPictureFrame(view) } ?: return@runBlocking false
+                    try {
+                        (1..7).any { x -> (1..7).any { y ->
+                            val color = bitmap.getPixel(bitmap.width * x / 8, bitmap.height * y / 8)
+                            android.graphics.Color.red(color) > 55 || android.graphics.Color.green(color) > 55 ||
+                                android.graphics.Color.blue(color) > 55
+                        } }
+                    } finally { bitmap.recycle() }
+                }
+                compose.waitUntil(8_000) { pictureVisible() }
+                scenario.onActivity { it.model.selectPictureMode(ColorPresets.CINEMATIC) }
+                compose.waitUntil(8_000) { engine.hdrColorPreset.value == ColorPresets.CINEMATIC && pictureVisible() }
+                assertEquals("Changing the preset raised media volume", 0, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+                var brightness = 0f
+                scenario.onActivity {
+                    brightness = it.window.attributes.screenBrightness
+                    for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+                        assertTrue(it.dispatchKeyEvent(KeyEvent(action, KeyEvent.KEYCODE_VOLUME_UP)))
+                    }
+                }
+                compose.waitUntil(5_000) { audio.getStreamVolume(AudioManager.STREAM_MUSIC) > 0 }
+                val raised = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                compose.waitUntil(8_000) { pictureVisible() }
+                scenario.onActivity {
+                    assertEquals(brightness, it.window.attributes.screenBrightness, .001f)
+                    for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+                        assertTrue(it.dispatchKeyEvent(KeyEvent(action, KeyEvent.KEYCODE_VOLUME_DOWN)))
+                    }
+                }
+                compose.waitUntil(5_000) { audio.getStreamVolume(AudioManager.STREAM_MUSIC) < raised }
+                assertNull(engine.playerError.value)
+            }
+        } finally {
+            runBlocking { context.dataStore.updateData { saved } }
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+            PlaybackLoudness.capture(context)
+            DownloadingFilesRegistry.completeOwned(partial.absolutePath)
+            partial.delete()
         }
     }
 

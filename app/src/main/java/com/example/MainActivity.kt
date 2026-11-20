@@ -148,6 +148,7 @@ class MainActivity : FragmentActivity() {
     // can switch to the Player only after its screen state exists.
     private val pendingExternalVideoUri = mutableStateOf<Uri?>(null)
     private var pipTransitionRequested = false
+    private var videoScreenVisible = false
     private var startupSettingsReady = false
     // True while Hi Browser (not the video player) owns the PiP window.
     private val _browserPipActive = mutableStateOf(false)
@@ -359,6 +360,10 @@ class MainActivity : FragmentActivity() {
                     ) {
                         when {
                             (isPip && !browserPip) || currentScreen == AppScreen.Player -> {
+                                DisposableEffect(isPip) {
+                                    videoScreenVisible = !isPip
+                                    onDispose { videoScreenVisible = false }
+                                }
                                 PlayerScreen(
                                     playerViewModel = playerViewModel,
                                     videoQueue = videos,
@@ -785,6 +790,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (videoScreenVisible && playerViewModel.handleVideoVolumeKey(event)) return true
         val handled = super.dispatchKeyEvent(event)
         if (event.action == android.view.KeyEvent.ACTION_UP && event.keyCode in listOf(
                 android.view.KeyEvent.KEYCODE_VOLUME_UP, android.view.KeyEvent.KEYCODE_VOLUME_DOWN,

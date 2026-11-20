@@ -20,8 +20,7 @@ fun NativeHdrPlayerSurface(
     player: ExoPlayer,
     modifier: Modifier = Modifier,
     bufferSize: IntSize? = null,
-    scaleX: Float = 1f,
-    scaleY: Float = 1f,
+    displaySize: IntSize? = null,
     onSurface: (SurfaceView?) -> Unit = {},
 ) {
     AndroidView(
@@ -39,18 +38,24 @@ fun NativeHdrPlayerSurface(
         },
         update = { host ->
             val video = host.getChildAt(0) as PlayerView
-            val width = bufferSize?.width ?: FrameLayout.LayoutParams.MATCH_PARENT
-            val height = bufferSize?.height ?: FrameLayout.LayoutParams.MATCH_PARENT
+            val surface = video.videoSurfaceView as? SurfaceView
+            // Media3 fits the graded frame into its output buffer. Keep that buffer
+            // at the source aspect while Android maps it to the selected view bounds.
+            if (surface != null && surface.tag != bufferSize) {
+                if (bufferSize != null) surface.holder.setFixedSize(bufferSize.width, bufferSize.height)
+                else surface.holder.setSizeFromLayout()
+                surface.tag = bufferSize
+            }
+            val width = displaySize?.width ?: FrameLayout.LayoutParams.MATCH_PARENT
+            val height = displaySize?.height ?: FrameLayout.LayoutParams.MATCH_PARENT
             val params = video.layoutParams
             if (params.width != width || params.height != height) {
                 params.width = width
                 params.height = height
                 video.layoutParams = params
             }
-            video.scaleX = scaleX
-            video.scaleY = scaleY
             if (video.player !== player) video.player = player
-            onSurface(video.videoSurfaceView as? SurfaceView)
+            onSurface(surface)
         },
         onRelease = { host -> (host.getChildAt(0) as PlayerView).player = null },
         modifier = modifier,

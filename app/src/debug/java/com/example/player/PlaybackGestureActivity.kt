@@ -15,6 +15,9 @@ import java.io.File
 class PlaybackGestureActivity : ComponentActivity() {
     lateinit var model: PlayerViewModel
         private set
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean =
+        (::model.isInitialized && model.handleVideoVolumeKey(event)) || super.dispatchKeyEvent(event)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         getSharedPreferences("first_use_tips",MODE_PRIVATE).edit().putBoolean("video_player_visual_guide_v2",true).commit()

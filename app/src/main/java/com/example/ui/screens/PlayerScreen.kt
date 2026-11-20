@@ -176,6 +176,11 @@ fun PlayerScreen(
         SmoothSeekController(seekScope, { playerViewModel.engine.currentPositionMs.value },
             playerViewModel.engine::clampSeekTarget, playerViewModel::seekTo)
     }
+    var showButtonSeekPreview by remember(smoothSeekController) { mutableStateOf(false) }
+    fun skipBy(delta: Long, fromButton: Boolean = false) {
+        showButtonSeekPreview = fromButton
+        smoothSeekController.seekBy(delta)
+    }
     val isPlaying by playerViewModel.engine.isPlaying.collectAsState()
     val isBuffering by playerViewModel.engine.isBuffering.collectAsState()
     val currentPositionMs by playerViewModel.engine.currentPositionMs.collectAsState()
@@ -355,7 +360,14 @@ fun PlayerScreen(
             if (usingVlc) return
             // Graded output can report the surface dimensions. Size the surface
             // from the input track to avoid feeding its own dimensions back into layout.
-            val format = player.videoFormat
+            val format = player.videoFormat?.takeIf { it.width > 0 && it.height > 0 }
+                ?: player.currentTracks.groups.firstNotNullOfOrNull { group ->
+                    (0 until group.length).firstNotNullOfOrNull { index ->
+                        group.getTrackFormat(index).takeIf {
+                            group.isTrackSelected(index) && it.width > 0 && it.height > 0
+                        }
+                    }
+                }
             if (applyColorPresetToVideo && format != null && format.width > 0 && format.height > 0) {
                 videoWidth = format.width
                 videoHeight = format.height
@@ -582,9 +594,9 @@ fun PlayerScreen(
         surface.onScrubEnd = { playerViewModel.onScrubEnd() }
         surface.onScrubCancel = { playerViewModel.onScrubCancel() }
         surface.onSingleTap = { areControlsVisible = !areControlsVisible }
-        surface.onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) }
+        surface.onDoubleTapLeft = { skipBy(-10_000L) }
         surface.onDoubleTapCenter = { playerViewModel.togglePlayPause() }
-        surface.onDoubleTapRight = { smoothSeekController.seekBy(10_000L) }
+        surface.onDoubleTapRight = { skipBy(10_000L) }
         surface.onHoldSeekStart = { isForward ->
             holdSeekSide = if (isForward) HoldSeekSide.FORWARD else HoldSeekSide.REWIND
         }
@@ -765,10 +777,12 @@ fun PlayerScreen(
                 IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
                     (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
             } else null
+            val displaySize = containerSize.takeIf { it.width > 0 && it.height > 0 }?.let {
+                IntSize((it.width * ratioScale.first * videoScale).roundToInt().coerceAtLeast(1),
+                    (it.height * ratioScale.second * videoScale).roundToInt().coerceAtLeast(1))
+            }
             NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
-                scaleX = videoScale * ratioScale.first / fit.first,
-                scaleY = videoScale * ratioScale.second / fit.second,
-                onSurface = { surfaceView = it })
+                displaySize = displaySize, onSurface = { surfaceView = it })
         }
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -800,9 +814,9 @@ fun PlayerScreen(
                     if (isScreenLocked) showLockedUnlockControl = !showLockedUnlockControl
                     else areControlsVisible = !areControlsVisible
                 },
-                onDoubleTapLeft = { smoothSeekController.seekBy(-10_000L) },
+                onDoubleTapLeft = { skipBy(-10_000L) },
                 onDoubleTapCenter = { playerViewModel.togglePlayPause() },
-                onDoubleTapRight = { smoothSeekController.seekBy(10_000L) },
+                onDoubleTapRight = { skipBy(10_000L) },
                 isPlaying = isPlaying,
                 onBrightnessDelta = { delta ->
                     activity?.let { act ->
@@ -841,6 +855,7 @@ fun PlayerScreen(
                 // PlayerScreen already renders the shared seek-preview HUD.
                 scrubTimeMs = null,
                 scrubDeltaMs = 0L,
+                doubleTapOffsetMs = smoothSeekController.offsetMs,
                 onPinchZoom = { zoomFactor ->
                     playerViewModel.setVideoScale(videoScale * zoomFactor)
                     showZoomOverlay = true
@@ -907,7 +922,7 @@ fun PlayerScreen(
         )
 
         SeekPreviewHud(
-            targetMs = scrubTimeMs ?: smoothSeekController.targetMs,
+            targetMs = scrubTimeMs ?: smoothSeekController.targetMs.takeIf { showButtonSeekPreview },
             deltaMs = if (scrubTimeMs != null) scrubDeltaMs else smoothSeekController.offsetMs,
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -977,8 +992,8 @@ fun PlayerScreen(
                 touchingSeekBar = touching
                 if (touching) smoothSeekController.clear()
             },
-            onRewind10 = { smoothSeekController.seekBy(-10_000L) },
-            onFastForward10 = { smoothSeekController.seekBy(10_000L) },
+            onRewind10 = { skipBy(-10_000L, fromButton = true) },
+            onFastForward10 = { skipBy(10_000L, fromButton = true) },
             onPrevious = { playAdjacentVideo(-1) },
             onNext = { playAdjacentVideo(1) },
             onBack = onBack,
@@ -1331,9 +1346,9 @@ private fun computeVideoRatioScale(
         AspectRatioMode.CINEMA_21_9 -> {
             val targetRatio = mode.targetRatio ?: videoRatio
             if (targetRatio > containerRatio) {
-                (targetRatio / containerRatio) to 1f
-            } else {
                 1f to (containerRatio / targetRatio)
+            } else {
+                (targetRatio / containerRatio) to 1f
             }
         }
     }
