@@ -370,8 +370,11 @@ internal fun HiBrowserMenuSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     fun run(action: HiMenuAction) {
         if (!action.enabled) return
-        onDismiss()
+        // Commit the selected action before removing the sheet from composition.
+        // Dismissing first can dispose the captured action during the same frame
+        // on newer Compose runtimes, leaving bookmark and tab actions unapplied.
         action.onClick()
+        onDismiss()
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss, sheetState = sheetState, containerColor = palette.background) {
