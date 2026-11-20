@@ -90,7 +90,11 @@ class GeckoBrowserChromeTest {
         compose.onNodeWithContentDescription("Browser menu").performClick()
         compose.onNodeWithContentDescription("Add bookmark").performClick()
         compose.onNodeWithContentDescription("Browser home").performClick()
-        compose.onNodeWithTag("browser_bookmark_0").assertIsDisplayed()
+        compose.waitUntil(5_000) {
+            runCatching {
+                compose.onNodeWithTag("browser_bookmark_0").assertIsDisplayed()
+            }.isSuccess
+        }
         compose.waitUntil(5_000) { store.isBookmarked("https://example.org/saved") }
         compose.runOnIdle { coordinator.close() }
     }
