@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.AppTextSize
+
 import com.example.BuildConfig
 
 import com.example.ui.theme.hiContainerBorder
@@ -398,7 +400,7 @@ fun HiBrowserScreen(
     appNavigation: @Composable () -> Unit = {},
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
-    appTextSizeSp: Int = 14,
+    appTextSizeSp: Int = AppTextSize.DEFAULT,
     onAppTextSizeChange: (Int) -> Unit = {},
     onPlayAccountMedia: (com.example.model.VideoItem) -> Unit = {},
     isInPictureInPicture: Boolean = false,
@@ -1320,8 +1322,7 @@ fun HiBrowserScreen(
     val barHeightDp = with(density) { barHeightPx.toDp() }
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
-    // Inherit the already-scaled app density; do not multiply the app text size twice.
-    HiPlayerTheme(themeMode = browserTheme, uiTextScale = 1f, systemDarkOverride = darkModeEnabled) {
+    HiPlayerTheme(themeMode = browserTheme, uiTextScale = AppTextSize.scale(appTextSizeSp), systemDarkOverride = darkModeEnabled) {
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,
@@ -2536,10 +2537,12 @@ private fun BrowserSettingsDialog(
                         TextButton(onClick = { onTextZoomChange(100) }, enabled = textZoom != 100) { Text("Reset webpage text to 100%") }
                         Text("App text · ${appTextSizeSp}sp", color = palette.textPrimary, fontWeight = FontWeight.Medium)
                         Text("Changes Hi Player controls and menus, including this screen. System font size is respected too.", color = palette.textSecondary)
-                        Slider(value = appTextSizeSp.coerceIn(12, 24).toFloat(), valueRange = 12f..24f, steps = 11,
+                        Slider(value = appTextSizeSp.toFloat(), valueRange = AppTextSize.sliderRange, steps = AppTextSize.SLIDER_STEPS,
                             onValueChange = { onAppTextSizeChange(it.roundToInt()) },
                             modifier = Modifier.fillMaxWidth().semantics { contentDescription = "App text size" })
-                        TextButton(onClick = { onAppTextSizeChange(14) }, enabled = appTextSizeSp != 14) { Text("Reset app text to 14sp") }
+                        TextButton(onClick = { onAppTextSizeChange(AppTextSize.DEFAULT) }, enabled = appTextSizeSp != AppTextSize.DEFAULT) {
+                            Text("Reset app text to ${AppTextSize.DEFAULT}sp")
+                        }
                     }
                 }
                 BrowserSettingsGroup("Privacy and content") {

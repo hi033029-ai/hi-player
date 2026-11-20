@@ -1,5 +1,7 @@
 package com.example
 
+import com.example.data.AppTextSize
+
 import android.Manifest
 import android.app.PictureInPictureParams
 import android.app.PendingIntent
@@ -171,7 +173,7 @@ class MainActivity : FragmentActivity() {
 
             HiPlayerTheme(
                 themeMode = settings.themeMode,
-                uiTextScale = (settings.uiTextSizeSp / 14f).coerceIn(12f / 14f, 24f / 14f),
+                uiTextScale = AppTextSize.scale(settings.uiTextSizeSp),
                 customPalette = getCustomPalette(settings),
             ) {
                 val palette = LocalHiPalette.current

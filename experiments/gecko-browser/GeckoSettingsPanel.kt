@@ -1,5 +1,7 @@
 package com.example.browser.gecko
 
+import com.example.data.AppTextSize
+
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,7 +42,6 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
     var appearance by remember { mutableStateOf(false) }
     var blocking by remember { mutableStateOf(store.adBlock) }
     var detection by remember { mutableStateOf(store.videoHandoff) }
-    var textSize by remember(args.appTextSizeSp) { mutableIntStateOf(args.appTextSizeSp.coerceIn(12, 24)) }
     var webpageZoom by remember(services.settings) { mutableIntStateOf(services.settings.zoom) }
     var updating by remember { mutableStateOf(false) }
     var updateJob by remember { mutableStateOf<Job?>(null) }
@@ -77,12 +78,13 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                     }) { Text("Reset webpage text to 100%") }
                     TextButton(onClick = { appearance = true }) { Text("More appearance and privacy settings") }
                     HorizontalDivider()
-                    Text("Browser controls · ${textSize}sp", style = MaterialTheme.typography.bodyMedium)
-                    Slider(value = textSize.toFloat(), valueRange = 12f..24f, steps = 11,
-                        onValueChange = { textSize = it.roundToInt() },
-                        onValueChangeFinished = { args.onAppTextSizeChange(textSize) },
+                    Text("App text · ${args.appTextSizeSp}sp", style = MaterialTheme.typography.bodyMedium)
+                    Slider(value = args.appTextSizeSp.toFloat(), valueRange = AppTextSize.sliderRange, steps = AppTextSize.SLIDER_STEPS,
+                        onValueChange = { args.onAppTextSizeChange(it.roundToInt()) },
                         modifier = Modifier.semantics { contentDescription = "App text size" })
-                    TextButton(enabled = textSize != 14, onClick = { textSize = 14; args.onAppTextSizeChange(14) }) { Text("Reset app text to 14sp") }
+                    TextButton(enabled = args.appTextSizeSp != AppTextSize.DEFAULT, onClick = { args.onAppTextSizeChange(AppTextSize.DEFAULT) }) {
+                        Text("Reset app text to ${AppTextSize.DEFAULT}sp")
+                    }
                 }
                 GeckoSettingsGroup("Privacy and content", "Ad blocking applies on page loads; it does not bypass security challenges or server-enforced waits.") {
                     GeckoFeatureSwitch("Ad and tracker blocking", blocking) { blocking = it; store.adBlock = it }

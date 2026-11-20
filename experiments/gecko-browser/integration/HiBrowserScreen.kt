@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.AppTextSize
+
 import android.os.Build
 import androidx.annotation.DoNotInline
 import androidx.annotation.RequiresApi
@@ -39,7 +41,7 @@ fun HiBrowserScreen(
     appNavigation: @Composable () -> Unit = {},
     onPlayDirectMedia: (String) -> Unit,
     modifier: Modifier = Modifier,
-    appTextSizeSp: Int = 14,
+    appTextSizeSp: Int = AppTextSize.DEFAULT,
     onAppTextSizeChange: (Int) -> Unit = {},
     onPlayAccountMedia: (com.example.model.VideoItem) -> Unit = {},
     isInPictureInPicture: Boolean = false,

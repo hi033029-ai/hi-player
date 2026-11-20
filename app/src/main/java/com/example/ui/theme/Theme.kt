@@ -1,5 +1,7 @@
 package com.example.ui.theme
 
+import com.example.data.AppTextSize
+
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -22,7 +24,10 @@ data class HiUiMetrics(
     val logoSize: Dp,
     val titleTextSize: androidx.compose.ui.unit.TextUnit
 )
-private const val COMPACT_APP_FONT_SCALE = 0.85f
+private const val COMPACT_APP_FONT_SCALE = 0.80f
+
+// Nested appearance themes use the same device density as the app root.
+private val LocalUnscaledDensity = compositionLocalOf<Density?> { null }
 
 val LocalHiUiMetrics = compositionLocalOf {
     HiUiMetrics(
@@ -93,7 +98,7 @@ private fun createColorScheme(palette: HiThemePalette) = if (palette.isDark) {
 @Composable
 fun HiPlayerTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
-    uiTextScale: Float = 1f,
+    uiTextScale: Float = AppTextSize.scale(AppTextSize.DEFAULT),
     customPalette: HiThemePalette? = null,
     systemDarkOverride: Boolean? = null,
     content: @Composable () -> Unit
@@ -105,10 +110,10 @@ fun HiPlayerTheme(
     }
     val palette = animatedThemePalette(targetPalette)
     val colorScheme = remember(palette) { createColorScheme(palette) }
-    val baseDensity = LocalDensity.current
+    val baseDensity = LocalUnscaledDensity.current ?: LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,
-        fontScale = (baseDensity.fontScale * uiTextScale * COMPACT_APP_FONT_SCALE).coerceAtLeast(0.65f)
+        fontScale = baseDensity.fontScale * uiTextScale * COMPACT_APP_FONT_SCALE
     )
 
     val uiMetrics = HiUiMetrics(
@@ -120,6 +125,7 @@ fun HiPlayerTheme(
     CompositionLocalProvider(
         LocalHiPalette provides palette,
         LocalHiUiMetrics provides uiMetrics,
+        LocalUnscaledDensity provides baseDensity,
         LocalDensity provides scaledDensity
     ) {
         MaterialTheme(

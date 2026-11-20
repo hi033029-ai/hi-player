@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.AppTextSize
+
 import com.example.ui.theme.hiContainerBorder
 
 import androidx.compose.foundation.BorderStroke
@@ -248,7 +250,7 @@ fun SettingsScreen(
             SettingsCollapsibleSection(
                 title = "Text size",
                 icon = Icons.Default.FormatSize,
-                subtitle = "Adjust text used throughout the player",
+                subtitle = "Adjust text throughout Hi Player",
                 expanded = showTextSize,
                 onToggle = { showTextSize = !showTextSize }
             ) {
@@ -259,7 +261,7 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Player text size",
+                        text = "App text size",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = palette.textPrimary
@@ -274,8 +276,8 @@ fun SettingsScreen(
                 Slider(
                     value = settings.uiTextSizeSp.toFloat(),
                     onValueChange = { libraryViewModel.setUiTextSize(it.roundToInt()) },
-                    valueRange = 12f..24f,
-                    steps = 11,
+                    valueRange = AppTextSize.sliderRange,
+                    steps = AppTextSize.SLIDER_STEPS,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_ui_text_size_slider")

@@ -40,6 +40,16 @@ enum class AppThemeMode(val id: String, val displayName: String, val description
     }
 }
 
+object AppTextSize {
+    const val DEFAULT = 12
+    const val MIN = 10
+    const val MAX = 24
+    const val SLIDER_STEPS = MAX - MIN - 1
+    val sliderRange = MIN.toFloat()..MAX.toFloat()
+
+    fun scale(sizeSp: Int): Float = sizeSp.coerceIn(MIN, MAX) / 14f
+}
+
 enum class HwAccelerationMode(val id: String, val displayName: String, val description: String) {
     HW_PLUS("HW_PLUS", "Hardware (HW+)", "Ultra-low latency GPU decoding with tunneling for 4K 60fps HDR"),
     HW("HW", "Hardware (HW)", "Standard MediaCodec hardware acceleration"),
@@ -91,7 +101,7 @@ data class AppPlayerSettings(
     val equalizerBandsDb: List<Float> = List(5) { 0f },
     val audioDelayMs: Long = 0L,
     val subtitleOffsetMs: Long = 0L,
-    val uiTextSizeSp: Int = 12,
+    val uiTextSizeSp: Int = AppTextSize.DEFAULT,
     val customThemeTextHex: String = "#0F172A",
     val customThemeBackgroundHex: String = "#F8FAFC",
     val customThemePrimaryHex: String = "#0056B3",
@@ -213,7 +223,7 @@ class PlayerPreferencesRepository(private val context: Context) {
             equalizerBandsDb = equalizerBands,
             audioDelayMs = (prefs[Keys.AUDIO_DELAY_MS] ?: 0L).coerceIn(-10_000L, 10_000L),
             subtitleOffsetMs = (prefs[Keys.SUBTITLE_OFFSET_MS] ?: 0L).coerceIn(-10_000L, 10_000L),
-            uiTextSizeSp = prefs[Keys.UI_TEXT_SIZE] ?: 14,
+            uiTextSizeSp = (prefs[Keys.UI_TEXT_SIZE] ?: AppTextSize.DEFAULT).coerceIn(AppTextSize.MIN, AppTextSize.MAX),
             customThemeTextHex = prefs[Keys.CUSTOM_TEXT] ?: "#0F172A",
             customThemeBackgroundHex = prefs[Keys.CUSTOM_BACKGROUND] ?: "#F8FAFC",
             customThemePrimaryHex = prefs[Keys.CUSTOM_PRIMARY] ?: "#0056B3",
@@ -460,7 +470,7 @@ class PlayerPreferencesRepository(private val context: Context) {
     }
 
     suspend fun setUiTextSize(sizeSp: Int) {
-        context.dataStore.edit { it[Keys.UI_TEXT_SIZE] = sizeSp.coerceIn(12, 24) }
+        context.dataStore.edit { it[Keys.UI_TEXT_SIZE] = sizeSp.coerceIn(AppTextSize.MIN, AppTextSize.MAX) }
     }
 
     suspend fun setCustomThemeColors(

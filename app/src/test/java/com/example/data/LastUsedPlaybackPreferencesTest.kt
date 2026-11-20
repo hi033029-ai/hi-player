@@ -21,6 +21,16 @@ class LastUsedPlaybackPreferencesTest {
         context.getSharedPreferences("playback_last_used", Context.MODE_PRIVATE).edit().clear().commit()
         Unit
     }
+    @Test fun appTextSizeHasOneDefaultAndRestoresTheSelectedSize() = runBlocking {
+        val repository = PlayerPreferencesRepository(context)
+        assertEquals(12, AppPlayerSettings().uiTextSizeSp)
+        assertEquals(12, repository.settingsFlow.first().uiTextSizeSp)
+        for (size in listOf(10, 14, 24)) {
+            repository.setUiTextSize(size)
+            assertEquals(size, PlayerPreferencesRepository(context).settingsFlow.first().uiTextSizeSp)
+        }
+    }
+
     @Test fun controlsRestoreWithoutNamedProfiles() = runBlocking {
         val repository = PlayerPreferencesRepository(context)
         repository.setPlayerBrightnessPercent(64)

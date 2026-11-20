@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.data.AppTextSize
+
 import com.example.ui.theme.hiContainerBorder
 
 import android.Manifest
@@ -114,7 +116,7 @@ fun SplashScreen(
     val context = LocalContext.current
     var currentStep by rememberSaveable { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
     var selectedTheme by rememberSaveable { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
-    var textSizeSp by rememberSaveable { mutableStateOf(14) }
+    var textSizeSp by rememberSaveable { mutableStateOf(AppTextSize.DEFAULT) }
 
     var introShown by rememberSaveable { mutableStateOf(false) }
     var finishing by rememberSaveable { mutableStateOf(false) }
@@ -138,7 +140,7 @@ fun SplashScreen(
         if (isFirstLaunch) currentStep = OnboardingStep.WELCOME_NOTE else finishOnce()
     }
 
-    com.example.ui.theme.HiPlayerTheme(themeMode = selectedTheme) {
+    com.example.ui.theme.HiPlayerTheme(themeMode = selectedTheme, uiTextScale = AppTextSize.scale(textSizeSp)) {
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -259,14 +261,14 @@ private fun TextSizeSetupView(
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Hi Player preview", fontSize = textSizeSp.sp, fontWeight = FontWeight.Bold, color = accent)
+                    Text("Hi Player preview", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = accent)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Your library, player controls, folders, and settings will use this size.", fontSize = textSizeSp.sp, color = com.example.ui.theme.LocalHiPalette.current.textSecondary)
+                    Text("Your library, player controls, folders, and settings will use this size.", fontSize = 14.sp, color = com.example.ui.theme.LocalHiPalette.current.textSecondary)
                     Slider(
                         value = textSizeSp.toFloat(),
                         onValueChange = { onTextSizeChanged(it.roundToInt()) },
-                        valueRange = 12f..24f,
-                        steps = 11,
+                        valueRange = AppTextSize.sliderRange,
+                        steps = AppTextSize.SLIDER_STEPS,
                         modifier = Modifier.fillMaxWidth().testTag("onboarding_text_size_slider")
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
