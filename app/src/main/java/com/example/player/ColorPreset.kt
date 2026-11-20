@@ -82,16 +82,14 @@ fun selectiveExposureAdjustment(hue: Float, intensity: Float): ColorTargetAdjust
     val delta = 0.5f - clamped // +0.5 = Bright, 0 = Original, -0.5 = Dull
     if (kotlin.math.abs(delta) < 0.005f) return null
     val normalized = delta * 2f // -1f..1f
-    val gain = if (normalized >= 0f) 1f + 0.30f * normalized else 1f + 0.24f * normalized
+    val gain = 1.2f - 0.4f * clamped
     val sat = if (normalized >= 0f) 1f + 0.55f * normalized else 1f + 0.80f * normalized
     return ColorTargetAdjustment(((hue % 1f) + 1f) % 1f, gain, gain, gain, sat.coerceIn(0.15f, 1.8f))
 }
 
 fun selectiveIntensityFromAdjustment(adjustment: ColorTargetAdjustment?): Float {
     if (adjustment == null) return 0.5f
-    val gain = adjustment.red
-    val normalized = if (gain >= 1f) (gain - 1f) / 0.30f else (gain - 1f) / 0.24f
-    return (0.5f - normalized * 0.5f).coerceIn(0f, 1f)
+    return ((1.2f - adjustment.red) / 0.4f).coerceIn(0f, 1f)
 }
 
 object SelectiveColourBand {
