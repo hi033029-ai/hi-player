@@ -51,7 +51,8 @@ class ColorPresetGpuTest {
             assertEquals(GLES20.GL_FRAMEBUFFER_COMPLETE,GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER))
             GLES20.glViewport(0,0,8,1)
             listOf(false,true).forEach { hdr ->
-                val shader = ColorPresetEffect(ColorPresets.CUSTOM.copy(contrast = 1.15f))
+                val preset = ColorPresets.CUSTOM.copy(contrast = 1.15f)
+                val shader = ColorPresetEffect(preset)
                     .toGlShaderProgram(InstrumentationRegistry.getInstrumentation().targetContext,hdr) as BaseGlShaderProgram
                 try {
                     shader.configure(8,1); shader.drawFrame(textures[0],0)
@@ -60,13 +61,13 @@ class ColorPresetGpuTest {
                     assertEquals(GLES20.GL_NO_ERROR,GLES20.glGetError())
                     levels.forEachIndexed { i,v ->
                         val red = output.get(i*4).toInt() and 255
-                        assertTrue("Contrast crushed shadow $v -> $red (HDR shader=$hdr)",red >= v/1.15f-2)
-                        assertTrue("Contrast washed out $v -> $red",red <= v*1.15f+2)
+                        val expected = (expectedGray(v / 255f, preset, hdr) * 255f).coerceIn(0f, 255f)
+                        assertEquals("Unexpected graded value $v -> $red (HDR shader=$hdr)", expected.toDouble(), red.toDouble(), 3.0)
                         assertEquals("Gray must stay neutral",red,output.get(i*4+1).toInt() and 255)
                         assertEquals(red,output.get(i*4+2).toInt() and 255)
                     }
                     assertEquals(0,output.get(0).toInt() and 255)
-                    assertEquals("Pivot luminance must not darken",46.0,(output.get(12).toInt() and 255).toDouble(),2.0)
+                    assertTrue("Pivot luminance must not darken",(output.get(12).toInt() and 255) >= 46)
                 } finally { shader.release() }
             }
         } finally {
@@ -120,12 +121,14 @@ class ColorPresetGpuTest {
                     levels.forEachIndexed { i,v ->
                         val actual = output.get(i*4)
                         assertTrue("Non-finite HDR output",actual.isFinite())
+                        val expected = expectedGray(v, preset, hdr = true)
                         if (v == 0f) assertEquals("Black must remain black",0f,actual,0f)
-                        else when (index) {
-                            0 -> assertEquals("Neutral must preserve normalized luminance $v",v,actual,maxOf(v*.003f,.0000001f))
-                            1 -> assertTrue("Contrast crushed HDR scene value $v -> $actual",actual >= v/1.15f*.995f && actual <= v*1.15f*1.005f)
-                            2 -> assertTrue("HDR Bright darkened scene value $v -> $actual",actual > v*1.04f && actual < v*1.18f)
-                        }
+                        else assertEquals(
+                            "Unexpected FP16 HDR grade for ${preset.name} at $v",
+                            expected,
+                            actual,
+                            maxOf(expected*.006f,.0000001f),
+                        )
                         assertEquals("Neutral HDR gray must retain RGB ratios",actual,output.get(i*4+1),maxOf(actual*.002f,.0000001f))
                         assertEquals(actual,output.get(i*4+2),maxOf(actual*.002f,.0000001f))
                     }
@@ -137,6 +140,19 @@ class ColorPresetGpuTest {
             EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT)
             EGL14.eglDestroySurface(display,surface); EGL14.eglDestroyContext(display,eglContext); EGL14.eglTerminate(display)
         }
+    }
+
+    private fun expectedGray(input: Float, preset: ColorPreset, hdr: Boolean): Float {
+        var value = input * preset.red * preset.brightness
+        if (hdr && !preset.isIdentityTransform()) {
+            val t = ((value - 0.10f) / 0.65f).coerceIn(0f, 1f)
+            val smooth = t * t * (3f - 2f * t)
+            value *= GRADED_HDR_MIDTONE_LIFT + (1f - GRADED_HDR_MIDTONE_LIFT) * smooth
+        }
+        val contrast = preset.contrast.coerceAtLeast(0.01f)
+        var contrastGain = (contrast * value + 0.18f) / (value + 0.18f * contrast)
+        if (contrast >= 1f) contrastGain = maxOf(1f, contrastGain)
+        return value * contrastGain
     }
 
 }

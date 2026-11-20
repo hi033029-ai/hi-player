@@ -360,13 +360,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun zoomOut() {
         val current = _videoScale.value
-        if (current > 0.75f) {
-            _videoScale.value = (current - 0.25f).coerceAtLeast(0.75f)
+        if (current > 1.0f) {
+            _videoScale.value = (current - 0.25f).coerceAtLeast(1.0f)
         }
     }
 
     fun setVideoScale(scale: Float) {
-        _videoScale.value = scale.coerceIn(0.75f, 3.0f)
+        // Pinch is a zoom operation. Letting it shrink below the selected
+        // aspect mode produced a small floating rectangle that the resize
+        // button could not reliably recover from.
+        _videoScale.value = scale.coerceIn(1.0f, 3.0f)
     }
 
     fun resetZoom() {
@@ -488,12 +491,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setAspectRatio(mode: AspectRatioMode) {
         engine.setAspectRatioMode(mode)
         viewModelScope.launch { preferencesRepo.setDefaultAspectRatio(mode.name) }
-        // Aspect-ratio selection is a screen-fit operation. Do not carry a
-        // previous manual zoom into Fill, otherwise the surface can remain
-        // oversized while the transport row stays correctly anchored.
-        if (mode == AspectRatioMode.FILL_CROP || mode == AspectRatioMode.FIT) {
-            _videoScale.value = 1.0f
-        }
+        // Every resize choice starts from its own canonical geometry. Manual
+        // zoom must never leak into IMAX, cinema, original, or stretch either.
+        _videoScale.value = 1.0f
         viewModelScope.launch {
             _currentVideo.value?.let { video ->
                 val record = videoDao.getVideoRecord(video.uri.toString())
@@ -505,8 +505,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun cycleAspectRatio() {
-        val modes = AspectRatioMode.entries
-        setAspectRatio(modes[(engine.aspectRatioMode.value.ordinal + 1) % modes.size])
+        // A normal tap is the predictable Fit / Fill toggle. The full picker
+        // remains available on long press for IMAX, cinema and stretch modes.
+        setAspectRatio(
+            if (engine.aspectRatioMode.value == AspectRatioMode.FIT) {
+                AspectRatioMode.FILL_CROP
+            } else {
+                AspectRatioMode.FIT
+            }
+        )
     }
 
     fun toggleMute() {

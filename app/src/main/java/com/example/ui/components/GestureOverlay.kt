@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -197,8 +196,8 @@ fun GestureOverlay(
                                             }
                                             doubleTapSide = side
                                             coroutineScope.launch {
-                                                doubleTapAnim.snapTo(.8f)
-                                                doubleTapAnim.animateTo(1.3f, tween(350))
+                                                doubleTapAnim.snapTo(.90f)
+                                                doubleTapAnim.animateTo(1.05f, tween(260))
                                                 doubleTapSide = null
                                             }
                                         } else {
@@ -261,7 +260,7 @@ fun GestureOverlay(
         if (doubleTapSide != null) {
             Box(
                 modifier = Modifier
-                    .size(if (doubleTapSide == "center") 112.dp else 96.dp)
+                    .size(if (doubleTapSide == "center") 74.dp else 78.dp)
                     .align(
                         when (doubleTapSide) {
                             "left" -> Alignment.CenterStart
@@ -269,12 +268,13 @@ fun GestureOverlay(
                             else -> Alignment.Center
                         }
                     )
-                    .background(Color(0xCC0A0E18), CircleShape),
+                    .background(Color(0xB80A0E18), CircleShape)
+                    .hiContainerBorder(CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
+                Column(
                     modifier = Modifier.scale(doubleTapAnim.value),
-                    contentAlignment = Alignment.Center
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Icon(
                         imageVector = when (doubleTapSide) {
@@ -284,7 +284,18 @@ fun GestureOverlay(
                         },
                         contentDescription = null,
                         tint = HiPrimaryCyan,
-                        modifier = Modifier.size(48.dp)
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = when (doubleTapSide) {
+                            "left" -> "−10s"
+                            "right" -> "+10s"
+                            else -> if (isPlaying) "Pause" else "Play"
+                        },
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
@@ -295,15 +306,15 @@ fun GestureOverlay(
             visible = brightnessLevel != null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 32.dp)
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 18.dp)
         ) {
             brightnessLevel?.let { level ->
                 val percent = (level * 100).toInt()
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
-                        .background(Color(0xCC111624))
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
+                        .clip(RoundedCornerShape(18.dp)).hiContainerBorder(RoundedCornerShape(18.dp))
+                        .background(Color(0xD9111624))
+                        .padding(horizontal = 10.dp, vertical = 11.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -313,14 +324,14 @@ fun GestureOverlay(
                             imageVector = Icons.Default.BrightnessHigh,
                             contentDescription = "Brightness",
                             tint = HiAccentAmber,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(23.dp)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(7.dp))
                         Box(
                             modifier = Modifier
-                                .width(8.dp)
-                                .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
+                                .width(6.dp)
+                                .height(68.dp)
+                                .clip(RoundedCornerShape(3.dp)).hiContainerBorder(RoundedCornerShape(3.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
@@ -331,11 +342,11 @@ fun GestureOverlay(
                                     .background(HiAccentAmber)
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "$percent%",
                             color = Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -348,16 +359,16 @@ fun GestureOverlay(
             visible = volumeLevel != null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 32.dp)
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 18.dp)
         ) {
             volumeLevel?.let { level ->
                 val isBoosted = level > 1.0f
                 val percent = (level * 100).toInt()
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
-                        .background(Color(0xCC111624))
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
+                        .clip(RoundedCornerShape(18.dp)).hiContainerBorder(RoundedCornerShape(18.dp))
+                        .background(Color(0xD9111624))
+                        .padding(horizontal = 10.dp, vertical = 11.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -371,14 +382,14 @@ fun GestureOverlay(
                             },
                             contentDescription = "Volume",
                             tint = if (isBoosted) HiAccentAmber else HiPrimaryCyan,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(23.dp)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(7.dp))
                         Box(
                             modifier = Modifier
-                                .width(8.dp)
-                                .height(100.dp)
-                                .clip(RoundedCornerShape(4.dp)).hiContainerBorder(RoundedCornerShape(4.dp))
+                                .width(6.dp)
+                                .height(68.dp)
+                                .clip(RoundedCornerShape(3.dp)).hiContainerBorder(RoundedCornerShape(3.dp))
                                 .background(Color(0x44FFFFFF))
                         ) {
                             Box(
@@ -389,11 +400,11 @@ fun GestureOverlay(
                                     .background(if (isBoosted) HiAccentAmber else HiPrimaryCyan)
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = if (isBoosted) "$percent% Boost" else "$percent%",
+                            text = "$percent%",
                             color = if (isBoosted) HiAccentAmber else Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }

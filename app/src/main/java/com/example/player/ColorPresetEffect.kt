@@ -41,6 +41,10 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
                 program.setFloatUniform("uContrast", preset.contrast)
                 program.setFloatUniform("uSaturation", preset.saturation * preset.vibrance)
                 program.setFloatUniform("uSharpness", preset.sharpness)
+                program.setFloatUniform(
+                    "uHdrMidtoneLift",
+                    if (hdr && !preset.isIdentityTransform()) GRADED_HDR_MIDTONE_LIFT else 1f,
+                )
                 program.setFloatsUniform("uTexel", floatArrayOf(1f / width, 1f / height))
                 val targets = preset.targetAdjustments.take(8).toMutableList()
                 if (targets.isEmpty() && preset.targetHue >= 0) targets.add(ColorTargetAdjustment(preset.targetHue, preset.red, preset.green, preset.blue))
@@ -69,7 +73,7 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
             precision highp float;
             uniform sampler2D uTexture;
             uniform vec3 uGain, uLuma;
-            uniform float uBrightness, uContrast, uSaturation, uSharpness;
+            uniform float uBrightness, uContrast, uSaturation, uSharpness, uHdrMidtoneLift;
             uniform vec2 uTexel;
             uniform int uTargetCount;
             uniform vec4 uTarget0, uTarget1, uTarget2, uTarget3, uTarget4, uTarget5, uTarget6, uTarget7;
@@ -107,6 +111,18 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
                 if (uTargetCount>7) c=target(c,uTarget7);
                 if (uTargetCount==0) c*=uGain;
                 c*=uBrightness;
+                // Installing Media3's GL sink for a real HDR preset can lower
+                // scene midtones relative to the direct decoder surface on
+                // device HDR compositors. Lift only graded HDR shadows/midtones,
+                // tapering back to unity before highlights so black, headroom,
+                // and Original's native output remain untouched.
+                float preContrastLuma = max(dot(c,uLuma),0.0);
+                float hdrLift = mix(
+                    uHdrMidtoneLift,
+                    1.0,
+                    smoothstep(0.10,0.75,preContrastLuma)
+                );
+                c *= hdrLift;
                 // Preserve the HDR toe. Enhancement presets may lift highlights,
                 // but they must never make an already-dark scene darker. Raising
                 // linear HDR channels to a power previously crushed ordinary scene
@@ -122,3 +138,5 @@ class ColorPresetEffect(private val preset: ColorPreset) : GlEffect {
         """
     }
 }
+
+internal const val GRADED_HDR_MIDTONE_LIFT = 1.25f

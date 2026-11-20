@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
-import com.example.ui.theme.LocalHiPalette
+import com.example.ui.theme.HiPrimaryCyan
 
 private val HdrMenuShape = RoundedCornerShape(18.dp)
 
@@ -65,7 +65,6 @@ fun HdrPresetMenu(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
-    val palette = LocalHiPalette.current
     var colorIntensityDraft by remember(selectedColor, colorIntensity) {
         mutableFloatStateOf(colorIntensity)
     }
@@ -101,7 +100,7 @@ fun HdrPresetMenu(
             Text(
                 "Whole picture",
                 color = Color.White.copy(alpha = 0.78f),
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
             )
@@ -124,7 +123,7 @@ fun HdrPresetMenu(
             Text(
                 text = "Selected colour · ${selectedColor.displayName}",
                 color = selectedColor.color,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -164,17 +163,17 @@ fun HdrPresetMenu(
                 valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth().height(40.dp),
                 colors = SliderDefaults.colors(
-                    thumbColor = palette.primary,
-                    activeTrackColor = palette.primary,
-                    inactiveTrackColor = palette.primary.copy(alpha = 0.28f),
-                    activeTickColor = palette.primary,
-                    inactiveTickColor = palette.primary.copy(alpha = 0.38f),
+                    thumbColor = HiPrimaryCyan,
+                    activeTrackColor = HiPrimaryCyan,
+                    inactiveTrackColor = HiPrimaryCyan.copy(alpha = 0.28f),
+                    activeTickColor = HiPrimaryCyan,
+                    inactiveTickColor = HiPrimaryCyan.copy(alpha = 0.38f),
                 ),
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Light", color = Color.White.copy(alpha = 0.78f), fontSize = 8.sp)
-                Text("Original", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-                Text("Dark", color = Color.White.copy(alpha = 0.78f), fontSize = 8.sp)
+                Text("Light", color = Color.White.copy(alpha = 0.78f), fontSize = 10.sp)
+                Text("Original", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Text("Dark", color = Color.White.copy(alpha = 0.78f), fontSize = 10.sp)
             }
         }
     } else {
@@ -234,20 +233,20 @@ private fun HdrMenuHeader(
             Text(
                 title,
                 color = Color.White,
-                fontSize = 14.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
             Text(
                 subtitle,
                 color = Color.White.copy(alpha = 0.70f),
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
         TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 48.dp)) {
-            Text("Done", color = LocalHiPalette.current.primary, fontWeight = FontWeight.Bold)
+            Text("Done", color = HiPrimaryCyan, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -260,20 +259,19 @@ private fun HdrPresetOption(
     testTag: String,
     onClick: () -> Unit,
 ) {
-    val palette = LocalHiPalette.current
     val shape = RoundedCornerShape(14.dp)
     Column(
         modifier = Modifier
-            .widthIn(min = 112.dp)
-            .heightIn(min = 60.dp)
+            .widthIn(min = 120.dp)
+            .heightIn(min = 68.dp)
             .clip(shape)
             .background(
-                if (selected) palette.primary.copy(alpha = 0.18f)
+                if (selected) HiPrimaryCyan.copy(alpha = 0.18f)
                 else Color.White.copy(alpha = 0.07f),
             )
             .border(
                 1.dp,
-                if (selected) palette.primary.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.12f),
+                if (selected) HiPrimaryCyan.copy(alpha = 0.90f) else Color.White.copy(alpha = 0.12f),
                 shape,
             )
             .clickable(role = Role.RadioButton, onClick = onClick)
@@ -284,15 +282,15 @@ private fun HdrPresetOption(
     ) {
         Text(
             text = title,
-            color = if (selected) palette.primary else Color.White,
-            fontSize = 14.sp,
+            color = if (selected) HiPrimaryCyan else Color.White,
+            fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
         Text(
             text = if (selected) "Selected" else subtitle,
             color = Color.White.copy(alpha = 0.66f),
-            fontSize = 9.sp,
+            fontSize = 11.sp,
             maxLines = 1,
         )
     }
@@ -343,7 +341,7 @@ private fun CustomSlider(
         Text(
             text = "$label ${"%.2f".format(draft)}",
             color = Color.White,
-            fontSize = 8.sp,
+            fontSize = 10.sp,
             maxLines = 1,
         )
         Slider(

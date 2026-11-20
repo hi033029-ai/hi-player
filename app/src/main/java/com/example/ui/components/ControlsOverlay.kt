@@ -3,8 +3,6 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -196,10 +194,10 @@ fun ControlsOverlay(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xCC000000),
-                                Color(0x22000000),
-                                Color(0x22000000),
-                                Color(0xEE000000)
+                                Color(0x99000000),
+                                Color(0x10000000),
+                                Color(0x08000000),
+                                Color(0xB8000000)
                             )
                         )
                     )
@@ -236,7 +234,7 @@ fun ControlsOverlay(
                         Text(
                             text = displayTitle,
                             color = Color.White,
-                            fontSize = 15.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -244,7 +242,7 @@ fun ControlsOverlay(
                         Text(
                             text = video?.folderName?.takeIf { it.isNotBlank() } ?: "Video",
                             color = Color.White.copy(alpha = 0.68f),
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -267,13 +265,13 @@ fun ControlsOverlay(
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
-                    // Restore the original left/right utility groups. On a narrow
-                    // screen this row scrolls instead of squeezing labels or targets.
+                    // Keep both utility groups anchored to the screen edges. This
+                    // row used to scroll horizontally, so an ordinary seek-like
+                    // swipe could leave the controls shifted and clipped offscreen.
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val utilityCellWidth = (maxWidth / 6).coerceIn(48.dp, 58.dp)
-                        val utilityWidth = maxOf(maxWidth, utilityCellWidth * 6)
+                        val utilityCellWidth = (maxWidth / 6).coerceIn(52.dp, 64.dp)
                         Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()).width(utilityWidth),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             PlayerToolbarTextButton(Icons.Default.ScreenRotation, "Rotate Screen", onRotateScreen, width = utilityCellWidth)
@@ -294,8 +292,11 @@ fun ControlsOverlay(
                                 Text(
                                     text = "HDR",
                                     color = Color.White.copy(alpha = 0.86f),
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
+                                    lineHeight = 12.sp,
                                     textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             Spacer(Modifier.weight(1f))
@@ -313,7 +314,7 @@ fun ControlsOverlay(
                         Text(
                             text = formatDuration(currentPositionMs),
                             color = Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
 
@@ -336,7 +337,7 @@ fun ControlsOverlay(
                         Text(
                             text = formatDuration(durationMs),
                             color = Color.White.copy(alpha = 0.7f),
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -344,9 +345,10 @@ fun ControlsOverlay(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     // Keep transport centred and utilities at the edges, as before.
-                    // Five transport targets plus four utilities need 472dp. Split
+                    // Five transport targets plus four utilities need 480dp. Split
                     // the rows below that width; never overlap or clip hit targets.
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val layoutScale = LocalDensity.current.fontScale.coerceIn(1f, 1.25f)
                         val left: @Composable () -> Unit = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 PlayerToolbarButton(Icons.Default.LockOpen, "Lock", onToggleLock, testTag = "bottom_lock_button")
@@ -365,7 +367,7 @@ fun ControlsOverlay(
                         val transport: @Composable () -> Unit = {
                             PlayerTransportControls(isPlaying, onTogglePlayPause, onPrevious, onNext, onRewind10, onFastForward10)
                         }
-                        if (maxWidth >= 472.dp) {
+                        if (maxWidth >= 480.dp * layoutScale) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {
                                 left(); transport(); right()
@@ -564,17 +566,27 @@ private fun PlayerToolbarTextButton(
     width: Dp = 58.dp,
 ) {
     Column(
-        modifier = Modifier.width(width).heightIn(min = 60.dp)
+        modifier = Modifier.width(width).heightIn(min = 64.dp)
             .clickable(onClick = onClick).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(tint.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
+        }
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
-            fontSize = 10.sp,
+            fontSize = 11.sp,
+            lineHeight = 12.sp,
             textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -592,7 +604,7 @@ private fun PlayerToolbarButton(
     Column(
         modifier = Modifier
             .width(58.dp)
-            .heightIn(min = 60.dp)
+            .heightIn(min = 64.dp)
             .testTag(testTag)
             .combinedClickable(
                 onClick = onClick,
@@ -601,17 +613,27 @@ private fun PlayerToolbarButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = tint,
-            modifier = Modifier.size(21.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(tint.copy(alpha = 0.12f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(21.dp)
+            )
+        }
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.86f),
-            fontSize = 10.sp,
+            fontSize = 11.sp,
+            lineHeight = 12.sp,
             textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -630,8 +652,15 @@ private fun PlayerTransportControls(
             contentDescription = "Previous video")
         SkipButton(Icons.Default.Replay10, onRewind10, Modifier.testTag("rewind_10_button"),
             contentDescription = "Rewind 10 seconds")
-        PlayPauseButton(isPlaying, onTogglePlayPause, tint = Color.White,
-            modifier = Modifier.testTag("bottom_play_pause_button"))
+        PlayPauseButton(
+            isPlaying,
+            onTogglePlayPause,
+            tint = HiPrimaryCyan,
+            size = 52.dp,
+            iconSize = 30.dp,
+            containerColor = Color.White.copy(alpha = 0.12f),
+            modifier = Modifier.testTag("bottom_play_pause_button"),
+        )
         SkipButton(Icons.Default.Forward10, onFastForward10, Modifier.testTag("forward_10_button"),
             contentDescription = "Forward 10 seconds")
         SkipButton(Icons.Default.SkipNext, onNext, Modifier.testTag("next_file_button"),
