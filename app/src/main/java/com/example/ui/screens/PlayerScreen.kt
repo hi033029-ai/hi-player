@@ -250,7 +250,7 @@ fun PlayerScreen(
     var firstFrameRendered by remember(currentVideo?.uri, usingVlc) { mutableStateOf(false) }
     var surfaceView by remember { mutableStateOf<SurfaceView?>(null) }
     var heldFrame by remember(currentVideo?.uri) { mutableStateOf<Bitmap?>(null) }
-    var replacement by remember(currentVideo?.uri) { mutableStateOf<ExoPlayer?>(null) }
+    var replacement by remember<androidx.compose.runtime.MutableState<androidx.media3.exoplayer.ExoPlayer?>>(currentVideo?.uri) { mutableStateOf<androidx.media3.exoplayer.ExoPlayer?>(null) }
     var pendingGrade by remember(currentVideo?.uri) { mutableStateOf<(() -> Unit)?>(null) }
 
     fun changePicture(willGrade: Boolean, apply: () -> Unit) {
