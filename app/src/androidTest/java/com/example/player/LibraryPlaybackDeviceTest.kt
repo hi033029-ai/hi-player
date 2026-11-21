@@ -43,13 +43,16 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
     for (step in 1..modes.size + 1) {
         val mode = modes[(start.ordinal + step) % modes.size]
         tapPlayerButton("bottom_aspect_button")
-        waitUntil(5_000) {
+        var observed = ""
+        try { waitUntil(5_000) {
             var matches = false
             scenario.onActivity {
                 val view = (it.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().first()
                 val w = view.width
                 val h = view.height
                 val ratio = if (h > 0) w.toFloat() / h else 0f
+                observed = "mode=${engine.aspectRatioMode.value} view=${w}x$h viewport=$viewport " +
+                    "buffer=${view.holder.surfaceFrame} vlcSource=${engine.vlcVideoSize.value}"
                 matches = engine.aspectRatioMode.value == mode && when (mode) {
                     AspectRatioMode.STRETCH -> abs(w - viewport.width) <= 2 && abs(h - viewport.height) <= 2
                     AspectRatioMode.FILL_CROP -> w >= viewport.width - 1 && h >= viewport.height - 1 &&
@@ -60,6 +63,8 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
                 }
             }
             matches
+        } } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+            throw AssertionError("Expected resize to $mode. Observed $observed", timeout)
         }
     }
 }

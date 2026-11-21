@@ -134,15 +134,22 @@ class PlaybackGestureDeviceTest {
                 compose.checkResizeCycle(scenario, engine)
                 fun selectRatio(mode: AspectRatioMode) {
                     scenario.onActivity { it.model.setAspectRatio(mode) }
-                    compose.waitUntil(8_000) {
+                    var observed = ""
+                    try { compose.waitUntil(8_000) {
                         var matches = false
                         scenario.onActivity {
                             val buffer = view.holder.surfaceFrame
+                            val current = (it.window.decorView as ViewGroup).descendants.filterIsInstance<PlayerView>().first()
+                            observed = "view=${view.width}x${view.height}, buffer=$buffer, requested=${view.tag}, " +
+                                "active=${current.videoSurfaceView === view}, grade=${engine.hdrColorPreset.value.name}, " +
+                                "mode=${engine.aspectRatioMode.value}"
                             matches = view.height > 0 && buffer.height() > 0 &&
                                 kotlin.math.abs(view.width.toFloat() / view.height - mode.targetRatio!!) < .02f &&
                                 kotlin.math.abs(buffer.width().toFloat() / buffer.height() - 640f / 360f) < .02f
                         }
                         matches
+                    } } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+                        throw AssertionError("Expected source-shaped HDR buffer at $mode. Observed $observed", timeout)
                     }
                 }
                 selectRatio(AspectRatioMode.IMAX_ORIGINAL)
