@@ -20,6 +20,7 @@ fun VlcHdrVideoSurface(
     engine: VlcPlaybackEngine,
     modifier: Modifier = Modifier,
     displaySize: IntSize? = null,
+    bufferSize: IntSize? = null,
     onSurface: (SurfaceView) -> Unit = {},
 ) {
     AndroidView(
@@ -32,21 +33,20 @@ fun VlcHdrVideoSurface(
                 setZOrderMediaOverlay(false)
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) {
-                        engine.attachSurface(this@apply, host.width, host.height)
+                        engine.attachSurface(this@apply)
                     }
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                        engine.updateWindowSize(this@apply)
+                    }
                     override fun surfaceDestroyed(holder: SurfaceHolder) = engine.detachSurface(this@apply)
                 })
             }
             host.addView(video, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-            host.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
-                engine.updateWindowSize(video, right - left, bottom - top)
-            }
             host
         },
         update = { host ->
             val video = host.getChildAt(0) as SurfaceView
-            video.setVideoDisplaySize(displaySize)
+            video.setVideoDisplaySize(displaySize, bufferSize)
             onSurface(video)
         },
         onRelease = { host -> engine.detachSurface(host.getChildAt(0) as SurfaceView) },

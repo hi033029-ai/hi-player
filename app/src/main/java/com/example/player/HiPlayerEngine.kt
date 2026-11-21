@@ -123,6 +123,7 @@ class HiPlayerEngine(
     private var exoPlayer: ExoPlayer? = null
     private val _usesVlc = MutableStateFlow(false)
     val usesVlc = _usesVlc.asStateFlow()
+    private var probedVideoSize = 0 to 0
     private val _vlcVideoSize = MutableStateFlow(0 to 0)
     val vlcVideoSize = _vlcVideoSize.asStateFlow()
     private val _vlcFirstFrame = MutableStateFlow(false)
@@ -193,7 +194,7 @@ class HiPlayerEngine(
             }
         },
         onVideoLayout = { width, height ->
-            if (_usesVlc.value) {
+            if (_usesVlc.value && width > 0 && height > 0) {
                 _vlcVideoSize.value = width to height
                 _is4kContent.value = width >= 3840 || height >= 2160
             }
@@ -1077,20 +1078,21 @@ class HiPlayerEngine(
         if (needsProbe) {
             _isBuffering.value = true
             _playerError.value = null
-            fun continueWith(useMedia3: Boolean) {
+            fun continueWith(result: LocalVideoProbe.Result) {
                 if (routeToken != routingRevision) return
                 routingTimeout?.let(mainHandler::removeCallbacks)
                 localProbeUri = uri
-                localProbeUsesMedia3 = useMedia3
+                localProbeUsesMedia3 = result.useMedia3
+                probedVideoSize = result.displaySize
                 prepareMedia(uri, startPositionMs, desiredAutoPlay, externalSubtitleUri,
                     externalSubtitleMimeType, mediaMimeType, resetDecoderRetry, mediaTitle, audioFallbackRecovery)
             }
-            val timeout = Runnable { continueWith(true) }
+            val timeout = Runnable { continueWith(LocalVideoProbe.Result()) }
             routingTimeout = timeout
             mainHandler.postDelayed(timeout, 5_000)
-            if (!LocalVideoProbe.submit(context.applicationContext, uri) { useMedia3 ->
-                mainHandler.post { continueWith(useMedia3) }
-            }) continueWith(true)
+            if (!LocalVideoProbe.submit(context.applicationContext, uri) { result ->
+                mainHandler.post { continueWith(result) }
+            }) continueWith(LocalVideoProbe.Result())
             return
         }
         if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) vlcExoFallbackUri = null
@@ -1118,7 +1120,7 @@ class HiPlayerEngine(
                 if (!_usesVlc.value) exoPlayer?.stop()
                 _usesVlc.value = true
                 _vlcFirstFrame.value = false
-                _vlcVideoSize.value = 0 to 0
+                _vlcVideoSize.value = if (uri == localProbeUri) probedVideoSize else 0 to 0
                 _playerError.value = null
                 _availableAudioTracks.value = emptyList()
                 _availableSubtitleTracks.value = emptyList()

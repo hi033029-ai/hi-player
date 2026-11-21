@@ -46,7 +46,7 @@ fun NativeHdrPlayerSurface(
                 else surface.holder.setSizeFromLayout()
                 surface.tag = bufferSize
             }
-            video.setVideoDisplaySize(displaySize)
+            video.setVideoDisplaySize(displaySize, bufferSize)
             if (video.player !== player) video.player = player
             onSurface(surface)
         },
@@ -55,13 +55,16 @@ fun NativeHdrPlayerSurface(
     )
 }
 
-internal fun View.setVideoDisplaySize(displaySize: IntSize?) {
-    val width = displaySize?.width ?: FrameLayout.LayoutParams.MATCH_PARENT
-    val height = displaySize?.height ?: FrameLayout.LayoutParams.MATCH_PARENT
+internal fun View.setVideoDisplaySize(displaySize: IntSize?, bufferSize: IntSize?) {
+    val base = bufferSize ?: displaySize
+    val width = base?.width ?: FrameLayout.LayoutParams.MATCH_PARENT
+    val height = base?.height ?: FrameLayout.LayoutParams.MATCH_PARENT
     val params = layoutParams
     if (params.width != width || params.height != height) {
         params.width = width
         params.height = height
         layoutParams = params
     }
+    scaleX = if (bufferSize != null && displaySize != null) displaySize.width.toFloat() / bufferSize.width else 1f
+    scaleY = if (bufferSize != null && displaySize != null) displaySize.height.toFloat() / bufferSize.height else 1f
 }

@@ -141,12 +141,12 @@ class VlcPlaybackEngine(
         rebind()
     }
 
-    fun attachSurface(surfaceView: SurfaceView, width: Int = surfaceView.width, height: Int = surfaceView.height) {
+    fun attachSurface(surfaceView: SurfaceView) {
         check(Looper.myLooper() == Looper.getMainLooper())
         if (released || view === surfaceView || !surfaceView.holder.surface.isValid) return
         view = surfaceView
-        windowWidth = width
-        windowHeight = height
+        windowWidth = surfaceView.width
+        windowHeight = surfaceView.height
         rebind()
     }
 
@@ -157,9 +157,11 @@ class VlcPlaybackEngine(
         if (!released) rebind()
     }
 
-    fun updateWindowSize(surfaceView: SurfaceView, width: Int = surfaceView.width, height: Int = surfaceView.height) {
+    fun updateWindowSize(surfaceView: SurfaceView) {
         check(Looper.myLooper() == Looper.getMainLooper())
         if (released || view !== surfaceView) return
+        val width = surfaceView.width
+        val height = surfaceView.height
         if (width == windowWidth && height == windowHeight) return
         windowWidth = width
         windowHeight = height

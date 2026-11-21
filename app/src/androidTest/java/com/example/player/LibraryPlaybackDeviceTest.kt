@@ -2,7 +2,9 @@ package com.example.player
 
 import android.app.Activity
 import android.view.SurfaceView
+import android.view.View
 import android.view.ViewGroup
+import kotlin.math.roundToInt
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.core.view.descendants
@@ -33,7 +35,38 @@ internal fun ComposeTestRule.tapPlayerButton(tag: String) {
     button.performTouchInput { click(center) }
 }
 
-/** Checks pixels of the native video view for the 640 x 360 fixtures. */
+/** Android's measured size excludes the native transforms applied to the SurfaceView or PlayerView. */
+internal fun SurfaceView.pictureBounds(): Rect {
+    val origin = IntArray(2).also(::getLocationOnScreen)
+    var sx = 1f
+    var sy = 1f
+    var ancestor: View? = this
+    while (ancestor != null) {
+        sx *= ancestor.scaleX
+        sy *= ancestor.scaleY
+        ancestor = ancestor.parent as? View
+    }
+    return Rect(origin[0], origin[1], origin[0] + (width * sx).roundToInt(), origin[1] + (height * sy).roundToInt())
+}
+
+/** The colour bars start at the picture edge and the letterbox above it is black. */
+private fun visiblePictureEdge(rect: Rect): Boolean {
+    val frame = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return false
+    try {
+        if (rect.top < 40 || rect.top + 30 >= frame.height) return true
+        fun colouredRow(y: Int) = (2..8).count { index ->
+            val x = (rect.left + rect.width() * index / 10).coerceIn(0, frame.width - 1)
+            val pixel = frame.getPixel(x, y)
+            val r = android.graphics.Color.red(pixel)
+            val g = android.graphics.Color.green(pixel)
+            val b = android.graphics.Color.blue(pixel)
+            maxOf(r, g, b) - minOf(r, g, b) > 45
+        }
+        return colouredRow(rect.top + 24) >= 3 && colouredRow(rect.top - 24) <= 1
+    } finally { frame.recycle() }
+}
+
+/** Checks on-screen picture geometry of the 640 x 360 fixtures. */
 internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
     scenario: ActivityScenario<A>, engine: HiPlayerEngine,
 ) {
@@ -44,12 +77,14 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
         val mode = modes[(start.ordinal + step) % modes.size]
         tapPlayerButton("bottom_aspect_button")
         var observed = ""
+        var bounds = Rect()
         try { waitUntil(5_000) {
             var matches = false
             scenario.onActivity {
                 val view = (it.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().first()
-                val w = view.width
-                val h = view.height
+                bounds = view.pictureBounds()
+                val w = bounds.width()
+                val h = bounds.height()
                 val ratio = if (h > 0) w.toFloat() / h else 0f
                 observed = "mode=${engine.aspectRatioMode.value} view=${w}x$h viewport=$viewport " +
                     "buffer=${view.holder.surfaceFrame} vlcSource=${engine.vlcVideoSize.value}"
@@ -63,7 +98,11 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
                 }
             }
             matches
-        } } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
+        }
+            if (mode == AspectRatioMode.IMAX_ORIGINAL || mode == AspectRatioMode.CINEMA_21_9) {
+                waitUntil(5_000) { visiblePictureEdge(bounds) }
+            }
+        } catch (timeout: androidx.compose.ui.test.ComposeTimeoutException) {
             throw AssertionError("Expected resize to $mode. Observed $observed", timeout)
         }
     }
@@ -175,8 +214,9 @@ class LibraryPlaybackDeviceTest {
                 instrumentation.runOnMainSync {
                     val view = (host.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().first()
                     val ratio = next.targetRatio
-                    matches = engine.aspectRatioMode.value == next && view.height > 0 &&
-                        (ratio == null || abs(view.width.toFloat() / view.height - ratio) < .02f)
+                    val display = view.pictureBounds()
+                    matches = engine.aspectRatioMode.value == next && display.height() > 0 &&
+                        (ratio == null || abs(display.width().toFloat() / display.height() - ratio) < .02f)
                 }
                 matches
             }

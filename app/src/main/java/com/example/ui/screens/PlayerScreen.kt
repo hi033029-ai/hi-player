@@ -351,14 +351,6 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(usingVlc, vlcVideoSize) {
-        if (usingVlc) {
-            videoWidth = vlcVideoSize.first
-            videoHeight = vlcVideoSize.second
-            videoPixelWidthHeightRatio = 1f
-            videoRotationDegrees = 0
-        }
-    }
     LaunchedEffect(usingVlc, vlcFirstFrame) {
         if (usingVlc) firstFrameRendered = vlcFirstFrame
     }
@@ -753,14 +745,12 @@ fun PlayerScreen(
     ) {
         // This exclusive branch keeps only one SurfaceView in the window. Growing
         // files stay native even while Matroska track metadata arrives incrementally.
-        val ratioScale = computeVideoRatioScale(
-            containerSize,
-            videoWidth,
-            videoHeight,
-            aspectRatioMode,
-            videoPixelWidthHeightRatio,
-            videoRotationDegrees,
-        )
+        val sourceWidth = if (usingVlc) vlcVideoSize.first else videoWidth
+        val sourceHeight = if (usingVlc) vlcVideoSize.second else videoHeight
+        fun geometry(mode: AspectRatioMode) = computeVideoRatioScale(containerSize, sourceWidth,
+            sourceHeight, mode, if (usingVlc) 1f else videoPixelWidthHeightRatio,
+            if (usingVlc) 0 else videoRotationDegrees)
+        val ratioScale = geometry(aspectRatioMode)
         val videoSurfaceModifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -772,19 +762,18 @@ fun PlayerScreen(
             IntSize((it.width * ratioScale.first * videoScale).roundToInt().coerceAtLeast(1),
                 (it.height * ratioScale.second * videoScale).roundToInt().coerceAtLeast(1))
         }
+        // A GL output buffer has one source aspect. Resize its native view on screen
+        // without renegotiating decoder buffers for each tap, including while paused.
+        val buffer = if ((usingVlc || applyColorPresetToVideo) && sourceWidth > 0 && sourceHeight > 0 &&
+            containerSize.width > 0 && containerSize.height > 0) {
+            val fit = geometry(AspectRatioMode.FIT)
+            IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
+                (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
+        } else null
         if (usingVlc) {
-            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(), displaySize) { surfaceView = it }
+            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(),
+                displaySize, buffer) { surfaceView = it }
         } else {
-            // Give Media3 a buffer shaped like the source. Its final GL pass fits into
-            // that buffer; Android then maps the picture to the selected display bounds.
-            val fit = if (applyColorPresetToVideo) {
-                computeVideoRatioScale(containerSize, videoWidth, videoHeight, AspectRatioMode.FIT,
-                    videoPixelWidthHeightRatio, videoRotationDegrees)
-            } else 1f to 1f
-            val buffer = if (applyColorPresetToVideo && containerSize.width > 0 && containerSize.height > 0) {
-                IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
-                    (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
-            } else null
             NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
                 displaySize = displaySize, onSurface = { surfaceView = it })
         }

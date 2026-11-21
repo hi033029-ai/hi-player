@@ -14,23 +14,32 @@ internal object LocalVideoProbe {
         LinkedBlockingQueue<Runnable>(1), { task -> Thread(task, "HiPlayer-VideoProbe") }, ThreadPoolExecutor.AbortPolicy())
         .apply { allowCoreThreadTimeOut(true) }
 
-    fun submit(context: Context, uri: Uri, result: (Boolean) -> Unit): Boolean = try {
+    data class Result(val useMedia3: Boolean = true, val displaySize: Pair<Int, Int> = 0 to 0)
+
+    fun submit(context: Context, uri: Uri, result: (Result) -> Unit): Boolean = try {
         executor.execute {
             val extractor = MediaExtractor()
             val useMedia3 = try {
                 extractor.setDataSource(context, uri, null)
-                var advanced = true // unknown color metadata must use the color-aware backend
+                var video = Result()
                 for (i in 0 until extractor.trackCount) {
                     val format = extractor.getTrackFormat(i)
                     val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
                     if (mime.startsWith("video/")) {
                         val transfer = if (format.containsKey("color-transfer")) format.getInteger("color-transfer") else 0
-                        advanced = mime != "video/avc" || transfer == 6 || transfer == 7
+                        fun dimension(key: String, fallback: Int) =
+                            if (format.containsKey(key)) format.getInteger(key) else fallback
+                        val sarWidth = dimension("sar-width", 1).coerceAtLeast(1)
+                        val sarHeight = dimension("sar-height", 1).coerceAtLeast(1)
+                        val width = Math.round(dimension(MediaFormat.KEY_WIDTH, 0) * sarWidth.toDouble() / sarHeight).toInt()
+                        val height = dimension(MediaFormat.KEY_HEIGHT, 0)
+                        val size = if (dimension("rotation-degrees", 0) % 180 != 0) height to width else width to height
+                        video = Result(mime != "video/avc" || transfer == 6 || transfer == 7, size)
                         break
                     }
                 }
-                advanced
-            } catch (_: Exception) { true }
+                video
+            } catch (_: Exception) { Result() }
               finally { extractor.release() }
             result(useMedia3)
         }

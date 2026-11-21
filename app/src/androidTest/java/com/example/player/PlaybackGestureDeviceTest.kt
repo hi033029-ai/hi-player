@@ -143,8 +143,9 @@ class PlaybackGestureDeviceTest {
                             observed = "view=${view.width}x${view.height}, buffer=$buffer, requested=${view.tag}, " +
                                 "active=${current.videoSurfaceView === view}, grade=${engine.hdrColorPreset.value.name}, " +
                                 "mode=${engine.aspectRatioMode.value}"
-                            matches = view.height > 0 && buffer.height() > 0 &&
-                                kotlin.math.abs(view.width.toFloat() / view.height - mode.targetRatio!!) < .02f &&
+                            val display = view.pictureBounds()
+                            matches = display.height() > 0 && buffer.height() > 0 &&
+                                kotlin.math.abs(display.width().toFloat() / display.height() - mode.targetRatio!!) < .02f &&
                                 kotlin.math.abs(buffer.width().toFloat() / buffer.height() - 640f / 360f) < .02f
                         }
                         matches
