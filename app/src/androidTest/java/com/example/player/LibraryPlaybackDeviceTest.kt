@@ -74,7 +74,24 @@ class LibraryPlaybackDeviceTest {
         instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nChecking $description\n") })
         val deadline = SystemClock.elapsedRealtime() + 25_000
         while (!condition()) {
-            check(SystemClock.elapsedRealtime() < deadline) { "Timed out waiting for $description" }
+            if (SystemClock.elapsedRealtime() >= deadline) {
+                val directory = instrumentation.targetContext.filesDir
+                automation.takeScreenshot()?.let { image ->
+                    java.io.File(directory, "library-screen.png").outputStream().use {
+                        image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    image.recycle()
+                }
+                java.io.File(directory, "library-state.txt").writeText(buildString {
+                    fun appendNode(node: AccessibilityNodeInfo) {
+                        val rect = Rect().also(node::getBoundsInScreen)
+                        appendLine("${node.text} | ${node.contentDescription} | $rect")
+                        for (i in 0 until node.childCount) node.getChild(i)?.let(::appendNode)
+                    }
+                    automation.rootInActiveWindow?.let(::appendNode)
+                })
+                error("Timed out waiting for $description")
+            }
             SystemClock.sleep(100)
         }
     }
@@ -110,6 +127,7 @@ class LibraryPlaybackDeviceTest {
         var point: Rect? = null
         awaitStep("visible $label") { point = bounds(label); point != null }
         val target = checkNotNull(point)
+        instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nTap $label at $target\n") })
         tap(target.centerX(), target.centerY())
     }
 
@@ -131,6 +149,7 @@ class LibraryPlaybackDeviceTest {
         }
         // Cold launch starts with the first-use guide over the transport.
         tapLabel("Skip guide")
+        awaitStep("guide dismissal") { bounds("Skip guide") == null }
         if (bounds("Pause") == null) {
             val window = Rect().also { requireNotNull(automation.rootInActiveWindow).getBoundsInScreen(it) }
             tap(window.centerX(), window.centerY())

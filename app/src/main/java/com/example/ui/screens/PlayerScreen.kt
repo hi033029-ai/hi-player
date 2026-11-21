@@ -1078,7 +1078,10 @@ fun PlayerScreen(
         )
 
         if (firstFrameRendered && !isScreenLocked && areControlsVisible && !showHdrPresetMenu && !showHdrCustomizer && activeSheet == ActiveSheet.NONE) {
-            com.example.ui.components.PlayerGestureCoach(playerTip, guideHdrBounds, guideRootOrigin) {
+            com.example.ui.components.PlayerGestureCoach(
+                playerTip, guideHdrBounds, guideRootOrigin,
+                modifier = Modifier.fillMaxSize().padding(bottom = bottomControlsHeight),
+            ) {
                 showHdrPresetMenu = true
                 showHdrCustomizer = false
                 areControlsVisible = true

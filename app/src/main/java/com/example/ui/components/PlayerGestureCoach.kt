@@ -32,7 +32,13 @@ import androidx.compose.ui.unit.sp
 
 /** Player-only, skippable demonstration. The HDR marker follows the actual measured control. */
 @Composable
-fun PlayerGestureCoach(state: FirstUseTipState, hdrBounds: Rect?, rootOrigin: Offset, onOpenHdr: () -> Unit) {
+fun PlayerGestureCoach(
+    state: FirstUseTipState,
+    hdrBounds: Rect?,
+    rootOrigin: Offset,
+    modifier: Modifier = Modifier,
+    onOpenHdr: () -> Unit,
+) {
     if (!state.visible) return
     var step by rememberSaveable { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -51,7 +57,7 @@ fun PlayerGestureCoach(state: FirstUseTipState, hdrBounds: Rect?, rootOrigin: Of
         "Tap HDR to switch picture enhancement on or off. Touch and hold it to choose a preset or customize the picture."
     )
     val density = LocalDensity.current
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.76f))
+    BoxWithConstraints(modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.76f))
         .pointerInput(Unit) { detectTapGestures {} }.testTag("player_gesture_coach")) {
         val viewportHeight = maxHeight
         val target = hdrBounds?.translate(-rootOrigin.x, -rootOrigin.y)

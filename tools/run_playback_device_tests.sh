@@ -27,6 +27,8 @@ install_test_apk "${app_apks[0]}"
 reports="build/playback-diagnostics/api-$api"
 mkdir -p "$reports"
 adb logcat -c
+# The Android system's first-use immersive prompt is outside the app under test.
+adb shell settings put secure immersive_mode_confirmations confirmed
 python3 tools/test_cold_launch.py || {
   adb logcat -d -b crash | tee "$reports/launcher-crash.txt"
   adb logcat -d > "$reports/launcher-logcat.txt"
@@ -37,7 +39,8 @@ python3 tools/test_cold_launch.py || {
 install_test_apk "${test_apks[0]}"
 runner=com.aistudio.hiplayer.vdmk.test/androidx.test.runner.AndroidJUnitRunner
 library_diagnostics() {
-  adb exec-out screencap -p > "$reports/library-screen.png" || true
+  adb exec-out run-as com.aistudio.hiplayer.vdmk cat files/library-screen.png > "$reports/library-screen.png" || true
+  adb exec-out run-as com.aistudio.hiplayer.vdmk cat files/library-state.txt > "$reports/library-state.txt" || true
   adb shell dumpsys activity activities > "$reports/library-activities.txt" || true
   adb logcat -d > "$reports/library-logcat.txt" || true
 }
