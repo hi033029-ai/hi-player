@@ -249,7 +249,8 @@ class PlaybackGestureDeviceTest {
                 compose.mainClock.autoAdvance = false
                 try {
                     surface.performTouchInput { doubleClick(Offset(width * .78f, height * .4f)) }
-                    compose.mainClock.advanceTimeUntil(timeoutMillis = 2_000) {
+                    compose.waitUntil(timeoutMillis = 3_000) {
+                        compose.mainClock.advanceTimeByFrame()
                         compose.onAllNodesWithTag("double_tap_hud").fetchSemanticsNodes()
                             .any { it.size.width > 0 && it.size.height > 0 }
                     }
