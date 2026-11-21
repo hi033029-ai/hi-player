@@ -81,8 +81,8 @@ class PlaybackDeviceSmokeTest {
                     val view = SurfaceView(activity)
                     currentView = view
                     view.holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) { playback.attachSurface(view) }
-                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { playback.updateWindowSize(view) }
+                        override fun surfaceCreated(holder: SurfaceHolder) = Unit
+                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { playback.attachSurface(view, width, height) }
                         override fun surfaceDestroyed(holder: SurfaceHolder) { playback.detachSurface(view) }
                     })
                     activity.addContentView(view, FrameLayout.LayoutParams(480, 270))

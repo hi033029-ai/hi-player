@@ -19,8 +19,8 @@ import com.example.player.VlcPlaybackEngine
 fun VlcHdrVideoSurface(
     engine: VlcPlaybackEngine,
     modifier: Modifier = Modifier,
-    displaySize: IntSize? = null,
-    bufferSize: IntSize? = null,
+    displaySize: IntSize,
+    sourceSize: IntSize?,
     onSurface: (SurfaceView) -> Unit = {},
 ) {
     AndroidView(
@@ -32,11 +32,9 @@ fun VlcHdrVideoSurface(
                 setZOrderOnTop(false)
                 setZOrderMediaOverlay(false)
                 holder.addCallback(object : SurfaceHolder.Callback {
-                    override fun surfaceCreated(holder: SurfaceHolder) {
-                        engine.attachSurface(this@apply)
-                    }
+                    override fun surfaceCreated(holder: SurfaceHolder) = Unit
                     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                        engine.updateWindowSize(this@apply)
+                        engine.attachSurface(this@apply, width, height)
                     }
                     override fun surfaceDestroyed(holder: SurfaceHolder) = engine.detachSurface(this@apply)
                 })
@@ -46,7 +44,14 @@ fun VlcHdrVideoSurface(
         },
         update = { host ->
             val video = host.getChildAt(0) as SurfaceView
-            video.setVideoDisplaySize(displaySize, bufferSize)
+            // SurfaceFlinger maps the source buffer into the centered view. Rotation
+            // and aspect selection change the destination without reloading the media.
+            if (video.tag != sourceSize) {
+                if (sourceSize != null) video.holder.setFixedSize(sourceSize.width, sourceSize.height)
+                else video.holder.setSizeFromLayout()
+                video.tag = sourceSize
+            }
+            video.setVideoDisplaySize(displaySize, null)
             onSurface(video)
         },
         onRelease = { host -> engine.detachSurface(host.getChildAt(0) as SurfaceView) },

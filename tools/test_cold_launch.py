@@ -7,7 +7,6 @@ import xml.etree.ElementTree as ET
 PACKAGE = "com.aistudio.hiplayer.vdmk"
 FOLDER = "HiPlayerLaunchCheck"
 VIDEO = "launch-check.mp4"
-REMOTE = f"/sdcard/Movies/{FOLDER}/{VIDEO}"
 COMPONENT = f"{PACKAGE}/com.example.MainActivity"
 
 
@@ -59,9 +58,10 @@ def main():
     for perm in (["READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO"] if api >= 33 else ["READ_EXTERNAL_STORAGE"]):
         adb("shell", "pm", "grant", PACKAGE, "android.permission." + perm)
     adb("shell", "mkdir", "-p", f"/sdcard/Movies/{FOLDER}")
-    adb("push", "app/src/debug/assets/gecko_test.mp4", REMOTE)
-    adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
-        "-d", f"file:///storage/emulated/0/Movies/{FOLDER}/{VIDEO}")
+    for source, name in [("gecko_test.mp4", VIDEO), ("portrait-check.mkv", "portrait-check.mkv")]:
+        adb("push", f"app/src/debug/assets/{source}", f"/sdcard/Movies/{FOLDER}/{name}")
+        adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+            "-d", f"file:///storage/emulated/0/Movies/{FOLDER}/{name}")
     cold_start()
     tap("Skip setup")
     tap(FOLDER)

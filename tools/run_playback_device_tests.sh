@@ -47,7 +47,7 @@ library_diagnostics() {
 trap library_diagnostics ERR
 timeout 4m adb shell am instrument -w -r -e class com.example.player.LibraryPlaybackDeviceTest "$runner" \
   | tr -d '\r' | tee "$reports/library-playback.txt"
-grep -Exq 'OK \(1 tests?\)' "$reports/library-playback.txt"
+grep -Exq 'OK \(2 tests\)' "$reports/library-playback.txt"
 grep -Fxq 'INSTRUMENTATION_CODE: -1' "$reports/library-playback.txt"
 trap - ERR
 case "$api" in

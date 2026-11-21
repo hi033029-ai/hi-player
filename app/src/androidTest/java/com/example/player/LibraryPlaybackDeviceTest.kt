@@ -14,7 +14,15 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MainActivity
 import com.example.model.AspectRatioMode
 import com.example.viewmodel.PlayerViewModel
+import android.content.ContentUris
 import android.content.Intent
+import android.graphics.Color
+import android.provider.MediaStore
+import com.example.db.HiPlayerDatabase
+import com.example.db.VideoEntity
+import kotlinx.coroutines.runBlocking
+import org.junit.FixMethodOrder
+import org.junit.runners.MethodSorters
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
@@ -110,6 +118,7 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
 
 /** Opens the indexed Movies fixture prepared by the launcher gate. */
 @RunWith(AndroidJUnit4::class)
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class LibraryPlaybackDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val automation get() = instrumentation.uiAutomation
@@ -225,5 +234,85 @@ class LibraryPlaybackDeviceTest {
         tapLabel("Play")
         awaitStep("resumed playback") { engine.isPlaying.value && engine.currentPositionMs.value > paused + 500 }
         instrumentation.runOnMainSync { host.finish() }
+    }
+
+    private fun centeredMkvPicture(host: MainActivity, landscape: Boolean): Boolean {
+        var viewport = Rect()
+        instrumentation.runOnMainSync {
+            val surface = (host.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().firstOrNull()
+            val parent = surface?.parent as? View ?: return@runOnMainSync
+            val location = IntArray(2)
+            parent.getLocationOnScreen(location)
+            viewport = Rect(location[0], location[1], location[0] + parent.width, location[1] + parent.height)
+        }
+        if (viewport.isEmpty || (viewport.width() > viewport.height()) != landscape) return false
+        val screen = automation.takeScreenshot() ?: return false
+        try {
+            val ratio = requireNotNull(AspectRatioMode.IMAX_DIGITAL.targetRatio)
+            val width = minOf(viewport.width(), (viewport.height() * ratio).roundToInt())
+            val height = (width / ratio).roundToInt()
+            val left = viewport.centerX() - width / 2
+            val top = viewport.centerY() - height / 2
+            fun magenta(x: Int, y: Int): Boolean {
+                if (x !in 0 until screen.width || y !in 0 until screen.height) return false
+                val c = screen.getPixel(x, y)
+                return Color.red(c) > Color.green(c) + 30 && Color.blue(c) > Color.green(c) + 30
+            }
+            val inset = (minOf(width, height) / 40).coerceAtLeast(4)
+            // Sample on both sides of each expected edge. Majority voting tolerates
+            // control icons and captions without accepting a uniformly black frame.
+            fun row(y: Int) = (2..8).count { magenta(left + width * it / 10, y) } >= 4
+            fun column(x: Int) = (2..8).count { magenta(x, top + height * it / 10) } >= 4
+            return row(top + inset) && row(top + height - inset - 1) &&
+                column(left + inset) && column(left + width - inset - 1) &&
+                !row(top - inset) && !row(top + height + inset) &&
+                !column(left - inset) && !column(left + width + inset)
+        } finally { screen.recycle() }
+    }
+
+    @Test fun portraitMkvResumesWithVisibleCenteredPictureThroughRotation() {
+        val context = instrumentation.targetContext
+        val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        val name = "portrait-check.mkv"
+        val uri = context.contentResolver.query(collection, arrayOf(MediaStore.Video.Media._ID),
+            "${MediaStore.Video.Media.DISPLAY_NAME} = ?", arrayOf(name), null)?.use { cursor ->
+            check(cursor.moveToFirst()) { "Missing indexed fixture $name" }
+            ContentUris.withAppendedId(collection, cursor.getLong(0))
+        } ?: error("Could not query indexed videos")
+        val startMs = 338_000L
+        runBlocking {
+            HiPlayerDatabase.getInstance(context).videoDao().insertOrUpdate(VideoEntity(uri.toString(), name,
+                lastPositionMs = startMs, durationMs = 390_000L, customAspectRatio = AspectRatioMode.IMAX_DIGITAL.name))
+        }
+        context.startActivity(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        tapLabel("HiPlayerLaunchCheck")
+        tapLabel(name)
+        lateinit var host: MainActivity
+        lateinit var engine: HiPlayerEngine
+        instrumentation.runOnMainSync {
+            host = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>().single()
+            engine = ViewModelProvider(host)[PlayerViewModel::class.java].engine
+        }
+        try {
+            var previousMs = startMs
+            for ((index, landscape) in listOf(false, true, false).withIndex()) {
+                if (index > 0) {
+                    if (bounds("Rotate Screen") == null) {
+                        val window = Rect().also { requireNotNull(automation.rootInActiveWindow).getBoundsInScreen(it) }
+                        tap(window.centerX(), window.centerY())
+                    }
+                    tapLabel("Rotate Screen")
+                }
+                awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
+                    engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
+                        engine.vlcFirstFrame.value && engine.isPlaying.value &&
+                        engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
+                        centeredMkvPicture(host, landscape)
+                }
+                previousMs = engine.currentPositionMs.value
+            }
+        } finally { instrumentation.runOnMainSync { host.finish() } }
     }
 }

@@ -41,6 +41,7 @@ jobs:
             app/src/debug/assets/playback_test.webm
             app/src/debug/assets/grading_reference.mp4
             app/src/debug/assets/compact_hdr10.mkv
+            app/src/debug/assets/portrait-check.mkv
           if-no-files-found: error
           retention-days: 3
   device:

@@ -434,20 +434,9 @@ fun PlayerScreen(
         isGrowingDownload,
         activePlayer,
         usingVlc,
-        vlcVideoSize,
-        isPlaying,
     ) {
+        if (usingVlc) return@LaunchedEffect
         val player = activePlayer
-        if (usingVlc) {
-            // LibVLC's Vout callback can race SurfaceView creation. A decoded
-            // layout or active playback is sufficient to remove the black mask;
-            // never leave an otherwise playing video permanently covered.
-            if (!firstFrameRendered && (vlcVideoSize.first > 0 || isPlaying)) {
-                delay(350L)
-                firstFrameRendered = true
-            }
-            return@LaunchedEffect
-        }
         if (isGrowingDownload) {
             while (!firstFrameRendered && player.playbackState != Player.STATE_READY) {
                 delay(100)
@@ -764,15 +753,18 @@ fun PlayerScreen(
         }
         // A GL output buffer has one source aspect. Resize its native view on screen
         // without renegotiating decoder buffers for each tap, including while paused.
-        val buffer = if ((usingVlc || applyColorPresetToVideo) && sourceWidth > 0 && sourceHeight > 0 &&
+        val buffer = if (applyColorPresetToVideo && !usingVlc && sourceWidth > 0 && sourceHeight > 0 &&
             containerSize.width > 0 && containerSize.height > 0) {
             val fit = geometry(AspectRatioMode.FIT)
             IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
                 (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
         } else null
         if (usingVlc) {
-            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(),
-                displaySize, buffer) { surfaceView = it }
+            if (displaySize != null) {
+                val sourceSize = if (sourceWidth > 0 && sourceHeight > 0) IntSize(sourceWidth, sourceHeight) else null
+                VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(),
+                    displaySize, sourceSize) { surfaceView = it }
+            }
         } else {
             NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
                 displaySize = displaySize, onSurface = { surfaceView = it })

@@ -40,6 +40,16 @@ ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=320x180:rate=15' 
 ffprobe -v error -select_streams v:0 -show_entries stream=profile,color_transfer \
   -of json "$out/compact_hdr10.mkv" | python3 -c 'import sys,json; s=json.load(sys.stdin)["streams"][0]; assert s["profile"] == "Main 10" and s["color_transfer"] == "smpte2084", s'
 
+# A solid chroma field lets device screenshots measure all four picture edges.
+# Repeat a short encoded segment so a several-minute saved position is inexpensive.
+segment=$(mktemp --suffix=.mkv)
+trap 'rm -f "$segment"' EXIT
+ffmpeg -hide_banner -loglevel error -f lavfi -i 'color=c=0xc020bc:s=1920x1080:r=12' \
+  -f lavfi -i 'anullsrc=r=48000:cl=5.1' -f lavfi -i 'sine=frequency=220:sample_rate=48000' \
+  -t 4 -map 0:v -map 1:a -map 2:a -c:v libx264 -threads 2 -preset ultrafast -g 12 -pix_fmt yuv420p \
+  -c:a:0 eac3 -b:a:0 96k -c:a:1 aac -b:a:1 32k -y "$segment"
+ffmpeg -hide_banner -loglevel error -stream_loop -1 -i "$segment" -t 390 -map 0 -c copy -y "$out/portrait-check.mkv"
+
 # Optional physical-device fixtures. A 4K/Main10 decode is not emulated HDR evidence.
 if [ "${HI_PLAYER_PHYSICAL_FIXTURES:-false}" = true ]; then
   ffmpeg -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=3840x2160:rate=24' -t 20 \

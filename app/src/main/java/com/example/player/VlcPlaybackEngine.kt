@@ -1,12 +1,16 @@
 package com.example.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.os.SystemClock
+import android.view.PixelCopy
+import android.view.Surface
 import android.view.SurfaceView
 import androidx.media3.common.C
 import com.example.model.VideoTrackInfo
@@ -78,6 +82,9 @@ class VlcPlaybackEngine(
     private var pausedSeekMs: Long? = null
     private var buffering = false
     @Volatile private var firstFrameRevision = -1L
+    private var outputSurface: Surface? = null
+    private var copyingRevision = -1L
+    private var nextCopyMs = 0L
     private var displayedPictures = 0
     private var reportedTracks: Pair<List<VideoTrackInfo>, List<VideoTrackInfo>>? = null
     private var failedRevision = -1L
@@ -141,12 +148,13 @@ class VlcPlaybackEngine(
         rebind()
     }
 
-    fun attachSurface(surfaceView: SurfaceView) {
+    fun attachSurface(surfaceView: SurfaceView, bufferWidth: Int, bufferHeight: Int) {
         check(Looper.myLooper() == Looper.getMainLooper())
-        if (released || view === surfaceView || !surfaceView.holder.surface.isValid) return
+        if (released || bufferWidth <= 0 || bufferHeight <= 0 || !surfaceView.holder.surface.isValid) return
+        if (view === surfaceView && windowWidth == bufferWidth && windowHeight == bufferHeight) return
         view = surfaceView
-        windowWidth = surfaceView.width
-        windowHeight = surfaceView.height
+        windowWidth = bufferWidth
+        windowHeight = bufferHeight
         rebind()
     }
 
@@ -157,19 +165,6 @@ class VlcPlaybackEngine(
         if (!released) rebind()
     }
 
-    fun updateWindowSize(surfaceView: SurfaceView) {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        if (released || view !== surfaceView) return
-        val width = surfaceView.width
-        val height = surfaceView.height
-        if (width == windowWidth && height == windowHeight) return
-        windowWidth = width
-        windowHeight = height
-        // Some SurfaceView resizes preserve the Surface. Cross the same stop
-        // barrier rather than invoking nativeOnWindowSize on a live vout on UI.
-        rebind()
-    }
-
     /** Stop -> main detach/attach -> worker prepare/play. No blocking handoff. */
     private fun rebind() {
         val token = revision.incrementAndGet()
@@ -177,6 +172,7 @@ class VlcPlaybackEngine(
         if (!released && request != null) main.postDelayed(watchdog, 18_000)
         worker.post {
             loadedRevision = -1L
+            outputSurface = null
             val nativePlayer = player
             try {
                 nativePlayer?.setEventListener(null)
@@ -219,18 +215,18 @@ class VlcPlaybackEngine(
                         vout.setWindowSize(windowWidth.coerceAtLeast(1), windowHeight.coerceAtLeast(1))
                         bound = true
                     }
-                    val canRender = bound
+                    val surface = if (bound) nextView?.holder?.surface else null
                     worker.post {
                         if (token != revision.get()) return@post
                         if (released) releaseOnWorker()
-                        else if (canRender) prepareOnWorker(token)
+                        else if (surface != null) prepareOnWorker(token, surface)
                     }
                 } catch (error: RuntimeException) { fail(token, error) }
             }
         }
     }
 
-    private fun prepareOnWorker(token: Long) {
+    private fun prepareOnWorker(token: Long, surface: Surface) {
         val next = request ?: return
         val nativePlayer = player ?: return
         val lib = library ?: return
@@ -250,6 +246,8 @@ class VlcPlaybackEngine(
             pendingResumeMs = lastGoodMs.takeIf { it > 0 } ?: next.startMs
             pausedSeekMs = null
             buffering = true
+            outputSurface = surface
+            nextCopyMs = 0L
             displayedPictures = 0
             reportedTracks = null
             loadedRevision = token
@@ -326,10 +324,7 @@ class VlcPlaybackEngine(
                         finally { media?.release() }
         val displayed = displayedCount > displayedPictures
         displayedPictures = displayedCount
-        if (displayed && firstFrameRevision != token) {
-            firstFrameRevision = token
-            postMain(token) { main.removeCallbacks(watchdog); onFirstFrame() }
-        }
+        if (displayedCount > 0 || time > 0) confirmSurfaceFrame(token)
         if (pendingResumeMs == 0L) {
             val target = pausedSeekMs
             if (target != null) {
@@ -344,6 +339,30 @@ class VlcPlaybackEngine(
             if (pendingResumeMs > 0) pendingResumeMs else lastGoodMs,
             duration, duration, nativePlayer.isSeekable)
         postMain(token) { cached = state; onUpdate(state) }
+    }
+
+    // VLC can advance its clock and picture counter before Android has a buffer.
+    // A successful copy accepts even a genuinely black first frame.
+    private fun confirmSurfaceFrame(token: Long) {
+        val now = SystemClock.elapsedRealtime()
+        if (firstFrameRevision == token || copyingRevision == token || now < nextCopyMs) return
+        val surface = outputSurface?.takeIf { it.isValid } ?: return
+        val pixel = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        copyingRevision = token
+        nextCopyMs = now + 250
+        try {
+            PixelCopy.request(surface, pixel, { result ->
+                pixel.recycle()
+                if (copyingRevision == token) copyingRevision = -1L
+                if (result == PixelCopy.SUCCESS && token == loadedRevision && token == revision.get()) {
+                    firstFrameRevision = token
+                    postMain(token) { main.removeCallbacks(watchdog); onFirstFrame() }
+                }
+            }, worker)
+        } catch (_: IllegalArgumentException) {
+            pixel.recycle()
+            copyingRevision = -1L
+        }
     }
 
     private fun active(action: (MediaPlayer) -> Unit) {
