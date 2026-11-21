@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [24, 30]
+        api: [24, 30, 36]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -81,7 +81,7 @@ jobs:
         run: HI_PLAYER_EXPECTED_APK_ABI=x86_64 python3 tools/check_gecko_apk.py
       - name: Enable hardware virtualization
         run: if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
-      - name: Verify real app engine and Android 7 fallback
+      - name: Verify launcher and device playback
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}

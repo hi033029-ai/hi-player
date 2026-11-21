@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,7 +61,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.HiCardShape
 import com.example.ui.theme.HiThumbnailShape
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoItemCard(
     video: VideoItem,
@@ -84,7 +82,7 @@ fun VideoItemCard(
     var menuExpanded by remember(video.id) { mutableStateOf(false) }
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val compactScreen = maxWidth < 360.dp
-        val actionColumns = if (maxWidth < 300.dp) 1 else 2
+        val stackActions = maxWidth < 300.dp
 
         Column(
             modifier = Modifier
@@ -252,8 +250,9 @@ fun VideoItemCard(
 
 
                         Spacer(modifier = Modifier.height(3.dp))
-                        FlowRow(
+                        Row(
                             horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
                                 text = video.formattedSize,
@@ -300,7 +299,7 @@ fun VideoItemCard(
                 }
 
                 reorderHandle?.invoke()
-                FlowRow(maxItemsInEachRow = actionColumns) {
+                val quickActions: @Composable () -> Unit = {
                     // Favorite Quick Icon
                     IconButton(
                         onClick = { onFavoriteToggle(video.isFavorite) },
@@ -397,6 +396,7 @@ fun VideoItemCard(
                         }
                     }
                 }
+                if (stackActions) Column { quickActions() } else Row { quickActions() }
             }
         }
     }
