@@ -21,13 +21,15 @@ class VideoLibraryHeaderControlsTest {
         val selected = mutableStateOf(LibraryNavMode.FOLDERS)
         compose.setContent { HiPlayerTheme {
             VideoLibraryHeaderControls(
-                modes = listOf(LibraryNavMode.FOLDERS, LibraryNavMode.ALL_VIDEOS, LibraryNavMode.RECENT),
-                selected = selected.value, folderCount = 0, videoCount = 0, recentCount = 0, favoriteCount = 0,
+                modes = LibraryNavMode.videoTabs,
+                selected = selected.value, folderCount = 0, videoCount = 0, favoriteCount = 0,
                 query = "", onQueryChange = {}, viewMode = LibraryViewMode.LAYER_LIST,
                 onToggleView = {}, onSort = {}, onSelect = { selected.value = it },
             )
         } }
         compose.onNodeWithTag("video_library_stable_controls").assertIsDisplayed()
+        compose.onNodeWithTag("video_category_RECENT").assertDoesNotExist()
+        compose.onNodeWithTag("video_category_TREE_FOLDERS").assertDoesNotExist()
         compose.onNodeWithTag("video_category_FOLDERS").assertExists()
         compose.onNodeWithTag("video_category_ALL_VIDEOS").performClick()
         compose.runOnIdle { assertEquals(LibraryNavMode.ALL_VIDEOS, selected.value) }

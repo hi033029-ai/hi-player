@@ -68,7 +68,11 @@ enum class LibraryNavMode(val displayName: String) {
     RECENT("Recent"),
     FAVORITES("Favorites"),
     TREE_FOLDERS("Tree Folders"),
-    ALL_FOLDERS("All Folders")
+    ALL_FOLDERS("All Folders");
+
+    companion object {
+        val videoTabs = listOf(FOLDERS, ALL_VIDEOS, FAVORITES)
+    }
 }
 
 data class VideoFolder(
@@ -184,8 +188,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val refreshCoordinator = CoalescingRefresh(viewModelScope) { performRefresh() }
 
     private val _navMode = MutableStateFlow(
-        runCatching { LibraryNavMode.valueOf(libraryPrefs.getString("nav_mode", LibraryNavMode.FOLDERS.name)!!) }
-            .getOrDefault(LibraryNavMode.FOLDERS)
+        LibraryNavMode.videoTabs.firstOrNull { it.name == libraryPrefs.getString("nav_mode", null) }
+            ?: LibraryNavMode.FOLDERS
     )
     val navMode = _navMode.asStateFlow()
 

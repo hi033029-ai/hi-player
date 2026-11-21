@@ -129,6 +129,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     // Settings and resume reads are asynchronous. Keep the job so navigation
     // can cancel it before a closed player screen is prepared again.
     private var playRequestJob: Job? = null
+    // Transport actions can arrive before the selected item's settings have loaded.
+    private var openingAutoPlay: Boolean? = null
+    private var ratioRevision = 0L
 
     private val _customPicturePreset = MutableStateFlow(ColorPresets.CUSTOM)
     val customPicturePreset = _customPicturePreset.asStateFlow()
@@ -205,6 +208,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         pendingPlaybackQueue = null
         engine.setBackgroundPlay(asAudio)
         playRequestJob?.cancel()
+        openingAutoPlay = true
+        val initialRatioRevision = ratioRevision
+        _videoScale.value = 1f
         pendingAudioTrack = null
         _currentVideo.value = video
         _showStartOverPrompt.value = false
@@ -246,10 +252,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val savedAspect = record?.customAspectRatio?.let {
                 runCatching { AspectRatioMode.valueOf(it) }.getOrNull()
             } ?: runCatching { AspectRatioMode.valueOf(settings.defaultAspectRatio) }.getOrDefault(AspectRatioMode.FIT)
-            engine.setAspectRatioMode(savedAspect)
+            if (initialRatioRevision == ratioRevision) engine.setAspectRatioMode(savedAspect)
 
+            val autoPlay = openingAutoPlay == true
+            openingAutoPlay = null
             engine.prepareMedia(
                 uri = video.uri,
+                autoPlay = autoPlay,
                 startPositionMs = startPos,
                 mediaMimeType = video.mimeType,
                 mediaTitle = video.title,
@@ -291,6 +300,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun stopForNavigation() {
         playRequestJob?.cancel()
         playRequestJob = null
+        openingAutoPlay = null
         _showStartOverPrompt.value = false
         closeSheet()
         engine.stopForNavigation()
@@ -306,8 +316,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Keeps a selected stream intact when the app is temporarily backgrounded. */
     fun pauseForAppBackground() {
-        playRequestJob?.cancel()
-        playRequestJob = null
+        // A temporarily hidden activity must retain an item that is still loading.
+        if (openingAutoPlay != null) openingAutoPlay = false
         engine.pauseForAppBackground()
     }
 
@@ -463,20 +473,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
 
-    fun togglePlayPause() {
-        if (engine.usesVlc.value) {
-            engine.togglePlayPause()
-            saveCurrentProgress()
+    fun setPlaying(play: Boolean) {
+        if (openingAutoPlay != null) {
+            openingAutoPlay = play
             return
         }
-        // A stopped (idle) Media3 player ignores play(); re-prepare at the kept position.
-        val player = engine.getPlayer()
-        if (!player.isPlaying &&
-            player.playbackState == androidx.media3.common.Player.STATE_IDLE &&
-            player.currentMediaItem != null) player.prepare()
-        engine.togglePlayPause()
+        if (play) engine.play() else engine.pause()
         saveCurrentProgress()
     }
+
+    fun togglePlayPause() = setPlaying(!engine.isPlaying.value)
 
     fun seekTo(positionMs: Long) {
         engine.seekTo(positionMs)
@@ -489,31 +495,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setAspectRatio(mode: AspectRatioMode) {
+        ratioRevision++
         engine.setAspectRatioMode(mode)
         viewModelScope.launch { preferencesRepo.setDefaultAspectRatio(mode.name) }
         // Every resize choice starts from its own canonical geometry. Manual
         // zoom must never leak into IMAX, cinema, original, or stretch either.
         _videoScale.value = 1.0f
-        viewModelScope.launch {
-            _currentVideo.value?.let { video ->
-                val record = videoDao.getVideoRecord(video.uri.toString())
-                if (record != null) {
-                    videoDao.insertOrUpdate(record.copy(customAspectRatio = mode.name))
-                }
-            }
-        }
+        val uri = _currentVideo.value?.uri?.toString() ?: return
+        viewModelScope.launch { videoDao.updateAspectRatio(uri, mode.name) }
     }
 
     fun cycleAspectRatio() {
-        // A normal tap is the predictable Fit / Fill toggle. The full picker
-        // remains available on long press for IMAX, cinema and stretch modes.
-        setAspectRatio(
-            if (engine.aspectRatioMode.value == AspectRatioMode.FIT) {
-                AspectRatioMode.FILL_CROP
-            } else {
-                AspectRatioMode.FIT
-            }
-        )
+        val modes = AspectRatioMode.entries
+        setAspectRatio(modes[(engine.aspectRatioMode.value.ordinal + 1) % modes.size])
     }
 
     fun toggleMute() {

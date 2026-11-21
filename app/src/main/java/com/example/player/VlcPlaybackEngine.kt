@@ -141,12 +141,12 @@ class VlcPlaybackEngine(
         rebind()
     }
 
-    fun attachSurface(surfaceView: SurfaceView) {
+    fun attachSurface(surfaceView: SurfaceView, width: Int = surfaceView.width, height: Int = surfaceView.height) {
         check(Looper.myLooper() == Looper.getMainLooper())
         if (released || view === surfaceView || !surfaceView.holder.surface.isValid) return
         view = surfaceView
-        windowWidth = surfaceView.width
-        windowHeight = surfaceView.height
+        windowWidth = width
+        windowHeight = height
         rebind()
     }
 
@@ -157,11 +157,9 @@ class VlcPlaybackEngine(
         if (!released) rebind()
     }
 
-    fun updateWindowSize(surfaceView: SurfaceView) {
+    fun updateWindowSize(surfaceView: SurfaceView, width: Int = surfaceView.width, height: Int = surfaceView.height) {
         check(Looper.myLooper() == Looper.getMainLooper())
         if (released || view !== surfaceView) return
-        val width = surfaceView.width
-        val height = surfaceView.height
         if (width == windowWidth && height == windowHeight) return
         windowWidth = width
         windowHeight = height
@@ -205,14 +203,18 @@ class VlcPlaybackEngine(
                                 visibleWidth: Int, visibleHeight: Int, sarNum: Int, sarDen: Int,
                             ) {
                                 postMain(token) {
+                                    val pixels = if (visibleWidth > 0) visibleWidth else width
+                                    val displayWidth = if (sarNum > 0 && sarDen > 0)
+                                        Math.round(pixels * sarNum.toDouble() / sarDen).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                                    else pixels.coerceAtLeast(0)
                                     onVideoLayout(
-                                        (if (visibleWidth > 0) visibleWidth else width).coerceAtLeast(0),
+                                        displayWidth,
                                         (if (visibleHeight > 0) visibleHeight else height).coerceAtLeast(0),
                                     )
                                 }
                             }
                         })
-                        vout.setWindowSize(nextView.width.coerceAtLeast(1), nextView.height.coerceAtLeast(1))
+                        vout.setWindowSize(windowWidth.coerceAtLeast(1), windowHeight.coerceAtLeast(1))
                         bound = true
                     }
                     val canRender = bound

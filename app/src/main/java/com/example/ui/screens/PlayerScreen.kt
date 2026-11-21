@@ -377,7 +377,7 @@ fun PlayerScreen(
                         }
                     }
                 }
-            if (applyColorPresetToVideo && format != null && format.width > 0 && format.height > 0) {
+            if (format != null) {
                 videoWidth = format.width
                 videoHeight = format.height
                 videoPixelWidthHeightRatio = format.pixelWidthHeightRatio
@@ -764,13 +764,16 @@ fun PlayerScreen(
         val videoSurfaceModifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                // Keep the native surface at the stable container size. A centered
-                // transform preserves fit/crop/zoom geometry without resizing it.
+                // Keep the held picture aligned with the native video through a grade change.
                 scaleX = ratioScale.first * videoScale
                 scaleY = ratioScale.second * videoScale
             }
+        val displaySize = containerSize.takeIf { it.width > 0 && it.height > 0 }?.let {
+            IntSize((it.width * ratioScale.first * videoScale).roundToInt().coerceAtLeast(1),
+                (it.height * ratioScale.second * videoScale).roundToInt().coerceAtLeast(1))
+        }
         if (usingVlc) {
-            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, modifier = videoSurfaceModifier) { surfaceView = it }
+            VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(), displaySize) { surfaceView = it }
         } else {
             // Give Media3 a buffer shaped like the source. Its final GL pass fits into
             // that buffer; Android then maps the picture to the selected display bounds.
@@ -782,10 +785,6 @@ fun PlayerScreen(
                 IntSize((containerSize.width * fit.first).roundToInt().coerceAtLeast(1),
                     (containerSize.height * fit.second).roundToInt().coerceAtLeast(1))
             } else null
-            val displaySize = containerSize.takeIf { it.width > 0 && it.height > 0 }?.let {
-                IntSize((it.width * ratioScale.first * videoScale).roundToInt().coerceAtLeast(1),
-                    (it.height * ratioScale.second * videoScale).roundToInt().coerceAtLeast(1))
-            }
             NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
                 displaySize = displaySize, onSurface = { surfaceView = it })
         }
@@ -991,7 +990,7 @@ fun PlayerScreen(
             playbackSpeed = playbackSpeed,
             isBgPlayActive = isBgPlayActive,
             videoScale = videoScale,
-            onTogglePlayPause = { playerViewModel.togglePlayPause() },
+            onTogglePlayPause = { playerViewModel.setPlaying(!isPlaying) },
             onSeekTo = playerViewModel::seekTo,
             onSeekBarTouch = { touching ->
                 touchingSeekBar = touching
@@ -1315,12 +1314,13 @@ private fun computeVideoRatioScale(
     pixelWidthHeightRatio: Float = 1f,
     unappliedRotationDegrees: Int = 0,
 ): Pair<Float, Float> {
-    if (container.width == 0 || container.height == 0 || videoWidth == 0 || videoHeight == 0) {
+    if (container.width <= 0 || container.height <= 0) {
         return 1f to 1f
     }
     val containerRatio = container.width.toFloat() / container.height.toFloat()
+    if ((videoWidth <= 0 || videoHeight <= 0) && mode.targetRatio == null) return 1f to 1f
     val safePixelRatio = pixelWidthHeightRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
-    val encodedRatio = videoWidth.toFloat() * safePixelRatio / videoHeight.toFloat()
+    val encodedRatio = if (videoWidth > 0 && videoHeight > 0) videoWidth * safePixelRatio / videoHeight else containerRatio
     val normalizedRotation = ((unappliedRotationDegrees % 360) + 360) % 360
     val videoRatio = if (normalizedRotation == 90 || normalizedRotation == 270) {
         1f / encodedRatio
@@ -1346,15 +1346,9 @@ private fun computeVideoRatioScale(
         } else {
             1f to (containerRatio / videoRatio)
         }
-        AspectRatioMode.IMAX_DIGITAL,
-        AspectRatioMode.IMAX_ORIGINAL,
-        AspectRatioMode.CINEMA_21_9 -> {
-            val targetRatio = mode.targetRatio ?: videoRatio
-            if (targetRatio > containerRatio) {
-                1f to (containerRatio / targetRatio)
-            } else {
-                (targetRatio / containerRatio) to 1f
-            }
+        AspectRatioMode.IMAX_DIGITAL, AspectRatioMode.IMAX_ORIGINAL, AspectRatioMode.CINEMA_21_9 -> {
+            val target = requireNotNull(mode.targetRatio)
+            if (target > containerRatio) 1f to containerRatio / target else target / containerRatio to 1f
         }
     }
 }

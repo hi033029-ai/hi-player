@@ -27,6 +27,9 @@ interface VideoDao {
     @Query("UPDATE video_records SET lastPositionMs = :positionMs, durationMs = :durationMs, lastWatchedTimestamp = :timestamp WHERE uriString = :uriString")
     suspend fun updateProgress(uriString: String, positionMs: Long, durationMs: Long, timestamp: Long = System.currentTimeMillis())
 
+    @Query("UPDATE video_records SET customAspectRatio = :mode WHERE uriString = :uriString")
+    suspend fun updateAspectRatio(uriString: String, mode: String)
+
     @Query("UPDATE video_records SET isFavorite = :isFavorite WHERE uriString = :uriString")
     suspend fun updateFavorite(uriString: String, isFavorite: Boolean)
 

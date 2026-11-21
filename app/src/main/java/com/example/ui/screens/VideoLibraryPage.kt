@@ -531,7 +531,7 @@ internal fun VideoLibraryPage(
             if (mediaAccess.granted) {
                 com.example.ui.components.LibraryAccessExplanation(audio = false)
                 if (isActive) com.example.ui.components.FirstUseTip(swipeTip, "Swipe to explore your videos",
-                    "Swipe left or right across the library to move between Folders, All Videos, Recent, Tree Folders and Favourites. You can also tap the tabs.",
+                    "Swipe left or right across the library to move between Folders, Videos and Favorites. You can also tap the tabs.",
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
                 // Cached-content and periodic refreshes remain silent.
             }

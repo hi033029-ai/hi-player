@@ -130,6 +130,8 @@ class PlaybackGestureDeviceTest {
                     val playerView = (it.window.decorView as ViewGroup).descendants.filterIsInstance<PlayerView>().first()
                     view = playerView.videoSurfaceView as SurfaceView
                 }
+                scenario.onActivity { engine.pause() }
+                compose.checkResizeCycle(scenario, engine)
                 fun selectRatio(mode: AspectRatioMode) {
                     scenario.onActivity { it.model.setAspectRatio(mode) }
                     compose.waitUntil(8_000) {
@@ -227,6 +229,31 @@ class PlaybackGestureDeviceTest {
                     assertTrue("Duration changed during the handoff: $observed",
                         observed.isNotEmpty() && observed.all { it == duration })
                 } finally { job.cancel() }
+            }
+        } finally {
+            runBlocking { context.dataStore.updateData { saved } }
+            file.delete()
+        }
+    }
+
+    @Test(timeout = 100_000) fun completedMkvResizeTapsReachVlcSurface() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val saved = runBlocking { context.dataStore.data.first() }
+        val file = File.createTempFile("resize-", ".mkv", context.cacheDir)
+        try {
+            context.assets.open("gecko_test.mkv").use { input -> file.outputStream().use { input.copyTo(it) } }
+            runBlocking { PlayerPreferencesRepository(context).setPictureMode(ColorPresets.HDR_DISABLED) }
+            ActivityScenario.launch<PlaybackGestureActivity>(Intent(context, PlaybackGestureActivity::class.java)
+                .putExtra("fixture", file.absolutePath)).use { scenario ->
+                lateinit var engine: HiPlayerEngine
+                scenario.onActivity { engine = it.model.engine }
+                compose.waitUntil(35_000) { engine.vlcFirstFrame.value && engine.currentPositionMs.value > 500 }
+                compose.tapPlayerButton("bottom_play_pause_button")
+                compose.waitUntil(8_000) { !engine.isPlaying.value }
+                compose.checkResizeCycle(scenario, engine)
+                val paused = engine.currentPositionMs.value
+                compose.tapPlayerButton("bottom_play_pause_button")
+                compose.waitUntil(8_000) { engine.isPlaying.value && engine.currentPositionMs.value > paused + 500 }
             }
         } finally {
             runBlocking { context.dataStore.updateData { saved } }

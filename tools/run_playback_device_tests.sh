@@ -34,6 +34,12 @@ python3 tools/test_cold_launch.py || {
   adb shell dumpsys window > "$reports/launcher-window.txt"
   exit 1
 }
+install_test_apk "${test_apks[0]}"
+runner=com.aistudio.hiplayer.vdmk.test/androidx.test.runner.AndroidJUnitRunner
+timeout 4m adb shell am instrument -w -r -e class com.example.player.LibraryPlaybackDeviceTest "$runner" \
+  | tr -d '\r' | tee "$reports/library-playback.txt"
+grep -Exq 'OK \(1 tests?\)' "$reports/library-playback.txt"
+grep -Fxq 'INSTRUMENTATION_CODE: -1' "$reports/library-playback.txt"
 case "$api" in
   36) exit 0 ;;
   30)
@@ -47,8 +53,6 @@ case "$api" in
   24) suites="com.example.browser.gecko.GeckoFallbackDeviceTest,$suites" ;;
 esac
 
-install_test_apk "${test_apks[0]}"
-runner=com.aistudio.hiplayer.vdmk.test/androidx.test.runner.AndroidJUnitRunner
 adb logcat -c
 trap 'adb logcat -d -s TestRunner AndroidRuntime HiPlayerColor > "$reports/logcat.txt" || true' EXIT
 timeout 12m adb shell am instrument -w -r -e class "$suites" "$runner" \

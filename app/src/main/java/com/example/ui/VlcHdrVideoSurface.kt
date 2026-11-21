@@ -1,5 +1,8 @@
 package com.example.ui
 
+import android.view.Gravity
+import android.widget.FrameLayout
+import androidx.compose.ui.unit.IntSize
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.runtime.Composable
@@ -13,33 +16,40 @@ import com.example.player.VlcPlaybackEngine
  * Compose's GestureOverlay sits above this non-interactive native surface.
  */
 @Composable
-fun VlcHdrVideoSurface(engine: VlcPlaybackEngine, modifier: Modifier = Modifier, onSurface: (SurfaceView) -> Unit = {}) {
+fun VlcHdrVideoSurface(
+    engine: VlcPlaybackEngine,
+    modifier: Modifier = Modifier,
+    displaySize: IntSize? = null,
+    onSurface: (SurfaceView) -> Unit = {},
+) {
     AndroidView(
         factory = { context ->
-            SurfaceView(context).apply {
+            val host = FrameLayout(context)
+            val video = SurfaceView(context).apply {
                 isClickable = false
-                isLongClickable = false
                 isFocusable = false
-                isFocusableInTouchMode = false
                 setZOrderOnTop(false)
                 setZOrderMediaOverlay(false)
                 holder.addCallback(object : SurfaceHolder.Callback {
-                    override fun surfaceCreated(holder: SurfaceHolder) { engine.attachSurface(this@apply) }
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                        engine.updateWindowSize(this@apply)
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        engine.attachSurface(this@apply, host.width, host.height)
                     }
-                    override fun surfaceDestroyed(holder: SurfaceHolder) { engine.detachSurface(this@apply) }
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+                    override fun surfaceDestroyed(holder: SurfaceHolder) = engine.detachSurface(this@apply)
                 })
             }
+            host.addView(video, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
+            host.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                engine.updateWindowSize(video, right - left, bottom - top)
+            }
+            host
         },
-        update = { surface ->
-            onSurface(surface)
-            surface.isClickable = false
-            surface.isLongClickable = false
-            engine.attachSurface(surface)
-            engine.updateWindowSize(surface)
+        update = { host ->
+            val video = host.getChildAt(0) as SurfaceView
+            video.setVideoDisplaySize(displaySize)
+            onSurface(video)
         },
-        onRelease = { surface -> engine.detachSurface(surface) },
+        onRelease = { host -> engine.detachSurface(host.getChildAt(0) as SurfaceView) },
         modifier = modifier,
     )
 }

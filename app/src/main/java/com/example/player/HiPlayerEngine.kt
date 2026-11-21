@@ -1016,7 +1016,7 @@ class HiPlayerEngine(
         val currentMimeType = exoPlayer?.currentMediaItem?.localConfiguration?.mimeType
         val currentTitle = exoPlayer?.currentMediaItem?.mediaMetadata?.title?.toString()
         val currentPos = exoPlayer?.currentPosition ?: 0L
-        val isCurrentlyPlaying = exoPlayer?.isPlaying ?: false
+        val playWhenReady = exoPlayer?.playWhenReady == true
 
         initializePlayer(
             enableHwDecoding = hwDecoding,
@@ -1027,11 +1027,11 @@ class HiPlayerEngine(
         configuredRemuxUltraBuffer = remuxUltraBuffer
         configuredTunneling = tunneling
 
-        if (currentUri != null) {
+        if (currentUri != null && !_usesVlc.value) {
             prepareMedia(
                 uri = currentUri,
                 startPositionMs = currentPos,
-                autoPlay = isCurrentlyPlaying,
+                autoPlay = playWhenReady,
                 mediaMimeType = currentMimeType,
                 mediaTitle = currentTitle,
             )
@@ -1071,6 +1071,7 @@ class HiPlayerEngine(
         routingTimeout?.let(mainHandler::removeCallbacks)
         desiredAutoPlay = autoPlay
         activeMimeType = mediaMimeType
+        routingTimeout = null
         val needsProbe = localProbeUri != uri && !isGrowingDownloadUri(uri) &&
             PlaybackBackendPolicy.shouldUseVlc(uri.scheme, uri.lastPathSegment, mediaMimeType)
         if (needsProbe) {
@@ -1372,6 +1373,7 @@ class HiPlayerEngine(
 
     fun play() {
         desiredAutoPlay = true
+        if (routingTimeout != null) return
         if (_usesVlc.value) {
             if (playbackEnded) {
                 vlcActiveUri?.let { prepareMedia(it, 0L, autoPlay = true, mediaMimeType = activeMimeType) }
@@ -1382,6 +1384,10 @@ class HiPlayerEngine(
             if (playbackEnded || player.playbackState == Player.STATE_ENDED) {
                 playbackEnded = false
                 seekTo(0L)
+            }
+            if (player.playbackState == Player.STATE_IDLE && player.currentMediaItem != null &&
+                pendingVideoPreparation == null) {
+                prepareWithVideoSurface(player, routingRevision, activeMimeType?.startsWith("audio/") == true)
             }
             player.play()
         }
@@ -1433,6 +1439,7 @@ class HiPlayerEngine(
         routingRevision++
         externalSubtitleReadJob?.cancel()
         routingTimeout?.let(mainHandler::removeCallbacks)
+        routingTimeout = null
         if (_usesVlc.value) { vlcPlayback?.stop(); _usesVlc.value = false }
         vlcActiveUri = null
         vlcExoFallbackUri = null
@@ -1547,12 +1554,6 @@ class HiPlayerEngine(
 
     fun setAspectRatioMode(mode: AspectRatioMode) {
         _aspectRatioMode.value = mode
-    }
-
-    fun cycleAspectRatio() {
-        val modes = AspectRatioMode.values()
-        val nextIndex = (_aspectRatioMode.value.ordinal + 1) % modes.size
-        _aspectRatioMode.value = modes[nextIndex]
     }
 
     fun setScreenLocked(locked: Boolean) {

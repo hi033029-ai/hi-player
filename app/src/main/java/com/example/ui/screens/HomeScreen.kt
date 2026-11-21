@@ -159,8 +159,7 @@ fun HomeScreen(
     val activeMode by libraryViewModel.navMode.collectAsStateWithLifecycle()
     val selectedFolder by libraryViewModel.selectedFolder.collectAsStateWithLifecycle()
     val treePath by libraryViewModel.treeCurrentPath.collectAsStateWithLifecycle()
-    val modes = remember { listOf(LibraryNavMode.FOLDERS, LibraryNavMode.ALL_VIDEOS,
-        LibraryNavMode.RECENT, LibraryNavMode.TREE_FOLDERS, LibraryNavMode.FAVORITES) }
+    val modes = LibraryNavMode.videoTabs
     val pager = androidx.compose.foundation.pager.rememberPagerState(
         initialPage = modes.indexOf(activeMode).coerceAtLeast(0), pageCount = { modes.size })
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -173,7 +172,6 @@ fun HomeScreen(
     }
     val availableVideos by libraryViewModel.allVideos.collectAsStateWithLifecycle()
     val availableFolders by libraryViewModel.folders.collectAsStateWithLifecycle()
-    val recent by libraryViewModel.continueWatchingVideos.collectAsStateWithLifecycle()
     val searchQuery by libraryViewModel.searchQuery.collectAsStateWithLifecycle()
     val viewMode by libraryViewModel.viewMode.collectAsStateWithLifecycle()
     val scanStatus by libraryViewModel.scanStatus.collectAsStateWithLifecycle()
@@ -193,7 +191,7 @@ fun HomeScreen(
             } else {
                 VideoLibraryHeaderControls(
                     modes = modes, selected = modes[pager.currentPage], folderCount = visibleFolders.size,
-                    videoCount = visibleVideos.size, recentCount = if (canShow) recent.size else 0,
+                    videoCount = visibleVideos.size,
                     favoriteCount = favoriteCount, query = searchQuery,
                     onQueryChange = { if (!selectionActive) libraryViewModel.setSearchQuery(it) }, viewMode = viewMode,
                     onToggleView = { if (!selectionActive) libraryViewModel.toggleViewMode() },

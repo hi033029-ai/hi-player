@@ -14,7 +14,7 @@ enum class AspectRatioMode(val displayName: String, val targetRatio: Float? = nu
     FIT("Fit to Screen"),
     IMAX_DIGITAL("IMAX Digital (1.90:1)", 1.90f),
     IMAX_ORIGINAL("IMAX Original (1.43:1)", 1.43f),
-    FILL_CROP("Crop / Fill (16:9)"),
+    FILL_CROP("Crop / Fill"),
     CINEMA_21_9("Cinema (21:9)", 21f / 9f),
     ORIGINAL("Original"),
     STRETCH("Stretch")

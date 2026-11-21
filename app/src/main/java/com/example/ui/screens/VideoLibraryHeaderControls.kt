@@ -35,7 +35,7 @@ import com.example.viewmodel.VideoSortOption
 @Composable
 internal fun VideoLibraryHeaderControls(
     modes: List<LibraryNavMode>, selected: LibraryNavMode, folderCount: Int, videoCount: Int,
-    recentCount: Int, favoriteCount: Int, query: String, onQueryChange: (String) -> Unit,
+    favoriteCount: Int, query: String, onQueryChange: (String) -> Unit,
     viewMode: LibraryViewMode, onToggleView: () -> Unit, onSort: (VideoSortOption) -> Unit,
     onSelect: (LibraryNavMode) -> Unit,
 ) {
@@ -81,7 +81,7 @@ internal fun VideoLibraryHeaderControls(
                         val label = when (mode) {
                             LibraryNavMode.FOLDERS -> "Folders ($folderCount)"
                             LibraryNavMode.ALL_VIDEOS -> "Videos ($videoCount)"
-                            LibraryNavMode.RECENT -> "Recent ($recentCount)"
+                            LibraryNavMode.RECENT -> mode.displayName
                             LibraryNavMode.TREE_FOLDERS -> "Tree Folders ($folderCount)"
                             LibraryNavMode.FAVORITES -> "Favorites ($favoriteCount)"
                             LibraryNavMode.ALL_FOLDERS -> "Folders ($folderCount)"
