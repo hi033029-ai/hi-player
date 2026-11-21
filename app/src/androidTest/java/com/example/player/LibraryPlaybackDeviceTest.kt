@@ -178,7 +178,12 @@ class LibraryPlaybackDeviceTest {
 
     private fun tapLabel(label: String) {
         var point: Rect? = null
-        awaitStep("visible $label") { point = bounds(label); point != null }
+        awaitStep("stable visible $label") {
+            val next = bounds(label)
+            val stable = next != null && next == point
+            point = next
+            stable
+        }
         val target = checkNotNull(point)
         instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nTap $label at $target\n") })
         tap(target.centerX(), target.centerY())
@@ -189,6 +194,7 @@ class LibraryPlaybackDeviceTest {
         context.startActivity(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         tapLabel("HiPlayerLaunchCheck")
+        awaitStep("indexed folder contents") { bounds("Back to Folders") != null }
         tapLabel("launch-check.mp4")
         lateinit var host: MainActivity
         lateinit var engine: HiPlayerEngine
@@ -279,14 +285,15 @@ class LibraryPlaybackDeviceTest {
             check(cursor.moveToFirst()) { "Missing indexed fixture $name" }
             ContentUris.withAppendedId(collection, cursor.getLong(0))
         } ?: error("Could not query indexed videos")
+        context.startActivity(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        tapLabel("HiPlayerPortraitCheck")
+        awaitStep("MKV folder contents") { bounds("Back to Folders") != null }
         val startMs = 338_000L
         runBlocking {
             HiPlayerDatabase.getInstance(context).videoDao().insertOrUpdate(VideoEntity(uri.toString(), name,
                 lastPositionMs = startMs, durationMs = 390_000L, customAspectRatio = AspectRatioMode.IMAX_DIGITAL.name))
         }
-        context.startActivity(Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        tapLabel("HiPlayerLaunchCheck")
         tapLabel(name)
         lateinit var host: MainActivity
         lateinit var engine: HiPlayerEngine
