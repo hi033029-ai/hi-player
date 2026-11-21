@@ -158,10 +158,13 @@ class LibraryPlaybackDeviceTest {
         awaitStep("paused playback") { !engine.isPlaying.value }
         val modes = AspectRatioMode.entries
         val start = engine.aspectRatioMode.value
+        var resizeBounds: Rect? = null
+        awaitStep("resize button") { resizeBounds = bounds(start.displayName); resizeBounds != null }
+        // Keep tapping the original toolbar target. The transient HUD repeats its label.
+        val resize = checkNotNull(resizeBounds)
         for (step in 1..modes.size + 1) {
-            val current = modes[(start.ordinal + step - 1) % modes.size]
             val next = modes[(start.ordinal + step) % modes.size]
-            tapLabel(current.displayName)
+            tap(resize.centerX(), resize.centerY())
             awaitStep("native surface for ${next.displayName}") {
                 var matches = false
                 instrumentation.runOnMainSync {
