@@ -27,7 +27,7 @@ class HiBrowserWelcomeTest {
             HiBrowserHome(isPrivate = false,
                 shortcuts = listOf("YouTube" to "https://m.youtube.com", "Facebook" to "https://www.facebook.com/", "TikTok" to "https://www.tiktok.com/"),
                 bookmarks = listOf("Saved example" to "https://example.com"),
-                adBlockEnabled = true, onVisit = { visited = it }, onAddShortcut = { _, _ -> },
+                onVisit = { visited = it }, onAddShortcut = { _, _ -> },
                 onRemoveShortcut = {})
         } }
         compose.onNodeWithText("Hi Browser").assertIsDisplayed()
@@ -52,9 +52,13 @@ class HiBrowserWelcomeTest {
 
     @Test fun privateHomeKeepsItsPrivateLabel() {
         compose.setContent { HiPlayerTheme {
-            HiBrowserHome(isPrivate = true, shortcuts = emptyList(), adBlockEnabled = false,
+            HiBrowserHome(isPrivate = true, shortcuts = emptyList(),
                 onVisit = {}, onAddShortcut = { _, _ -> }, onRemoveShortcut = {})
         } }
         compose.onNodeWithText("Private browsing").assertIsDisplayed()
+        compose.onNodeWithText("Quick links").assertIsDisplayed()
+        compose.onNodeWithText("Saved bookmarks").assertDoesNotExist()
+        compose.onNodeWithText("Popular websites").assertDoesNotExist()
+        compose.onNodeWithText("Ad blocking off").assertDoesNotExist()
     }
 }

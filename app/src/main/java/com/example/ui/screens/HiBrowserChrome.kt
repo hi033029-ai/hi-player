@@ -60,7 +60,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VisibilityOff
 import com.example.ui.theme.AppAlertDialog as AlertDialog
 import com.example.ui.theme.AppDropdownMenu as DropdownMenu
@@ -695,7 +694,6 @@ internal fun HiBrowserHome(
     isPrivate: Boolean,
     shortcuts: List<Pair<String, String>>,
     bookmarks: List<Pair<String, String>> = emptyList(),
-    adBlockEnabled: Boolean,
     onVisit: (String) -> Unit,
     onAddShortcut: (String, String) -> Unit,
     onRemoveShortcut: (String) -> Unit,
@@ -718,21 +716,16 @@ internal fun HiBrowserHome(
                 .padding(horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(20.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth()
-                    .clip(cardShape)
-                    .background(palette.surface)
-                    .padding(18.dp),
-            ) {
+            Spacer(Modifier.height(12.dp))
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HiPlayerLogoBadge(size = 44.dp)
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Text("Hi Browser", color = palette.textPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text("Your web, ready when you are", color = palette.textSecondary, fontSize = 13.sp)
-                    }
+                    Image(
+                        painter = rememberHiPlayerLogoPainter(),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Hi Browser", color = palette.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 if (isPrivate) {
                     Spacer(Modifier.height(14.dp))
@@ -750,31 +743,17 @@ internal fun HiBrowserHome(
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth().clip(cardShape)
-                    .background(palette.surface)
-                    .padding(14.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bookmark, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Saved bookmarks", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.weight(1f))
-                    if (bookmarks.isNotEmpty()) {
+            if (bookmarks.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bookmark, contentDescription = null, tint = palette.primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Saved bookmarks", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
                         Text(bookmarks.size.toString(), color = palette.textSecondary, fontSize = 12.sp)
                     }
-                }
-                Spacer(Modifier.height(10.dp))
-                if (bookmarks.isEmpty()) {
-                    Text(
-                        "Bookmark a page from the browser menu and it will appear here.",
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                            .background(palette.surfaceElevated).padding(12.dp),
-                        color = palette.textTertiary,
-                        fontSize = 13.sp,
-                    )
-                } else {
+                    Spacer(Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -838,27 +817,6 @@ internal fun HiBrowserHome(
                 ) {
                     Text("Tap a shortcut to remove it", color = palette.textTertiary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 }
-            }
-            Spacer(Modifier.height(14.dp))
-            PopularWebsiteShortcuts(onVisit = onVisit)
-            Spacer(Modifier.height(18.dp))
-            Row(
-                modifier = Modifier.clip(RoundedCornerShape(50.dp)).background(palette.surface)
-                    .border(1.dp, palette.surfaceBorder, RoundedCornerShape(50.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Default.Shield,
-                    contentDescription = null,
-                    tint = if (adBlockEnabled) palette.primary else palette.textTertiary,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    if (adBlockEnabled) "Ad blocking on" else "Ad blocking off",
-                    color = palette.textSecondary,
-                    fontSize = 12.sp,
-                )
             }
             Spacer(Modifier.height(bottomInset + 24.dp))
         }

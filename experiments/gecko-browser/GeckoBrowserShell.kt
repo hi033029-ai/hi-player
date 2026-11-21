@@ -126,7 +126,6 @@ internal fun GeckoBrowserShell(
                 isPrivate = activeTab.privateTab,
                 shortcuts = shortcuts,
                 bookmarks = displayedBookmarks,
-                adBlockEnabled = store.adBlock,
                 onVisit = ::navigate,
                 onAddShortcut = { name, url ->
                     store.saveShortcuts(store.shortcuts() + OrbitBrowserEntry(name, url))

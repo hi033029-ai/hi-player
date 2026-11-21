@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,7 +63,7 @@ import com.example.ui.theme.LocalHiPalette
 import com.example.ui.theme.HiCardShape
 import com.example.ui.theme.HiThumbnailShape
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun VideoItemCard(
     video: VideoItem,
@@ -82,6 +84,7 @@ fun VideoItemCard(
     var menuExpanded by remember(video.id) { mutableStateOf(false) }
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val compactScreen = maxWidth < 360.dp
+        val actionColumns = if (maxWidth < 300.dp) 1 else 2
 
         Column(
             modifier = Modifier
@@ -96,14 +99,14 @@ fun VideoItemCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Video Thumbnail with Duration & 4K badge
                 Box(
                     modifier = Modifier
-                        .width(if (compactScreen) 96.dp else 116.dp)
-                        .aspectRatio(1.45f)
+                        .width(if (compactScreen) 68.dp else 82.dp)
+                        .aspectRatio(16f / 9f)
                         .clip(HiThumbnailShape)
                         .background(palette.surface)
                 ) {
@@ -249,8 +252,8 @@ fun VideoItemCard(
 
 
                         Spacer(modifier = Modifier.height(3.dp))
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                         ) {
                             Text(
                                 text = video.formattedSize,
@@ -296,9 +299,8 @@ fun VideoItemCard(
 
                 }
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    reorderHandle?.invoke()
-
+                reorderHandle?.invoke()
+                FlowRow(maxItemsInEachRow = actionColumns) {
                     // Favorite Quick Icon
                     IconButton(
                         onClick = { onFavoriteToggle(video.isFavorite) },

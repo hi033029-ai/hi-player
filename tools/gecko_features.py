@@ -57,7 +57,6 @@ def augment(result):
     key = 'main/compatibility/Patched_GeckoTabController.kt'
     result[key] = replace_once(result[key], '    fun load(url: String) { check(!closed);', '    fun activeSession(): GeckoManagedSession<View>? = if (closed) null else sessions[activeId]\n    fun load(url: String) { check(!closed);', 'active session access')
     key = 'main/engine/GeckoBrowserShell.kt'
-    result[key] = result[key].replace('adBlockEnabled = false,', 'adBlockEnabled = GeckoFeatureBridge.ready && store.adBlock,').replace('// Filtering is not connected to Gecko yet; do not claim it is enabled.', '// Advertise protection only after the local bridge is actually ready.')
     result[key] = replace_once(result[key], '"Check the address or connection and try again."', 'if (snapshot.error == GeckoPageError.PROTECTION) "Local browser protection could not start. Retry or use the original browser." else "Check the address or connection and try again."', 'protection recovery message')
     key = 'main/integration/GeckoBrowserEntry.kt'
     t = result[key]

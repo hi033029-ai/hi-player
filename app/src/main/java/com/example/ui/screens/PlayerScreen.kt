@@ -145,6 +145,7 @@ fun PlayerScreen(
     // HDR/codec switches). Holding a released player was a source of playback crashes.
     val observedPlayer by playerViewModel.engine.playerInstance.collectAsState()
     val activePlayer = observedPlayer ?: playerViewModel.engine.getPlayer()
+    val presentedPlayer by playerViewModel.engine.presentedPlayer.collectAsState()
     val usingVlc by playerViewModel.engine.usesVlc.collectAsState()
     val vlcVideoSize by playerViewModel.engine.vlcVideoSize.collectAsState()
     val vlcFirstFrame by playerViewModel.engine.vlcFirstFrame.collectAsState()
@@ -274,7 +275,10 @@ fun PlayerScreen(
         val secure = activity?.window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
         val view = surfaceView
         if (heldFrame == null && view != null && !secure) {
-            heldFrame = copyPictureFrame(view)
+            val hdrTransfer = if (isHdrContent && hdrColorModeManager?.isHdrActive == true) {
+                activePlayer.videoFormat?.colorInfo?.colorTransfer ?: androidx.media3.common.C.COLOR_TRANSFER_ST2084
+            } else null
+            heldFrame = copyPictureFrame(view, hdrTransfer)
             if (heldFrame != null) {
                 // Allow the overlay to be composed and drawn before releasing the old surface.
                 withFrameNanos { }
@@ -292,9 +296,14 @@ fun PlayerScreen(
         }
         pendingGrade = null
     }
-    LaunchedEffect(heldFrame, playerError) {
+    LaunchedEffect(heldFrame, replacement, presentedPlayer, playerError) {
         if (heldFrame == null) return@LaunchedEffect
-        if (playerError == null) delay(3500)
+        if (playerError == null) {
+            if (replacement == null || presentedPlayer !== replacement) return@LaunchedEffect
+            // The renderer callback can precede the new buffer's display transaction.
+            withFrameNanos { }
+            withFrameNanos { }
+        }
         heldFrame = null
         replacement = null
     }
@@ -403,10 +412,6 @@ fun PlayerScreen(
         val player = activePlayer
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
-                if (replacement === player) {
-                    heldFrame = null
-                    replacement = null
-                }
                 firstFrameRendered = true
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {

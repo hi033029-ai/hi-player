@@ -594,7 +594,7 @@ internal fun VideoLibraryPage(
                         state = folderListState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         item(key = "library_controls") { libraryControls() }
                         if (showContinueWatching) {
@@ -634,7 +634,7 @@ internal fun VideoLibraryPage(
                     LazyColumn(
                         state = treeListState,
                         contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                         modifier = Modifier.fillMaxSize().then(pinchGridModifier)
                     ) {
                         item(key = "library_controls") { libraryControls() }

@@ -51,18 +51,18 @@ fun FolderItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .heightIn(min = 52.dp)
             .clip(HiCardShape).hiContainerBorder(HiCardShape, selected = isSelected)
             .background(if (isSelected) palette.selectionSurface else palette.surface)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics { selected = isSelected }
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
             .testTag("folder_item_${folder.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(36.dp)
                 .background(palette.selectionSurface, HiThumbnailShape),
             contentAlignment = Alignment.Center
         ) {
@@ -70,11 +70,11 @@ fun FolderItemRow(
                 imageVector = Icons.Default.Folder,
                 contentDescription = null,
                 tint = palette.primary,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
         // Folder Name and Video Count
         Column(
@@ -97,8 +97,9 @@ fun FolderItemRow(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 val countText = if (folder.videoCount == 1) "1 video" else "${folder.videoCount} videos"
                 Text(

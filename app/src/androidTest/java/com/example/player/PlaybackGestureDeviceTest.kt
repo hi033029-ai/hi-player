@@ -13,6 +13,8 @@ import com.example.data.PlayerPreferencesRepository
 import com.example.data.dataStore
 import com.example.data.PlaybackLoudness
 import com.example.model.AspectRatioMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -21,7 +23,10 @@ import com.example.playback.createGrowingMkvClusterIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -179,6 +184,53 @@ class PlaybackGestureDeviceTest {
             PlaybackLoudness.capture(context)
             DownloadingFilesRegistry.completeOwned(partial.absolutePath)
             partial.delete()
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @Test(timeout = 100_000) fun pictureToggleKeepsPausedTimelineThroughBothRendererChanges() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = PlayerPreferencesRepository(context)
+        val saved = runBlocking { context.dataStore.data.first() }
+        val file = File.createTempFile("picture-toggle-", ".mp4", context.cacheDir)
+        try {
+            context.assets.open("gecko_test.mp4").use { input -> file.outputStream().use { input.copyTo(it) } }
+            runBlocking { preferences.setPictureMode(ColorPresets.HDR_DISABLED) }
+            ActivityScenario.launch<PlaybackGestureActivity>(Intent(context, PlaybackGestureActivity::class.java)
+                .putExtra("fixture", file.absolutePath)).use { scenario ->
+                lateinit var engine: HiPlayerEngine
+                scenario.onActivity { engine = it.model.engine }
+                compose.waitUntil(35_000) { engine.presentedPlayer.value != null && engine.durationMs.value > 10_000 }
+                scenario.onActivity { engine.pause(); engine.seekTo(8_000) }
+                compose.waitUntil(10_000) { engine.currentPositionMs.value in 7_950..8_050 }
+                val duration = engine.durationMs.value
+                val observed = java.util.concurrent.CopyOnWriteArrayList<Long>()
+                val job = CoroutineScope(Dispatchers.Main.immediate).launch {
+                    engine.durationMs.collect { observed.add(it) }
+                }
+                try {
+                    if (compose.onAllNodesWithContentDescription("HDR enhancement").fetchSemanticsNodes().isEmpty()) {
+                        compose.onNodeWithTag("player_gesture_surface").performTouchInput { click(center) }
+                    }
+                    compose.onNodeWithContentDescription("HDR enhancement").performClick()
+                    for (label in listOf("Turn on", "Turn off")) {
+                        val previous = engine.playerInstance.value
+                        compose.onNodeWithText(label).performClick()
+                        compose.waitUntil(22_000) {
+                            val next = engine.playerInstance.value
+                            next != null && next !== previous && engine.presentedPlayer.value === next
+                        }
+                        assertTrue("Picture mode moved the paused playhead", engine.currentPositionMs.value in 7_950..8_050)
+                        assertFalse(engine.isPlaying.value)
+                        assertNull(engine.playerError.value)
+                    }
+                    assertTrue("Duration changed during the handoff: $observed",
+                        observed.isNotEmpty() && observed.all { it == duration })
+                } finally { job.cancel() }
+            }
+        } finally {
+            runBlocking { context.dataStore.updateData { saved } }
+            file.delete()
         }
     }
 

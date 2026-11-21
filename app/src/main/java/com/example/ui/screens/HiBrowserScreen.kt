@@ -1759,7 +1759,6 @@ fun HiBrowserScreen(
                 isPrivate = activeTab?.privateTab == true,
                 shortcuts = shortcuts,
                 bookmarks = homeBookmarks,
-                adBlockEnabled = adBlockEnabled,
                 onVisit = { loadAddress(it) },
                 onAddShortcut = { name, url ->
                     store.saveShortcuts(store.shortcuts() + OrbitBrowserEntry(name, url))

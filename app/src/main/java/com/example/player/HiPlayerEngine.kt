@@ -171,11 +171,11 @@ class HiPlayerEngine(
     private fun createVlc() = VlcPlaybackEngine(
         context,
         onUpdate = { state ->
-            if (_usesVlc.value) {
+            if (_usesVlc.value && vlcActiveUri == timelineUri) {
                 _isPlaying.value = state.playing
                 _isBuffering.value = state.buffering
                 _currentPositionMs.value = state.positionMs
-                _durationMs.value = state.durationMs
+                if (state.durationMs > 0) _durationMs.value = state.durationMs
                 _bufferedPositionMs.value = state.bufferedPositionMs
                 val a = _abRepeatA.value
                 val b = _abRepeatB.value
@@ -234,6 +234,8 @@ class HiPlayerEngine(
     // released one (which left a black picture and dead skip buttons).
     private val _playerInstance = MutableStateFlow<ExoPlayer?>(null)
     val playerInstance = _playerInstance.asStateFlow()
+    private val _presentedPlayer = MutableStateFlow<ExoPlayer?>(null)
+    val presentedPlayer = _presentedPlayer.asStateFlow()
     private var trackSelector: DefaultTrackSelector? = null
     private var rememberedAudioLanguage: String? = null
     private var rememberedSubtitleLanguage: String? = null
@@ -262,6 +264,7 @@ class HiPlayerEngine(
     private val _currentPositionMs = MutableStateFlow(0L)
     val currentPositionMs = _currentPositionMs.asStateFlow()
 
+    private var timelineUri: Uri? = null
     private val _durationMs = MutableStateFlow(0L)
     val durationMs = _durationMs.asStateFlow()
 
@@ -361,8 +364,10 @@ class HiPlayerEngine(
             val item = player.currentMediaItem ?: return
             val uri = item.localConfiguration?.uri ?: return
             val params = trackSelector?.parameters
-            val position = _currentPositionMs.value
-            val autoPlay = desiredAutoPlay
+            val position = if (player.playbackState == Player.STATE_READY && pendingDecodedSeekRevision == null) {
+                player.currentPosition.coerceAtLeast(0L)
+            } else _currentPositionMs.value
+            val autoPlay = player.playWhenReady
             rebuildingGradePipeline = true
             try {
                 initializePlayer(configuredHwDecoding ?: true, configuredRemuxUltraBuffer ?: false,
@@ -560,6 +565,10 @@ class HiPlayerEngine(
     }
 
     private val playerListener = object : Player.Listener {
+        override fun onRenderedFirstFrame() {
+            if (!_usesVlc.value) _presentedPlayer.value = exoPlayer
+        }
+
         override fun onSurfaceSizeChanged(width: Int, height: Int) {
             if (width > 0 && height > 0) pendingVideoPreparation?.invoke()
         }
@@ -579,7 +588,7 @@ class HiPlayerEngine(
                 }
                 audioSelectionRecoveryParameters = null
                 audioSelectionRecoveryUri = null
-                _durationMs.value = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
+                exoPlayer?.let(::updateTimelineDuration)
                 _playerError.value = null
                 // Some containers publish their caption tracks only once they are
                 // prepared. Refresh here as well as in onTracksChanged so the CC
@@ -1046,6 +1055,12 @@ class HiPlayerEngine(
             return
         }
         playbackEnded = false
+        if (uri != timelineUri) {
+            timelineUri = uri
+            _currentPositionMs.value = startPositionMs.coerceAtLeast(0L)
+            _durationMs.value = 0L
+            _bufferedPositionMs.value = 0L
+        }
         if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
             pendingBackendAudioIndex = null
             pendingBackendSubtitleIndex = null
@@ -1165,7 +1180,7 @@ class HiPlayerEngine(
         // A growing-source retry re-prepares the same MediaItem. Preserve the
         // already-detected HDR/color state in that case; resetting it can make
         // Compose swap surfaces while the incremental Matroska stream is active.
-        if (exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) {
+        if (!rebuildingGradePipeline && exoPlayer?.currentMediaItem?.localConfiguration?.uri != uri) {
             beginVideoItemTransition()
         }
         if (uri != vlcActiveUri && uri != exoPlayer?.currentMediaItem?.localConfiguration?.uri) {
@@ -1201,6 +1216,7 @@ class HiPlayerEngine(
         val mediaItem = mediaItemBuilder.build()
         applyVideoGrade(allowRebuild = false)
         exoPlayer?.apply {
+            _presentedPlayer.value = null
             stop()
             val initialPositionMs = startPositionMs.coerceAtLeast(0L)
             pendingDecodedSeekRevision = null
@@ -1916,25 +1932,33 @@ class HiPlayerEngine(
         )
     }
 
+    // During a direct/graded handoff the replacement has an empty timeline until
+    // the extractor publishes it. Only a different URI should clear known file length.
+    private fun updateTimelineDuration(player: ExoPlayer) {
+        val uri = player.currentMediaItem?.localConfiguration?.uri ?: return
+        if (uri != timelineUri) return
+        val duration = player.duration
+        when {
+            duration > 0 -> _durationMs.value = duration
+            player.playbackState != Player.STATE_READY -> return
+            isGrowingDownloadUri(uri) -> _durationMs.value = maxOf(
+                _durationMs.value, player.currentPosition, player.bufferedPosition)
+            player.isCurrentMediaItemLive -> _durationMs.value = 0L
+        }
+    }
+
     private fun startProgressTracker() {
         progressJob?.cancel()
         progressJob = coroutineScope.launch(Dispatchers.Main) {
             while (isActive) {
                 if (_usesVlc.value) vlcPlayback?.publish()
-                else exoPlayer?.let { player ->
+                else exoPlayer?.takeIf { it.currentMediaItem?.localConfiguration?.uri == timelineUri }?.let { player ->
                     val pos = player.currentPosition.coerceAtLeast(0L)
                     if (pendingDecodedSeekRevision == null && player.playbackState == Player.STATE_READY) _currentPositionMs.value = pos
-                    val buffered = player.bufferedPosition.coerceAtLeast(0L)
-                    _bufferedPositionMs.value = buffered
-                    val reportedDuration = player.duration
-                    _durationMs.value = if (
-                        reportedDuration == C.TIME_UNSET &&
-                        player.currentMediaItem?.localConfiguration?.uri?.let(::isGrowingDownloadUri) == true
-                    ) {
-                        maxOf(pos, buffered)
-                    } else {
-                        reportedDuration.coerceAtLeast(0L)
+                    if (player.playbackState == Player.STATE_READY) {
+                        _bufferedPositionMs.value = player.bufferedPosition.coerceAtLeast(0L)
                     }
+                    updateTimelineDuration(player)
 
                     // Check A-B loop repeat
                     val a = _abRepeatA.value
@@ -1969,6 +1993,7 @@ class HiPlayerEngine(
         loudnessEnhancer = null
         equalizer?.release()
         equalizer = null
+        _presentedPlayer.value = null
         _playerInstance.value = null
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.release()
