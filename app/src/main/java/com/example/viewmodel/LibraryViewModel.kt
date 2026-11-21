@@ -430,8 +430,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun startDownloadsObserver() {
         val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (!downloads.isDirectory) return
+        // The File-taking constructor is API 29+. The path overload watches the same
+        // directory and also exists on the Android 7–9 versions we support.
+        @Suppress("DEPRECATION")
         downloadsObserver = object : FileObserver(
-            downloads,
+            downloads.absolutePath,
             FileObserver.CREATE or FileObserver.MOVED_TO or FileObserver.CLOSE_WRITE
         ) {
             override fun onEvent(event: Int, path: String?) {

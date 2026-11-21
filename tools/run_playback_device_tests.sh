@@ -29,6 +29,9 @@ mkdir -p "$reports"
 adb logcat -c
 python3 tools/test_cold_launch.py || {
   adb logcat -d -b crash | tee "$reports/launcher-crash.txt"
+  adb logcat -d > "$reports/launcher-logcat.txt"
+  adb shell dumpsys activity activities > "$reports/launcher-activities.txt"
+  adb shell dumpsys window > "$reports/launcher-window.txt"
   exit 1
 }
 case "$api" in

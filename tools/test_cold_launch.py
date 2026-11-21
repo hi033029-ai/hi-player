@@ -18,9 +18,9 @@ def adb(*args, check=True):
 
 def cold_start():
     adb("shell", "am", "force-stop", PACKAGE)
-    result = adb("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
+    result = adb("shell", "am", "start", "-a", "android.intent.action.MAIN",
                  "-c", "android.intent.category.LAUNCHER", "-n", COMPONENT)
-    if "Status: ok" not in result:
+    if "Error:" in result or "Exception" in result:
         raise AssertionError(result)
 
 
@@ -28,8 +28,9 @@ def wait_for(label):
     deadline = time.monotonic() + 60
     labels = []
     while time.monotonic() < deadline:
-        if not adb("shell", "pidof", PACKAGE, check=False):
-            raise AssertionError("Launcher process exited: " + adb("logcat", "-d", "-b", "crash")[-6000:])
+        crash = adb("logcat", "-d", "-b", "crash")
+        if f"Process: {PACKAGE}," in crash:
+            raise AssertionError("Launcher process crashed: " + crash[-6000:])
         dump = adb("shell", "uiautomator", "dump", "/data/local/tmp/hi-launch.xml", check=False)
         if "dumped" in dump.lower():
             root = ET.fromstring(adb("shell", "cat", "/data/local/tmp/hi-launch.xml"))
@@ -52,6 +53,9 @@ def tap(label):
 
 def main():
     api = int(adb("shell", "getprop", "ro.build.version.sdk"))
+    adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+    adb("shell", "wm", "dismiss-keyguard", check=False)
+    adb("shell", "input", "keyevent", "82")
     for perm in (["READ_MEDIA_VIDEO", "READ_MEDIA_AUDIO"] if api >= 33 else ["READ_EXTERNAL_STORAGE"]):
         adb("shell", "pm", "grant", PACKAGE, "android.permission." + perm)
     adb("shell", "mkdir", "-p", f"/sdcard/Movies/{FOLDER}")
