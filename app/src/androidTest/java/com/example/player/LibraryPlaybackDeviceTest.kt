@@ -5,7 +5,6 @@ import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.ComposeTestRule
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.core.view.descendants
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -13,7 +12,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MainActivity
 import com.example.model.AspectRatioMode
 import com.example.viewmodel.PlayerViewModel
-import org.junit.Rule
+import android.content.Intent
+import android.graphics.Rect
+import android.os.Bundle
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.math.abs
@@ -59,31 +67,96 @@ internal fun <A : Activity> ComposeTestRule.checkResizeCycle(
 /** Opens the indexed Movies fixture prepared by the launcher gate. */
 @RunWith(AndroidJUnit4::class)
 class LibraryPlaybackDeviceTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val automation get() = instrumentation.uiAutomation
 
-    private fun tapLabel(text: String) {
-        val nodes = compose.onAllNodesWithText(text)
-        fun visible() = nodes.fetchSemanticsNodes().indices.firstOrNull { nodes[it].isDisplayed() }
-        compose.waitUntil(30_000) { visible() != null }
-        nodes[checkNotNull(visible())].performTouchInput { click(center) }
+    private fun awaitStep(description: String, condition: () -> Boolean) {
+        instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nChecking $description\n") })
+        val deadline = SystemClock.elapsedRealtime() + 25_000
+        while (!condition()) {
+            check(SystemClock.elapsedRealtime() < deadline) { "Timed out waiting for $description" }
+            SystemClock.sleep(100)
+        }
     }
 
-    @Test(timeout = 125_000) fun libraryTapAutoplaysAndTransportAndResizerRespond() {
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            lateinit var engine: HiPlayerEngine
-            scenario.onActivity { engine = ViewModelProvider(it)[PlayerViewModel::class.java].engine }
-            tapLabel("HiPlayerLaunchCheck")
-            tapLabel("launch-check.mp4")
-            compose.waitUntil(35_000) {
-                engine.isPlaying.value && engine.presentedPlayer.value != null && engine.currentPositionMs.value > 500
+    private fun bounds(label: String): Rect? {
+        fun locate(node: AccessibilityNodeInfo): Rect? {
+            if (node.isVisibleToUser && (node.text?.toString() == label || node.contentDescription?.toString() == label)) {
+                val rect = Rect().also(node::getBoundsInScreen)
+                if (!rect.isEmpty) return rect
             }
-            if (compose.onNodeWithText("Skip guide").isDisplayed()) tapLabel("Skip guide")
-            compose.tapPlayerButton("bottom_play_pause_button")
-            compose.waitUntil(8_000) { !engine.isPlaying.value }
-            compose.checkResizeCycle(scenario, engine)
-            val paused = engine.currentPositionMs.value
-            compose.tapPlayerButton("bottom_play_pause_button")
-            compose.waitUntil(8_000) { engine.isPlaying.value && engine.currentPositionMs.value > paused + 500 }
+            var lowest: Rect? = null
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                val hit = locate(child) ?: continue
+                if (hit.centerY() > (lowest?.centerY() ?: Int.MIN_VALUE)) lowest = hit
+            }
+            return lowest
         }
+        return automation.rootInActiveWindow?.let(::locate)
+    }
+
+    private fun tap(x: Int, y: Int) {
+        val down = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x.toFloat(), y.toFloat(), 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try { check(automation.injectInputEvent(event, true)) } finally { event.recycle() }
+            if (action == MotionEvent.ACTION_DOWN) SystemClock.sleep(40)
+        }
+    }
+
+    private fun tapLabel(label: String) {
+        var point: Rect? = null
+        awaitStep("visible $label") { point = bounds(label); point != null }
+        val target = checkNotNull(point)
+        tap(target.centerX(), target.centerY())
+    }
+
+    @Test fun libraryTapAutoplaysAndTransportAndResizerRespond() {
+        val context = instrumentation.targetContext
+        context.startActivity(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        tapLabel("HiPlayerLaunchCheck")
+        tapLabel("launch-check.mp4")
+        lateinit var host: MainActivity
+        lateinit var engine: HiPlayerEngine
+        instrumentation.runOnMainSync {
+            host = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>().single()
+            engine = ViewModelProvider(host)[PlayerViewModel::class.java].engine
+        }
+        awaitStep("autoplay and advancing decoded video") {
+            engine.isPlaying.value && engine.presentedPlayer.value != null && engine.currentPositionMs.value > 500
+        }
+        // Cold launch starts with the first-use guide over the transport.
+        tapLabel("Skip guide")
+        if (bounds("Pause") == null) {
+            val window = Rect().also { requireNotNull(automation.rootInActiveWindow).getBoundsInScreen(it) }
+            tap(window.centerX(), window.centerY())
+        }
+        tapLabel("Pause")
+        awaitStep("paused playback") { !engine.isPlaying.value }
+        val modes = AspectRatioMode.entries
+        val start = engine.aspectRatioMode.value
+        for (step in 1..modes.size + 1) {
+            val current = modes[(start.ordinal + step - 1) % modes.size]
+            val next = modes[(start.ordinal + step) % modes.size]
+            tapLabel(current.displayName)
+            awaitStep("native surface for ${next.displayName}") {
+                var matches = false
+                instrumentation.runOnMainSync {
+                    val view = (host.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().first()
+                    val ratio = next.targetRatio
+                    matches = engine.aspectRatioMode.value == next && view.height > 0 &&
+                        (ratio == null || abs(view.width.toFloat() / view.height - ratio) < .02f)
+                }
+                matches
+            }
+        }
+        val paused = engine.currentPositionMs.value
+        tapLabel("Play")
+        awaitStep("resumed playback") { engine.isPlaying.value && engine.currentPositionMs.value > paused + 500 }
+        instrumentation.runOnMainSync { host.finish() }
     }
 }

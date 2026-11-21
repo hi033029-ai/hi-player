@@ -36,10 +36,17 @@ python3 tools/test_cold_launch.py || {
 }
 install_test_apk "${test_apks[0]}"
 runner=com.aistudio.hiplayer.vdmk.test/androidx.test.runner.AndroidJUnitRunner
+library_diagnostics() {
+  adb exec-out screencap -p > "$reports/library-screen.png" || true
+  adb shell dumpsys activity activities > "$reports/library-activities.txt" || true
+  adb logcat -d > "$reports/library-logcat.txt" || true
+}
+trap library_diagnostics ERR
 timeout 4m adb shell am instrument -w -r -e class com.example.player.LibraryPlaybackDeviceTest "$runner" \
   | tr -d '\r' | tee "$reports/library-playback.txt"
 grep -Exq 'OK \(1 tests?\)' "$reports/library-playback.txt"
 grep -Fxq 'INSTRUMENTATION_CODE: -1' "$reports/library-playback.txt"
+trap - ERR
 case "$api" in
   36) exit 0 ;;
   30)
