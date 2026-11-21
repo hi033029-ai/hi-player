@@ -23,6 +23,9 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
@@ -242,7 +245,23 @@ class PlaybackGestureDeviceTest {
                 assertNull(engine.playerError.value)
 
                 val beforeSkip = engine.currentPositionMs.value
-                surface.performTouchInput { doubleClick(Offset(width * .78f, height * .4f)) }
+                compose.waitForIdle()
+                compose.mainClock.autoAdvance = false
+                try {
+                    surface.performTouchInput { doubleClick(Offset(width * .78f, height * .4f)) }
+                    compose.mainClock.advanceTimeUntil(timeoutMillis = 2_000) {
+                        compose.onAllNodesWithTag("double_tap_hud").fetchSemanticsNodes()
+                            .any { it.size.width > 0 && it.size.height > 0 }
+                    }
+                    val hud = compose.onNodeWithTag("double_tap_hud").assertIsDisplayed()
+                    assertTrue("Double-tap indicator exceeded the compact height",
+                        hud.fetchSemanticsNode().size.height <= with(compose.density) { 40.dp.roundToPx() })
+                    compose.onNodeWithText("+10s").assertIsDisplayed()
+                    compose.mainClock.advanceTimeBy(800)
+                    compose.onNodeWithTag("double_tap_hud").assertDoesNotExist()
+                } finally {
+                    compose.mainClock.autoAdvance = true
+                }
                 val expectedSkip = (beforeSkip + 8_500)..(beforeSkip + 11_500)
                 try {
                     compose.waitUntil(20_000) { engine.currentPositionMs.value in expectedSkip }

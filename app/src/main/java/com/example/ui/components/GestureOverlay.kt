@@ -277,22 +277,20 @@ fun GestureOverlay(
                     "${sign}${abs(delta) / 1000}s"
                 }
             }
-            androidx.compose.animation.AnimatedContent(targetState = action, modifier = Modifier
-                .align(alignment).padding(horizontal = 18.dp), label = "doubleTapAction") { shown ->
-                Row(
-                    Modifier.testTag("double_tap_hud").background(Color(0xDD141922), RoundedCornerShape(50))
-                        .padding(horizontal = 9.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(when (shown) {
-                        TapFeedback.REWIND -> Icons.Default.FastRewind
-                        TapFeedback.FORWARD -> Icons.Default.FastForward
-                        TapFeedback.PLAY -> Icons.Default.PlayArrow
-                        TapFeedback.PAUSE -> Icons.Default.Pause
-                    }, contentDescription = null, tint = HiPrimaryCyan, modifier = Modifier.size(iconSize))
-                    Spacer(Modifier.width(4.dp))
-                    Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
+            Row(
+                Modifier.align(alignment).padding(horizontal = 18.dp).testTag("double_tap_hud")
+                    .background(Color(0xDD141922), RoundedCornerShape(50))
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(when (action) {
+                    TapFeedback.REWIND -> Icons.Default.FastRewind
+                    TapFeedback.FORWARD -> Icons.Default.FastForward
+                    TapFeedback.PLAY -> Icons.Default.PlayArrow
+                    TapFeedback.PAUSE -> Icons.Default.Pause
+                }, contentDescription = null, tint = HiPrimaryCyan, modifier = Modifier.size(iconSize))
+                Spacer(Modifier.width(4.dp))
+                Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
 

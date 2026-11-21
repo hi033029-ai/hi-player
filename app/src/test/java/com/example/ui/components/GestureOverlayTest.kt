@@ -80,14 +80,8 @@ class GestureOverlayTest {
     }
     @Test fun doubleTapSeeksWithoutAlsoTogglingControls() {
         show()
-        compose.mainClock.autoAdvance = false
-        compose.onNodeWithTag("gestures").performTouchInput { doubleClick(Offset(590f,180f)) }
-        compose.mainClock.advanceTimeBy(50)
-        val feedback = compose.onNodeWithTag("double_tap_hud").assertIsDisplayed()
-        assertTrue(feedback.fetchSemanticsNode().size.height <= with(compose.density) { 40.dp.roundToPx() })
-        compose.onNodeWithText("+10s").assertIsDisplayed()
+        compose.onNodeWithTag("gestures").performTouchInput { doubleClick(Offset(width * .82f, height * .50f)) }
         compose.mainClock.advanceTimeBy(800)
-        compose.onNodeWithTag("double_tap_hud").assertDoesNotExist()
         compose.runOnIdle { assertEquals(1,doubles); assertEquals(0,taps); assertEquals(0,seekStarts) }
     }
 }
