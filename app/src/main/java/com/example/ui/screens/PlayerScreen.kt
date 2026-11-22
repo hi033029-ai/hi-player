@@ -256,6 +256,8 @@ fun PlayerScreen(
     var firstFrameRendered by remember(currentVideo?.uri, usingVlc) { mutableStateOf(false) }
     var surfaceView by remember { mutableStateOf<SurfaceView?>(null) }
     var heldFrame by remember(currentVideo?.uri) { mutableStateOf<Bitmap?>(null) }
+    var heldFrameVisible by remember(currentVideo?.uri) { mutableStateOf(false) }
+    val heldFrameAlpha by animateFloatAsState(targetValue = if (heldFrameVisible) 1f else 0f, animationSpec = tween(durationMillis = 180), label = "heldFrameAlpha")
     var replacement by remember<androidx.compose.runtime.MutableState<androidx.media3.exoplayer.ExoPlayer?>>(currentVideo?.uri) { mutableStateOf<androidx.media3.exoplayer.ExoPlayer?>(null) }
     var pendingGrade by remember(currentVideo?.uri) { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -280,6 +282,7 @@ fun PlayerScreen(
             } else null
             heldFrame = copyPictureFrame(view, hdrTransfer)
             if (heldFrame != null) {
+                heldFrameVisible = true
                 // Allow the overlay to be composed and drawn before releasing the old surface.
                 withFrameNanos { }
                 withFrameNanos { }
@@ -297,13 +300,16 @@ fun PlayerScreen(
         pendingGrade = null
     }
     LaunchedEffect(heldFrame, replacement, presentedPlayer, playerError) {
-        if (heldFrame == null) return@LaunchedEffect
+        if (heldFrame == null) { heldFrameVisible = false; return@LaunchedEffect }
         if (playerError == null) {
-            if (replacement == null || presentedPlayer !== replacement) return@LaunchedEffect
+            if (replacement != null && presentedPlayer === replacement) {
             // The renderer callback can precede the new buffer's display transaction.
             withFrameNanos { }
             withFrameNanos { }
+            } else { kotlinx.coroutines.delay(1500L) }
         }
+        heldFrameVisible = false
+        kotlinx.coroutines.delay(180L)
         heldFrame = null
         replacement = null
     }
@@ -785,7 +791,7 @@ fun PlayerScreen(
         }
 
         heldFrame?.let { frame ->
-            Image(frame.asImageBitmap(), contentDescription = null, modifier = videoSurfaceModifier,
+            Image(frame.asImageBitmap(), contentDescription = null, modifier = videoSurfaceModifier.alpha(heldFrameAlpha),
                 contentScale = ContentScale.FillBounds)
         }
 
@@ -1109,13 +1115,13 @@ fun PlayerScreen(
             },
             onCustomPresetChange = { preset ->
                 draftCustomHdrPreset = preset.copy(name = ColorPresets.CUSTOM.name)
-                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
+                changePicture(shouldApplyColorPreset(preset, preset != ColorPresets.HDR_DISABLED)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
             },
             onApplyCustomPreset = { preset ->
-                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
+                changePicture(shouldApplyColorPreset(preset, preset != ColorPresets.HDR_DISABLED)) { playerViewModel.selectPictureMode(preset.copy(name = ColorPresets.CUSTOM.name)) }
             },
             onSelect = { preset ->
-                changePicture(shouldApplyColorPreset(preset, true)) { playerViewModel.selectPictureMode(preset) }
+                changePicture(shouldApplyColorPreset(preset, preset != ColorPresets.HDR_DISABLED)) { playerViewModel.selectPictureMode(preset) }
                 showHdrPresetMenu = false
                 showHdrCustomizer = false
             },
