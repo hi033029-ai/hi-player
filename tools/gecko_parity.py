@@ -59,7 +59,9 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import java.util.Locale
-import androidx.compose.material.icons.Icons''', 'shared platform tools imports')
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Language''', 'shared platform tools imports')
     result[key] = replace_once(result[key], '    var showMenu by remember', '''
     var platformNotice by remember { mutableStateOf<String?>(null) }
     fun openAddress(value: String) {
