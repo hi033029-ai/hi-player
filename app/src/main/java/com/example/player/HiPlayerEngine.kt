@@ -149,6 +149,8 @@ class HiPlayerEngine(
     }
     private var videoEffectsInitialized = false
     private var rebuildingGradePipeline = false
+    private var gradeRebuildRecoveryPending = false
+    private var gradeRebuildRetryAttempted = false
     private var pendingVideoPreparation: (() -> Unit)? = null
     private var surfaceWaitTimeout: Runnable? = null
     private val decodedSeekRevision = java.util.concurrent.atomic.AtomicLong()
@@ -370,6 +372,9 @@ class HiPlayerEngine(
             } else _currentPositionMs.value
             val autoPlay = player.playWhenReady
             rebuildingGradePipeline = true
+            _playerError.value = null
+            gradeRebuildRecoveryPending = true
+            gradeRebuildRetryAttempted = false
             try {
                 initializePlayer(configuredHwDecoding ?: true, configuredRemuxUltraBuffer ?: false,
                     configuredTunneling ?: false)
@@ -568,6 +573,8 @@ class HiPlayerEngine(
     private val playerListener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
             if (!_usesVlc.value) _presentedPlayer.value = exoPlayer
+            gradeRebuildRecoveryPending = false
+            gradeRebuildRetryAttempted = false
         }
 
         override fun onSurfaceSizeChanged(width: Int, height: Int) {
@@ -640,6 +647,50 @@ class HiPlayerEngine(
                 val recoveryPosition = _currentPositionMs.value
                 coroutineScope.launch(Dispatchers.Main) {
                     prepareMedia(recoveryUri, recoveryPosition, autoPlay = true)
+                }
+                return
+          
+            }
+val gradeRetryItem = exoPlayer?.currentMediaItem
+val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
+            if (gradeRebuildRecoveryPending && !gradeRebuildRetryAttempted && gradeRetryUri != null) {
+                gradeRebuildRetryAttempted = true
+                val retryPosition = _currentPositionMs.value
+                val retryAutoPlay = desiredAutoPlay
+                val savedParams = trackSelector?.parameters
+                val activePreset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
+                val subtitleUri = activeExternalSubtitleUri
+                val subtitleMime = activeExternalSubtitleMime
+                val itemMime = gradeRetryItem.localConfiguration?.mimeType
+                val itemTitle = gradeRetryItem.mediaMetadata.title?.toString()
+                coroutineScope.launch(Dispatchers.Main) {
+                    delay(150L)
+                    if (_usesVlc.value) return@launch
+                    rebuildingGradePipeline = true
+                    try {
+                        initializePlayer(
+                            configuredHwDecoding ?: true,
+                            configuredRemuxUltraBuffer ?: false,
+                            configuredTunneling ?: false,
+                        )
+                        savedParams?.let {
+                            trackSelector?.parameters = it.buildUpon()
+                                .setTunnelingEnabled(configuredTunneling == true && activePreset == null)
+                                .build()
+                        }
+                        prepareMedia(
+                            gradeRetryUri,
+                            retryPosition,
+                            retryAutoPlay,
+                            subtitleUri,
+                            subtitleMime,
+                            itemMime,
+                            mediaTitle = itemTitle,
+                            resetDecoderRetry = false,
+                        )
+                    } finally {
+                        rebuildingGradePipeline = false
+                    }
                 }
                 return
             }
