@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -388,7 +389,9 @@ private fun CustomSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit, onUserInteraction: () -> Unit = {}, onAdjustingChange: (Boolean) -> Unit = {},
+    onUserInteraction: () -> Unit = {},
+    onAdjustingChange: (Boolean) -> Unit = {},
+    onValueChange: (Float) -> Unit,
 ) {
     Column(modifier = modifier) {
         var draft by remember(value) { mutableFloatStateOf(value) }
