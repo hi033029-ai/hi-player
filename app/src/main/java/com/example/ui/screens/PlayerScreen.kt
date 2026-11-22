@@ -330,6 +330,15 @@ fun PlayerScreen(
     var nativeHoldSeekDirection by remember(activePlayer) { mutableStateOf(0) }
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
+    var hdrMenuInteractionNonce by remember { mutableStateOf(0) }
+var isHdrMenuInteracting by remember { mutableStateOf(false) }
+LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrMenuInteractionNonce, isHdrMenuInteracting) {
+if (!showHdrPresetMenu && !showHdrCustomizer) return@LaunchedEffect
+if (isHdrMenuInteracting) return@LaunchedEffect
+kotlinx.coroutines.delay(3000L)
+showHdrPresetMenu = false
+showHdrCustomizer = false
+}
     var showHdrStatusOverlay by remember { mutableStateOf(false) }
     var hasInitializedHdrOverlay by remember { mutableStateOf(false) }
     LaunchedEffect(hdrColorPreset.name, applyColorPresetToVideo) {
@@ -1122,9 +1131,10 @@ fun PlayerScreen(
             },
             onSelect = { preset ->
                 changePicture(shouldApplyColorPreset(preset, preset != ColorPresets.HDR_DISABLED)) { playerViewModel.selectPictureMode(preset) }
-                showHdrPresetMenu = false
-                showHdrCustomizer = false
+                hdrMenuInteractionNonce++
             },
+            onUserInteraction = { hdrMenuInteractionNonce++ },
+                            onAdjustingChange = { isHdrMenuInteracting = it },
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
