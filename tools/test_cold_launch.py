@@ -79,8 +79,11 @@ def stage_video(source, folder, name):
     adb("push", f"app/src/debug/assets/{source}", f"/sdcard/Movies/{folder}/{name}")
     adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
         "-d", f"file:///storage/emulated/0/Movies/{folder}/{name}", check=False)
-    adb("shell", "content", "call", "--uri", "content://media/external",
-        "--method", "scan_volume", "--arg", "external_primary", check=False)
+    try:
+        adb("shell", "content", "call", "--uri", "content://media/external",
+            "--method", "scan_file", "--arg", f"/sdcard/Movies/{folder}/{name}", check=False)
+    except subprocess.TimeoutExpired:
+        pass
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         out = adb("shell", "content", "query",
