@@ -73,6 +73,7 @@ def tap(label):
     x1, y1, x2, y2 = wait_for(label)
     adb("shell", "input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
 
+
 def tap_until(label, expected):
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
@@ -82,9 +83,10 @@ def tap_until(label, expected):
             bounds_by_label, _ = _dump_labels()
             if bounds_by_label is not None and expected in bounds_by_label:
                 return
-                time.sleep(0.5)
-        wait_for(expected)
-    
+            time.sleep(0.5)
+    wait_for(expected)
+
+
 def stage_video(source, folder, name):
     adb("shell", "mkdir", "-p", f"/sdcard/Movies/{folder}")
     adb("push", f"app/src/debug/assets/{source}", f"/sdcard/Movies/{folder}/{name}")
@@ -115,7 +117,7 @@ def main():
     stage_video("gecko_test.mp4", FOLDER, VIDEO)
     cold_start()
     tap("Skip setup")
-   tap_until(FOLDER, VIDEO)
+    tap_until(FOLDER, VIDEO)
     print("First launch opened the indexed video folder.", flush=True)
     adb("shell", "input", "keyevent", "4")
     cold_start()
