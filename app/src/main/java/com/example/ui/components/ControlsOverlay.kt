@@ -572,7 +572,7 @@ private fun PlayerToolbarTextButton(
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(34.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
@@ -613,7 +613,7 @@ private fun PlayerToolbarButton(
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(34.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
