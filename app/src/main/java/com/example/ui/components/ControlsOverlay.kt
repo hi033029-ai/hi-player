@@ -94,7 +94,6 @@ import androidx.compose.ui.unit.sp
 import com.example.model.PendingDownloadFormat
 import com.example.model.AspectRatioMode
 import com.example.model.VideoItem
-import com.example.ui.theme.HiPrimaryCyan
 import com.example.ui.theme.LocalHiUiMetrics
 import com.example.ui.components.HdrIcon
 import com.example.ui.components.PlayPauseButton
@@ -175,7 +174,7 @@ fun ControlsOverlay(
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Unlock Controls",
-                        tint = HiPrimaryCyan,
+                        tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -301,7 +300,7 @@ fun ControlsOverlay(
                             }
                             Spacer(Modifier.weight(1f))
                             PlayerToolbarTextButton(Icons.Default.Speed, "Speed ${String.format("%.1fX", playbackSpeed)}", onCycleSpeed, width = utilityCellWidth)
-                            PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) HiPrimaryCyan else Color.White, width = utilityCellWidth)
+                            PlayerToolbarTextButton(Icons.Default.Headphones, "Play as Audio", onToggleBgPlay, if (isBgPlayActive) Color.White else Color.White, width = utilityCellWidth)
                             PlayerToolbarTextButton(Icons.Default.Tune, "Equalizer", onOpenEqualizer, width = utilityCellWidth)
                         }
                     }
@@ -489,7 +488,7 @@ internal fun HiVideoSeekBar(
             if (dragFraction >= 0f) {
                 Text(
                     text = formatDuration((dragFraction * gestureDuration).toLong()),
-                    color = HiPrimaryCyan,
+                    color = Color.White,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.TopStart),
@@ -529,7 +528,7 @@ internal fun HiVideoSeekBar(
                 // Played / scrub range
                 if (displayFraction > 0f) {
                     drawLine(
-                        color = HiPrimaryCyan,
+                        color = Color.White,
                         start = Offset(0f, trackY),
                         end = Offset(size.width * displayFraction, trackY),
                         strokeWidth = strokeWidth,
@@ -551,7 +550,7 @@ internal fun HiVideoSeekBar(
                         )
                     }
                     .size(thumbSize)
-                    .background(HiPrimaryCyan, CircleShape)
+                    .background(Color.White, CircleShape)
             )
         }
     }
@@ -574,7 +573,6 @@ private fun PlayerToolbarTextButton(
         Box(
             modifier = Modifier
                 .size(34.dp)
-                .background(tint.copy(alpha = 0.12f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(21.dp))
@@ -616,7 +614,6 @@ private fun PlayerToolbarButton(
         Box(
             modifier = Modifier
                 .size(34.dp)
-                .background(tint.copy(alpha = 0.12f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -655,10 +652,10 @@ private fun PlayerTransportControls(
         PlayPauseButton(
             isPlaying,
             onTogglePlayPause,
-            tint = HiPrimaryCyan,
+            tint = Color.White,
             size = 52.dp,
             iconSize = 30.dp,
-            containerColor = Color.White.copy(alpha = 0.12f),
+            containerColor = Color.Transparent,
             modifier = Modifier.testTag("bottom_play_pause_button"),
         )
         SkipButton(Icons.Default.Forward10, onFastForward10, Modifier.testTag("forward_10_button"),
