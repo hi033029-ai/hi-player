@@ -111,7 +111,7 @@ internal fun BrowserNavigationHost(
 
 internal object BrowserNavigationPolicy {
     fun remainingIdleMillis(now: Long, lastActivity: Long): Long =
-        (5_000L - (now - lastActivity).coerceAtLeast(0L)).coerceIn(0L, 5_000L)
+        (3_000L - (now - lastActivity).coerceAtLeast(0L)).coerceIn(0L, 3_000L)
     fun isUserActivity(pressed: Boolean, previousPressed: Boolean, moved: Boolean): Boolean =
         pressed != previousPressed || (pressed && moved)
     fun isUpSwipe(up: Float, horizontal: Float, threshold: Float): Boolean =

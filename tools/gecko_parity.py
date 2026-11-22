@@ -62,9 +62,6 @@ import java.util.Locale
 import androidx.compose.material.icons.Icons''', 'shared platform tools imports')
     result[key] = replace_once(result[key], '    var showMenu by remember', '''
     var platformNotice by remember { mutableStateOf<String?>(null) }
-    var scanning by remember { mutableStateOf(false) }
-    var active by remember { mutableStateOf(true) }
-    DisposableEffect(Unit) { active = true; onDispose { active = false } }
     fun openAddress(value: String) {
         val url = normalizeAddress(value) ?: return
         services?.secureRouting?.leaveTab(coordinator.activeId)
@@ -93,20 +90,7 @@ import androidx.compose.material.icons.Icons''', 'shared platform tools imports'
                     platformNotice = if (HiBrowserTools.pinPageShortcut(context, bookmarkUrl, current.title, null))
                         "Shortcut request sent to your launcher." else "Your launcher does not support adding shortcuts."
                 },
-                *if (services != null) arrayOf(HiMenuAction("Open in secure browser", Icons.Default.Language,
-                    enabled = bookmarkUrl.isNotEmpty() && Uri.parse(bookmarkUrl).scheme == "https") {
-                    services.secureRouting.decision(coordinator.activeId, GeckoNavigationDecision.SecureSite(bookmarkUrl, true))
-                }) else emptyArray(),
-                HiMenuAction(if (scanning) "Scanning QR code…" else "Scan QR code", Icons.Default.FindInPage, enabled = !scanning) {
-                    if (!scanning) {
-                        scanning = true
-                        HiBrowserTools.scanQrCode(context, onResult = { value ->
-                            scanning = false
-                            if (active) openAddress(value)
-                        }, onError = { message -> scanning = false; if (active) platformNotice = message })
-                    }
-                },
-                HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage)''', 'translation shortcut secure browser and QR actions')
+                HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage)''', 'translation and shortcut actions')
     result[key] = replace_once(result[key], '    if (clearFailed) com.example.ui.theme.AppAlertDialog(', '''    platformNotice?.let { message -> com.example.ui.theme.AppAlertDialog(
         onDismissRequest = { platformNotice = null }, title = { androidx.compose.material3.Text("Browser") },
         text = { androidx.compose.material3.Text(message) },

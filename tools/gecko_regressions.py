@@ -8,25 +8,12 @@ def augment_regressions(result):
     k = 'main/engine/GeckoBrowserShell.kt'
     result[k] = replace_once(result[k], 'val home = snapshot.url.isBlank() && secureUrl == null', 'val home = (snapshot.url.isBlank() || snapshot.url.substringBefore(\'#\') == "about:blank") && secureUrl == null', 'native blank page Home')
     k = 'main/engine/GeckoFeatureBridge.kt'
-    result[k] = replace_once(result[k], '    private val clients = WeakHashMap<GeckoSession, Client>()', '''    private val clients = WeakHashMap<GeckoSession, Client>()
-    private val userNavigation = WeakHashMap<GeckoSession, (String) -> Unit>()
-    fun setUserNavigation(session: GeckoSession, navigate: (String) -> Unit) { userNavigation[session] = navigate }''', 'trusted navigation handler')
-    result[k] = replace_once(result[k], '    fun unbind(session: GeckoSession) {', '    fun unbind(session: GeckoSession) {\n        userNavigation.remove(session)', 'release link handler')
     result[k] = replace_once(result[k], '.put("skipSpeed", site?.skipSpeed ?: 30)', '.put("popupBlock", prefs.popupBlock)\n                            .put("skipSpeed", site?.skipSpeed ?: 30)', 'popup preference')
-    result[k] = replace_once(result[k], '                "reader" -> {', '''                "user-link" -> {
-                    if (message.optString("page").substringBefore('#') != client.page().substringBefore('#')) return null
-                    val url = message.optString("url")
-                    if (prefs.popupBlock && validWebUrl(url)) sender.session?.let { userNavigation[it]?.invoke(url) }
-                    return reply(JSONObject().put("ok", true))
-                }
-                "reader" -> {''', 'trusted same-tab link')
-    k = 'main/compatibility/Patched_GeckoTabEngine.kt'
-    result[k] = replace_once(result[k], '            { text -> update(snapshot.copy(readerText = text)) })', '            { text -> update(snapshot.copy(readerText = text)) })\n        GeckoFeatureBridge.setUserNavigation(session) { target -> load(target) }', 'normal-policy link loader')
     k = 'main/compatibility/Patched_GeckoBrowserChrome.kt'
-    result[k] = replace_once(result[k], '    onPageTools: (() -> Unit)? = null,', '    onPageTools: (() -> Unit)? = null,\n    onPlayDownload: ((String, String?, String?) -> Unit)? = null,', 'download play callback')
+    result[k] = replace_once(result[k], '    modifier: Modifier = Modifier,', '    modifier: Modifier = Modifier,\n    onPlayDownload: ((String, String?, String?) -> Unit)? = null,', 'download play callback')
     result[k] = replace_once(result[k], '        GeckoDownloadUi(services.downloads)', '        GeckoDownloadUi(services.downloads, onPlay = onPlayDownload)', 'download play action')
     k = 'main/integration/GeckoBrowserEntry.kt'
-    result[k] = replace_once(result[k], '                onPageTools = { showPageTools = true },', '''                onPageTools = { showPageTools = true },
+    result[k] = replace_once(result[k], '                account = accountHooks,', '''                account = accountHooks,
                 onPlayDownload = { url, mime, title ->
                     val play = latest.onPlayBrowserVideo
                     if (play != null) play(url, mime, title) else latest.onPlayDirectMedia(url)

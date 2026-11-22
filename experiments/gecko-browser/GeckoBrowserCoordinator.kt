@@ -58,6 +58,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
     private val desktop = mutableMapOf<Int, Boolean>()
     private val lastRecordedUrl = mutableMapOf<Int, String>()
     private val popupOpeners = mutableMapOf<Int, Int>()
+    private val pendingPopups = mutableSetOf<Int>()
+    private val popupForward = mutableMapOf<Int, Int>()
     private val popupIds = mutableSetOf<Int>()
     private val suppressHistoryUntilNextLoad = mutableSetOf<Int>()
     private val generations = mutableMapOf<Int, Long>()
@@ -108,7 +110,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         // attach it early; select only after its first page starts, and only if its
         // opener is still selected. A user who switched tabs must not be interrupted.
         if (ready && snapshot.loading && snapshot.url.isNotBlank()) {
-            val opener = popupOpeners.remove(snapshot.id)
+            val opener = if (pendingPopups.remove(snapshot.id)) popupOpeners[snapshot.id] else null
             if (opener != null && activeId == opener) select(snapshot.id)
         }
         if (snapshot.loading && !previous.loading) suppressHistoryUntilNextLoad.remove(snapshot.id)
@@ -156,6 +158,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
         } ?: return null
         popupOpeners[reserved.first.id] = openerId
         popupIds.add(reserved.first.id)
+        pendingPopups.add(reserved.first.id)
         revision++
         persist()
         return reserved.second
@@ -176,6 +179,9 @@ internal class GeckoBrowserCoordinator<View : Any>(
         desktop.remove(id)
         lastRecordedUrl.remove(id)
         popupOpeners.remove(id)
+        pendingPopups.remove(id)
+        popupForward.remove(id)
+        popupForward.values.removeAll { it == id }
         popupIds.remove(id)
         suppressHistoryUntilNextLoad.remove(id)
         generations.remove(id)
@@ -214,11 +220,34 @@ internal class GeckoBrowserCoordinator<View : Any>(
         snapshots.values.filter { it.url == url }.forEach { suppressHistoryUntilNextLoad.add(it.id); lastRecordedUrl.remove(it.id) }
         store.removeHistory(url, completion)
     }
-    fun load(url: String) { check(!closed); controller.load(url) }
+    fun load(url: String) {
+        check(!closed)
+        popupForward.remove(activeId)
+        controller.load(url)
+    }
     fun reload() { check(!closed); controller.reload() }
     fun stop() { check(!closed); controller.stop() }
-    fun back() { check(!closed); controller.back() }
-    fun forward() { check(!closed); controller.forward() }
+    private fun popupOpener(): Int? = popupOpeners[activeId]?.takeIf { id -> tabs.any { it.id == id } }
+    val canGoBack get() = activeSnapshot.canGoBack || popupOpener() != null
+    val canGoForward get() = activeSnapshot.canGoForward || popupForward.containsKey(activeId)
+
+    fun back() {
+        check(!closed)
+        if (activeSnapshot.canGoBack) {
+            controller.back()
+        } else {
+            val opener = popupOpener() ?: return
+            val child = activeId
+            popupForward[opener] = child
+            select(opener)
+        }
+    }
+
+    fun forward() {
+        check(!closed)
+        val child = popupForward.remove(activeId)
+        if (child == null || !select(child)) controller.forward()
+    }
     fun exitFullScreen() { check(!closed); controller.exitFullScreen() }
     fun desktopMode(): Boolean = desktop[activeId] ?: false
     fun setDesktop(enabled: Boolean) {
@@ -251,6 +280,8 @@ internal class GeckoBrowserCoordinator<View : Any>(
         desktop.clear()
         lastRecordedUrl.clear()
         popupOpeners.clear()
+        pendingPopups.clear()
+        popupForward.clear()
         popupIds.clear()
         suppressHistoryUntilNextLoad.clear()
         generations.clear()

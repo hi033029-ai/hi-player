@@ -79,7 +79,7 @@ internal class GeckoTabEngine(
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
                 val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
-                popupGate.clear()
+                if (newWindow) popupGate.clear()
                 if (newWindow && !runCatching { popupAllowed(request.uri, request.hasUserGesture) }.getOrDefault(false)) {
                     return GeckoResult.deny()
                 }

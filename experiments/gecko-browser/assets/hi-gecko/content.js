@@ -8,8 +8,11 @@
     if (!blockPopups || !event.isTrusted || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     const anchor = event.target && event.target.closest && event.target.closest("a[href]");
     if (!anchor || anchor.target.toLowerCase() !== "_blank" || anchor.hasAttribute("download") || !/^https?:\/\//i.test(anchor.href)) return;
-    event.preventDefault(); event.stopImmediatePropagation();
-    send({kind:"user-link",page:location.href,url:anchor.href}).catch(() => {});
+    const originalTarget = anchor.target;
+    anchor.target = "_self";
+    setTimeout(() => {
+      if (anchor.target === "_self") anchor.target = originalTarget;
+    }, 0);
   },true);
   const helperResult = ok => {
     if (window.top === window) send({kind:"helper-status",page:location.href,ok}).catch(() => {});

@@ -1,7 +1,7 @@
 diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko-browser/GeckoBrowserChrome.kt
 --- a/experiments/gecko-browser/GeckoBrowserChrome.kt
 +++ b/experiments/gecko-browser/GeckoBrowserChrome.kt
-@@ -56,6 +56,8 @@
+@@ -52,6 +52,8 @@
      onNavigate: ((String) -> Unit)? = null,
      downloadsContent: @Composable (String) -> Unit,
      appNavigation: @Composable () -> Unit = {},
@@ -10,7 +10,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko
      permissionUi: GeckoPermissionUi? = null,
      services: GeckoBrowserServices? = null,
      modifier: Modifier = Modifier,
-@@ -67,6 +69,9 @@
+@@ -62,6 +64,9 @@
      var showClearData by remember { mutableStateOf(false) }
      var showAppearance by remember { mutableStateOf(false) }
      var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }

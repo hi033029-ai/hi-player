@@ -57,6 +57,7 @@ internal fun GeckoBrowserShell(
     onVoiceSearch: () -> Unit,
     onMenu: () -> Unit,
     onNavigate: ((String) -> Unit)? = null,
+    onDownloads: (() -> Unit)? = null,
     find: GeckoFindController? = null,
     modifier: Modifier = Modifier,
     permissionUi: GeckoPermissionUi? = null,
@@ -182,6 +183,7 @@ internal fun GeckoBrowserShell(
                 onReloadOrStop = { if (secureUrl != null) secureRouting?.continueWebsite(activeId) else if (snapshot.loading) coordinator.stop() else coordinator.reload() },
                 onShowTabs = { focusManager.clearFocus(force = true); showTabs = true },
                 onMenu = { focusManager.clearFocus(force = true); onMenu() },
+                onDownloads = onDownloads,
             ) }
         }
     }

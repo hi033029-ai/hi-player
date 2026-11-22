@@ -106,9 +106,8 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     var voiceUnavailable by remember { mutableStateOf(false) }
     val accountModel: GoogleAccountViewModel = viewModel(viewModelStoreOwner = activity)
     var showAccount by remember { mutableStateOf(false) }
-    var showPageTools by remember { mutableStateOf(false) }
     val accountHooks = remember(accountModel) {
-        GeckoAccountHooks(email = { accountModel.profile.value?.email }, signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true })
+        GeckoAccountHooks(signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true }, photoUrl = { accountModel.profile.value?.photoUrl })
     }
     val fullscreen = coordinator.activeSnapshot.fullscreen
     fun navigate(raw: String) {
@@ -144,9 +143,13 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     BackHandler {
         val activeId = coordinator.activeId
         val snapshot = coordinator.activeSnapshot
+        if (coordinator.canGoBack) {
+            coordinator.back()
+            return@BackHandler
+        }
         when (BrowserTabBackPolicy.backAction(
             showingHome = snapshot.url.isBlank() && services.secureRouting.route(activeId) == null,
-            canGoBack = snapshot.canGoBack,
+            canGoBack = coordinator.canGoBack,
         )) {
             BrowserTabBackPolicy.BackAction.PAGE_HISTORY -> coordinator.back()
             BrowserTabBackPolicy.BackAction.HOME -> {
@@ -176,12 +179,10 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     onResumeGecko = services::resumeDownload) },
                 appNavigation = arguments.appNavigation, services = services,
                 account = accountHooks,
-                onPageTools = { showPageTools = true },
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
         }
     }
-    GeckoPageToolsSheet(arguments, services, visible = showPageTools) { showPageTools = false }
     if (showSettings) GeckoAppearanceDialog(
         services.settings,
         canReloadCurrentPage = coordinator.activeSnapshot.url.isNotBlank(),

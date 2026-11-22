@@ -108,7 +108,6 @@ class GeckoBrowserChromeTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("orbit_browser", Context.MODE_PRIVATE).edit().clear().commit()
         val store = OrbitBrowserStore(context)
-        var openedPageTools = false
         val coordinator = GeckoBrowserCoordinator<GeckoView>(GeckoOrbitTabStore(store)) { tab, changed ->
             object : GeckoManagedSession<GeckoView> {
                 override fun attach(view: GeckoView) = Unit
@@ -128,15 +127,13 @@ class GeckoBrowserChromeTest {
         compose.setContent { HiPlayerTheme {
             GeckoBrowserChrome(coordinator, store, listOf("Google"), "Google", {}, { it }, {}, {}, {},
                 downloadsContent = { Text("Downloads") },
-                pageContent = { Text("Gecko page") },
-                onPageTools = { openedPageTools = true })
+                pageContent = { Text("Gecko page") })
         } }
 
         compose.runOnIdle { assertTrue(compose.onAllNodesWithText("Page actions").fetchSemanticsNodes().isEmpty()) }
         compose.onNodeWithContentDescription("Browser menu").performClick()
-        compose.onNodeWithText("Page tools").performScrollTo().performClick()
         compose.runOnIdle {
-            assertTrue(openedPageTools)
+            assertTrue(compose.onAllNodesWithText("Page tools").fetchSemanticsNodes().isEmpty())
             coordinator.close()
         }
     }

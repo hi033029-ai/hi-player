@@ -1091,6 +1091,13 @@ showHdrCustomizer = false
                     .align(Alignment.TopCenter)
                     .padding(top = 56.dp),
             )
+        val pictureMenuBottomInset = if (areControlsVisible) {
+            val halfHeight = with(controlsDensity) { (containerSize.height / 2).toDp() }
+            val inset = minOf(bottomControlsHeight + 4.dp, halfHeight)
+            if (!showHdrCustomizer && containerSize.width > containerSize.height) {
+                (inset - 12.dp).coerceAtLeast(0.dp)
+            } else inset
+        } else 12.dp
         HdrPresetMenu(
             onClose = { showHdrPresetMenu = false; showHdrCustomizer = false },
             visible = showHdrPresetMenu || showHdrCustomizer,
@@ -1137,7 +1144,7 @@ showHdrCustomizer = false
                             onAdjustingChange = { isHdrMenuInteracting = it },
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 28.dp, bottom = if (areControlsVisible) minOf(bottomControlsHeight + 4.dp, with(controlsDensity) { (containerSize.height / 2).toDp() }) else 12.dp),
+                .padding(start = 28.dp, bottom = pictureMenuBottomInset),
         )
 
         if (isNetworkStream && isBuffering && !isPlaying && playerError == null && !isScreenLocked) {

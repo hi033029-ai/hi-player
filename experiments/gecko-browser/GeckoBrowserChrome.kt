@@ -1,16 +1,13 @@
 package com.example.browser.gecko
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add; import androidx.compose.material.icons.filled.AccountCircle; import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
@@ -30,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import com.example.auth.SecureWebsitePolicy
 import com.example.ui.screens.BrowserClearDataDialog
 import com.example.ui.screens.HiBrowserLibrary
 import com.example.ui.screens.HiBrowserMenuSheet
@@ -60,7 +56,6 @@ internal fun GeckoBrowserChrome(
     services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
-    onPageTools: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
@@ -72,12 +67,6 @@ internal fun GeckoBrowserChrome(
     var clearFailed by remember { mutableStateOf(false) }
     var qrNotice by remember { mutableStateOf<String?>(null) }
     var bookmarkEntries by remember(store) { mutableStateOf(store.bookmarks()) }
-    fun startGoogleSignIn() {
-        services?.secureRouting?.decision(
-            coordinator.activeId,
-            GeckoNavigationDecision.SecureSignIn(GeckoGoogleSignIn.entryUrl(runCatching { account?.email?.invoke() }.getOrNull())),
-        )
-    }
     @Suppress("UNUSED_VARIABLE") val coordinatorRevision = coordinator.revision
     val current = coordinator.activeSnapshot
     val find = remember(coordinator) { GeckoFindController(coordinator.controller::find, coordinator.controller::clearFind) }
@@ -104,7 +93,8 @@ internal fun GeckoBrowserChrome(
         coordinator = coordinator, store = store, providerNames = providerNames,
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch, onNavigate = onNavigate,
-        onMenu = { showMenu = true }, find = find, modifier = modifier,
+        onMenu = { showMenu = true }, onDownloads = { librarySection = HiLibrarySection.DOWNLOADS },
+        find = find, modifier = modifier,
         permissionUi = services?.permissions ?: permissionUi,
         historyRevision = libraryRevision,
         bookmarks = bookmarkEntries.map { it.title to it.url },
@@ -160,18 +150,11 @@ internal fun GeckoBrowserChrome(
             tiles = listOf(
                 HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
                 HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
-                HiMenuAction("Downloads", Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
-                HiMenuAction("New tab", Icons.Default.Add) { coordinator.open(false) },
             ),
             onSetDefaultBrowser = null,
             tools = listOf(
                 HiMenuAction("Find in page", Icons.Default.FindInPage, enabled = onPage) { find.open(coordinator.activeId, current.url) },
                 *if (services != null) arrayOf(HiMenuAction("Share page", Icons.Default.Share, enabled = onPage) { services.contextActions.offer(coordinator.activeId, current.url, null) }) else emptyArray(),
-                *if (services != null) arrayOf(HiMenuAction("Open in secure browser", Icons.Default.OpenInNew,
-                    enabled = onPage && SecureWebsitePolicy.originKey(current.url) != null) {
-                    services.secureRouting.decision(coordinator.activeId, GeckoNavigationDecision.SecureSite(current.url, userGesture = true))
-                }) else emptyArray(),
-                *if (onPageTools != null) arrayOf(HiMenuAction("Page tools", Icons.Default.Settings, enabled = onPage) { onPageTools() }) else emptyArray(),
                 HiMenuAction("Scan QR code", Icons.Default.QrCodeScanner) {
                     showMenu = false
                     HiBrowserTools.scanQrCode(
@@ -190,16 +173,14 @@ internal fun GeckoBrowserChrome(
                 },
             ),
             rows = listOf(
-                *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) "Hi Player account · signed in" else "Sign in to Hi Player with Google", Icons.Default.AccountCircle) { account.openAccount() }) else emptyArray(),
-                *if (services != null) arrayOf(HiMenuAction("Sign in to Google for websites", Icons.Default.Language) { startGoogleSignIn() }) else emptyArray(),
+                *if (account != null) arrayOf(HiMenuAction(if (account.signedIn()) "Hi Player account · signed in" else "Sign in to Hi Player with Google", Icons.Default.AccountCircle, imageUrl = account.photoUrl()) { account.openAccount() }) else emptyArray(),
                 HiMenuAction("New private tab", Icons.Default.VisibilityOff) { coordinator.open(true) },
                 HiMenuAction("Settings", Icons.Default.Settings) { onSettings() },
                 *if (services != null) arrayOf(HiMenuAction("Clear browsing data", Icons.Default.History) { showClearData = true }) else emptyArray(),
-                HiMenuAction("Close this tab", Icons.Default.Close) { coordinator.closeTab(coordinator.activeId) },
             ),
             bottomRow = listOf(
-                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = onPage && current.canGoBack) { coordinator.back() },
-                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = onPage && current.canGoForward) { coordinator.forward() },
+                HiMenuAction("Back", Icons.Default.ArrowBack, enabled = coordinator.canGoBack) { coordinator.back() },
+                HiMenuAction("Forward", Icons.Default.ArrowForward, enabled = coordinator.canGoForward) { coordinator.forward() },
                 HiMenuAction(if (saved) "Remove bookmark" else "Add bookmark", if (saved) Icons.Default.Star else Icons.Default.StarBorder, enabled = bookmarkUrl.isNotEmpty(), checked = saved) {
                     if (saved) removeBookmark(bookmarkUrl)
                     else addBookmark(OrbitBrowserEntry(current.title.ifBlank { bookmarkUrl }, bookmarkUrl))

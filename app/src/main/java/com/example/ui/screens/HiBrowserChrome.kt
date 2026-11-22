@@ -70,6 +70,9 @@ import androidx.compose.material3.IconButton
 import com.example.ui.theme.AppModalBottomSheet as ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -109,6 +112,7 @@ import com.example.ui.theme.HiThemePalette
 import com.example.ui.components.HiPlayerLogoBadge
 import com.example.ui.components.rememberHiPlayerLogoPainter
 import androidx.compose.ui.graphics.FilterQuality
+import coil.compose.AsyncImage
 
 /** True while the on-screen keyboard is showing. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -159,6 +163,7 @@ internal fun HiBrowserToolbar(
     onShowTabs: () -> Unit,
     onMenu: () -> Unit,
     modifier: Modifier = Modifier,
+    onDownloads: (() -> Unit)? = null,
 ) {
     val palette = LocalHiPalette.current
     val focusManager = LocalFocusManager.current
@@ -190,6 +195,7 @@ internal fun HiBrowserToolbar(
         if (text.isNotBlank()) onSubmit(text)
     }
 
+    val barHeight = if (focused || onDownloads == null) 56.dp else 48.dp
     // Keep the address field and tab controls as separate, independently legible controls.
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
@@ -202,7 +208,7 @@ internal fun HiBrowserToolbar(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(barHeight)
                 .clip(shape)
                 .background(palette.surface)
                 .border(1.dp, if (focused) palette.primary else palette.surfaceBorder, shape)
@@ -320,9 +326,14 @@ internal fun HiBrowserToolbar(
                 }
             }
         }
+        if (!focused && onDownloads != null) {
+            IconButton(onClick = onDownloads, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.Download, contentDescription = "Downloads", tint = palette.primary)
+            }
+        }
         Row(
             modifier = Modifier
-                .height(56.dp)
+                .height(barHeight)
                 .clip(tabsShape)
                 .background(palette.surfaceElevated)
                 .border(1.dp, palette.surfaceBorder, tabsShape)
@@ -351,6 +362,7 @@ internal data class HiMenuAction(
     val icon: ImageVector,
     val enabled: Boolean = true,
     val checked: Boolean? = null,
+    val imageUrl: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -482,12 +494,12 @@ private fun HiMenuTile(item: HiMenuAction, onClick: () -> Unit, modifier: Modifi
             .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            item.icon,
-            contentDescription = null,
-            tint = if (item.enabled) palette.primary else palette.textTertiary,
-            modifier = Modifier.size(26.dp),
-        )
+        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+            Icon(item.icon, contentDescription = null, tint = if (item.enabled) palette.primary else palette.textTertiary)
+            item.imageUrl?.let { url ->
+                AsyncImage(url, contentDescription = null, modifier = Modifier.fillMaxSize().clip(CircleShape))
+            }
+        }
         Spacer(Modifier.height(6.dp))
         Box(modifier = Modifier.heightIn(min = 30.dp), contentAlignment = Alignment.TopCenter) {
             Text(
@@ -527,6 +539,7 @@ internal data class HiBrowserTabCard(
 )
 
 /** Full-screen tab switcher: normal/private switch, page previews, new tab and close all. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HiBrowserTabSwitcher(
     tabs: List<HiBrowserTabCard>,
@@ -581,12 +594,25 @@ internal fun HiBrowserTabSwitcher(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(shown, key = { it.id }) { tab ->
-                        HiBrowserTabCardView(
-                            tab = tab,
-                            active = tab.id == activeTabId,
-                            onSelect = { onSelect(tab.id) },
-                            onClose = { onClose(tab.id) },
-                        )
+                        val swipe = rememberSwipeToDismissBoxState()
+                        LaunchedEffect(swipe.currentValue) {
+                            if (swipe.currentValue != SwipeToDismissBoxValue.Settled) onClose(tab.id)
+                        }
+                        SwipeToDismissBox(
+                            state = swipe,
+                            backgroundContent = {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Close, contentDescription = null, tint = palette.textSecondary)
+                                }
+                            },
+                        ) {
+                            HiBrowserTabCardView(
+                                tab = tab,
+                                active = tab.id == activeTabId,
+                                onSelect = { onSelect(tab.id) },
+                                onClose = { onClose(tab.id) },
+                            )
+                        }
                     }
                 }
             }
@@ -716,16 +742,20 @@ internal fun HiBrowserHome(
                 .padding(horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(32.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Image(
                         painter = rememberHiPlayerLogoPainter(),
                         contentDescription = null,
-                        modifier = Modifier.size(32.dp),
+                        modifier = Modifier.size(44.dp),
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Hi Browser", color = palette.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Hi Browser", color = palette.textPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 }
                 if (isPrivate) {
                     Spacer(Modifier.height(14.dp))
@@ -764,7 +794,7 @@ internal fun HiBrowserHome(
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(36.dp))
             Column(
                 modifier = Modifier.fillMaxWidth().clip(cardShape)
                     .background(palette.surface)

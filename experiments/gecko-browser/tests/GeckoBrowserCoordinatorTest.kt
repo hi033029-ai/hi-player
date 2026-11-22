@@ -110,6 +110,31 @@ class GeckoBrowserCoordinatorTest {
         coordinator.close()
     }
 
+    @Test fun backAndForwardBetweenPopupAndOpenerKeepBothTabsOpen() {
+        val coordinator = GeckoBrowserCoordinator<Any>(Store(), ::Fake)
+        val opener = coordinator.activeId
+        coordinator.load("https://example.org/start")
+        var child = -1
+        val popup = coordinator.reservePopup(opener) { tab, callback ->
+            child = tab.id
+            Fake(tab, callback)
+        } as Fake
+        popup.callback(GeckoTabSnapshot(child, false, "https://example.org/next", loading = true))
+        assertEquals(child, coordinator.activeId)
+        assertTrue(coordinator.canGoBack)
+        coordinator.back()
+        assertEquals(opener, coordinator.activeId)
+        assertEquals(2, coordinator.tabs.size)
+        assertFalse(popup.closed)
+        assertTrue(coordinator.canGoForward)
+        coordinator.forward()
+        assertEquals(child, coordinator.activeId)
+        coordinator.back()
+        coordinator.closeTab(child)
+        assertFalse(coordinator.canGoForward)
+        coordinator.close()
+    }
+
     @Test fun sensitiveUrlIsNotWrittenToStore() {
         val store = Store()
         val coordinator = GeckoBrowserCoordinator<Any>(store) { tab, callback -> Fake(tab, callback) }

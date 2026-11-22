@@ -5,9 +5,9 @@ import org.junit.Test
 
 class BrowserQuickNavigationTest {
     @Test fun navigationExpiresAfterFiveSecondsWithoutActivity() {
-        assertEquals(5_000L, BrowserNavigationPolicy.remainingIdleMillis(10_000L, 10_000L))
-        assertEquals(1L, BrowserNavigationPolicy.remainingIdleMillis(14_999L, 10_000L))
-        assertEquals(0L, BrowserNavigationPolicy.remainingIdleMillis(15_000L, 10_000L))
+        assertEquals(3_000L, BrowserNavigationPolicy.remainingIdleMillis(10_000L, 10_000L))
+        assertEquals(1L, BrowserNavigationPolicy.remainingIdleMillis(12_999L, 10_000L))
+        assertEquals(0L, BrowserNavigationPolicy.remainingIdleMillis(13_000L, 10_000L))
         assertEquals(0L, BrowserNavigationPolicy.remainingIdleMillis(99_000L, 10_000L))
     }
     @Test fun syntheticAndHoverEventsCannotKeepNavigationOpen() {

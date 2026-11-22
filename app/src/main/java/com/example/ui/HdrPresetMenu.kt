@@ -7,16 +7,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -36,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
 import kotlin.math.abs
+import kotlinx.coroutines.flow.first
 
 private val HdrMenuShape = RoundedCornerShape(16.dp)
 
@@ -244,8 +243,12 @@ fun HdrPresetMenu(
             val idx = ColorPresets.ALL.indexOfFirst { it.name == selected.name }
             if (idx >= 0) idx else ColorPresets.ALL.size
         }
-        LaunchedEffect(visible, selectedIndex) {
-            if (visible && selectedIndex >= 0) {
+        LaunchedEffect(listState, selectedIndex) {
+            val layout = snapshotFlow { listState.layoutInfo }.first { it.visibleItemsInfo.isNotEmpty() }
+            val selectedItem = layout.visibleItemsInfo.firstOrNull { it.index == selectedIndex }
+            if (selectedItem == null || selectedItem.offset < layout.viewportStartOffset ||
+                selectedItem.offset + selectedItem.size > layout.viewportEndOffset
+            ) {
                 listState.animateScrollToItem(selectedIndex)
             }
         }
@@ -268,8 +271,7 @@ fun HdrPresetMenu(
             LazyRow(
                 state = listState,
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(end = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 itemsIndexed(ColorPresets.ALL, key = { _, preset -> preset.name }) { _, preset ->
                     HdrPresetOption(
@@ -342,15 +344,17 @@ private fun HdrPresetOption(
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(12.dp)
+    val selectionOutline = if (selected) Modifier.border(2.dp, Color.White, shape) else Modifier
     Column(
         modifier = Modifier
-            .widthIn(min = 84.dp, max = 186.dp)
+            .widthIn(min = 72.dp, max = 186.dp)
             .heightIn(min = 48.dp)
             .clip(shape)
+            .then(selectionOutline)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .semantics { this.selected = selected }
             .testTag(testTag)
-            .padding(horizontal = 11.dp, vertical = 7.dp),
+            .padding(horizontal = 6.dp, vertical = 7.dp),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -359,7 +363,7 @@ private fun HdrPresetOption(
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-        ); if (selected) { Spacer(modifier = Modifier.height(3.dp)); Box(modifier = Modifier.width(24.dp).height(2.dp).background(Color.White)) }
+        )
     }
 }
 
