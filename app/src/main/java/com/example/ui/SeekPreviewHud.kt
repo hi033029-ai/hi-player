@@ -53,7 +53,7 @@ fun SeekPreviewHud(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     "[$sign${deltaSeconds}s]",
-                    color = if (deltaSeconds >= 0L) HiPrimaryCyan else HiAccentAmber,
+                    color = Color.White,
                     fontSize = 14.sp,
                 )
             }
