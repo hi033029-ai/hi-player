@@ -28,12 +28,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,420 +41,293 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.player.ColorBandAdjustment
 import com.example.player.ColorPreset
 import com.example.player.ColorPresets
-import com.example.player.HdrColor
-import com.example.player.withBandAdjustment
-import kotlin.math.roundToInt
+import kotlin.math.abs
 
-/**
- * Compact, uncluttered HDR preset bar & customizer designed for watching video:
- *  • Horizontal carousel of presets with live preview.
- *  • Single "Customize" action to fine-tune the whole picture or individual colours.
- */
+private val HdrMenuShape = RoundedCornerShape(16.dp)
+
 @Composable
 fun HdrPresetMenu(
+    visible: Boolean,
     selected: ColorPreset,
-    isCustomizing: Boolean,
     onSelect: (ColorPreset) -> Unit,
-    onOpenCustomizer: () -> Unit,
-    onUpdatePreset: (ColorPreset) -> Unit,
-    onReset: () -> Unit,
-    onClose: () -> Unit,
+    customPreset: ColorPreset = ColorPresets.CUSTOM,
+    customizing: Boolean = false,
+    onCustomize: () -> Unit = {},
+    onApplyCustomPreset: (ColorPreset) -> Unit = {},
+    onCustomPresetChange: (ColorPreset) -> Unit = {},
+    selectedColor: HdrColor = HdrColor.RED,
+    colorIntensity: Float = 0.5f,
+    colorIntensities: Map<HdrColor, Float> = emptyMap(),
+    onColorSelected: (HdrColor) -> Unit = {},
+    colorSaturations: Map<HdrColor, Float> = emptyMap(),
+    onBandChange: (Float, Float) -> Unit = { _, _ -> },
+    enhancementActive: Boolean = false,
+    onToggleEnhancement: () -> Unit = {},
+    onClose: () -> Unit = {},
     modifier: Modifier = Modifier,
     onUserInteraction: () -> Unit = {},
     onAdjustingChange: (Boolean) -> Unit = {},
 ) {
-    DisposableEffect(Unit) {
-        onDispose { onAdjustingChange(false) }
+    if (!visible) return
+      DisposableEffect(Unit) { onDispose { onAdjustingChange(false) } }
+    var colorIntensityDraft by remember(selectedColor, colorIntensity) {
+        mutableFloatStateOf(colorIntensity)
     }
-
-    var selectedColor by remember { mutableStateOf<HdrColor?>(null) }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-    ) {
-        if (isCustomizing) {
-            val panelShape = RoundedCornerShape(16.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(panelShape)
-                    .background(Color(0xE00A0F1A))
-                    .border(1.dp, Color.White.copy(alpha = 0.14f), panelShape)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    if (customizing) {
+        val saturation = colorSaturations[selectedColor] ?: 1f
+        val customizerScrollState = rememberScrollState()
+        LaunchedEffect(customizerScrollState.isScrollInProgress) {
+            onAdjustingChange(customizerScrollState.isScrollInProgress)
+            if (customizerScrollState.isScrollInProgress) onUserInteraction()
+        }
+        Column(
+            modifier = modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .navigationBarsPadding()
+                .clip(HdrMenuShape)
+                .background(Color(0xF20A0F19), HdrMenuShape)
+                .border(1.dp, Color.White.copy(alpha = 0.18f), HdrMenuShape)
+                .verticalScroll(customizerScrollState)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag("hdr_customizer"),
+        ) {
+            HdrMenuHeader(
+                title = "Customize HDR",
+                subtitle = "Live preview",
+                secondaryActionLabel = "Reset",
+                onSecondaryAction = {
+                    onUserInteraction()
+                    onCustomPresetChange(ColorPresets.CUSTOM)
+                },
+                onDone = {
+                    onUserInteraction()
+                    onApplyCustomPreset(customPreset)
+                    onClose()
+                },
+            )
+            com.example.ui.components.FirstUseTip(
+                com.example.ui.components.rememberFirstUseTip("hdr_customisation_v1"),
+                "Adjust only what you choose",
+                "Whole-picture sliders adjust the full frame. Pick any colour below to brighten or dull only matching pixels without tinting the whole screen.",
+                overVideo = true,
+            )
+            Text(
+                "Whole picture",
+                color = Color.White.copy(alpha = 0.78f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CustomSlider(Modifier.weight(1f), "Exposure", customPreset.brightness, 0.5f..1.5f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                    onCustomPresetChange(customPreset.copy(brightness = it))
+                }
+                CustomSlider(Modifier.weight(1f), "Contrast", customPreset.contrast, 0.7f..1.4f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                    onCustomPresetChange(customPreset.copy(contrast = it))
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CustomSlider(Modifier.weight(1f), "Saturation", customPreset.saturation, 0f..2f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                    onCustomPresetChange(customPreset.copy(saturation = it))
+                }
+                CustomSlider(Modifier.weight(1f), "Vibrance", customPreset.vibrance, 0f..2f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                    onCustomPresetChange(customPreset.copy(vibrance = it))
+                }
+            }
+            CustomSlider(Modifier.fillMaxWidth(), "Sharpness", customPreset.sharpness, 0f..2f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                onCustomPresetChange(customPreset.copy(sharpness = it))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                HdrMenuHeader(
-                    title = "Customize ${hdrPresetDisplayName(selected)}",
-                    subtitle = "Adjust only what you choose",
-                    onDone = onClose,
-                    onReset = {
-                        onUserInteraction()
-                        onReset()
-                    },
+                Text(
+                    text = "Colour · ${selectedColor.displayName}",
+                    color = selectedColor.color,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
-
-                // Scope toggle: Whole picture vs individual colours
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val wholeSelected = selectedColor == null
+                if (abs(colorIntensityDraft - 0.5f) > 0.001f || abs(saturation - 1f) > 0.001f) {
+                    Text(
+                        text = "Reset colour",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onUserInteraction(); colorIntensityDraft = 0.5f
+                                onBandChange(0.5f, 1f)
+                            }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                HdrColor.entries.forEach { color ->
+                    val isSelected = color == selectedColor
+                    val isModified = abs((colorIntensities[color] ?: 0.5f) - 0.5f) > 0.001f || abs((colorSaturations[color] ?: 1f) - 1f) > 0.001f
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                if (wholeSelected) Color.White.copy(alpha = 0.18f)
-                                else Color.White.copy(alpha = 0.06f),
-                            )
-                            .border(
-                                1.dp,
-                                if (wholeSelected) Color.White else Color.White.copy(alpha = 0.16f),
-                                RoundedCornerShape(18.dp),
-                            )
-                            .clickable {
-                                onUserInteraction()
-                                selectedColor = null
-                            }
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.RadioButton) { onUserInteraction(); onColorSelected(color) }
+                            .semantics {
+                                contentDescription = "${color.displayName} colour adjustment"
+                                this.selected = isSelected
+                            },
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = "Whole picture",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-
-                    Text(
-                        text = "By colour:",
-                        color = Color.White.copy(alpha = 0.55f),
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
-
-                    HdrColor.entries.forEach { hdrColor ->
-                        val isSelected = selectedColor == hdrColor
-                        val hasAdjustment = !selected.bandFor(hdrColor).isNeutral
                         Box(
                             modifier = Modifier
                                 .size(26.dp)
-                                .clip(CircleShape)
-                                .background(Color(hdrColor.swatchArgb))
-                                .border(
-                                    width = if (isSelected) 2.5.dp else if (hasAdjustment) 1.5.dp else 1.dp,
-                                    color = when {
-                                        isSelected -> Color.White
-                                        hasAdjustment -> Color.White.copy(alpha = 0.85f)
-                                        else -> Color.White.copy(alpha = 0.25f)
-                                    },
-                                    shape = CircleShape,
-                                )
-                                .clickable {
-                                    onUserInteraction()
-                                    selectedColor = hdrColor
-                                },
+                                .background(color.color, CircleShape)
+                                .then(
+                                    if (isSelected) Modifier.border(2.5.dp, Color.White, CircleShape)
+                                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                                ),
                         )
-                    }
-                }
-
-                val activeColor = selectedColor
-                if (activeColor == null) {
-                    CustomSlider(
-                        label = "Brightness",
-                        value = selected.brightness,
-                        range = -0.35f..0.45f,
-                        valueText = "%+.2f".format(selected.brightness),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(selected.copy(brightness = it))
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Contrast",
-                        value = selected.contrast,
-                        range = 0.6f..1.8f,
-                        valueText = "%.2fx".format(selected.contrast),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(selected.copy(contrast = it))
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Saturation",
-                        value = selected.saturation,
-                        range = 0.5f..2.0f,
-                        valueText = "%.2fx".format(selected.saturation),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(selected.copy(saturation = it))
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Warmth",
-                        value = selected.temperature,
-                        range = -0.5f..0.5f,
-                        valueText = "%+.2f".format(selected.temperature),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(selected.copy(temperature = it))
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Sharpness",
-                        value = selected.sharpness,
-                        range = 0f..1f,
-                        valueText = "${(selected.sharpness * 100).roundToInt()}%",
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(selected.copy(sharpness = it))
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                } else {
-                    val band = selected.bandFor(activeColor)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+                        if (isModified) {
                             Box(
                                 modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(activeColor.swatchArgb)),
-                            )
-                            Text(
-                                text = "${activeColor.displayName} channel",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                        if (!band.isNeutral) {
-                            Text(
-                                text = "Reset colour",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        onUserInteraction()
-                                        onUpdatePreset(
-                                            selected.withBandAdjustment(activeColor, ColorBandAdjustment.NEUTRAL),
-                                        )
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(6.dp)
+                                    .background(Color.White, CircleShape),
                             )
                         }
                     }
-                    CustomSlider(
-                        label = "Hue",
-                        value = band.hueDegrees,
-                        range = -45f..45f,
-                        valueText = "%+.0f°".format(band.hueDegrees),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(
-                                selected.withBandAdjustment(activeColor, band.copy(hueDegrees = it)),
-                            )
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Saturation",
-                        value = band.saturation,
-                        range = 0f..2f,
-                        valueText = "%.2fx".format(band.saturation),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(
-                                selected.withBandAdjustment(activeColor, band.copy(saturation = it)),
-                            )
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
-                    CustomSlider(
-                        label = "Luminance",
-                        value = band.luminance,
-                        range = -0.5f..0.5f,
-                        valueText = "%+.2f".format(band.luminance),
-                        onValueChange = {
-                            onUserInteraction()
-                            onAdjustingChange(true)
-                            onUpdatePreset(
-                                selected.withBandAdjustment(activeColor, band.copy(luminance = it)),
-                            )
-                        },
-                        onValueChangeFinished = { onAdjustingChange(false) },
-                    )
                 }
             }
-        } else {
-            val listState = rememberLazyListState()
-            LaunchedEffect(listState.isScrollInProgress) {
-                if (listState.isScrollInProgress) {
-                    onUserInteraction()
-                    onAdjustingChange(true)
-                } else {
-                    onAdjustingChange(false)
-                }
+            Slider(
+                value = colorIntensityDraft,
+                onValueChange = {
+                    onUserInteraction(); onAdjustingChange(true); colorIntensityDraft = it
+                    onBandChange(it, saturation)
+                },
+                onValueChangeFinished = { onAdjustingChange(false) }, valueRange = 0f..1f,
+                modifier = Modifier.fillMaxWidth().height(34.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = selectedColor.color,
+                    activeTrackColor = selectedColor.color,
+                    inactiveTrackColor = Color.White.copy(alpha = 0.24f),
+                ),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Bright", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                Text("Original", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                Text("Dark", color = Color.White.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Medium)
             }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            CustomSlider(Modifier.fillMaxWidth(), "${selectedColor.displayName} · Dull to rich", saturation, 0f..2f, onUserInteraction = onUserInteraction, onAdjustingChange = onAdjustingChange) {
+                onBandChange(colorIntensityDraft, it)
+            }
+        }
+    } else {
+        val listState = rememberLazyListState(); LaunchedEffect(listState.isScrollInProgress) { onAdjustingChange(listState.isScrollInProgress); if (listState.isScrollInProgress) onUserInteraction() }
+        val selectedIndex = remember(selected.name) {
+            val idx = ColorPresets.ALL.indexOfFirst { it.name == selected.name }
+            if (idx >= 0) idx else ColorPresets.ALL.size
+        }
+        LaunchedEffect(visible, selectedIndex) {
+            if (visible && selectedIndex >= 0) {
+                listState.animateScrollToItem(selectedIndex)
+            }
+        }
+        Column(
+            modifier = modifier
+                .widthIn(max = 720.dp)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .clip(HdrMenuShape)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag("hdr_preset_menu"),
+        ) {
+            HdrMenuHeader(
+                title = "Picture mode",
+                secondaryActionLabel = if (enhancementActive) "Turn off" else "Turn on",
+                onSecondaryAction = { onUserInteraction(); onToggleEnhancement() },
+                subtitle = "${hdrPresetDisplayName(selected)} selected · tap another mode to preview",
+                onDone = { onUserInteraction(); onClose() },
+            )
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(end = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                HdrMenuHeader(
-                    title = "Picture mode",
-                    subtitle = "${hdrPresetDisplayName(selected)} selected · tap another mode to preview",
-                    onDone = onClose,
-                    onReset = null,
-                )
-
-                LazyRow(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    itemsIndexed(ColorPresets.ALL) { _, preset ->
-                        HdrPresetOption(
-                            title = hdrPresetDisplayName(preset),
-                            selected = preset.id == selected.id,
-                            testTag = hdrPresetTestTag(preset),
-                            onClick = {
-                                onUserInteraction()
-                                onSelect(preset)
-                            },
-                        )
-                    }
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                                .clickable {
-                                    onUserInteraction()
-                                    onOpenCustomizer()
-                                }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "Customize",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
+                itemsIndexed(ColorPresets.ALL, key = { _, preset -> preset.name }) { _, preset ->
+                    HdrPresetOption(
+                        title = hdrPresetDisplayName(preset),
+                        selected = preset.name == selected.name,
+                        testTag = "hdr_preset_${preset.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')}",
+                        onClick = { onUserInteraction(); onSelect(preset) },
+                    )
+                }
+                item(key = "customize_hdr") {
+                    HdrPresetOption(
+                        title = "Customize",
+                        selected = selected.name == ColorPresets.CUSTOM.name,
+                        testTag = "hdr_preset_customize",
+                        onClick = { onUserInteraction(); onCustomize() },
+                    )
                 }
             }
         }
     }
 }
 
-private fun hdrPresetDisplayName(preset: ColorPreset): String =
-    when (preset.id) {
-        ColorPreset.ORIGINAL.id -> "Original"
-        ColorPreset.HDR_VIVID.id -> "Vivid"
-        else -> preset.name
-    }
-
-private fun hdrPresetTestTag(preset: ColorPreset): String =
-    when (preset.id) {
-        ColorPreset.ORIGINAL.id -> "hdr_preset_original"
-        ColorPreset.HDR_VIVID.id -> "hdr_preset_hdr_vivid"
-        else -> "hdr_preset_${preset.id}"
-    }
-
 @Composable
 private fun HdrMenuHeader(
     title: String,
     subtitle: String,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
     onDone: () -> Unit,
-    onReset: (() -> Unit)?,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
             Text(
-                text = title,
+                title,
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = subtitle,
-                color = Color.White.copy(alpha = 0.72f),
-                fontSize = 10.sp,
                 maxLines = 1,
             )
+            Text(
+                subtitle,
+                color = Color.White.copy(alpha = 0.70f),
+                fontSize = 9.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (onReset != null) {
-                TextButton(
-                    onClick = onReset,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = "Reset",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (secondaryActionLabel != null && onSecondaryAction != null) {
+                TextButton(onClick = onSecondaryAction, modifier = Modifier.heightIn(min = 36.dp)) {
+                    Text(secondaryActionLabel, color = Color.White.copy(alpha = 0.78f), fontSize = 10.sp)
                 }
             }
-            TextButton(
-                onClick = onDone,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-            ) {
-                Text(
-                    text = "Done",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+            TextButton(onClick = onDone, modifier = Modifier.heightIn(min = 36.dp)) {
+                Text("Done", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -468,16 +340,17 @@ private fun HdrPresetOption(
     testTag: String,
     onClick: () -> Unit,
 ) {
+    val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = Modifier
             .widthIn(min = 84.dp, max = 186.dp)
             .heightIn(min = 48.dp)
+            .clip(shape)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .semantics { this.selected = selected }
             .testTag(testTag)
             .padding(horizontal = 11.dp, vertical = 7.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = title,
@@ -485,61 +358,58 @@ private fun HdrPresetOption(
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-        )
-        if (selected) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 3.dp)
-                    .width(28.dp)
-                    .height(2.dp)
-                    .background(Color.White),
-            )
-        }
+        ); if (selected) { Spacer(modifier = Modifier.height(3.dp)); Box(modifier = Modifier.width(24.dp).height(2.dp).background(Color.White)) }
     }
+}
+
+private fun hdrPresetDisplayName(preset: ColorPreset): String = when (preset.name) {
+    ColorPresets.HDR_DISABLED.name -> "Original"
+    ColorPresets.VIVID_HDR.name -> "Vivid"
+    ColorPresets.CINEMATIC.name -> "Cinema"
+    ColorPresets.HDR_BRIGHT.name -> "Bright"
+    ColorPresets.NATURAL_HDR.name -> "Natural"
+    else -> preset.name
+}
+
+enum class HdrColor(val color: Color, val displayName: String) {
+    RED(Color(0xFFE53935), "Red"),
+    ORANGE(Color(0xFFFB8C00), "Orange"),
+    YELLOW(Color(0xFFFDD835), "Yellow"),
+    GREEN(Color(0xFF43A047), "Green"),
+    CYAN(Color(0xFF00ACC1), "Cyan"),
+    BLUE(Color(0xFF1E88E5), "Blue"),
+    PURPLE(Color(0xFF8E24AA), "Purple"),
+    PINK(Color(0xFFD81B60), "Pink"),
 }
 
 @Composable
 private fun CustomSlider(
+    modifier: Modifier,
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
-    valueText: String,
-    onValueChange: (Float) -> Unit,
-    onValueChangeFinished: () -> Unit = {},
+    onValueChange: (Float) -> Unit, onUserInteraction: () -> Unit = {}, onAdjustingChange: (Boolean) -> Unit = {},
 ) {
-    var draft by remember(value) { mutableFloatStateOf(value) }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = label,
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 11.sp,
-            )
-            Text(
-                text = valueText,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
+    Column(modifier = modifier) {
+        var draft by remember(value) { mutableFloatStateOf(value) }
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 9.5.sp,
+            maxLines = 1,
+        )
         Slider(
-            value = draft.coerceIn(range.start, range.endInclusive),
+            value = draft,
             onValueChange = {
-                draft = it
+                onUserInteraction(); onAdjustingChange(true); draft = it
                 onValueChange(it)
             },
-            onValueChangeFinished = onValueChangeFinished,
-            valueRange = range,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(26.dp),
+            onValueChangeFinished = { onAdjustingChange(false) }, valueRange = range,
+            modifier = Modifier.fillMaxWidth().height(32.dp),
             colors = SliderDefaults.colors(
                 thumbColor = Color.White,
                 activeTrackColor = Color.White,
-                inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+                inactiveTrackColor = Color.White.copy(alpha = 0.30f),
                 activeTickColor = Color.White,
                 inactiveTickColor = Color.White.copy(alpha = 0.50f),
             ),
