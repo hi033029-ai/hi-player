@@ -46,13 +46,13 @@ fun HdrIcon(
             CircularProgressIndicator(
                 Modifier.size(30.dp),
                 strokeWidth = 1.5.dp,
-                color = Color.White.copy(alpha = 0.55f),
+                color = Color.White,
             )
         }
         Icon(
             Icons.Filled.AutoAwesome,
             contentDescription = null,
-            tint = if (isActive) Color(0xFFFFC94A) else Color.White.copy(alpha = 0.70f),
+            tint = Color.White,
             modifier = Modifier.size(20.dp),
         )
     }
