@@ -26,6 +26,22 @@ class GeckoNavigationPolicyTest {
         assertEquals(GeckoNavigationDecision.SecureSignIn("https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "https://example.org/page"),
             googleSitePreferred.decide("https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "https://example.org/page", false))
     }
+    private val inBrowserGooglePolicy = GeckoNavigationPolicy(
+        isGoogleAuthentication = { it.startsWith("https://accounts.google.com/") },
+        secureEntryFor = { if (it.startsWith("https://example.org/")) it else "https://accounts.google.com/" },
+        prefersSecureSite = { it.startsWith("https://secure.example/") },
+        googleSignInInBrowser = true,
+    )
+    @Test fun inBrowserGoogleSignInStaysInGeckoUnlessRejected() {
+        assertEquals(
+            GeckoNavigationDecision.Allow,
+            inBrowserGooglePolicy.decide("https://accounts.google.com/ServiceLogin?service=youtube", "https://m.youtube.com/", true),
+        )
+        assertEquals(
+            GeckoNavigationDecision.SecureSignIn("https://accounts.google.com/v3/signin/rejected?TL=abc", "https://example.org/page", userGesture = false),
+            inBrowserGooglePolicy.decide("https://accounts.google.com/v3/signin/rejected?TL=abc", "https://example.org/page", false),
+        )
+    }
     @Test fun savedSecureSiteRequiresUserGestureBeforeExternalLaunch() {
         assertEquals(GeckoNavigationDecision.SecureSite("https://secure.example/a", false),
             policy.decide("https://secure.example/a", "", false))
@@ -40,7 +56,12 @@ class GeckoNavigationPolicyTest {
     }
     @Test fun promotionalAppLinksStayInBrowser() {
         assertEquals(GeckoNavigationDecision.Ignore, policy.decide("market://details?id=app.example", "https://example.org/a", true))
-        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("snssdk1233://aweme/detail/1", "https://example.org/a", false))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("snssdk1233://aweme/detail/1", "https://www.tiktok.com/", false))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("snssdk1340://aweme/detail/1", "https://www.tiktok.com/", false))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("tiktok://feed", "https://www.tiktok.com/", true))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("musically://feed", "https://www.tiktok.com/", false))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("https://app-va.tiktok.com/redirect", "https://www.tiktok.com/", false))
+        assertEquals(GeckoNavigationDecision.Ignore, policy.decide("https://app.tiktok.com/redirect", "https://www.tiktok.com/", true))
     }
     @Test fun automaticAuthenticationFromBlankTabIsIgnored() {
         assertEquals(GeckoNavigationDecision.Ignore, policy.decide("https://accounts.google.com/signin", "", false))
