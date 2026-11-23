@@ -306,11 +306,9 @@ class LibraryPlaybackDeviceTest {
             var previousMs = startMs
             for ((index, landscape) in listOf(false, true, false).withIndex()) {
                 if (index > 0) {
-                    if (bounds("Rotate Screen") == null) {
-                        val window = Rect().also { requireNotNull(automation.rootInActiveWindow).getBoundsInScreen(it) }
-                        tap(window.centerX(), window.centerY())
+                    instrumentation.runOnMainSync {
+                        ViewModelProvider(host)[PlayerViewModel::class.java].cycleScreenOrientation()
                     }
-                    tapLabel("Rotate Screen")
                 }
                 awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
                     engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&

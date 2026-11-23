@@ -31,6 +31,8 @@ def _dump_labels():
     labels = []
     bounds_by_label = {}
     for node in root.iter("node"):
+        if node.get("visible-to-user", "true").lower() != "true":
+            continue
         for name in ("text", "content-desc"):
             value = node.get(name, "")
             if value:
