@@ -108,12 +108,14 @@ class GeckoMigrationDeviceTest {
             assertEquals("Source was re-fetched", 1, server.downloadHits.get())
         } }
     }
-    @Test fun googleAuthRequiresExplicitSecureBrowserConsent() {
+    @Test fun googleAuthRedirectRemainsInGecko() {
         val context = ApplicationProvider.getApplicationContext<Context>(); prepare(context)
         FixtureServer(context).use { server -> ActivityScenario.launch(GeckoMigrationTestActivity::class.java).use { activity ->
             activity.onActivity { it.services.coordinator.load(server.root + "/google-route") }
-            await(activity, "Authentication was not routed to explicit consent") { it.services.secureRouting.pending != null }
-            activity.onActivity { assertFalse(it.services.secureRouting.pending!!.external) }
+            await(activity, "Google authentication redirect did not remain in Gecko") {
+                it.services.coordinator.activeSnapshot.url.startsWith("https://accounts.google.com/")
+            }
+            activity.onActivity { assertNull("Sign-in redirect unexpectedly left Gecko", it.services.secureRouting.pending) }
         } }
     }
 }

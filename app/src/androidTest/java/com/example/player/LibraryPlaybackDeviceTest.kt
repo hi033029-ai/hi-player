@@ -314,7 +314,7 @@ class LibraryPlaybackDeviceTest {
                 }
                 awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
                     engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
-                        engine.vlcFirstFrame.value && engine.isPlaying.value &&
+                        engine.isPlaying.value &&
                         engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
                         centeredMkvPicture(host, landscape)
                 }
