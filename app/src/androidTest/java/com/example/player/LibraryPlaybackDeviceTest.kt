@@ -207,8 +207,24 @@ class LibraryPlaybackDeviceTest {
 
     @Test fun libraryTapAutoplaysAndTransportAndResizerRespond() {
         val context = instrumentation.targetContext
+        val previousActivities = mutableSetOf<MainActivity>()
+        instrumentation.runOnMainSync {
+            previousActivities += ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+        }
         context.startActivity(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        awaitStep("fresh settings-loaded library activity") {
+            var ready = false
+            instrumentation.runOnMainSync {
+                val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<MainActivity>().singleOrNull()
+                if (activity != null && activity !in previousActivities) {
+                    ready = ViewModelProvider(activity)[LibraryViewModel::class.java].isSettingsLoaded.value
+                }
+            }
+            ready
+        }
         tapLabel("HiPlayerLaunchCheck")
         awaitStep("indexed folder contents") { bounds("Back to Folders") != null }
         tapLabel("launch-check.mp4")
@@ -346,11 +362,20 @@ class LibraryPlaybackDeviceTest {
                         ViewModelProvider(host)[PlayerViewModel::class.java].cycleScreenOrientation()
                     }
                 }
+                var guideDismissAttempted = false
                 awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
-                    engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
-                        engine.isPlaying.value &&
-                        engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
-                        centeredMkvPicture(host, landscape)
+                    val guide = bounds("Skip guide")
+                    if (guide != null && !guideDismissAttempted) {
+                        guideDismissAttempted = true
+                        if (!clickLabel("Skip guide")) tap(guide.centerX(), guide.centerY())
+                        false
+                    } else {
+                        guide == null &&
+                            engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
+                            engine.isPlaying.value &&
+                            engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
+                            centeredMkvPicture(host, landscape)
+                    }
                 }
                 previousMs = engine.currentPositionMs.value
             }
