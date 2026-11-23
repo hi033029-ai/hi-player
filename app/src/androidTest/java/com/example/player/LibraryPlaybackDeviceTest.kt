@@ -177,6 +177,21 @@ class LibraryPlaybackDeviceTest {
         }
     }
 
+    private fun clickLabel(label: String): Boolean {
+        val root = automation.rootInActiveWindow ?: return false
+        for (node in root.findAccessibilityNodeInfosByText(label)) {
+            if (!node.isVisibleToUser ||
+                (node.text?.toString() != label && node.contentDescription?.toString() != label)
+            ) continue
+            var target: AccessibilityNodeInfo? = node
+            while (target != null) {
+                if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+                target = target.parent
+            }
+        }
+        return false
+    }
+
     private fun tapLabel(label: String) {
         var point: Rect? = null
         awaitStep("stable visible $label") {
@@ -187,7 +202,7 @@ class LibraryPlaybackDeviceTest {
         }
         val target = checkNotNull(point)
         instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nTap $label at $target\n") })
-        tap(target.centerX(), target.centerY())
+        if (!clickLabel(label)) tap(target.centerX(), target.centerY())
     }
 
     @Test fun libraryTapAutoplaysAndTransportAndResizerRespond() {
@@ -318,6 +333,10 @@ class LibraryPlaybackDeviceTest {
             host = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
                 .filterIsInstance<MainActivity>().single()
             engine = ViewModelProvider(host)[PlayerViewModel::class.java].engine
+        }
+        if (bounds("Skip guide") != null) {
+            tapLabel("Skip guide")
+            awaitStep("guide dismissal") { bounds("Skip guide") == null }
         }
         try {
             var previousMs = startMs
