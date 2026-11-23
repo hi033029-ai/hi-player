@@ -39,14 +39,12 @@ internal fun GeckoPageToolsSheet(
     var notice by remember { mutableStateOf<String?>(null) }
     var blocking by remember { mutableStateOf(settings.adBlock) }
     var helper by remember { mutableStateOf(settings.pageSkipper) }
-    var youtubeAds by remember { mutableStateOf(settings.youtubeAdSkip) }
     var sitePaused by remember(pageHost) { mutableStateOf(BrowserAdvancedRules.paused(pageHost)) }
     LaunchedEffect(current.id, current.url, settings.adBlock, settings.pageSkipper, settings.youtubeAdSkip) {
         reader = false
         confirmMedia = false
         blocking = settings.adBlock
         helper = settings.pageSkipper
-        youtubeAds = settings.youtubeAdSkip
         sitePaused = BrowserAdvancedRules.paused(pageHost)
     }
     if (visible) ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -102,18 +100,6 @@ internal fun GeckoPageToolsSheet(
                         settings.changePageSkipper(it)
                         helper = settings.pageSkipper
                         if (settings.failed) notice = "Could not save the page-helper preference."
-                    })
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Skip supported YouTube ads")
-                    Text("Hides supported ad placements; creator sponsorship segments are not detected.", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(checked = youtubeAds && !BuildConfig.PLAY_STORE_BUILD, enabled = !BuildConfig.PLAY_STORE_BUILD,
-                    onCheckedChange = {
-                        settings.changeYoutubeAdSkip(it)
-                        youtubeAds = settings.youtubeAdSkip
-                        if (settings.failed) notice = "Could not save the YouTube helper preference."
                     })
             }
             Text("Protection and helper changes apply when you reload. Helpers leave sign-in, checkout and security challenges alone.", style = MaterialTheme.typography.bodySmall)

@@ -167,9 +167,10 @@ internal fun GeckoBrowserChrome(
                         onError = { qrNotice = it },
                     )
                 },
-                HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) {
+                HiMenuAction("Desktop site", Icons.Default.DesktopWindows,
+                    enabled = services?.secureRouting?.route(coordinator.activeId) == null, checked = coordinator.desktopMode()) {
                     coordinator.setDesktop(!coordinator.desktopMode())
-                    coordinator.reload()
+                    if (onPage) coordinator.reload()
                 },
             ),
             rows = listOf(

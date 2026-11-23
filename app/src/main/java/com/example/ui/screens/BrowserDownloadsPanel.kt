@@ -136,8 +136,7 @@ internal fun BrowserDownloadsPanel(
                     download.error?.let { Text(it) }
                     if (download.status != BrowserDownloadStatus.COMPLETED && download.isVideo) {
                         Text(
-                            if (download.ephemeral) "Play becomes available after this browser stream finishes saving."
-                            else "Play while downloading depends on the container. Some MP4 files need the end of the file first."
+                            "Play while downloading depends on the container. Some MP4 files need the end of the file first."
                         )
                     }
                 }
@@ -294,6 +293,11 @@ private fun DownloadRowActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (download.isVideo && download.isActive && download.downloadedBytes > 0) {
+            DownloadActionButton(
+                Icons.Default.PlayCircle, "Play while downloading", palette.surfaceBorder, palette.textPrimary, onPlay,
+            )
+        }
         when (download.status) {
             BrowserDownloadStatus.RUNNING, BrowserDownloadStatus.QUEUED -> {
                 if (!download.finalizing) {
@@ -336,7 +340,7 @@ private fun DownloadRowActions(
                 modifier = Modifier.background(palette.surfaceElevated, RoundedCornerShape(12.dp)),
             ) {
                 if (download.isVideo && download.downloadedBytes > 0 &&
-                    (download.status == BrowserDownloadStatus.COMPLETED || !download.ephemeral)
+                    (download.status == BrowserDownloadStatus.COMPLETED || (!download.isActive && !download.ephemeral))
                 ) {
                     DropdownMenuItem(
                         text = { Text(if (download.status == BrowserDownloadStatus.COMPLETED) "Play in Hi Player" else "Play while downloading", color = palette.textPrimary) },

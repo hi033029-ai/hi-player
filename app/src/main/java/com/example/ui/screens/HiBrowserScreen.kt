@@ -378,8 +378,7 @@ private object HiBrowserDocumentScripts {
 
     private val assets = ConcurrentHashMap<String, String>()
     fun readAsset(context: Context, name: String): String? {
-        if (BuildConfig.PLAY_STORE_BUILD && name == "orbit_youtube.js") return null
-        if (name == "orbit_youtube.js") SignedBlockerUpdates.script()?.let { return it }
+        if (name == "orbit_youtube.js") return null
         return assets[name] ?: runCatching {
             context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
         }.getOrNull()?.also { assets[name] = it }
@@ -666,7 +665,7 @@ fun HiBrowserScreen(
             return
         }
         if (SecureWebSessions.isGoogleAuthentication(destination)) {
-            requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT, forSignIn = true)
+            requestSecureSite(destination, forSignIn = true)
             return
         }
         val stream = StreamUrlClassifier.classify(destination)
@@ -903,7 +902,7 @@ fun HiBrowserScreen(
             return
         }
         if (SecureWebSessions.isGoogleAuthentication(url)) {
-            requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab, forSignIn = true, tabId = sourceId)
+            requestSecureSite(url, privateTab, forSignIn = true, tabId = sourceId)
             return
         }
         if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock) || (store.adBlock && BrowserVideoPolicy.isAdUrl(url))) {
@@ -1461,7 +1460,7 @@ fun HiBrowserScreen(
                                         if (!tappedLink && isUserGesture) {
                                             val authTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                             authTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                                 else Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
                                             }
                                             resultMsg.sendToTarget()
@@ -1476,7 +1475,7 @@ fun HiBrowserScreen(
                                                 (it.startsWith("http://") || it.startsWith("https://"))
                                         }
                                         if (href != null) {
-                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(href, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                             else if (prefersSecureWebsite(href, activeTab.privateTab)) openSecureWebsite(href, activeTab.privateTab, tabId)
                                             else if (!isAdPopup(href)) view.loadUrl(href)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
@@ -1484,7 +1483,7 @@ fun HiBrowserScreen(
                                         }
                                         val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                         linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                             else if (prefersSecureWebsite(linkUrl, activeTab.privateTab)) openSecureWebsite(linkUrl, activeTab.privateTab, tabId)
                                             else if (!isAdPopup(linkUrl)) view.loadUrl(linkUrl)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
@@ -1521,7 +1520,7 @@ fun HiBrowserScreen(
                                         return true
                                     }
                                     if (request.isForMainFrame && SecureWebSessions.isGoogleAuthentication(uri.toString())) {
-                                        requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                        requestSecureSite(uri.toString(), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                         return true
                                     }
                                     if (request.isForMainFrame && !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
@@ -2547,7 +2546,6 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Privacy and content") {
                     BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
                     BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
-                    if (!BuildConfig.PLAY_STORE_BUILD) BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
                     BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
                 }
                 BrowserSettingsGroup("Advanced protection & page skipper") {
@@ -2579,13 +2577,13 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Data") {
                     if (BuildConfig.PLAY_STORE_BUILD) {
                         Text("Web filters are delivered with app updates. Bundled filters remain available offline.", color = palette.textSecondary, fontSize = 12.sp)
-                        BrowserSettingsActionRow(if (blockerUpdating) "Checking filters…" else "Check Play filters", onUpdateFilterLists, enabled = !blockerUpdating)
+                        BrowserSettingsActionRow(if (blockerUpdating) "Checking filters…" else "Check web filters", onUpdateFilterLists, enabled = !blockerUpdating)
                     } else {
-                        Text(if (blockerVersion > 0) "YouTube blocker · signed version $blockerVersion" else "YouTube blocker · bundled version",
+                        Text(if (blockerVersion > 0) "Ad blocker · signed version $blockerVersion" else "Ad blocker · bundled version",
                             color = palette.textSecondary, fontSize = 12.sp)
                         BrowserSettingsActionRow(if (blockerUpdating) "Updating blockers…" else "Update blockers now",
                             onUpdateFilterLists, enabled = !blockerUpdating)
-                        BrowserSettingsActionRow("Roll back YouTube blocker", onRollbackBlocker,
+                        BrowserSettingsActionRow("Roll back Ad blocker", onRollbackBlocker,
                             enabled = !blockerUpdating && blockerVersion > 0)
                         Text("Automatic checks every 6 hours when Android allows. Rollback uses the previous signed version or the bundled blocker. Reload to apply changes.",
                             color = palette.textSecondary, fontSize = 12.sp)

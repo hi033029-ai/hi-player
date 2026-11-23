@@ -259,7 +259,7 @@ diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko
 diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-browser/GeckoTabEngine.kt
 --- a/experiments/gecko-browser/GeckoTabEngine.kt
 +++ b/experiments/gecko-browser/GeckoTabEngine.kt
-@@ -170,4 +170,8 @@
+@@ -188,4 +188,8 @@
          if (!closed) session.setActive(false)
      }
 +    @MainThread fun setHostActive(active: Boolean) {

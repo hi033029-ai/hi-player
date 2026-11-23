@@ -25,6 +25,21 @@ class GeckoSecureRoutingTest {
         assertEquals("https://example.org/path?x=secret", routing.route(1))
         assertTrue(routing.policy(false).decide("https://example.org/next", "", false) is GeckoNavigationDecision.SecureSite)
     }
+    @Test fun tappedGoogleSignInOpensSecureTabButPrivateTapAsksFirst() {
+        val request = GeckoNavigationDecision.SecureSignIn(
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=example",
+            "https://example.org/login",
+            userGesture = true,
+        )
+        routing.decision(1, request)
+        assertEquals(listOf(request.entryUrl), opened)
+        assertEquals(request.returnPage, routing.route(1))
+        assertNull(routing.pending)
+        routing.decision(2, request)
+        assertEquals(1, opened.size)
+        assertEquals(2, routing.pending?.tabId)
+    }
+
     @Test fun privateRoutingIsMemoryOnlyAndCanBeCleared() {
         routing.decision(2, GeckoNavigationDecision.SecureSite("https://private.example/path", false))
         assertTrue(opened.isEmpty())

@@ -9,8 +9,9 @@ def augment(result):
     t = replace_once(t, '        if (openWhenCreated) session.open(runtime)', '''        if (openWhenCreated) session.open(runtime)
         GeckoFeatureBridge.bind(context, runtime, session, { snapshot.url },
             { url, mime, title -> update(snapshot.copy(mediaUrl = url, mediaMime = mime, mediaTitle = title)) },
-            { text -> update(snapshot.copy(readerText = text)) })''', 'feature binding')
-    t = t.replace('GeckoLoadingState.start(snapshot, url)', 'GeckoLoadingState.start(snapshot, url).copy(mediaUrl = null, mediaMime = null, mediaTitle = null, readerText = null)')
+            { text -> update(snapshot.copy(readerText = text)) },
+            { playing -> if (snapshot.videoPlaying != playing) update(snapshot.copy(videoPlaying = playing)) })''', 'feature binding')
+    t = t.replace('GeckoLoadingState.start(snapshot, url)', 'GeckoLoadingState.start(snapshot, url).copy(mediaUrl = null, mediaMime = null, mediaTitle = null, readerText = null, videoPlaying = false)')
     old = '''        try { session.loadUri(url) } catch (error: Exception) {
             update(GeckoLoadingState.error(snapshot, GeckoPageError.CONTENT))
             throw error

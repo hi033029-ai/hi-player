@@ -143,6 +143,7 @@ internal class GeckoBrowserCoordinator<View : Any>(
     fun reservePopup(openerId: Int, factory: (GeckoTabRegistry.Tab, (GeckoTabSnapshot) -> Unit) -> GeckoManagedSession<View>): GeckoManagedSession<View>? {
         check(!closed)
         val before = controller.tabs.map { it.id }.toSet()
+        val openerDesktop = desktop[openerId] == true
         val reserved = try {
             controller.reservePopup(openerId) { tab ->
                 snapshots[tab.id] = GeckoTabSnapshot(tab.id, tab.privateTab)
@@ -156,6 +157,10 @@ internal class GeckoBrowserCoordinator<View : Any>(
             snapshots.keys.filter { it !in before }.toList().forEach { snapshots.remove(it); generations.remove(it) }
             throw error
         } ?: return null
+        if (openerDesktop) {
+            reserved.second.setDesktop(true)
+            desktop[reserved.first.id] = true
+        }
         popupOpeners[reserved.first.id] = openerId
         popupIds.add(reserved.first.id)
         pendingPopups.add(reserved.first.id)

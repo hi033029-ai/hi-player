@@ -108,7 +108,6 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.AppDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.LocalHiPalette
-import com.example.ui.theme.HiThemePalette
 import com.example.ui.components.HiPlayerLogoBadge
 import com.example.ui.components.rememberHiPlayerLogoPainter
 import androidx.compose.ui.graphics.FilterQuality
@@ -196,14 +195,12 @@ internal fun HiBrowserToolbar(
     }
 
     val barHeight = if (focused || onDownloads == null) 56.dp else 48.dp
-    // Keep the address field and tab controls as separate, independently legible controls.
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = modifier.fillMaxWidth().background(palette.background).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val shape = RoundedCornerShape(24.dp)
-        val tabsShape = RoundedCornerShape(18.dp)
         Row(
             modifier = Modifier
                 .weight(1f)
@@ -334,15 +331,11 @@ internal fun HiBrowserToolbar(
         Row(
             modifier = Modifier
                 .height(barHeight)
-                .clip(tabsShape)
-                .background(palette.surfaceElevated)
-                .border(1.dp, palette.surfaceBorder, tabsShape)
-                .padding(horizontal = 3.dp)
                 .testTag("browser_tabs_capsule"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(48.dp)
                     .semantics { contentDescription = "Open tabs, $tabCount ${if (tabCount == 1) "tab" else "tabs"}" }
                     .clip(CircleShape).clickable(onClick = onShowTabs),
                 contentAlignment = Alignment.Center,
@@ -424,8 +417,6 @@ internal fun HiBrowserMenuSheet(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(28.dp)).hiContainerBorder(RoundedCornerShape(28.dp))
-                    .background(palette.surface)
                     .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
@@ -488,8 +479,7 @@ private fun HiMenuTile(item: HiMenuAction, onClick: () -> Unit, modifier: Modifi
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
-            .hiContainerBorder(RoundedCornerShape(18.dp))
-            .background(if (item.checked == true) palette.primary.copy(alpha = 0.16f) else palette.surface)
+            .background(if (item.checked == true) palette.primary.copy(alpha = 0.12f) else Color.Transparent)
             .clickable(enabled = item.enabled, onClick = onClick)
             .padding(top = 14.dp, bottom = 10.dp, start = 4.dp, end = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -727,7 +717,6 @@ internal fun HiBrowserHome(
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val palette = LocalHiPalette.current
-    val cardShape = RoundedCornerShape(24.dp)
     var editing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     Box(
@@ -796,10 +785,9 @@ internal fun HiBrowserHome(
             }
             Spacer(Modifier.height(36.dp))
             Column(
-                modifier = Modifier.fillMaxWidth().clip(cardShape)
-                    .background(palette.surface)
+                modifier = Modifier.fillMaxWidth()
                     .animateContentSize(animationSpec = tween(durationMillis = 180))
-                    .padding(14.dp),
+                    .padding(horizontal = 4.dp),
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Quick links", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -917,15 +905,8 @@ private fun HiShortcutTile(
                     Icon(Icons.Default.Add, contentDescription = null, tint = palette.textPrimary, modifier = Modifier.size(28.dp))
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(palette.surfaceElevated)
-,
-                    contentAlignment = Alignment.Center,
-                ) {
-                    HiSiteIcon(url, label, 44.dp, rounded = true)
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    HiSiteIcon(url, label, 52.dp, rounded = true)
                 }
             }
             if (editing && url != null) {
@@ -982,19 +963,6 @@ internal enum class HiLibrarySection(val label: String, val icon: ImageVector) {
     DOWNLOADS("Downloads", Icons.Default.Download),
 }
 
-private val BrowserDownloadsPalette = HiThemePalette(
-    background = Color(0xFF0A0E14),
-    surface = Color(0xFF131922),
-    surfaceElevated = Color(0xFF1C2533),
-    surfaceBorder = Color(0xFF344357),
-    primary = Color(0xFF00E5FF),
-    secondary = Color(0xFF38D39F),
-    textPrimary = Color(0xFFF4F7FB),
-    textSecondary = Color(0xFFB6C2D2),
-    textTertiary = Color(0xFF94A0B1),
-    isDark = true,
-)
-
 /** Full-screen library with Bookmarks, History and Downloads, each searchable. */
 @Composable
 internal fun HiBrowserLibrary(
@@ -1008,10 +976,9 @@ internal fun HiBrowserLibrary(
     downloadsContent: @Composable (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val appPalette = LocalHiPalette.current
+    val palette = LocalHiPalette.current
     var section by remember { mutableStateOf(initialSection) }
     var query by remember(section) { mutableStateOf("") }
-    val palette = if (section == HiLibrarySection.DOWNLOADS) BrowserDownloadsPalette else appPalette
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         CompositionLocalProvider(LocalHiPalette provides palette) {
         BrowserNavigationHost(revealButtonBottomInset = 12.dp, navigation = appNavigation) {

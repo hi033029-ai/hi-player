@@ -4,28 +4,31 @@ import android.content.Context
 import androidx.annotation.MainThread
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TextFields
-import com.example.ui.theme.AppAlertDialog as AlertDialog
+import com.example.ui.theme.AppDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -39,11 +42,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.example.ui.screens.OrbitBrowserStore
 import com.example.ui.theme.LocalHiPalette
 import kotlin.math.roundToInt
@@ -151,74 +157,104 @@ internal fun GeckoAppearanceDialog(
     onReloadCurrentPage: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val autofillPrefs = remember(context) { GeckoPasswordAutofill.preferences(context) }
+    var passwordAutofill by remember(autofillPrefs) {
+        mutableStateOf(autofillPrefs.getBoolean(GeckoPasswordAutofill.ENABLED, false))
+    }
+    var autofillSettingsUnavailable by remember { mutableStateOf(false) }
     var preview by remember(settings, settings.zoom) { mutableIntStateOf(settings.zoom) }
     val palette = LocalHiPalette.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = palette.surface,
-        title = { Text("Browser settings", color = palette.textPrimary) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Appearance and pop-up choices apply immediately. Content changes save automatically.", color = palette.textSecondary)
-                GeckoSettingSwitchRow("Dark web pages", "Use a dark color scheme on compatible sites", Icons.Default.DarkMode,
-                    settings.dark, "Dark web pages") {
-                    val previous = settings.dark
-                    settings.setAppearance(it, settings.zoom)
-                    if (settings.dark != previous && canReloadCurrentPage) onReloadCurrentPage()
+    AppDialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(palette.background), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Browser settings", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, color = palette.textPrimary)
+                    TextButton(onClick = onDismiss) { Text("Done", color = palette.primary) }
                 }
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(palette.surfaceElevated.copy(alpha = .45f)).padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.TextFields, null, tint = palette.primary, modifier = Modifier.size(22.dp))
-                        AnimatedContent(targetState = preview, label = "webpage-text-preview") { value ->
-                            Text("  Webpage text · $value%", color = palette.textPrimary)
+                HorizontalDivider(color = palette.surfaceBorder.copy(alpha = .5f))
+                Column(
+                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    GeckoSettingsHeading("Appearance")
+                    GeckoSettingSwitchRow("Dark web pages", "Use a dark color scheme on compatible sites", Icons.Default.DarkMode,
+                        settings.dark, "Dark web pages") {
+                        val previous = settings.dark
+                        settings.setAppearance(it, settings.zoom)
+                        if (settings.dark != previous && canReloadCurrentPage) onReloadCurrentPage()
+                    }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TextFields, null, tint = palette.primary, modifier = Modifier.size(22.dp))
+                            AnimatedContent(targetState = preview, label = "webpage-text-preview") { value ->
+                                Text("  Webpage text · $value%", color = palette.textPrimary)
+                            }
+                        }
+                        Slider(value = preview.toFloat(), valueRange = 80f..200f, steps = 11,
+                            onValueChange = { preview = ((it / 10f).roundToInt() * 10).coerceIn(80, 200) },
+                            onValueChangeFinished = {
+                                val previous = settings.zoom
+                                settings.setAppearance(settings.dark, preview)
+                                preview = settings.zoom
+                                if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
+                            },
+                            modifier = Modifier.semantics { contentDescription = "Webpage text size" })
+                        TextButton(enabled = settings.zoom != 100 || preview != 100,
+                            onClick = {
+                                val previous = settings.zoom
+                                settings.setAppearance(settings.dark, 100)
+                                preview = settings.zoom
+                                if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
+                            }) {
+                            Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Text("  Reset to 100%")
                         }
                     }
-                    Slider(value = preview.toFloat(), valueRange = 80f..200f, steps = 11,
-                        onValueChange = { preview = ((it / 10f).roundToInt() * 10).coerceIn(80, 200) },
-                        onValueChangeFinished = {
-                            val previous = settings.zoom
-                            settings.setAppearance(settings.dark, preview)
-                            preview = settings.zoom
-                            if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
-                        },
-                        modifier = Modifier.semantics { contentDescription = "Webpage text size" })
-                    TextButton(enabled = settings.zoom != 100 || preview != 100,
-                        onClick = {
-                            val previous = settings.zoom
-                            settings.setAppearance(settings.dark, 100)
-                            preview = settings.zoom
-                            if (settings.zoom != previous && canReloadCurrentPage) onReloadCurrentPage()
-                        }) {
-                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Text("  Reset to 100%")
+                    GeckoSettingsHeading("Privacy and content")
+                    GeckoSettingSwitchRow("Block pop-ups", "Allow new windows only after you tap a link", Icons.Default.Block,
+                        settings.popupBlock, "Block pop-ups", settings::changePopupBlock)
+                    if (GeckoPasswordAutofill.available()) {
+                        GeckoSettingSwitchRow(
+                            "Password autofill",
+                            "Use your Android password manager to save or fill logins on secure, regular tabs",
+                            Icons.Default.TextFields, passwordAutofill, "Password autofill",
+                        ) { enabled ->
+                            autofillPrefs.edit().putBoolean(GeckoPasswordAutofill.ENABLED, enabled).apply()
+                            passwordAutofill = enabled
+                        }
+                        TextButton(onClick = { autofillSettingsUnavailable = !GeckoPasswordAutofill.chooseProvider(context) }) {
+                            Text("Choose password manager")
+                        }
+                        if (autofillSettingsUnavailable) Text("Choose an autofill service in Android Settings.")
+                    }
+                    GeckoSettingSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", Icons.Default.Block,
+                        settings.adBlock, "Ad and tracker blocking", settings::changeAdBlock)
+                    GeckoSettingSwitchRow("Skip page transitions", "Try to continue through supported pages", Icons.Default.Refresh,
+                        settings.pageSkipper, "Skip page transitions", settings::changePageSkipper)
+                    GeckoSettingsHeading("Videos")
+                    GeckoSettingSwitchRow("Detect website videos", "Find supported videos for Play in Hi Player", Icons.Default.TextFields,
+                        settings.videoHandoff, "Detect website videos", settings::changeVideoHandoff)
+                    if (settings.contentNeedsReload) {
+                        Text("Reload the current page to apply blocking and script changes. Unsent page input may be lost.", color = palette.textSecondary)
+                        TextButton(enabled = canReloadCurrentPage, onClick = { settings.markContentApplied(); onReloadCurrentPage() }) { Text("Reload current page") }
+                    }
+                    AnimatedVisibility(visible = settings.failed, enter = fadeIn() + slideInVertically { it / 3 }, exit = fadeOut() + slideOutVertically { -it / 3 }) {
+                        Text("Could not apply that setting. Your previous setting was restored.", color = com.example.ui.theme.HiErrorRed)
                     }
                 }
-                Text("Reload pages to apply text size. Unsent input may be lost when reloading.", color = palette.textSecondary)
-                GeckoSettingSwitchRow("Block pop-ups", "Allow new windows only after you tap a link", Icons.Default.Block,
-                    settings.popupBlock, "Block pop-ups", settings::changePopupBlock)
-                Text("Privacy and content", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-                GeckoSettingSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", Icons.Default.Block,
-                    settings.adBlock, "Ad and tracker blocking", settings::changeAdBlock)
-                GeckoSettingSwitchRow("Skip page transitions", "Try to continue through supported pages", Icons.Default.Refresh,
-                    settings.pageSkipper, "Skip page transitions", settings::changePageSkipper)
-                if (!com.example.BuildConfig.PLAY_STORE_BUILD) GeckoSettingSwitchRow(
-                    "YouTube ad skip", "Mute, fast-forward and skip YouTube ads", Icons.Default.Refresh,
-                    settings.youtubeAdSkip, "YouTube ad skip", settings::changeYoutubeAdSkip,
-                )
-                Text("Videos", color = palette.textPrimary, style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-                GeckoSettingSwitchRow("Detect website videos", "Find supported videos for Play in Hi Player", Icons.Default.TextFields,
-                    settings.videoHandoff, "Detect website videos", settings::changeVideoHandoff)
-                if (settings.contentNeedsReload) {
-                    Text("Reload the current page to apply blocking and script changes. Unsent page input may be lost.", color = palette.textSecondary)
-                    TextButton(enabled = canReloadCurrentPage, onClick = { settings.markContentApplied(); onReloadCurrentPage() }) { Text("Reload current page") }
-                }
-                AnimatedVisibility(visible = settings.failed, enter = fadeIn() + slideInVertically { it / 3 }, exit = fadeOut() + slideOutVertically { -it / 3 }) {
-                    Text("Could not apply that setting. Your previous setting was restored.", color = com.example.ui.theme.HiErrorRed)
-                }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
+        }
+    }
+}
+
+@Composable
+private fun GeckoSettingsHeading(title: String) {
+    val palette = LocalHiPalette.current
+    Text(title, Modifier.padding(top = 16.dp, bottom = 6.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleMedium, color = palette.primary)
 }
 
 @Composable
@@ -231,18 +267,18 @@ private fun GeckoSettingSwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val palette = LocalHiPalette.current
-    val background by animateColorAsState(if (checked) palette.primary.copy(alpha = .10f) else palette.surfaceElevated.copy(alpha = .45f), label = "gecko-setting")
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(background)
-            .clickable { onCheckedChange(!checked) }.padding(14.dp),
+        Modifier.fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .semantics { this.contentDescription = contentDescription }
+            .padding(horizontal = 4.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = if (checked) palette.primary else palette.textSecondary, modifier = Modifier.size(24.dp))
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(title, color = palette.textPrimary)
-            Text(description, color = palette.textSecondary)
+            Text(description, color = palette.textSecondary, style = MaterialTheme.typography.bodySmall)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange,
-            modifier = Modifier.semantics { this.contentDescription = contentDescription })
+        Switch(checked = checked, onCheckedChange = null)
     }
 }

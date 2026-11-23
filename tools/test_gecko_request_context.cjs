@@ -31,5 +31,9 @@ async function check(details, expected) {
   await check({type:"image",url:"https://cdn.example/image",documentUrl:"https://site.example/page"}, "https://site.example/page");
   await check({type:"script",url:"https://cdn.example/script",originUrl:"https://origin.example/"}, "https://origin.example/");
   await check({type:"image",url:"https://cdn.example/image",frameAncestors:[{frameId:0,url:"about:blank"}],documentUrl:"https://site.example/page"}, "https://site.example/page");
+  browser.runtime.sendNativeMessage = async () => JSON.stringify({blocked:true});
+  assert.equal((await beforeRequest({type:"script",url:"https://ads.example/track.js"})).cancel, true);
+  browser.runtime.sendNativeMessage = async () => { throw new Error("Native bridge unavailable"); };
+  assert.equal((await beforeRequest({type:"main_frame",url:"https://site.example/"})).cancel, false);
   console.log("Gecko request-context fixtures passed.");
 })().catch(error => { console.error(error); process.exitCode = 1; });

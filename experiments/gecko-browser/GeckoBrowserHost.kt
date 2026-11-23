@@ -33,7 +33,9 @@ internal fun createGeckoBrowserCoordinator(
             onNavigationDecision = { decision ->
                 // Defer until construction finishes and reject callbacks from replaced/closed sessions.
                 Handler(Looper.getMainLooper()).post {
-                    if (coordinator.controller.isSession(tab.id, owned)) onNavigationDecision(tab.id, decision)
+                    if (coordinator.activeId == tab.id && coordinator.controller.isSession(tab.id, owned)) {
+                        onNavigationDecision(tab.id, decision)
+                    }
                 }
             },
             promptDelegate = promptDelegate,
@@ -41,7 +43,13 @@ internal fun createGeckoBrowserCoordinator(
             popupAllowed = { destination, userGesture ->
                 val pageHost = coordinator.snapshots[tab.id]?.url?.let { runCatching { Uri.parse(it).host }.getOrNull() }
                 val blockedByProtection = store.adBlock && runCatching {
-                    OrbitBrowserFilterEngine.shouldBlock(Uri.parse(destination), enabled = true, pageHost = pageHost, mainFrame = true)
+                    val uri = Uri.parse(destination)
+                    val crossSite = pageHost != null && uri.host?.let { host ->
+                        !host.equals(pageHost, ignoreCase = true) &&
+                            !host.endsWith(".$pageHost", ignoreCase = true) &&
+                            !pageHost.endsWith(".$host", ignoreCase = true)
+                    } == true
+                    OrbitBrowserFilterEngine.shouldBlock(uri, enabled = true, pageHost = pageHost, mainFrame = !crossSite)
                 }.getOrDefault(false)
                 GeckoPopupPolicy.allows(store.popupBlock, userGesture, blockedByProtection)
             },

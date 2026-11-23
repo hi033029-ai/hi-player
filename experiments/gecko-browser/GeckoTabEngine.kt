@@ -53,6 +53,10 @@ internal class GeckoTabEngine(
     var snapshot = GeckoTabSnapshot(id, privateTab)
         private set
     private var attachedView: GeckoView? = null
+    private val autofillPreferences = GeckoPasswordAutofill.preferences(context)
+    private val autofillPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == GeckoPasswordAutofill.ENABLED) updateAutofill()
+    }
     private var closed = false
     private var userRequestedStop = false
     private val popupGate = GeckoPopupGate(SystemClock::elapsedRealtime)
@@ -63,6 +67,7 @@ internal class GeckoTabEngine(
         session.permissionDelegate = permissionDelegate
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                if (isAppPromotionLink(url)) { userRequestedStop = true; return }
                 userRequestedStop = false
                 update(GeckoLoadingState.start(snapshot, url))
             }
@@ -78,6 +83,7 @@ internal class GeckoTabEngine(
         }
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
+                if (isAppPromotionLink(request.uri)) return GeckoResult.deny()
                 val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
                 if (newWindow) popupGate.clear()
                 if (newWindow && !runCatching { popupAllowed(request.uri, request.hasUserGesture) }.getOrDefault(false)) {
@@ -93,7 +99,7 @@ internal class GeckoTabEngine(
                     return GeckoResult.allow()
                 }
                 if (!newWindow) update(GeckoLoadingState.cancel(snapshot))
-                if (decision != GeckoNavigationDecision.Block) onNavigationDecision(decision)
+                if (decision != GeckoNavigationDecision.Block && decision != GeckoNavigationDecision.Ignore) onNavigationDecision(decision)
                 return GeckoResult.deny()
             }
             override fun onLocationChange(
@@ -102,7 +108,7 @@ internal class GeckoTabEngine(
                 perms: List<GeckoSession.PermissionDelegate.ContentPermission>,
                 hasUserGesture: Boolean,
             ) {
-                update(GeckoLoadingState.location(snapshot, url))
+                if (!isAppPromotionLink(url)) update(GeckoLoadingState.location(snapshot, url))
             }
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 // The host must apply popup and secure-origin policy first. Gecko, not
@@ -113,6 +119,11 @@ internal class GeckoTabEngine(
                 return GeckoResult.fromValue(child)
             }
             override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
+                if (isAppPromotionLink(uri)) {
+                    userRequestedStop = true
+                    update(GeckoLoadingState.cancel(snapshot))
+                    return null
+                }
                 val kind = when (error.category) {
                     WebRequestError.ERROR_CATEGORY_NETWORK -> GeckoPageError.NETWORK
                     WebRequestError.ERROR_CATEGORY_SECURITY, WebRequestError.ERROR_CATEGORY_SAFEBROWSING -> GeckoPageError.SECURITY
@@ -158,14 +169,21 @@ internal class GeckoTabEngine(
     @MainThread fun attach(view: GeckoView) {
         checkMain(); check(!closed)
         if (attachedView === view) return
-        attachedView?.releaseSession()
+        if (attachedView != null) detach()
+        setAutofill(view, false)
         view.setSession(session)
         attachedView = view
+        autofillPreferences.registerOnSharedPreferenceChangeListener(autofillPreferenceListener)
+        updateAutofill()
         session.setActive(true)
     }
     @MainThread fun detach() {
         checkMain()
-        attachedView?.releaseSession()
+        attachedView?.let { view ->
+            autofillPreferences.unregisterOnSharedPreferenceChangeListener(autofillPreferenceListener)
+            setAutofill(view, false)
+            view.releaseSession()
+        }
         attachedView = null
         if (!closed) session.setActive(false)
     }
@@ -223,6 +241,29 @@ internal class GeckoTabEngine(
         checkMain(); if (closed) return
         detach(); closed = true; popupGate.clear(); session.close()
     }
-    private fun update(value: GeckoTabSnapshot) { if (!closed) { snapshot = value; onChanged(value) } }
+    private fun updateAutofill() {
+        val view = attachedView ?: return
+        setAutofill(view, GeckoPasswordAutofill.shouldEnable(
+            autofillPreferences.getBoolean(GeckoPasswordAutofill.ENABLED, false), snapshot,
+        ))
+    }
+
+    private fun setAutofill(view: GeckoView, enabled: Boolean) {
+        if (!GeckoPasswordAutofill.available()) return
+        if (view.autofillEnabled != enabled) {
+            if (!enabled) view.context.getSystemService(android.view.autofill.AutofillManager::class.java)?.cancel()
+            view.setAutofillEnabled(enabled)
+        }
+        view.importantForAutofill = if (enabled) android.view.View.IMPORTANT_FOR_AUTOFILL_YES
+            else android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
+
+    private fun update(value: GeckoTabSnapshot) {
+        if (closed) return
+        val eligibilityChanged = snapshot.url != value.url || snapshot.loadFailed != value.loadFailed
+        snapshot = value
+        if (eligibilityChanged) updateAutofill()
+        onChanged(value)
+    }
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 }

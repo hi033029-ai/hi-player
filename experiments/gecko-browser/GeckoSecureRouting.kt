@@ -18,7 +18,7 @@ internal class GeckoSecureRouting(
     private val openWebsite: (String) -> Boolean,
     private val openExternal: (String) -> Boolean,
 ) {
-    internal data class Request(val tabId: Int, val url: String, val isPrivate: Boolean, val external: Boolean)
+    internal data class Request(val tabId: Int, val url: String, val isPrivate: Boolean, val external: Boolean, val returnPage: String? = null)
     private val privateOrigins = mutableSetOf<String>()
     private val routes = mutableStateMapOf<Int, String>()
     var pending by mutableStateOf<Request?>(null)
@@ -51,8 +51,13 @@ internal class GeckoSecureRouting(
             if (scheme !in setOf("mailto", "tel", "sms")) return
         } else if (SecureWebsitePolicy.originKey(url) == null) return
         // Even a script-initiated request needs an explicit tap before leaving Hi Browser.
-        pending = Request(tabId, url, isPrivate, external)
+        val returnPage = (decision as? GeckoNavigationDecision.SecureSignIn)?.returnPage
+            ?.takeIf { SecureWebsitePolicy.originKey(it) != null }
+        pending = Request(tabId, url, isPrivate, external, returnPage)
         failure = false
+        if (!isPrivate && decision is GeckoNavigationDecision.SecureSignIn &&
+            decision.userGesture && SecureWebSessions.isGoogleAuthentication(url)
+        ) confirm()
     }
 
     fun dismiss() { pending = null; failure = false }
@@ -64,9 +69,12 @@ internal class GeckoSecureRouting(
         val opened = runCatching { if (request.external) openExternal(request.url) else openWebsite(request.url) }.getOrDefault(false)
         if (!opened) { failure = true; return }
         if (!request.external) {
-            if (request.isPrivate) SecureWebsitePolicy.originKey(request.url)?.let(privateOrigins::add)
-            else rememberOrigin(request.url)
-            routes[request.tabId] = request.url
+            val page = request.returnPage ?: request.url
+            if (!SecureWebSessions.isGoogleAuthentication(page)) {
+                if (request.isPrivate) SecureWebsitePolicy.originKey(page)?.let(privateOrigins::add)
+                else rememberOrigin(page)
+                routes[request.tabId] = page
+            }
         }
     }
     fun route(tabId: Int): String? = routes[tabId]

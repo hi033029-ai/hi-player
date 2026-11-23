@@ -87,7 +87,19 @@ internal fun GeckoBrowserShell(
     var barHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val navBottomPx = WindowInsets.navigationBars.getBottom(density)
-    val showBrowserBar = home || secureUrl != null || !scrollChrome.hidden || focused || find?.visible == true || snapshot.loading
+    var toolbarReveal by remember(activeId, snapshot.url) { mutableIntStateOf(0) }
+    var toolbarIdle by remember(activeId, snapshot.url) { mutableStateOf(false) }
+    val editing = focused || find?.visible == true
+    LaunchedEffect(activeId, snapshot.url, editing, toolbarReveal) {
+        toolbarIdle = false
+        if (!editing) {
+            kotlinx.coroutines.delay(3_000)
+            toolbarIdle = true
+        }
+    }
+    val manuallyRevealed = toolbarReveal > 0 && !toolbarIdle
+    val showBrowserBar = home || secureUrl != null || editing || manuallyRevealed ||
+        (!snapshot.videoPlaying && !toolbarIdle && !scrollChrome.hidden)
     val barHiddenFraction by animateFloatAsState(
         targetValue = if (showBrowserBar) 0f else 1f,
         animationSpec = tween(durationMillis = 220),
@@ -140,6 +152,12 @@ internal fun GeckoBrowserShell(
             )
         } else {
             pageContent(coordinator.controller)
+        }
+        if (!snapshot.fullscreen && !showBrowserBar) {
+            androidx.compose.material3.TextButton(
+                onClick = { toolbarReveal++ },
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            ) { Text("Browser controls") }
         }
         if (!snapshot.fullscreen) Column(Modifier
             .align(Alignment.BottomCenter)

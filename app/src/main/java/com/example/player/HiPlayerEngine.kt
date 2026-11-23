@@ -549,7 +549,6 @@ class HiPlayerEngine(
     private var activeGrowingUri: Uri? = null
     private var downloadedSeekEndMs: Long? = null
     private var growingRetryJob: Job? = null
-    private var growingRetryAttempts = 0
     private var growingPlaybackReachedReady = false
     private var growingPlaybackGraceUntilMs = 0L
     var onVideoEnded: (() -> Unit)? = null
@@ -731,28 +730,29 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                 }
                 return
             }
-            if (retryUri != null && activeGrowingUri == retryUri && !growingPlaybackReachedReady) {
-                // Do not reject MP4/other containers immediately: if their
-                // metadata is at the beginning, they can play while growing;
-                // if it is at the end, retrying lets playback begin as soon as
-                // the index arrives.
-                if (growingRetryAttempts < 2 && shouldKeepAwaitingGrowingData(retryUri) &&
-                    error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
-                    // An MP4 whose metadata arrives at the end can need more
-                    // than 30 seconds before its extractor becomes usable.
-                    // Keep retrying while the file remains registered as an
-                    // active download; navigation/release cancels the job.
-                    growingRetryAttempts = (growingRetryAttempts + 1).coerceAtMost(Int.MAX_VALUE)
+            if (retryUri != null && activeGrowingUri == retryUri &&
+                error.errorCode in PlaybackException.ERROR_CODE_IO_UNSPECIFIED..PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
+            ) {
+                val alias = DownloadingFilesRegistry.completedUri(downloadRegistryKey(retryUri))
+                val sourceCanGrow = error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED &&
+                    shouldKeepAwaitingGrowingData(retryUri)
+                if (alias != null || sourceCanGrow) {
                     val retryPosition = _currentPositionMs.value
+                    val retryAutoPlay = desiredAutoPlay
+                    val target = alias?.let(Uri::parse) ?: retryUri
+                    growingRetryJob?.cancel()
                     _isBuffering.value = true
                     growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
-                        delay(1500L)
-                        prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                        if (alias == null) delay(1500L)
+                        prepareMedia(target, retryPosition, autoPlay = retryAutoPlay,
+                            mediaMimeType = activeMimeType, resetDecoderRetry = false)
                     }
                     return
                 }
-                _playerError.value = incompleteDownloadMessage(retryUri)
-                return
+                if (!growingPlaybackReachedReady) {
+                    _playerError.value = "This download has not received playable data yet. Keep the download running and try again shortly."
+                    return
+                }
             }
             Log.e("HiPlayerPlayback", "Playback failed: ${error.errorCodeName}")
             _playerError.value = "This video could not be opened. Check the file or try another source."
@@ -1215,7 +1215,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         if (uri != activeGrowingUri) {
             growingRetryJob?.cancel()
             growingRetryJob = null
-            growingRetryAttempts = 0
             downloadedSeekEndMs = null
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
             growingPlaybackReachedReady = false
@@ -1408,22 +1407,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
     private fun downloadRegistryKey(uri: Uri): String =
         if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
 
-    private fun isLikelyStreamableGrowingContainer(uri: Uri): Boolean {
-        val name = uri.lastPathSegment?.lowercase().orEmpty()
-        val withoutDownloadSuffix = PendingDownloadFormat.originalName(name)
-        return withoutDownloadSuffix.endsWith(".mkv") ||
-            withoutDownloadSuffix.endsWith(".webm") ||
-            withoutDownloadSuffix.endsWith(".ts")
-    }
-
-    private fun incompleteDownloadMessage(uri: Uri): String {
-        return if (isLikelyStreamableGrowingContainer(uri)) {
-            "This download has not received playable data yet. Keep the download running and try again shortly."
-        } else {
-            "This video is still downloading. Standard MP4 files need their final metadata before they can play; wait for the download to finish."
-        }
-    }
-
     fun play() {
         desiredAutoPlay = true
         if (routingTimeout != null) return
@@ -1499,7 +1482,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
-        growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
         resumeAfterForeground = false
@@ -2037,7 +2019,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
-        growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
         resumeAfterForeground = false

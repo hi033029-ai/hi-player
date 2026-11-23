@@ -9,14 +9,13 @@ const requestPage = details => {
 };
 browser.webRequest.onBeforeRequest.addListener(details =>
   sendNative({kind:"request",url:details.url,page:requestPage(details),main:details.type === "main_frame"})
-    .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:true})),
+    .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:false})),
   {urls:["http://*/*","https://*/*"]},["blocking"]);
 browser.runtime.onMessage.addListener(async (message, sender) => {
   if (sender.id !== browser.runtime.id || !sender.tab || message.kind !== "helpers") return false;
   const files = [];
   if (message.adBlock === true) files.push("orbit_adblock.js");
   if (message.pageSkipper === true) files.push("orbit_page_skipper.js");
-  if (message.youtube === true) files.push("orbit_youtube.js");
   try {
     if (message.pageSkipper !== true) await browser.scripting.executeScript({
       target:{tabId:sender.tab.id,frameIds:[sender.frameId]},world:"MAIN",injectImmediately:true,

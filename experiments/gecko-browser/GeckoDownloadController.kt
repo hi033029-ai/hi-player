@@ -40,6 +40,7 @@ internal class GeckoDownloadController(
         private set
     var onStateChanged: ((GeckoDownloadState) -> Unit)? = null
     var onTransferStarted: ((() -> Unit) -> AutoCloseable)? = null
+    var wrapDestination: ((GeckoDownloadDestination) -> GeckoDownloadDestination)? = null
     private val activeLease = AtomicReference<AutoCloseable?>(null)
     private var offer: GeckoDownloadSource? = null
     private var cancellation: GeckoDownloadCancellation? = null
@@ -76,6 +77,7 @@ internal class GeckoDownloadController(
             cancel.cancel(); cancellation = null
             publishState(GeckoDownloadState.Finished(name, GeckoDownloadOutcome.Failed, location)); return
         }
+        val wrap = wrapDestination
         val once = AtomicBoolean(false)
         val lease = rawLease?.let { value -> AutoCloseable { if (once.compareAndSet(false, true)) value.close() } }
         activeLease.set(lease)
@@ -84,7 +86,8 @@ internal class GeckoDownloadController(
                 var recorded: Boolean? = null
                 val outcome = try {
                     val target = destinationOverride?.invoke() ?: destination(name, source.mimeType)
-                    val transferred = transferGeckoDownload(input, target, cancel) { bytes ->
+                    val output = wrap?.invoke(target) ?: target
+                    val transferred = transferGeckoDownload(input, output, cancel) { bytes ->
                         val speed = speedMeter.sample(bytes, System.nanoTime())
                         dispatchMain { if (!closed && generation == id && cancellation === cancel && !cancel.isPaused()) publishState(
                             GeckoDownloadState.Active(name, bytes, pending.length, speed, pending.recordInHistory, pending.mimeType, location)) }
