@@ -26,7 +26,10 @@ internal class GeckoSecureRouting(
     var failure by mutableStateOf(false)
         private set
 
-    fun policy(isPrivate: Boolean) = GeckoNavigationPolicy(
+    fun policy(isPrivate: Boolean) = createPolicy(isPrivate)
+    @Suppress("UNUSED_PARAMETER")
+    fun policyForTab(tabId: Int, isPrivate: Boolean) = createPolicy(isPrivate)
+    private fun createPolicy(isPrivate: Boolean) = GeckoNavigationPolicy(
         SecureWebSessions::isGoogleAuthentication,
         SecureWebSessions::entryForGoogleAuth,
         { url -> val origin = SecureWebsitePolicy.originKey(url); origin != null &&
@@ -86,7 +89,10 @@ internal class GeckoSecureRouting(
         if (tabPrivacy(tabId) == true) SecureWebsitePolicy.originKey(url)?.let(privateOrigins::remove)
         else forgetOrigin(url)
     }
-    fun leaveTab(tabId: Int) { routes.remove(tabId); if (pending?.tabId == tabId) dismiss() }
+    fun leaveTab(tabId: Int) {
+        routes.remove(tabId)
+        if (pending?.tabId == tabId) dismiss()
+    }
     fun prune(validIds: Set<Int>) {
         routes.keys.toList().filter { it !in validIds }.forEach(routes::remove)
         if (pending != null && pending?.tabId !in validIds) dismiss()

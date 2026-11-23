@@ -3,7 +3,7 @@ package com.example.browser.gecko
 import java.net.URI
 import java.util.Locale
 
-/** Navigation outcomes are delivered to UI, never used to copy browser cookies or credentials. */
+/** Navigation policy matches the app's existing Google/secure-site boundaries without copying cookies. */
 internal sealed interface GeckoNavigationDecision {
     data object Allow : GeckoNavigationDecision
     data object Block : GeckoNavigationDecision
@@ -39,12 +39,12 @@ internal class GeckoNavigationPolicy(
 ) {
     fun decide(url: String, currentUrl: String, userGesture: Boolean): GeckoNavigationDecision {
         if (isAppPromotionLink(url)) return GeckoNavigationDecision.Ignore
-        val uri = runCatching { URI(url) }.getOrNull() ?: return GeckoNavigationDecision.Block
-        val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return GeckoNavigationDecision.Block
+        val scheme = runCatching { URI(url).scheme?.lowercase(Locale.ROOT) }.getOrNull()
+            ?: return GeckoNavigationDecision.Block
         if (scheme == "https" && isGoogleAuthentication(url)) {
             val returnPage = secureEntryFor(currentUrl).takeUnless(isGoogleAuthentication)
             if (googleSignInInBrowser) {
-                val rejected = uri.rawPath?.lowercase(Locale.ROOT)?.contains("/signin/rejected") == true
+                val rejected = runCatching { URI(url).rawPath?.lowercase(Locale.ROOT)?.contains("/signin/rejected") == true }.getOrDefault(false)
                 return if (rejected) GeckoNavigationDecision.SecureSignIn(url, returnPage, userGesture)
                 else GeckoNavigationDecision.Allow
             }

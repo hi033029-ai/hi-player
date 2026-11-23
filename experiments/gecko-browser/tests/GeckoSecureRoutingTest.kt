@@ -68,13 +68,14 @@ class GeckoSecureRoutingTest {
         assertTrue(saved.isEmpty())
         assertNull(routing.route(1))
     }
-    @Test fun googleSignInAlwaysUsesTheSecureExternalRoute() {
+    @Test fun googleSignInStaysInBrowserUnlessRejected() {
         val google = "https://accounts.google.com/AccountChooser"
-        assertTrue(routing.policy(false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        assertTrue(routing.policyForTab(1, false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        assertTrue(routing.policyForTab(2, true).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        routing.leaveTab(1)
-        assertTrue(routing.policyForTab(1, false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+        val rejected = "https://accounts.google.com/v3/signin/rejected?TL=abc"
+        assertEquals(GeckoNavigationDecision.Allow, routing.policy(false).decide(google, "https://example.org/", false))
+        assertEquals(GeckoNavigationDecision.Allow, routing.policyForTab(1, false).decide(google, "https://example.org/", false))
+        assertEquals(GeckoNavigationDecision.Allow, routing.policyForTab(2, true).decide(google, "https://example.org/", false))
+        assertTrue(routing.policyForTab(1, false).decide(rejected, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+        assertTrue(routing.policyForTab(2, true).decide(rejected, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
     }
     @Test fun rejectsCredentialUrlsAndUnknownSchemes() {
         routing.decision(1, GeckoNavigationDecision.SecureSignIn("https://user:pass@example.org/"))
