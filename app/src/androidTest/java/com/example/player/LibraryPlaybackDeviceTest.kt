@@ -13,6 +13,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MainActivity
 import com.example.model.AspectRatioMode
+import com.example.viewmodel.LibraryViewModel
 import com.example.viewmodel.PlayerViewModel
 import android.content.ContentUris
 import android.content.Intent
@@ -285,8 +286,24 @@ class LibraryPlaybackDeviceTest {
             check(cursor.moveToFirst()) { "Missing indexed fixture $name" }
             ContentUris.withAppendedId(collection, cursor.getLong(0))
         } ?: error("Could not query indexed videos")
+        val previousActivities = mutableSetOf<MainActivity>()
+        instrumentation.runOnMainSync {
+            previousActivities += ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+        }
         context.startActivity(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        awaitStep("fresh settings-loaded library activity") {
+            var ready = false
+            instrumentation.runOnMainSync {
+                val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<MainActivity>().singleOrNull()
+                if (activity != null && activity !in previousActivities) {
+                    ready = ViewModelProvider(activity)[LibraryViewModel::class.java].isSettingsLoaded.value
+                }
+            }
+            ready
+        }
         tapLabel("HiPlayerPortraitCheck")
         awaitStep("MKV folder contents") { bounds("Back to Folders") != null }
         val startMs = 338_000L
