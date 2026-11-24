@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.screens.BrowserPlaceholderLayout
 import com.example.ui.theme.LocalHiPalette
 
-val BrowserLoadingIndicatorColor = Color(0xFFFF8A80)
+val BrowserLoadingIndicatorColor: Color
+    @Composable get() = LocalHiPalette.current.primary
 
 /** Lifecycle mirrors WebView callbacks: redirects do not reset an active load. */
 class BrowserProgressState {
@@ -97,14 +98,61 @@ fun BrowserLoadingBar(state: BrowserProgressState, modifier: Modifier = Modifier
     }
 }
 
+/** Neutral placeholder for pages whose layout is not known yet. */
+@Composable
+fun BrowserPageSkeleton(modifier: Modifier = Modifier) {
+    val palette = LocalHiPalette.current
+    Column(
+        modifier.fillMaxSize().background(palette.background).clearAndSetSemantics {
+            contentDescription = "Loading webpage"
+        }.padding(horizontal = 24.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        SiteSkeletonBlock(Modifier.fillMaxWidth(.38f).height(16.dp))
+        SiteSkeletonBlock(Modifier.fillMaxWidth().height(76.dp))
+        SiteSkeletonBlock(Modifier.fillMaxWidth(.9f).height(12.dp))
+        SiteSkeletonBlock(Modifier.fillMaxWidth(.72f).height(12.dp))
+    }
+}
+
 /** Route-specific approximate structure only; removed on actual first paint. */
 @Composable
 fun BrowserSiteSkeleton(layout: BrowserPlaceholderLayout, modifier: Modifier = Modifier) {
     if (layout == BrowserPlaceholderLayout.NONE) return
-    LazyColumn(modifier.fillMaxSize().clearAndSetSemantics {
-        contentDescription = "YouTube page content loading"
+    LazyColumn(modifier.fillMaxSize().background(LocalHiPalette.current.background).clearAndSetSemantics {
+        contentDescription = "Loading webpage"
     }, userScrollEnabled = false, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        if (layout == BrowserPlaceholderLayout.YOUTUBE_FEED) {
+        if (layout == BrowserPlaceholderLayout.VERTICAL_VIDEO) {
+            item { Box(Modifier.fillParentMaxSize().padding(16.dp)) {
+                Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(LocalHiPalette.current.surface))
+                Column(Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    repeat(3) { SiteSkeletonBlock(Modifier.size(32.dp)) }
+                }
+            } }
+        } else if (layout == BrowserPlaceholderLayout.POSTER_GRID || layout == BrowserPlaceholderLayout.CATALOG_LIST) {
+            item { SiteSkeletonBlock(Modifier.padding(16.dp).fillMaxWidth(.6f).height(22.dp)) }
+            items(5) { Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (layout == BrowserPlaceholderLayout.POSTER_GRID) repeat(3) {
+                    SiteSkeletonBlock(Modifier.weight(1f).aspectRatio(2f / 3f))
+                } else {
+                    SiteSkeletonBlock(Modifier.size(64.dp, 88.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SiteSkeletonBlock(Modifier.fillMaxWidth(.85f).height(15.dp))
+                        SiteSkeletonBlock(Modifier.fillMaxWidth(.6f).height(12.dp))
+                    }
+                }
+            } }
+        } else if (layout == BrowserPlaceholderLayout.SOCIAL_FEED || layout == BrowserPlaceholderLayout.PHOTO_FEED) {
+            item { Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                repeat(5) { SiteSkeletonBlock(Modifier.weight(1f).aspectRatio(if (layout == BrowserPlaceholderLayout.PHOTO_FEED) 1f else .64f)) }
+            } }
+            items(3) { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SiteSkeletonBlock(Modifier.padding(start = 12.dp).width(120.dp).height(18.dp))
+                if (layout == BrowserPlaceholderLayout.SOCIAL_FEED) SiteSkeletonBlock(Modifier.fillMaxWidth(.82f).height(12.dp))
+                SiteSkeletonBlock(Modifier.fillMaxWidth().aspectRatio(if (layout == BrowserPlaceholderLayout.PHOTO_FEED) 1f else 1.6f))
+            } }
+        } else if (layout == BrowserPlaceholderLayout.YOUTUBE_FEED) {
             item { Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 SiteSkeletonBlock(Modifier.size(90.dp, 24.dp))
                 SiteSkeletonBlock(Modifier.size(24.dp))

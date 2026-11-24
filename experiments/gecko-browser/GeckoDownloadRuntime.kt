@@ -10,6 +10,9 @@ import androidx.annotation.MainThread
 import com.example.downloads.BrowserDownloadStatus
 import com.example.downloads.BrowserDownloads
 import com.example.downloads.ExternalBrowserDownloadControl
+import com.example.player.DownloadingFilesRegistry
+import java.io.File
+import java.io.OutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
@@ -48,6 +51,7 @@ internal object GeckoDownloadRuntime {
         private val appContext = context.applicationContext
         private val main = Handler(Looper.getMainLooper())
         private val worker = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "gecko-download").apply { isDaemon = true } }
+        private var privateTransferPaused = false
         private val activeHistoryId = AtomicReference<Long?>(null)
         @Volatile var clientCount: Int = 0
             private set
@@ -71,9 +75,19 @@ internal object GeckoDownloadRuntime {
                 GeckoMediaStoreDestination(appContext, name, mime)
             }
             controller.onStateChanged = ::onStateChanged
+            controller.wrapDestination = { target ->
+                val id = activeHistoryId.get()
+                val row = BrowserDownloads.downloads.value.firstOrNull { it.id == id }
+                if (row?.isVideo == true) GrowingGeckoDestination(target, BrowserDownloads.geckoTransferPart(appContext, row.id))
+                else target
+            }
             controller.onTransferStarted = { cancelTransfer ->
                 val id = activeHistoryId.get()
-                if (id == null) AutoCloseable {} else BrowserDownloads.registerExternalTransfer(
+                if (id == null) GeckoTransferForegroundService.acquire(
+                    appContext, cancelTransfer, controller::pause, controller::resume,
+                    isPaused = { (controller.state as? GeckoDownloadState.Active)?.paused == true },
+                )
+                else BrowserDownloads.registerExternalTransfer(
                     appContext,
                     id,
                     ExternalBrowserDownloadControl(
@@ -104,6 +118,9 @@ internal object GeckoDownloadRuntime {
                     else BrowserDownloads.updateGeckoTransfer(
                         id, state.name, state.mimeType, state.bytes, state.length, state.speedBytesPerSecond,
                     )
+                } else if (state.paused != privateTransferPaused) {
+                    privateTransferPaused = state.paused
+                    GeckoTransferForegroundService.refresh(appContext)
                 }
                 is GeckoDownloadState.Finished -> {
                     activeHistoryId.getAndSet(null)?.let { id ->
@@ -139,5 +156,56 @@ internal object GeckoDownloadRuntime {
             controller.close()
             worker.shutdown()
         }
+    }
+}
+
+
+/** A local playable prefix for recorded video streams, with the original Gecko response as the only source. */
+internal class GrowingGeckoDestination(
+    private val target: GeckoDownloadDestination,
+    private val part: File,
+) : GeckoDownloadDestination {
+    override fun open(): OutputStream {
+        val output = target.open()
+        val mirror = runCatching { part.parentFile?.mkdirs(); part.outputStream() }.getOrNull() ?: return output
+        return object : OutputStream() {
+            private var growing: OutputStream? = mirror
+            private var mirroredBytes = 0L
+
+            override fun write(byte: Int) = write(byteArrayOf(byte.toByte()), 0, 1)
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                output.write(bytes, offset, length)
+                growing?.let { prefix ->
+                    runCatching {
+                        prefix.write(bytes, offset, length)
+                        mirroredBytes += length
+                        DownloadingFilesRegistry.markOwnedDownloading(part.absolutePath, mirroredBytes)
+                    }.onFailure {
+                        growing = null
+                        runCatching { prefix.close() }
+                        cleanUp()
+                    }
+                }
+            }
+
+            override fun flush() { output.flush() }
+            override fun close() {
+                try { output.close() } finally { runCatching { growing?.close() } }
+            }
+        }
+    }
+
+    override fun commit() {
+        target.commit()
+        cleanUp((target as? GeckoPublishedDestination)?.publishedUri?.toString())
+    }
+
+    override fun abort() {
+        try { target.abort() } finally { cleanUp() }
+    }
+
+    private fun cleanUp(publishedUri: String? = null) {
+        DownloadingFilesRegistry.completeOwned(part.absolutePath, publishedUri)
+        part.delete()
     }
 }

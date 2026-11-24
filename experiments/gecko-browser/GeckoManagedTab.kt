@@ -15,13 +15,12 @@ internal class GeckoManagedTab(
     promptDelegate: GeckoSession.PromptDelegate? = null,
     openWhenCreated: Boolean = true,
     onPopupRequested: ((String) -> GeckoSession?)? = null,
-    popupAllowed: (String, Boolean) -> Boolean = { _, gesture -> gesture },
     onCloseRequested: (() -> Unit)? = null,
     onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     permissionDelegate: GeckoSession.PermissionDelegate? = null,
     onContextLink: ((String?, String?) -> Unit)? = null,
 ) : GeckoManagedSession<GeckoView>, GeckoFindable {
-    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, popupAllowed, onCloseRequested, onExternalResponse, permissionDelegate, onContextLink)
+    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, onCloseRequested, onExternalResponse, permissionDelegate, onContextLink)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)

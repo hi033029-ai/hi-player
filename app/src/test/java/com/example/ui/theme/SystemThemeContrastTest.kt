@@ -17,7 +17,13 @@ class SystemThemeContrastTest {
         assertEquals(MonochromeLightPalette, getPaletteForTheme(AppThemeMode.SYSTEM, false))
         for (id in listOf("CYAN_NEON_DARK", "WARM_SUNSET_LIGHT", "MONOCHROME_DARK", "MONOCHROME_LIGHT"))
             assertEquals(AppThemeMode.SYSTEM, AppThemeMode.fromId(id))
-        assertEquals(listOf("SYSTEM", "HI_PLAYER_BLUE", "CUSTOM"), AppThemeMode.entries.map { it.id })
+        assertEquals(
+            listOf("SYSTEM", "BLACK_GOLD", "SOFT_LAVENDER", "DEEP_SEA", "WARM_NEUTRAL", "BOLD_BERRY", "SAGE_LINEN", "PORCELAIN_BLUE", "ROSE_PAPER", "CUSTOM"),
+            AppThemeMode.selectableThemes.map { it.id },
+        )
+        AppThemeMode.selectableThemes.forEach { assertEquals(it, AppThemeMode.fromId(it.id)) }
+        for (id in listOf("HI_PLAYER_BLUE", "OBSIDIAN", "MIDNIGHT", "JADE", "AMETHYST", "PORCELAIN"))
+            assertEquals(AppThemeMode.SYSTEM, AppThemeMode.fromId(id))
     }
     @Test fun labelsContrastWithActualFillIncludingTransparency() {
         assertEquals(Color.Black, contrastContentColor(Color.White, Color.Black))

@@ -28,8 +28,8 @@ class BrowserDownloadUiTest {
         )
         compose.setContent { CompositionLocalProvider(LocalHiPalette provides MonochromeLightPalette) { Box(Modifier.size(400.dp, 760.dp)) { BrowserDownloadsPanel(rows, "", {}) } } }
         compose.onNodeWithContentDescription("Pause download").assertExists()
+        compose.onNodeWithContentDescription("Play while downloading").assertExists()
         compose.onNodeWithContentDescription("Options for active.mkv").performClick()
-        compose.onNodeWithText("Play while downloading").assertExists()
         compose.onNodeWithText("Rename").assertExists()
         compose.onNodeWithText("Details").performClick()
         compose.onNodeWithText("Saved to: Download").assertExists()

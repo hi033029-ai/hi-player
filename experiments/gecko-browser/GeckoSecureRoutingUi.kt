@@ -16,8 +16,8 @@ internal fun GeckoSecureRoutingDialogs(routing: GeckoSecureRouting, activeId: In
             title = { Text(if (request.external) "Open another app?" else "Website sign-in") },
             text = { Text(if (request.external) "Open this link in another app?" else if (request.isPrivate)
                 "Continue in your device browser to sign in. That browser may save your activity and account even though this tab is private. Your Hi Player account is separate."
-                else "Continue in your device browser to sign in. Your website session and Hi Player account are separate.") },
-            confirmButton = { TextButton(onClick = routing::confirm) { Text("Continue") } },
+                else "Finish signing in to this website in your device browser. Your Hi Player account is managed separately.") },
+            confirmButton = { TextButton(onClick = routing::confirm) { Text(if (request.external) "Continue" else "Open secure browser") } },
             dismissButton = { TextButton(onClick = routing::dismiss) { Text("Cancel") } },
         )
     }

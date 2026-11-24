@@ -16,6 +16,8 @@ internal data class GeckoTabSnapshot(
     val mediaMime: String? = null,
     val mediaTitle: String? = null,
     val readerText: String? = null,
+    val videoPlaying: Boolean = false,
+    val awaitingFirstPaint: Boolean = false,
 ) {
     val loadFailed: Boolean get() = error != null
 }

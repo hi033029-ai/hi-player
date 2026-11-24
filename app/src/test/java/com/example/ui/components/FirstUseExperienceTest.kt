@@ -201,7 +201,6 @@ class FirstUseExperienceTest {
         var finished = 0
         compose.setContent { HiPlayerTheme { SplashScreen(true, { _, _ -> finished++ }) } }
         compose.onNodeWithTag("welcome_continue_button").performClick()
-        compose.onNodeWithTag("theme_proceed_button").performClick()
         compose.onNodeWithText("Not now").performClick()
         assertEquals(1, finished)
         compose.onNodeWithTag("onboarding_text_size_slider").assertDoesNotExist()

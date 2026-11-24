@@ -9,8 +9,9 @@ def augment(result):
     t = replace_once(t, '        if (openWhenCreated) session.open(runtime)', '''        if (openWhenCreated) session.open(runtime)
         GeckoFeatureBridge.bind(context, runtime, session, { snapshot.url },
             { url, mime, title -> update(snapshot.copy(mediaUrl = url, mediaMime = mime, mediaTitle = title)) },
-            { text -> update(snapshot.copy(readerText = text)) })''', 'feature binding')
-    t = t.replace('GeckoLoadingState.start(snapshot, url)', 'GeckoLoadingState.start(snapshot, url).copy(mediaUrl = null, mediaMime = null, mediaTitle = null, readerText = null)')
+            { text -> update(snapshot.copy(readerText = text)) },
+            { playing -> if (snapshot.videoPlaying != playing) update(snapshot.copy(videoPlaying = playing)) })''', 'feature binding')
+    t = t.replace('GeckoLoadingState.start(snapshot, url)', 'GeckoLoadingState.start(snapshot, url).copy(mediaUrl = null, mediaMime = null, mediaTitle = null, readerText = null, videoPlaying = false)')
     old = '''        try { session.loadUri(url) } catch (error: Exception) {
             update(GeckoLoadingState.error(snapshot, GeckoPageError.CONTENT))
             throw error
@@ -47,7 +48,7 @@ def augment(result):
         }
     }'''
     t = replace_once(t, old_stop, new_stop, 'cancel pending load')
-    t = replace_once(t, '        detach(); closed = true; popupGate.clear(); session.close()', '        loadGeneration++; GeckoFeatureBridge.unbind(session)\n        detach(); closed = true; popupGate.clear(); session.close()', 'bridge lifetime')
+    t = replace_once(t, '        detach(); closed = true; session.close()', '        loadGeneration++; GeckoFeatureBridge.unbind(session)\n        detach(); closed = true; session.close()', 'bridge lifetime')
     t = replace_once(t, '                // Prefer a linked address; only use image sources for image elements.', '''                if (element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_VIDEO || element.type == GeckoSession.ContentDelegate.ContextElement.TYPE_AUDIO) {
                     element.srcUri?.takeIf(GeckoFeatureBridge::validWebUrl)?.let { update(snapshot.copy(mediaUrl = it, mediaMime = null, mediaTitle = element.title)) }
                 }

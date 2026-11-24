@@ -27,17 +27,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.downloads.DownloadFileResolver
 import com.example.ui.theme.LocalHiPalette
-import com.example.ui.theme.HiPrimaryCyan
-import com.example.ui.theme.HiSurfaceDark
-import com.example.ui.theme.HiSurfaceElevated
-import com.example.ui.theme.HiSurfaceBorder
-import com.example.ui.theme.HiTextPrimary
-import com.example.ui.theme.HiTextSecondary
 
 /** WebView-style options, backed by the already approved Gecko response stream. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((String, String?, String?) -> Unit)? = null) {
+internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((String, String?, String?) -> Unit)? = null, onOpenDownloads: () -> Unit = {}) {
     val context = LocalContext.current
     val state = controller.state
     val palette = LocalHiPalette.current
@@ -58,41 +52,41 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
             modifier = Modifier.testTag("gecko-download-offer"),
             onDismissRequest = controller::reject,
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = HiSurfaceElevated,
-            contentColor = HiTextPrimary,
+            containerColor = palette.surfaceElevated,
+            contentColor = palette.textPrimary,
         ) {
             Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Download file?", style = MaterialTheme.typography.titleLarge, color = HiTextPrimary, modifier = Modifier.semantics { heading() })
+                Text("Download file?", style = MaterialTheme.typography.titleLarge, color = palette.textPrimary, modifier = Modifier.semantics { heading() })
                 if (!state.recordInHistory) Text(
                     "The file stays on your device, but will not appear in browser download history.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = HiTextSecondary,
+                    color = palette.textSecondary,
                     modifier = Modifier.testTag("gecko-download-private-notice"),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(54.dp).background(palette.primary.copy(alpha = .13f), CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(if (isVideo) Icons.Default.Movie else Icons.Default.InsertDriveFile, null, tint = HiPrimaryCyan)
+                        Icon(if (isVideo) Icons.Default.Movie else Icons.Default.InsertDriveFile, null, tint = palette.primary)
                     }
                     Spacer(Modifier.width(14.dp))
                     OutlinedTextField(value = fileName, onValueChange = { fileName = it.take(240) }, singleLine = true,
-                        label = { Text("File name") }, trailingIcon = { Icon(Icons.Default.Edit, "Edit file name", tint = HiTextSecondary) },
+                        label = { Text("File name") }, trailingIcon = { Icon(Icons.Default.Edit, "Edit file name", tint = palette.textSecondary) },
                         modifier = Modifier.weight(1f).testTag("gecko-download-name"), isError = fileName.isBlank(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = HiTextPrimary,
-                            unfocusedTextColor = HiTextPrimary,
-                            focusedLabelColor = HiPrimaryCyan,
-                            unfocusedLabelColor = HiTextSecondary,
-                            focusedBorderColor = HiPrimaryCyan,
-                            unfocusedBorderColor = HiSurfaceBorder,
-                            cursorColor = HiPrimaryCyan,
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary,
+                            focusedLabelColor = palette.primary,
+                            unfocusedLabelColor = palette.textSecondary,
+                            focusedBorderColor = palette.primary,
+                            unfocusedBorderColor = palette.surfaceBorder,
+                            cursorColor = palette.primary,
                         ))
                 }
-                Text(state.length?.let { Formatter.formatFileSize(context, it) } ?: "Size unknown", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                Text(state.length?.let { Formatter.formatFileSize(context, it) } ?: "Size unknown", style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                 Box {
-                    OutlinedButton(onClick = { folderMenu = true }, colors = ButtonDefaults.outlinedButtonColors(contentColor = HiPrimaryCyan)) {
-                        Icon(Icons.Default.FolderOpen, null, tint = HiPrimaryCyan)
+                    OutlinedButton(onClick = { folderMenu = true }, colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary)) {
+                        Icon(Icons.Default.FolderOpen, null, tint = palette.primary)
                         Text(if (selectedTree != null) "Selected folder" else "Download (default)")
-                        Icon(Icons.Default.ArrowDropDown, null, tint = HiPrimaryCyan)
+                        Icon(Icons.Default.ArrowDropDown, null, tint = palette.primary)
                     }
                     DropdownMenu(expanded = folderMenu, onDismissRequest = { folderMenu = false }) {
                         if (Build.VERSION.SDK_INT >= 29) DropdownMenuItem(text = { Text("Download (default)") }, onClick = { selectedTree = null; folderMenu = false })
@@ -102,22 +96,22 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                         })
                     }
                 }
-                if (pickerFailed) Text("Could not open the folder picker.", color = HiTextSecondary)
-                if (permissionFailed) Text("Could not retain access to this folder. Choose another folder.", color = HiTextSecondary)
-                HorizontalDivider(color = HiSurfaceBorder)
+                if (pickerFailed) Text("Could not open the folder picker.", color = palette.textSecondary)
+                if (permissionFailed) Text("Could not retain access to this folder. Choose another folder.", color = palette.textSecondary)
+                HorizontalDivider(color = palette.surfaceBorder)
                 if (isVideo && state.playUrl != null && onPlay != null) {
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth().testTag("gecko-play-online"),
                         onClick = { val url = state.playUrl; controller.reject(); onPlay(url, state.mimeType, DownloadFileResolver.safeName(fileName)) },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = HiPrimaryCyan),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.primary),
                     ) {
-                        Icon(Icons.Default.PlayArrow, null, tint = HiPrimaryCyan)
+                        Icon(Icons.Default.PlayArrow, null, tint = palette.primary)
                         Spacer(Modifier.width(8.dp))
-                        Text("Play online in Hi Player", color = HiPrimaryCyan)
+                        Text("Watch online", color = palette.primary)
                     }
-                    Text("Streams the media link in Hi Player without saving a local copy. Seeking depends on server byte-range support and a usable media index. Login-protected or DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                    Text("Streams the media link in Hi Player without saving a local copy. Seeking depends on server byte-range support and a usable media index. Login-protected or DRM media may need to stay on the website.", style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                 }
-                FilledTonalButton(modifier = Modifier.fillMaxWidth().testTag("gecko-download-confirm"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), colors = ButtonDefaults.filledTonalButtonColors(containerColor = HiSurfaceDark, contentColor = HiPrimaryCyan), onClick = {
+                FilledTonalButton(modifier = Modifier.fillMaxWidth().testTag("gecko-download-confirm"), enabled = fileName.isNotBlank() && (Build.VERSION.SDK_INT >= 29 || selectedTree != null), colors = ButtonDefaults.filledTonalButtonColors(containerColor = palette.surface, contentColor = palette.primary), onClick = {
                     val tree = selectedTree
                     val granted = tree == null || !state.recordInHistory || runCatching {
                         context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
@@ -126,34 +120,35 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                         val name = DownloadFileResolver.safeName(fileName)
                         val target = tree?.let { uri -> { GeckoDocumentTreeDestination(context, uri, name, state.mimeType) } }
                         controller.approve(name, if (tree == null) "Downloads" else "selected folder", target)
+                        if (state.recordInHistory && controller.state is GeckoDownloadState.Active) onOpenDownloads()
                     }
-                }) { Icon(Icons.Default.Download, null, tint = HiPrimaryCyan); Text("Download", color = HiPrimaryCyan) }
-                TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel", color = HiTextSecondary) }
-                Text("Pause, resume, and cancel from the download card or ongoing notification. This authenticated stream cannot resume if Android stops the app.", style = MaterialTheme.typography.bodySmall, color = HiTextSecondary)
+                }) { Icon(Icons.Default.Download, null, tint = palette.primary); Text("Download", color = palette.primary) }
+                TextButton(onClick = controller::reject, modifier = Modifier.fillMaxWidth().testTag("gecko-download-cancel")) { Text("Cancel", color = palette.textSecondary) }
+                Text("Pause, resume, and cancel from the download card or ongoing notification. This authenticated stream cannot resume if Android stops the app.", style = MaterialTheme.typography.bodySmall, color = palette.textSecondary)
                 Spacer(Modifier.height(16.dp))
             }
         }
-        is GeckoDownloadState.Active -> Surface(color = HiSurfaceDark, contentColor = HiTextPrimary, tonalElevation = 4.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        is GeckoDownloadState.Active -> Surface(color = palette.surface, contentColor = palette.textPrimary, tonalElevation = 4.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
-                    Text(state.name, maxLines = 1, color = HiTextPrimary)
+                    Text(state.name, maxLines = 1, color = palette.textPrimary)
                     val finalizing = state.length != null && state.length > 0 && state.bytes >= state.length
                     Text(if (state.paused) "Paused · ${Formatter.formatFileSize(context, state.bytes)} received" else state.length?.takeIf { it > 0 }?.let {
                         "${if (finalizing) "Saving file" else "Downloading"} · ${Formatter.formatFileSize(context, state.bytes)} of ${Formatter.formatFileSize(context, it)}"
-                    } ?: "Downloading · ${Formatter.formatFileSize(context, state.bytes)} received", color = HiTextSecondary)
-                    Text(if (state.paused) "Paused" else if (state.speedBytesPerSecond > 0) "${Formatter.formatFileSize(context, state.speedBytesPerSecond)}/s" else "Measuring download speed…", color = HiTextSecondary)
+                    } ?: "Downloading · ${Formatter.formatFileSize(context, state.bytes)} received", color = palette.textSecondary)
+                    Text(if (state.paused) "Paused" else if (state.speedBytesPerSecond > 0) "${Formatter.formatFileSize(context, state.speedBytesPerSecond)}/s" else "Measuring download speed…", color = palette.textSecondary)
                     if (state.length != null && state.length > 0) {
-                        LinearProgressIndicator(progress = { (state.bytes.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
+                        LinearProgressIndicator(progress = { (state.bytes.toDouble() / state.length.toDouble()).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = palette.primary, trackColor = palette.surfaceBorder)
                     } else if (!state.paused) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = HiPrimaryCyan, trackColor = HiSurfaceBorder)
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), color = palette.primary, trackColor = palette.surfaceBorder)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = { if (state.paused) controller.resume() else controller.pause() }) {
-                        Icon(if (state.paused) Icons.Default.PlayArrow else Icons.Default.Pause, null, tint = HiPrimaryCyan)
-                        Text(if (state.paused) "Resume" else "Pause", color = HiPrimaryCyan)
+                        Icon(if (state.paused) Icons.Default.PlayArrow else Icons.Default.Pause, null, tint = palette.primary)
+                        Text(if (state.paused) "Resume" else "Pause", color = palette.primary)
                     }
-                    TextButton(onClick = controller::cancel) { Text("Cancel", color = HiTextSecondary) }
+                    TextButton(onClick = controller::cancel) { Text("Cancel", color = palette.textSecondary) }
                 }
             }
         }
@@ -163,12 +158,12 @@ internal fun GeckoDownloadUi(controller: GeckoDownloadController, onPlay: ((Stri
                 is GeckoDownloadOutcome.Complete -> "Download complete"
                 GeckoDownloadOutcome.Cancelled -> "Download cancelled"
                 GeckoDownloadOutcome.Failed -> "Download failed"
-            }, color = HiTextPrimary) },
-            text = { Text(if (state.outcome is GeckoDownloadOutcome.Complete) if (state.recorded == false) "The file was saved in ${state.location}, but could not be added to download history." else "The file was saved in ${state.location}." else "The download could not be completed.", color = HiTextSecondary) },
-            confirmButton = { TextButton(onClick = controller::dismissResult) { Text("OK", color = HiPrimaryCyan) } },
-            containerColor = HiSurfaceElevated,
-            titleContentColor = HiTextPrimary,
-            textContentColor = HiTextSecondary,
+            }, color = palette.textPrimary) },
+            text = { Text(if (state.outcome is GeckoDownloadOutcome.Complete) if (state.recorded == false) "The file was saved in ${state.location}, but could not be added to download history." else "The file was saved in ${state.location}." else "The download could not be completed.", color = palette.textSecondary) },
+            confirmButton = { TextButton(onClick = controller::dismissResult) { Text("OK", color = palette.primary) } },
+            containerColor = palette.surfaceElevated,
+            titleContentColor = palette.textPrimary,
+            textContentColor = palette.textSecondary,
         )
         GeckoDownloadState.Idle -> Unit
     }

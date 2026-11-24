@@ -51,7 +51,7 @@ fun HorizontalThemeSelector(
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
 ) {
     val systemDark = isSystemInDarkTheme()
-    val themes = AppThemeMode.entries.filter { showCustom || it != AppThemeMode.CUSTOM }
+    val themes = AppThemeMode.selectableThemes.filter { showCustom || it != AppThemeMode.CUSTOM }
     LazyRow(
         modifier = modifier.fillMaxWidth().selectableGroup().testTag("horizontal_theme_selector"),
         contentPadding = contentPadding,

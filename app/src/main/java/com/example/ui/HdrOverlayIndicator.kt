@@ -42,7 +42,8 @@ fun HdrOverlayIndicator(
         modifier = modifier,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = .72f)).padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {

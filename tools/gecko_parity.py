@@ -27,10 +27,17 @@ def augment_parity(result):
     result[key] = replace_once(result[key], '''                val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(
                     Uri.parse(url), prefs.adBlock, page?.let { Uri.parse(it).host }, message.optBoolean("main", false))
                 return reply(JSONObject().put("blocked", blocked))''', '''                val enabled = prefs.adBlock
-                val mainFrame = message.optBoolean("main", false)
+                val document = message.optBoolean("main", false)
+                val media = message.optBoolean("media", false)
+                val authPage = page?.let(com.example.auth.SecureWebSessions::isGoogleAuthentication) == true
+                val authRequest = com.example.auth.SecureWebSessions.isGoogleAuthentication(url)
+                if (!enabled || authPage || authRequest) return reply(JSONObject().put("blocked", false))
                 return policyReply {
-                    val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(
-                        Uri.parse(url), enabled, page?.let { Uri.parse(it).host }, mainFrame)
+                    val target = Uri.parse(url)
+                    val host = page?.let { Uri.parse(it).host }
+                    val blocked = validWebUrl(url) && if (document) {
+                        BrowserAdvancedRules.decision(target.host, host) == true
+                    } else OrbitBrowserFilterEngine.shouldBlock(target, enabled, host, media)
                     JSONObject().put("blocked", blocked)
                 }''', 'background request filtering')
     result[key] = replace_once(result[key], '''                    val pageHost = Uri.parse(sender.url).host
@@ -45,13 +52,15 @@ def augment_parity(result):
                     val enabled = prefs.adBlock
                     return policyReply {
                         val site = BrowserAdvancedRules.snapshot().sites[pageHost?.lowercase()?.trimEnd('.')]
-                        val protectionEnabled = enabled && !BrowserAdvancedRules.paused(pageHost)
+                        val authPage = com.example.auth.SecureWebSessions.isGoogleAuthentication(sender.url) ||
+                            com.example.auth.SecureWebSessions.isGoogleAuthentication(client.page())
+                        val protectionEnabled = enabled && !authPage && !BrowserAdvancedRules.paused(pageHost)
                         val css = OrbitBrowserFilterEngine.cosmeticCss(pageHost, protectionEnabled)
                         JSONObject().put("css", css.takeIf { it.length <= 300_000 } ?: "")
                             .put("adBlock", protectionEnabled && !BuildConfig.PLAY_STORE_BUILD)
                             .put("skipSpeed", site?.skipSpeed ?: 30)
                             .put("autoContinue", site?.autoContinue ?: true)
-                            .put("pageSkipper", prefs.pageSkipper && !BuildConfig.PLAY_STORE_BUILD)
+                            .put("pageSkipper", prefs.pageSkipper && !authPage && !BuildConfig.PLAY_STORE_BUILD)
                     }''', 'per-site helper configuration')
     key = 'main/compatibility/Patched_GeckoBrowserChrome.kt'
     result[key] = replace_once(result[key], 'import androidx.compose.material.icons.Icons', '''import android.content.Intent

@@ -156,11 +156,9 @@ import com.example.auth.GoogleAccountViewModel
 import com.example.ui.components.GoogleAccountCard
 import com.example.ui.components.GoogleAccountDialog
 import com.example.ui.components.GoogleAccountStatusRow
+import com.example.ui.components.BrowserPageSkeleton
 import com.example.ui.components.BrowserSiteSkeleton
 import com.example.ui.components.BrowserLoadingBar
-import com.example.data.AppThemeMode
-import com.example.ui.theme.HiPlayerTheme
-import com.example.ui.theme.getPaletteForTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.semantics.semantics
@@ -378,8 +376,7 @@ private object HiBrowserDocumentScripts {
 
     private val assets = ConcurrentHashMap<String, String>()
     fun readAsset(context: Context, name: String): String? {
-        if (BuildConfig.PLAY_STORE_BUILD && name == "orbit_youtube.js") return null
-        if (name == "orbit_youtube.js") SignedBlockerUpdates.script()?.let { return it }
+        if (name == "orbit_youtube.js") return null
         return assets[name] ?: runCatching {
             context.assets.open(name).bufferedReader().use { it.readText().take(100_000) }
         }.getOrNull()?.also { assets[name] = it }
@@ -421,8 +418,7 @@ fun HiBrowserScreen(
     var blockerUpdating by remember { mutableStateOf(false) }
     var pendingDownload by remember { mutableStateOf<BrowserDownloadRequest?>(null) }
     var darkModeEnabled by remember { mutableStateOf(store.darkMode) }
-    val browserTheme = AppThemeMode.SYSTEM
-    val palette = getPaletteForTheme(browserTheme, darkModeEnabled)
+    val palette = LocalHiPalette.current
     val accountModel: GoogleAccountViewModel = viewModel()
     val accountProfile by accountModel.profile.collectAsStateWithLifecycle()
     var showAccount by remember { mutableStateOf(false) }
@@ -666,7 +662,7 @@ fun HiBrowserScreen(
             return
         }
         if (SecureWebSessions.isGoogleAuthentication(destination)) {
-            requestSecureSite(SecureWebSessions.GOOGLE_ACCOUNT, forSignIn = true)
+            requestSecureSite(destination, forSignIn = true)
             return
         }
         val stream = StreamUrlClassifier.classify(destination)
@@ -903,7 +899,7 @@ fun HiBrowserScreen(
             return
         }
         if (SecureWebSessions.isGoogleAuthentication(url)) {
-            requestSecureSite(SecureWebSessions.entryForGoogleAuth(source.url.orEmpty()), privateTab, forSignIn = true, tabId = sourceId)
+            requestSecureSite(url, privateTab, forSignIn = true, tabId = sourceId)
             return
         }
         if (OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock) || (store.adBlock && BrowserVideoPolicy.isAdUrl(url))) {
@@ -1322,7 +1318,10 @@ fun HiBrowserScreen(
     val barHeightDp = with(density) { barHeightPx.toDp() }
     val webBottomPadding = if (!isInPictureInPicture && (imeVisibleNow || findBarVisible || reserveBarSpace)) barHeightDp else 0.dp
 
-    HiPlayerTheme(themeMode = browserTheme, uiTextScale = AppTextSize.scale(appTextSizeSp), systemDarkOverride = darkModeEnabled) {
+    LaunchedEffect(palette.isDark) {
+        if (darkModeEnabled != palette.isDark) setDarkMode(palette.isDark)
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalHiPalette provides palette) {
     BrowserNavigationHost(
         modifier = modifier.fillMaxSize().background(palette.background),
         enabled = !isInPictureInPicture && !fullscreen.active,
@@ -1349,8 +1348,7 @@ fun HiBrowserScreen(
                 AndroidView(
                     factory = { viewContext ->
                         val tabId = activeTab.id
-                        // The WebView's theme decides prefers-color-scheme for every site:
-                        // a light theme unless the browser's dark theme is switched on.
+                        // Match the web color-scheme preference to the app appearance.
                         val themedContext = createOrbitWebContext(viewContext, store.darkMode)
                         // A tab that is still loaded (e.g. after returning to browser mode) keeps
                         // its WebView and page; only its callbacks are rebound to this screen.
@@ -1461,7 +1459,7 @@ fun HiBrowserScreen(
                                         if (!tappedLink && isUserGesture) {
                                             val authTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                             authTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                                 else Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
                                             }
                                             resultMsg.sendToTarget()
@@ -1476,7 +1474,7 @@ fun HiBrowserScreen(
                                                 (it.startsWith("http://") || it.startsWith("https://"))
                                         }
                                         if (href != null) {
-                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(href, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                             else if (prefersSecureWebsite(href, activeTab.privateTab)) openSecureWebsite(href, activeTab.privateTab, tabId)
                                             else if (!isAdPopup(href)) view.loadUrl(href)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
@@ -1484,7 +1482,7 @@ fun HiBrowserScreen(
                                         }
                                         val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
                                         linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                             else if (prefersSecureWebsite(linkUrl, activeTab.privateTab)) openSecureWebsite(linkUrl, activeTab.privateTab, tabId)
                                             else if (!isAdPopup(linkUrl)) view.loadUrl(linkUrl)
                                             else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
@@ -1521,7 +1519,7 @@ fun HiBrowserScreen(
                                         return true
                                     }
                                     if (request.isForMainFrame && SecureWebSessions.isGoogleAuthentication(uri.toString())) {
-                                        requestSecureSite(SecureWebSessions.entryForGoogleAuth(view.url.orEmpty()), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
+                                        requestSecureSite(uri.toString(), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                         return true
                                     }
                                     if (request.isForMainFrame && !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
@@ -2526,7 +2524,7 @@ private fun BrowserSettingsDialog(
             ) {
                 GoogleAccountCard(onPlayDriveMedia = { video -> onDismiss(); onPlayAccountMedia(video) }, model = accountModel)
                 BrowserSettingsGroup("Appearance") {
-                    BrowserSettingsSwitchRow("Dark theme", "Dark browser controls and web pages where supported. Open pages reload; unsent page input may be lost.", darkMode, onDarkModeChange)
+                    Text("Browser colors follow the app theme.", color = palette.textSecondary)
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                         Text("Webpage text · $textZoom%", color = palette.textPrimary, fontWeight = FontWeight.Medium)
                         Text("Applies to all tabs. Some fixed-layout sites limit text resizing.", color = palette.textSecondary)
@@ -2547,11 +2545,7 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Privacy and content") {
                     BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
                     BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
-                    if (!BuildConfig.PLAY_STORE_BUILD) BrowserSettingsSwitchRow("YouTube ad skip", "Mute, fast-forward and skip YouTube ads", youtubeAdSkip, onYoutubeAdSkipChange)
                     BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
-                }
-                BrowserSettingsGroup("Advanced protection & page skipper") {
-                    BrowserAdvancedTools(currentHost, onAdvancedRulesSaved)
                 }
                 BrowserSettingsGroup("Videos") {
                     BrowserSettingsSwitchRow(
@@ -2579,13 +2573,13 @@ private fun BrowserSettingsDialog(
                 BrowserSettingsGroup("Data") {
                     if (BuildConfig.PLAY_STORE_BUILD) {
                         Text("Web filters are delivered with app updates. Bundled filters remain available offline.", color = palette.textSecondary, fontSize = 12.sp)
-                        BrowserSettingsActionRow(if (blockerUpdating) "Checking filters…" else "Check Play filters", onUpdateFilterLists, enabled = !blockerUpdating)
+                        BrowserSettingsActionRow(if (blockerUpdating) "Checking filters…" else "Check web filters", onUpdateFilterLists, enabled = !blockerUpdating)
                     } else {
-                        Text(if (blockerVersion > 0) "YouTube blocker · signed version $blockerVersion" else "YouTube blocker · bundled version",
+                        Text(if (blockerVersion > 0) "Ad blocker · signed version $blockerVersion" else "Ad blocker · bundled version",
                             color = palette.textSecondary, fontSize = 12.sp)
                         BrowserSettingsActionRow(if (blockerUpdating) "Updating blockers…" else "Update blockers now",
                             onUpdateFilterLists, enabled = !blockerUpdating)
-                        BrowserSettingsActionRow("Roll back YouTube blocker", onRollbackBlocker,
+                        BrowserSettingsActionRow("Roll back Ad blocker", onRollbackBlocker,
                             enabled = !blockerUpdating && blockerVersion > 0)
                         Text("Automatic checks every 6 hours when Android allows. Rollback uses the previous signed version or the bundled blocker. Reload to apply changes.",
                             color = palette.textSecondary, fontSize = 12.sp)
@@ -2705,11 +2699,9 @@ private fun HiBrowserLoadingPage(
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val palette = LocalHiPalette.current
-    // No universal skeleton, fake site title, or full-screen click interceptor.
-    if (layout != BrowserPlaceholderLayout.NONE) {
-        Box(modifier.fillMaxSize().background(palette.background).padding(bottom = bottomInset)) {
-            BrowserSiteSkeleton(layout)
-        }
+    Box(modifier.fillMaxSize().background(palette.background).padding(bottom = bottomInset)) {
+        if (layout == BrowserPlaceholderLayout.NONE) BrowserPageSkeleton()
+        else BrowserSiteSkeleton(layout)
     }
     // Exceptional recovery is separate from normal loading. Stop remains in the
     // address bar at all times; this panel never covers the full web page.

@@ -68,8 +68,10 @@ internal class MediaStoreDownloadMirror(
     override fun write(offset: Long, bytes: ByteArray, count: Int) = guarded {
         require(offset >= 0 && count in 0..bytes.size)
         val file = channel ?: throw IOException("No seekable destination")
-        file.position(offset)
-        writeFully(file, bytes, count)
+        val buffer = ByteBuffer.wrap(bytes, 0, count)
+        while (buffer.hasRemaining()) {
+            file.write(buffer, offset + buffer.position())
+        }
     }
 
     override fun updateMetadata(fileName: String, mimeType: String?) = guarded {

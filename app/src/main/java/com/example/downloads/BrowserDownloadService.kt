@@ -77,17 +77,21 @@ class BrowserDownloadService : Service() {
                         if (running.isEmpty() && finalizing.isEmpty() && queued == 0 && !BrowserDownloads.hasPendingCommands()) {
                             val pausedEntries = items.filter { it.status == BrowserDownloadStatus.PAUSED }
                             val paused = pausedEntries.size
-                            val failed = items.count { it.status == BrowserDownloadStatus.FAILED }
+                            val failedEntries = items.filter { it.status == BrowserDownloadStatus.FAILED }
+                            val retryable = failedEntries.firstOrNull { !it.ephemeral }
+                            val failed = failedEntries.size
                             val complete = items.count { it.status == BrowserDownloadStatus.COMPLETED }
                             val completedNames = items.filter { it.status == BrowserDownloadStatus.COMPLETED }
                                 .takeLast(3).joinToString { it.fileName }
                             val text = when {
                                 paused > 0 -> "$paused paused • tap Resume to continue"
-                                failed > 0 -> "$failed failed • open Hi Browser to retry"
+                                retryable != null -> "$failed failed • tap Retry"
+                                failed > 0 -> "$failed failed • reopen the download in Hi Browser"
                                 complete == 1 && completedNames.isNotBlank() -> "File downloaded: $completedNames"
                                 else -> "$complete files downloaded"
                             }
-                            val note = notification(text, false, resume = paused > 0, controlId = pausedEntries.singleOrNull()?.id).build()
+                            val note = notification(text, false, resume = paused > 0, controlId = pausedEntries.singleOrNull()?.id,
+                                retryId = retryable?.id).build()
                             idleStop = true
                             releaseCpu()
                             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -121,7 +125,7 @@ class BrowserDownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun notification(text: String, ongoing: Boolean, resume: Boolean = false, controlId: Long? = null): NotificationCompat.Builder {
+    private fun notification(text: String, ongoing: Boolean, resume: Boolean = false, controlId: Long? = null, retryId: Long? = null): NotificationCompat.Builder {
         val launch = Intent(this, MainActivity::class.java).setAction("com.example.OPEN_BROWSER_DOWNLOADS").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val content = PendingIntent.getActivity(this, 701, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder = NotificationCompat.Builder(this, CHANNEL)
@@ -137,6 +141,7 @@ class BrowserDownloadService : Service() {
                 else -> BrowserDownloads.ACTION_PAUSE_ALL
             }
             val intent = Intent(this, BrowserDownloadService::class.java).setAction(action)
+                .setData(android.net.Uri.parse("hiplayer-download:control/${controlId ?: "all"}"))
                 .putExtra("id", controlId ?: -1L)
             val requestCode = when {
                 resume && controlId != null -> 710 + (controlId % 1000).toInt()
@@ -154,9 +159,22 @@ class BrowserDownloadService : Service() {
             }
             builder.addAction(if (resume) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause, label, control)
         }
+        if (retryId != null) {
+            val retryIntent = Intent(this, BrowserDownloadService::class.java)
+                .setAction(BrowserDownloads.ACTION_RESUME)
+                .setData(android.net.Uri.parse("hiplayer-download:retry/$retryId"))
+                .putExtra("id", retryId)
+            val retry = if (Build.VERSION.SDK_INT >= 26) {
+                PendingIntent.getForegroundService(this, 704, retryIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            } else {
+                PendingIntent.getService(this, 704, retryIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            }
+            builder.addAction(android.R.drawable.ic_menu_rotate, "Retry", retry)
+        }
         if (ongoing && controlId != null) {
             val cancelIntent = Intent(this, BrowserDownloadService::class.java)
                 .setAction(BrowserDownloads.ACTION_CANCEL)
+                .setData(android.net.Uri.parse("hiplayer-download:cancel/$controlId"))
                 .putExtra("id", controlId)
             val cancelRequestCode = 2710 + (controlId % 1000).toInt()
             val cancel = if (Build.VERSION.SDK_INT >= 26) {

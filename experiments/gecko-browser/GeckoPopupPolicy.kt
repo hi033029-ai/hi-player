@@ -1,8 +1,7 @@
 package com.example.browser.gecko
 
-/** A borrowed click gesture does not authorize a script-created popup. */
+/** Allow user-initiated windows unless an enabled filter identifies the destination. */
 internal object GeckoPopupPolicy {
-    @Suppress("UNUSED_PARAMETER")
     fun allows(blockPopups: Boolean, hasUserGesture: Boolean, destinationBlockedByProtection: Boolean): Boolean =
-        !destinationBlockedByProtection && !blockPopups
+        !destinationBlockedByProtection && (!blockPopups || hasUserGesture)
 }

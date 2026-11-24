@@ -27,7 +27,7 @@ class GeckoSecureRoutingUiTest {
         compose.runOnIdle { routing.decision(1, GeckoNavigationDecision.SecureSite("https://example.org/", false)) }
         compose.onNodeWithText("Website sign-in").assertIsDisplayed()
         compose.runOnIdle { assertTrue(opened.isEmpty()) }
-        compose.onNodeWithText("Continue").performClick()
+        compose.onNodeWithText("Open secure browser").performClick()
         compose.onNodeWithText("This website is open in your device browser.").assertIsDisplayed()
         compose.runOnIdle { assertEquals(listOf("https://example.org/"), opened) }
         compose.onNodeWithText("Use Hi Browser instead").performClick()

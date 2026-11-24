@@ -1,14 +1,11 @@
 package com.example.ui.screens
 
-import android.graphics.Bitmap
 import android.view.SurfaceView
 import androidx.compose.foundation.Image
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import com.example.ui.copyPictureFrame
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -145,7 +142,6 @@ fun PlayerScreen(
     // HDR/codec switches). Holding a released player was a source of playback crashes.
     val observedPlayer by playerViewModel.engine.playerInstance.collectAsState()
     val activePlayer = observedPlayer ?: playerViewModel.engine.getPlayer()
-    val presentedPlayer by playerViewModel.engine.presentedPlayer.collectAsState()
     val usingVlc by playerViewModel.engine.usesVlc.collectAsState()
     val vlcVideoSize by playerViewModel.engine.vlcVideoSize.collectAsState()
     val vlcFirstFrame by playerViewModel.engine.vlcFirstFrame.collectAsState()
@@ -254,18 +250,16 @@ fun PlayerScreen(
     val isMuted by playerViewModel.isMuted.collectAsState()
     var showLockedUnlockControl by remember { mutableStateOf(false) }
     var firstFrameRendered by remember(currentVideo?.uri, usingVlc) { mutableStateOf(false) }
-    var surfaceView by remember { mutableStateOf<SurfaceView?>(null) }
-    var heldFrame by remember(currentVideo?.uri) { mutableStateOf<Bitmap?>(null) }
-    var heldFrameVisible by remember(currentVideo?.uri) { mutableStateOf(false) }
-    val heldFrameAlpha by animateFloatAsState(targetValue = if (heldFrameVisible) 1f else 0f, animationSpec = tween(durationMillis = 180), label = "heldFrameAlpha")
-    var replacement by remember<androidx.compose.runtime.MutableState<androidx.media3.exoplayer.ExoPlayer?>>(currentVideo?.uri) { mutableStateOf<androidx.media3.exoplayer.ExoPlayer?>(null) }
     var pendingGrade by remember(currentVideo?.uri) { mutableStateOf<(() -> Unit)?>(null) }
+
+    var hdrWindow by remember(currentVideo?.uri) { mutableStateOf<Boolean?>(null) }
 
     fun changePicture(willGrade: Boolean, apply: () -> Unit) {
         // Coalesce slider moves while the old frame is being copied.
         val engine = playerViewModel.engine
         val currentlyGraded = shouldApplyColorPreset(engine.hdrColorPreset.value, engine.hdrEnhanceActive.value)
-        if (pendingGrade != null || (firstFrameRendered && willGrade != currentlyGraded)) {
+        if (willGrade != currentlyGraded) hdrWindow = willGrade
+        if (pendingGrade != null || willGrade != currentlyGraded) {
             pendingGrade = apply
         } else {
             apply()
@@ -274,44 +268,12 @@ fun PlayerScreen(
 
     LaunchedEffect(currentVideo?.uri, pendingGrade != null) {
         if (pendingGrade == null) return@LaunchedEffect
-        val secure = activity?.window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_SECURE) != 0
-        val view = surfaceView
-        if (heldFrame == null && view != null && !secure) {
-            val hdrTransfer = if (isHdrContent && hdrColorModeManager?.isHdrActive == true) {
-                activePlayer.videoFormat?.colorInfo?.colorTransfer ?: androidx.media3.common.C.COLOR_TRANSFER_ST2084
-            } else null
-            heldFrame = copyPictureFrame(view, hdrTransfer)
-            if (heldFrame != null) {
-                heldFrameVisible = true
-                // Allow the overlay to be composed and drawn before releasing the old surface.
-                withFrameNanos { }
-                withFrameNanos { }
-            }
-        }
-        val engine = playerViewModel.engine
-        val previousPlayer = engine.playerInstance.value
-        val wasVlc = engine.usesVlc.value
+        // The transition window covers the surface while ownership changes.
+        // Draw it before releasing the decoder; no HDR bitmap or PixelCopy is needed.
+        withFrameNanos { }
+        withFrameNanos { }
         pendingGrade?.invoke()
-        if (previousPlayer !== engine.playerInstance.value || wasVlc != engine.usesVlc.value) {
-            replacement = if (heldFrame != null) engine.playerInstance.value else null
-        } else if (replacement == null) {
-            heldFrame = null
-        }
         pendingGrade = null
-    }
-    LaunchedEffect(heldFrame, replacement, presentedPlayer, playerError) {
-        if (heldFrame == null) { heldFrameVisible = false; return@LaunchedEffect }
-        if (playerError == null) {
-            if (replacement != null && presentedPlayer === replacement) {
-            // The renderer callback can precede the new buffer's display transaction.
-            withFrameNanos { }
-            withFrameNanos { }
-            } else { kotlinx.coroutines.delay(1500L) }
-        }
-        heldFrameVisible = false
-        kotlinx.coroutines.delay(180L)
-        heldFrame = null
-        replacement = null
     }
 
     var videoWidth by remember(currentVideo?.uri) { mutableStateOf(0) }
@@ -339,6 +301,10 @@ kotlinx.coroutines.delay(3000L)
 showHdrPresetMenu = false
 showHdrCustomizer = false
 }
+    LaunchedEffect(hdrWindow, pendingGrade, applyColorPresetToVideo, playerError) {
+        if (playerError != null || (pendingGrade == null && hdrWindow == true && !playerViewModel.engine.hdrEnhanceActive.value))
+            hdrWindow = null
+    }
     var showHdrStatusOverlay by remember { mutableStateOf(false) }
     var hasInitializedHdrOverlay by remember { mutableStateOf(false) }
     LaunchedEffect(hdrColorPreset.name, applyColorPresetToVideo) {
@@ -755,13 +721,6 @@ showHdrCustomizer = false
             sourceHeight, mode, if (usingVlc) 1f else videoPixelWidthHeightRatio,
             if (usingVlc) 0 else videoRotationDegrees)
         val ratioScale = geometry(aspectRatioMode)
-        val videoSurfaceModifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                // Keep the held picture aligned with the native video through a grade change.
-                scaleX = ratioScale.first * videoScale
-                scaleY = ratioScale.second * videoScale
-            }
         val displaySize = containerSize.takeIf { it.width > 0 && it.height > 0 }?.let {
             IntSize((it.width * ratioScale.first * videoScale).roundToInt().coerceAtLeast(1),
                 (it.height * ratioScale.second * videoScale).roundToInt().coerceAtLeast(1))
@@ -778,11 +737,11 @@ showHdrCustomizer = false
             if (displaySize != null) {
                 val sourceSize = if (sourceWidth > 0 && sourceHeight > 0) IntSize(sourceWidth, sourceHeight) else null
                 VlcHdrVideoSurface(playerViewModel.engine.vlcSurfaceEngine, Modifier.fillMaxSize(),
-                    displaySize, sourceSize) { surfaceView = it }
+                    displaySize, sourceSize)
             }
         } else {
             NativeHdrPlayerSurface(activePlayer, Modifier.fillMaxSize(), bufferSize = buffer,
-                displaySize = displaySize, onSurface = { surfaceView = it })
+                displaySize = displaySize)
         }
 
         val surfaceMaskAlpha by animateFloatAsState(
@@ -799,10 +758,7 @@ showHdrCustomizer = false
             )
         }
 
-        heldFrame?.let { frame ->
-            Image(frame.asImageBitmap(), contentDescription = null, modifier = videoSurfaceModifier.alpha(heldFrameAlpha),
-                contentScale = ContentScale.FillBounds)
-        }
+
 
         key(currentVideo?.uri) {
             // Keep one Compose gesture owner above every rendering backend.
@@ -944,6 +900,7 @@ showHdrCustomizer = false
             ) {
                 Text(
                     text = subtitleCueText.joinToString("\n"),
+                    style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
                     color = Color(subtitleStyle.textColorHex),
                     fontSize = subtitleStyle.fontSizeSp.coerceIn(12, 48).sp,
                     fontFamily = when (subtitleStyle.fontFamily) {
@@ -1021,13 +978,9 @@ showHdrCustomizer = false
             pictureModeLabel = if (applyColorPresetToVideo) hdrColorPreset.name.removePrefix("HDR ").removeSuffix(" HDR") else "Original",
             isHdrSwitching = managedHdrSwitching,
             onToggleHdrEnhance = {
-                if (showHdrPresetMenu || showHdrCustomizer) {
-                    showHdrPresetMenu = false
-                    showHdrCustomizer = false
-                } else {
-                    showHdrPresetMenu = true
-                    showHdrCustomizer = false
-                }
+                showHdrPresetMenu = false
+                showHdrCustomizer = false
+                changePicture(!applyColorPresetToVideo, playerViewModel::togglePictureEnhancement)
             },
             onHdrBounds = { guideHdrBounds = it },
             onLongPressHdrEnhance = {
@@ -1083,8 +1036,11 @@ showHdrCustomizer = false
                 areControlsVisible = true
             }
         }
+            com.example.ui.HdrEnablingWindow(hdrWindow == true && playerError == null,
+                if (applyColorPresetToVideo) hdrColorPreset.name else playerViewModel.lastEnhancedPreset.name) { hdrWindow = null }
+            com.example.ui.HdrDisablingWindow(hdrWindow == false && playerError == null) { hdrWindow = null }
             com.example.ui.HdrOverlayIndicator(
-                visible = showHdrStatusOverlay,
+                visible = hdrWindow == null && showHdrStatusOverlay,
                 hdrActive = applyColorPresetToVideo,
                 preset = hdrColorPreset,
                 modifier = Modifier
@@ -1279,6 +1235,7 @@ showHdrCustomizer = false
             }
             ActiveSheet.SUBTITLE_SETTINGS -> {
                 SubtitleSettingsBottomSheet(
+                    videoTitle = currentVideo?.title,
                     subtitleTracks = availableSubtitleTracks,
                     subtitleOffsetMs = subtitleOffsetMs,
                     onSelectTrack = { playerViewModel.selectSubtitleTrack(it) },

@@ -113,14 +113,20 @@ class GeckoBrowserCoordinatorTest {
     @Test fun backAndForwardBetweenPopupAndOpenerKeepBothTabsOpen() {
         val coordinator = GeckoBrowserCoordinator<Any>(Store(), ::Fake)
         val opener = coordinator.activeId
+        coordinator.setDesktop(true)
         coordinator.load("https://example.org/start")
         var child = -1
         val popup = coordinator.reservePopup(opener) { tab, callback ->
             child = tab.id
             Fake(tab, callback)
         } as Fake
-        popup.callback(GeckoTabSnapshot(child, false, "https://example.org/next", loading = true))
+        assertTrue(popup.desktopEnabled)
+        val loading = GeckoLoadingState.start(GeckoTabSnapshot(child, false), "https://example.org/next")
+        popup.callback(loading)
+        assertEquals(opener, coordinator.activeId)
+        popup.callback(loading.copy(awaitingFirstPaint = false))
         assertEquals(child, coordinator.activeId)
+        assertTrue(coordinator.desktopMode())
         assertTrue(coordinator.canGoBack)
         coordinator.back()
         assertEquals(opener, coordinator.activeId)

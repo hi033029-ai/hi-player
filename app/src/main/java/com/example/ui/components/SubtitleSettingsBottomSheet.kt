@@ -56,7 +56,8 @@ fun SubtitleSettingsBottomSheet(
     onSubtitleOffsetChange: (Long) -> Unit,
     onLoadExternalSubtitle: (Uri) -> Unit,
     onOpenCustomizeAppearance: () -> Unit = {},
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    videoTitle: String? = null,
 ) {
     val subtitlePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -79,6 +80,7 @@ fun SubtitleSettingsBottomSheet(
                     SubtitleTrackRow(track.label, track.isSelected) { onSelectTrack(track) }
                 }
             }
+            videoTitle?.let { androidx.compose.runtime.key(it) { OnlineSubtitles(it, onLoadExternalSubtitle) } }
             if (subtitleTracks.isEmpty()) {
                 Text("No embedded captions detected. Load a subtitle file below.",
                     color = PickerTextSecondary, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))

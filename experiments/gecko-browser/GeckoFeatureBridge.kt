@@ -23,7 +23,7 @@ import org.mozilla.geckoview.WebExtension
 internal object GeckoFeatureBridge {
     const val EXTENSION_ID = "hi-browser@hi-player.local"
     private const val APP = "hi_player"
-    private data class Client(val page: () -> String, val media: (String, String?, String?) -> Unit, val reader: (String) -> Unit)
+    private data class Client(val page: () -> String, val media: (String, String?, String?) -> Unit, val reader: (String) -> Unit, val playback: (Boolean) -> Unit)
     private val clients = WeakHashMap<GeckoSession, Client>()
     private val ports = WeakHashMap<GeckoSession, WebExtension.Port>()
     private val waiting = WeakHashMap<GeckoSession, (Boolean) -> Unit>()
@@ -46,20 +46,36 @@ internal object GeckoFeatureBridge {
     }.getOrDefault(false)
 
     fun bind(context: Context, runtime: GeckoRuntime, session: GeckoSession,
-             page: () -> String, media: (String, String?, String?) -> Unit, reader: (String) -> Unit) {
+             page: () -> String, media: (String, String?, String?) -> Unit, reader: (String) -> Unit, playback: (Boolean) -> Unit) {
         check(Looper.myLooper() == Looper.getMainLooper())
         this.context = context.applicationContext
         this.runtime = runtime
         if (store == null) store = OrbitBrowserStore(context.applicationContext)
-        clients[session] = Client(page, media, reader)
+        clients[session] = Client(page, media, reader, playback)
         extension?.let { session.webExtensionController.setMessageDelegate(it, delegate, APP) }
         ensure()
     }
     fun unbind(session: GeckoSession) {
+        downloadClicks.remove(session)
         ports.remove(session)?.disconnect()
         clients.remove(session)
         waiting.remove(session)
         extension?.let { session.webExtensionController.setMessageDelegate(it, null, APP) }
+    }
+    private fun sameDocument(senderUrl: String, reported: String, current: String): Boolean {
+        if (!validWebUrl(reported) || reported.substringBefore('#') != current.substringBefore('#')) return false
+        val sender = Uri.parse(senderUrl)
+        val page = Uri.parse(reported)
+        return sender.scheme == page.scheme && sender.encodedAuthority == page.encodedAuthority
+    }
+    private val downloadClicks = WeakHashMap<GeckoSession, Pair<String, Long>>()
+    fun consumeDownloadClick(session: GeckoSession, page: String): Boolean {
+        val click = downloadClicks.remove(session) ?: return false
+        return click.first == page && android.os.SystemClock.elapsedRealtime() - click.second in 0L..5000L
+    }
+    fun mediaCommand(session: GeckoSession, command: String): Boolean {
+        val port = ports[session] ?: return false
+        return runCatching { port.postMessage(JSONObject().put("command", command)); true }.getOrDefault(false)
     }
     fun requestReader(session: GeckoSession): Boolean {
         val port = ports[session] ?: return false
@@ -151,6 +167,24 @@ internal object GeckoFeatureBridge {
                 "reader" -> {
                     if (sender.url.substringBefore('#') != client.page().substringBefore('#')) return null
                     client.reader(message.optString("text").take(150_000))
+                    return reply(JSONObject().put("ok", true))
+                }
+                "download-click" -> {
+                    val session = sender.session ?: return null
+                    val page = client.page()
+                    if (sameDocument(sender.url, message.optString("page"), page))
+                        downloadClicks[session] = page to android.os.SystemClock.elapsedRealtime()
+                }
+                "media-modes" -> {
+                    val session = sender.session ?: return null
+                    if (!sameDocument(sender.url, message.optString("page"), client.page())) return null
+                    BrowserMediaControls.current?.takeIf { it.tab === session }?.setModes(
+                        message.optBoolean("canRepeat"), message.optBoolean("repeat"), message.optBoolean("canShuffle"), message.optBoolean("shuffle"))
+                    return reply(JSONObject().put("ok", true))
+                }
+                "video-playback" -> {
+                    if (!sameDocument(sender.url, message.optString("page"), client.page())) return null
+                    client.playback(message.optBoolean("playing", false))
                     return reply(JSONObject().put("ok", true))
                 }
                 "media" -> {

@@ -1,7 +1,7 @@
 diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko-browser/GeckoBrowserChrome.kt
 --- a/experiments/gecko-browser/GeckoBrowserChrome.kt
 +++ b/experiments/gecko-browser/GeckoBrowserChrome.kt
-@@ -52,6 +52,8 @@
+@@ -53,6 +53,8 @@
      onNavigate: ((String) -> Unit)? = null,
      downloadsContent: @Composable (String) -> Unit,
      appNavigation: @Composable () -> Unit = {},
@@ -10,7 +10,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserChrome.kt b/experiments/gecko
      permissionUi: GeckoPermissionUi? = null,
      services: GeckoBrowserServices? = null,
      modifier: Modifier = Modifier,
-@@ -62,6 +64,9 @@
+@@ -64,6 +66,9 @@
      var showClearData by remember { mutableStateOf(false) }
      var showAppearance by remember { mutableStateOf(false) }
      var librarySection by remember { mutableStateOf<HiLibrarySection?>(null) }
@@ -147,7 +147,7 @@ diff --git a/experiments/gecko-browser/GeckoFilePickerLauncher.kt b/experiments/
 diff --git a/experiments/gecko-browser/GeckoManagedTab.kt b/experiments/gecko-browser/GeckoManagedTab.kt
 --- a/experiments/gecko-browser/GeckoManagedTab.kt
 +++ b/experiments/gecko-browser/GeckoManagedTab.kt
-@@ -25,4 +25,5 @@
+@@ -24,4 +24,5 @@
      override fun attach(view: GeckoView) = engine.attach(view)
      override fun detach() = engine.detach()
 +    override fun setHostActive(active: Boolean) = engine.setHostActive(active)
@@ -259,7 +259,7 @@ diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko
 diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-browser/GeckoTabEngine.kt
 --- a/experiments/gecko-browser/GeckoTabEngine.kt
 +++ b/experiments/gecko-browser/GeckoTabEngine.kt
-@@ -170,4 +170,8 @@
+@@ -206,4 +206,8 @@
          if (!closed) session.setActive(false)
      }
 +    @MainThread fun setHostActive(active: Boolean) {

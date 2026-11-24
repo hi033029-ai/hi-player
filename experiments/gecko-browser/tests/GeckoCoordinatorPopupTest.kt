@@ -40,7 +40,13 @@ class GeckoCoordinatorPopupTest {
         assertTrue(owner.isPopupSession(child.id, session))
         assertEquals(opener, owner.activeId)
         assertFalse(store.saved.any { it.id == child.id })
-        session.callback(GeckoTabSnapshot(child.id, true, "https://example.org", loading = true))
+        val loading = GeckoLoadingState.start(GeckoTabSnapshot(child.id, true), "https://example.org")
+        session.callback(loading)
+        assertEquals(opener, owner.activeId)
+        session.callback(GeckoLoadingState.error(loading, GeckoPageError.NETWORK))
+        assertEquals(opener, owner.activeId)
+        session.callback(loading)
+        session.callback(GeckoLoadingState.stop(loading, success = true))
         assertEquals(child.id, owner.activeId)
         assertTrue(owner.isPopup(child.id))
         assertTrue(owner.closeTab(child.id))
@@ -55,10 +61,38 @@ class GeckoCoordinatorPopupTest {
         val session = owner.reservePopup(opener) { tab, changed -> child = tab; Session(changed) } as Session
         assertTrue(owner.open(false))
         val selected = owner.activeId
-        session.callback(GeckoTabSnapshot(child.id, false, "https://example.org", loading = true))
+        val loading = GeckoLoadingState.start(GeckoTabSnapshot(child.id, false), "https://example.org")
+        session.callback(loading)
+        session.callback(GeckoLoadingState.stop(loading, success = true))
         assertEquals(selected, owner.activeId)
         owner.close()
     }
+    @Test fun aFailedBackgroundPopupDoesNotPreventTheNextDownloadWindowAtTheTabLimit() {
+        val owner = GeckoBrowserCoordinator<Any>(Store()) { _, changed -> Session(changed) }
+        val opener = owner.activeId
+        repeat(GeckoTabRegistry.MAX_TABS - 1) {
+            var childId = 0
+            val session = owner.reservePopup(opener) { tab, changed -> childId = tab.id; Session(changed) } as Session
+            session.callback(GeckoTabSnapshot(childId, false, "https://example.org", error = GeckoPageError.NETWORK))
+        }
+        assertNotNull(owner.reservePopup(opener) { _, changed -> Session(changed) })
+        assertEquals(opener, owner.activeId)
+        assertEquals(GeckoTabRegistry.MAX_TABS, owner.tabs.size)
+        owner.close()
+    }
+
+    @Test fun backUsesSurvivingOpenerAfterTheMiddleTabCloses() {
+        val owner = GeckoBrowserCoordinator<Any>(Store()) { _, changed -> Session(changed) }
+        val first = owner.activeId
+        assertTrue(owner.open(false))
+        val middle = owner.activeId
+        assertTrue(owner.open(false))
+        assertTrue(owner.closeTab(middle))
+        owner.back()
+        assertEquals(first, owner.activeId)
+        owner.close()
+    }
+
     @Test fun factoryFailureDoesNotLeaveAGhostTab() {
         val owner = GeckoBrowserCoordinator<Any>(Store()) { _, changed -> Session(changed) }
         try { owner.reservePopup(owner.activeId) { _, _ -> error("creation failed") }; fail() } catch (_: IllegalStateException) { }

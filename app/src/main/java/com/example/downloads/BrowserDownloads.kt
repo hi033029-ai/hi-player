@@ -72,6 +72,12 @@ internal object BrowserDownloads {
 
     private fun folder(context: Context) = File(context.noBackupFilesDir, "browser_downloads").apply { mkdirs() }
     private fun part(context: Context, id: Long) = File(folder(context), "$id.part")
+    internal fun geckoTransferPart(context: Context, id: Long) =
+        File(context.cacheDir, "browser_stream_parts").resolve("$id.part")
+
+    private fun playbackPart(context: Context, entry: BrowserDownload) =
+        if (entry.ephemeral) geckoTransferPart(context, entry.id) else part(context, entry.id)
+
     private fun journal(context: Context) = AtomicFile(File(folder(context), "queue.json"))
 
     private fun restoreLocked(context: Context) {
@@ -97,6 +103,7 @@ internal object BrowserDownloads {
                 )
             }
         }.getOrDefault(emptyList())
+        File(context.cacheDir, "browser_stream_parts").listFiles()?.forEach { it.delete() }
         _downloads.value = records
         lastId = maxOf(lastId, records.maxOfOrNull { it.id } ?: 0)
         // An interrupted MediaStore publish must not leave hidden partial destination entries.
@@ -692,9 +699,9 @@ internal object BrowserDownloads {
         }
         entries.mapNotNull { entry -> runCatching {
             if (entry.status != BrowserDownloadStatus.COMPLETED) {
-                val file = part(context, entry.id)
+                val file = playbackPart(context, entry)
                 if (!file.isFile || file.length() <= 0) return@runCatching null
-                DownloadingFilesRegistry.markOwnedDownloading(file.absolutePath, file.length())
+                if (!entry.ephemeral) DownloadingFilesRegistry.markOwnedDownloading(file.absolutePath, file.length())
                 return@runCatching partialItem(context, entry)
             }
             val uri = entry.savedUri?.let(Uri::parse) ?: return@runCatching null
@@ -715,25 +722,35 @@ internal object BrowserDownloads {
     }
 
     private fun partialItem(context: Context, entry: BrowserDownload): VideoItem {
-        val file = part(context, entry.id)
+        val file = playbackPart(context, entry)
         return VideoItem(id = entry.id, uri = Uri.fromFile(file), title = entry.fileName, mimeType = entry.mimeType ?: "video/*",
             sizeBytes = file.length(), path = file.absolutePath, folderName = "Download", dateAdded = entry.id / 1000,
             isPartialDownload = true, downloadedBytes = file.length(), downloadTotalBytes = entry.totalBytes,
             downloadSpeedBytesPerSecond = entry.speedBytesPerSecond, width = 0, height = 0, isNewVideo = true, codec = entry.status.name.lowercase())
     }
-    fun playbackItem(context: Context, uri: Uri): VideoItem? = downloads.value.firstOrNull {
-        uri.toString() == it.savedUri || (uri.scheme == "file" && uri.path == part(context, it.id).absolutePath)
-    }?.let { entry -> if (entry.status == BrowserDownloadStatus.COMPLETED) VideoItem(uri = uri, title = entry.fileName, mimeType = entry.mimeType ?: "video/*", path = uri.toString(), folderName = entry.saveLocation)
-        else partialItem(context, entry) }
+    fun playbackItem(context: Context, uri: Uri): VideoItem? {
+        val entry = downloads.value.firstOrNull { download ->
+            uri.toString() == download.savedUri || (uri.scheme == "file" &&
+                (uri.path == playbackPart(context, download).absolutePath ||
+                    uri.path == geckoTransferPart(context, download.id).absolutePath))
+        } ?: return null
+        if (entry.status != BrowserDownloadStatus.COMPLETED) return partialItem(context, entry)
+        val published = entry.savedUri?.let(Uri::parse) ?: uri
+        return VideoItem(uri = published, title = entry.fileName, mimeType = entry.mimeType ?: "video/*",
+            path = published.toString(), folderName = entry.saveLocation)
+    }
 
     private fun deletePublished(context: Context, uri: Uri) { runCatching { context.contentResolver.delete(uri, null, null) } }
 
     fun playInPlayer(context: Context, id: Long, onPlay: (String) -> Unit) {
         val entry = find(id)
         val uri = entry?.savedUri?.takeIf { entry.status == BrowserDownloadStatus.COMPLETED }?.let(Uri::parse)
-            ?: entry?.let { part(context, id).takeIf { f -> f.isFile && f.length() > 0 }?.let { f ->
-                DownloadingFilesRegistry.markOwnedDownloading(f.absolutePath, f.length()); Uri.fromFile(f)
-            } }
+            ?: entry?.let { download ->
+                playbackPart(context, download).takeIf { it.isFile && it.length() > 0 }?.let { file ->
+                    if (!download.ephemeral) DownloadingFilesRegistry.markOwnedDownloading(file.absolutePath, file.length())
+                    Uri.fromFile(file)
+                }
+            }
         if (uri == null) toast(context, "The downloaded file is not available") else onPlay(uri.toString())
     }
     fun open(context: Context, id: Long) {

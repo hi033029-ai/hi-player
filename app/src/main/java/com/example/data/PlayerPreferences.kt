@@ -23,17 +23,26 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
 enum class AppThemeMode(val id: String, val displayName: String, val description: String) {
     SYSTEM("SYSTEM", "System", "Follow device light or dark appearance"),
     HI_PLAYER_BLUE("HI_PLAYER_BLUE", "Ice Blue", "Background: Ice Blue Gradient | Accent: Deep Blue & Cyan | Text: Dark Slate"),
+    BLACK_GOLD("BLACK_GOLD", "Black & Gold Elegance", "Black and navy with amber gold"),
+    SOFT_LAVENDER("SOFT_LAVENDER", "Soft Lavender", "Ink violet with lavender and dusty rose"),
+    DEEP_SEA("DEEP_SEA", "Deep Sea", "Deep navy with slate blue"),
+    WARM_NEUTRAL("WARM_NEUTRAL", "Warm Neutral Tones", "Cream, blush and warm taupe"),
+    BOLD_BERRY("BOLD_BERRY", "Bold Berry", "Burgundy with rose and peach"),
+    SAGE_LINEN("SAGE_LINEN", "Sage Linen", "Soft linen with botanical ink"),
+    PORCELAIN_BLUE("PORCELAIN_BLUE", "Blue Porcelain", "Pale blue and indigo ink"),
+    ROSE_PAPER("ROSE_PAPER", "Rose Paper", "Warm blush with plum ink"),
     CUSTOM("CUSTOM", "Custom", "Your colors and opacity");
 
     companion object {
+        val selectableThemes = entries.filter { it != HI_PLAYER_BLUE }
+
         fun fromId(id: String?): AppThemeMode {
             return when (id) {
                 // Removed duplicate fixed monochrome modes now follow the phone.
                 "CYAN_NEON_DARK", "MONOCHROME_DARK", "WARM_SUNSET_LIGHT", "MONOCHROME_LIGHT",
                 "SKY_BLUE_WHITE", "BLACK_WHITE_MONO", "FOREST_GREEN_WHITE", "PINK_WHITE",
                 "CLASSIC_RED_BLACK", "DEEP_PURPLE_GRADIENT", "GOLD_BLACK", "CRIMSON_NIGHT" -> SYSTEM
-                "HI_PLAYER_BLUE", "LOGO_THEME" -> HI_PLAYER_BLUE
-                "CUSTOM" -> CUSTOM
+                "HI_PLAYER_BLUE", "LOGO_THEME" -> SYSTEM
                 else -> entries.find { it.id == id } ?: SYSTEM
             }
         }
@@ -358,11 +367,12 @@ class PlayerPreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.WIDE_COLOR_GAMUT] = enabled }
     }
 
-    suspend fun setPictureMode(preset: ColorPreset, custom: ColorPreset? = null) {
+    suspend fun setPictureMode(preset: ColorPreset, custom: ColorPreset? = null, lastEnhanced: ColorPreset? = null) {
         context.dataStore.edit { prefs ->
             val enabled = preset != ColorPresets.HDR_DISABLED
             prefs[Keys.HDR_ENHANCE] = enabled
-            if (enabled) prefs[Keys.PICTURE_PRESET] = preset.name
+            val remembered = if (enabled) preset else lastEnhanced
+            if (remembered != null) prefs[Keys.PICTURE_PRESET] = remembered.name
             val savedCustom = if (preset.name == ColorPresets.CUSTOM.name) preset else custom
             if (savedCustom != null) prefs[Keys.CUSTOM_PICTURE] = encodeCustomPicture(savedCustom)
         }

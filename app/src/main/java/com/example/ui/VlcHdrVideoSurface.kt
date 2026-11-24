@@ -21,7 +21,6 @@ fun VlcHdrVideoSurface(
     modifier: Modifier = Modifier,
     displaySize: IntSize,
     sourceSize: IntSize?,
-    onSurface: (SurfaceView) -> Unit = {},
 ) {
     AndroidView(
         factory = { context ->
@@ -52,7 +51,6 @@ fun VlcHdrVideoSurface(
                 video.tag = sourceSize
             }
             video.setVideoDisplaySize(displaySize, null)
-            onSurface(video)
         },
         onRelease = { host -> engine.detachSurface(host.getChildAt(0) as SurfaceView) },
         modifier = modifier,

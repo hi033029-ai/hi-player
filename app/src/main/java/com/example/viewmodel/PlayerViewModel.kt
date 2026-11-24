@@ -126,6 +126,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var captionSaveJob: Job? = null
     private var brightnessSaveJob: Job? = null
     private var volumeSaveJob: Job? = null
+    private var speedSaveJob: Job? = null
+    private var pendingSpeedPercent: Int? = null
     // Settings and resume reads are asynchronous. Keep the job so navigation
     // can cancel it before a closed player screen is prepared again.
     private var playRequestJob: Job? = null
@@ -137,6 +139,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val customPicturePreset = _customPicturePreset.asStateFlow()
     private var pictureSaveJob: Job? = null
     private var pendingPicture: ColorPreset? = null
+    var lastEnhancedPreset = ColorPresets.NATURAL_HDR
+        private set
 
     init {
         engine.onVideoEnded = { playAdjacentVideo(1) }
@@ -150,11 +154,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // it here so a change takes effect immediately while a video is open.
         viewModelScope.launch {
             preferencesRepo.settingsFlow
-                .map { settings -> (if (settings.enableHdrEnhance) settings.picturePreset else ColorPresets.HDR_DISABLED) to settings.customPicturePreset }
+                .map { Triple(it.enableHdrEnhance, it.picturePreset, it.customPicturePreset) }
                 .distinctUntilChanged()
-                .collect { (selected, custom) ->
+                .collect { (enabled, savedPreset, custom) ->
+                    val selected = if (enabled) savedPreset else ColorPresets.HDR_DISABLED
                     if (pendingPicture != null && pendingPicture != selected) return@collect
                     pendingPicture = null
+                    if (!savedPreset.isIdentityTransform()) lastEnhancedPreset = savedPreset
                     _customPicturePreset.value = custom
                     engine.setPictureMode(selected != ColorPresets.HDR_DISABLED, selected)
                 }
@@ -163,7 +169,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         observeSetting({ subtitleStyleFor(it) }) { _subtitleStyle.value = it }
         observeSetting({ it.playerBrightnessPercent }, ::applyRememberedBrightness)
         observeSetting({ it.volumeBoostPercent }) { engine.setVolumeBoost(savedVolumeBoost(it)) }
-        observeSetting({ it.playbackSpeedPercent }) { engine.setPlaybackSpeed(it / 100f) }
+        observeSetting({ it.playbackSpeedPercent }) { saved ->
+            if (pendingSpeedPercent == saved) pendingSpeedPercent = null
+            engine.setPlaybackSpeed((pendingSpeedPercent ?: saved) / 100f)
+        }
         observeSetting({ it.audioDelayMs }, engine::setAudioDelay)
         observeSetting({ it.subtitleOffsetMs }, engine::setSubtitleOffset)
         observeSetting({ it.equalizerPreset to it.equalizerBandsDb }) { (preset, bands) ->
@@ -210,17 +219,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         playRequestJob?.cancel()
         openingAutoPlay = true
         val initialRatioRevision = ratioRevision
-        _videoScale.value = 1f
         pendingAudioTrack = null
         _currentVideo.value = video
         _showStartOverPrompt.value = false
-        _screenOrientation.value = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         playRequestJob = viewModelScope.launch {
             // These are independent local reads. Fetch them together so player
             // preparation is not delayed by settings I/O followed by DAO I/O.
             pictureSaveJob?.join()
             brightnessSaveJob?.join()
             volumeSaveJob?.join()
+            speedSaveJob?.join()
             languageSaveJob?.join()
             captionSaveJob?.join()
             muteSaveJob?.join()
@@ -521,8 +529,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setPlaybackSpeed(speed: Float) {
         val normalized = speed.coerceIn(0.25f, 4f)
         engine.setPlaybackSpeed(normalized)
-        viewModelScope.launch {
-            preferencesRepo.setPlaybackSpeedPercent((normalized * 100f).roundToInt())
+        val percent = (normalized * 100f).roundToInt()
+        pendingSpeedPercent = percent
+        speedSaveJob?.cancel()
+        speedSaveJob = viewModelScope.launch {
+            preferencesRepo.setPlaybackSpeedPercent(percent)
+            if (pendingSpeedPercent == percent) pendingSpeedPercent = null
         }
     }
 
@@ -625,8 +637,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     val hdrEnhanceActive = engine.hdrEnhanceActive
 
-    private var lastEnhancedPreset = ColorPresets.NATURAL_HDR
-
     fun togglePictureEnhancement() {
         val current = pendingPicture ?: engine.hdrColorPreset.value
         val active = com.example.player.shouldApplyColorPreset(current,
@@ -643,9 +653,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (preset.name == ColorPresets.CUSTOM.name) _customPicturePreset.value = preset
         engine.setPictureMode(preset != ColorPresets.HDR_DISABLED, preset)
         val custom = _customPicturePreset.value
+        val rememberedPreset = lastEnhancedPreset
         pictureSaveJob?.cancel()
         pictureSaveJob = viewModelScope.launch {
-            preferencesRepo.setPictureMode(preset, custom)
+            preferencesRepo.setPictureMode(preset, custom, rememberedPreset)
             if (pendingPicture == preset) pendingPicture = null
         }
     }
@@ -876,7 +887,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         engine.setMuted(settings.playerMuted)
 
         engine.setVolumeBoost(savedVolumeBoost(settings.volumeBoostPercent))
-        engine.setPlaybackSpeed(settings.playbackSpeedPercent / 100f)
+        engine.setPlaybackSpeed((pendingSpeedPercent ?: settings.playbackSpeedPercent) / 100f)
         engine.setAudioDelay(settings.audioDelayMs)
         engine.setSubtitleOffset(settings.subtitleOffsetMs)
         engine.setEqualizerPreset(settings.equalizerPreset)
@@ -910,6 +921,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun saveCurrentProgress() {
         val video = _currentVideo.value ?: return
+        // Signed playback URLs are session-only.
+        if (video.uri.scheme in setOf("http", "https") && (video.uri.encodedQuery != null || video.uri.encodedFragment != null)) return
         // The selected library item changes before async settings/probing completes.
         // Never persist the previous decoder's clock under the newly selected URI.
         if (!engine.isPreparedFor(video.uri)) return
@@ -918,16 +931,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (pos > 0 || dur > 0) {
             val aspectRatio = engine.aspectRatioMode.value.name
             viewModelScope.launch {
-                videoDao.insertOrUpdate(
-                    VideoEntity(
-                        uriString = video.uri.toString(),
-                        title = video.title,
-                        lastPositionMs = pos,
-                        durationMs = dur,
-                        lastWatchedTimestamp = System.currentTimeMillis(),
-                        customAspectRatio = aspectRatio
+                try {
+                    videoDao.savePlaybackProgress(
+                        VideoEntity(
+                            uriString = video.uri.toString(),
+                            title = video.title,
+                            lastPositionMs = pos,
+                            durationMs = dur,
+                            lastWatchedTimestamp = System.currentTimeMillis(),
+                            customAspectRatio = aspectRatio
+                        )
                     )
-                )
+                } catch (error: android.database.sqlite.SQLiteException) {
+                    android.util.Log.w("HiPlayerPlayback", "Resume position save failed: " + error.javaClass.simpleName)
+                }
             }
         }
     }

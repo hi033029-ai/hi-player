@@ -24,6 +24,18 @@ interface VideoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(video: VideoEntity)
 
+    @androidx.room.Transaction
+    suspend fun savePlaybackProgress(progress: VideoEntity) {
+        val existing = getVideoRecord(progress.uriString)
+        insertOrUpdate(existing?.copy(
+            title = progress.title,
+            lastPositionMs = progress.lastPositionMs,
+            durationMs = progress.durationMs,
+            lastWatchedTimestamp = progress.lastWatchedTimestamp,
+            customAspectRatio = progress.customAspectRatio,
+        ) ?: progress)
+    }
+
     @Query("UPDATE video_records SET lastPositionMs = :positionMs, durationMs = :durationMs, lastWatchedTimestamp = :timestamp WHERE uriString = :uriString")
     suspend fun updateProgress(uriString: String, positionMs: Long, durationMs: Long, timestamp: Long = System.currentTimeMillis())
 

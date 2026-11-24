@@ -27,9 +27,9 @@ class GeckoAppearanceDialogTest {
         compose.onNodeWithContentDescription("Ad and tracker blocking").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Skip page transitions").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Detect website videos").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("Dark web pages").performScrollTo().performClick()
+        compose.onNodeWithText("Browser colors follow the app theme.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Block pop-ups").performScrollTo().performClick()
-        compose.runOnIdle { assertTrue(settings.dark); assertFalse(popup); assertEquals(1, appearanceChanges) }
+        compose.runOnIdle { assertFalse(settings.dark); assertFalse(popup); assertEquals(0, appearanceChanges) }
         compose.onNodeWithText("Done").performClick()
         compose.runOnIdle { assertTrue(dismissed) }
     }

@@ -317,6 +317,8 @@ class MainActivity : FragmentActivity() {
                 } else if (isShowingSplash && settings.isFirstLaunch) {
                     SplashScreen(
                         isFirstLaunch = settings.isFirstLaunch,
+                        initialTheme = settings.themeMode,
+                        onThemeChanged = libraryViewModel::setThemeMode,
                         onFinish = { selectedTheme, textSizeSp ->
                             if (settings.isFirstLaunch) {
                                 libraryViewModel.setThemeMode(selectedTheme)

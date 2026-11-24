@@ -7,19 +7,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -38,6 +37,10 @@ internal fun BrowserNavigationHost(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalHiPalette.current
+    val arrowColors = IconButtonDefaults.iconButtonColors(
+        containerColor = palette.surface.copy(alpha = .94f),
+        contentColor = palette.textSecondary,
+    )
     var visible by remember { mutableStateOf(false) }
     var lastActivity by remember { mutableLongStateOf(0L) }
     val density = LocalDensity.current
@@ -81,19 +84,13 @@ internal fun BrowserNavigationHost(
     }) {
         content()
         if (available) {
-            // A labeled affordance keeps Home and the app tabs discoverable while chrome is hidden.
-            if (!visible) Row(
+            if (!visible) IconButton(
+                onClick = ::reveal,
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                    .padding(end = 12.dp, bottom = revealButtonBottomInset)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(palette.surface.copy(alpha = .94f))
-                    .clickable(onClick = ::reveal)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(end = 8.dp, bottom = revealButtonBottomInset),
+                colors = arrowColors,
             ) {
-                Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, tint = palette.textSecondary)
-                Spacer(Modifier.width(4.dp))
-                Text("Home / tabs", color = palette.textSecondary)
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Show app tabs")
             }
             AnimatedVisibility(
                 visible = visible,
@@ -101,8 +98,15 @@ internal fun BrowserNavigationHost(
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
             ) {
-                Box(Modifier.fillMaxWidth().background(palette.background.copy(alpha = .98f)).navigationBarsPadding()) {
-                    navigation()
+                Column(Modifier.fillMaxWidth().navigationBarsPadding(), horizontalAlignment = Alignment.End) {
+                    IconButton(
+                        onClick = { visible = false },
+                        modifier = Modifier.padding(end = 8.dp),
+                        colors = arrowColors,
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hide app tabs")
+                    }
+                    Box(Modifier.fillMaxWidth().background(palette.background.copy(alpha = .98f))) { navigation() }
                 }
             }
         }

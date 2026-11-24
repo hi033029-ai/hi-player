@@ -7,7 +7,32 @@ def augment_advanced(result):
     key = 'main/compatibility/Patched_GeckoTabController.kt'
     result[key] = replace_once(result[key], '    private val sessions = mutableMapOf<Int, GeckoManagedSession<View>>()', '    private val sessions = mutableMapOf<Int, GeckoManagedSession<View>>()\n    private val deferredUrls = mutableMapOf<Int, String>()', 'deferred restored-page requests')
     result[key] = replace_once(result[key], '                    if (state.url.isNotBlank()) session.load(state.url)', '                    if (state.url.isNotBlank()) {\n                        if (tab.id == activeId) session.load(state.url) else deferredUrls[tab.id] = state.url\n                    }', 'load active restored page only')
-    result[key] = replace_once(result[key], '        registry.select(id)', '        registry.select(id)\n        deferredUrls.remove(id)?.let { sessions.getValue(id).load(it) }', 'load deferred page on selection')
+    result[key] = replace_once(result[key], """        registry.select(id)
+        if (view != null) {
+            sessions.getValue(previousId).detach()
+            sessions.getValue(id).attach(view!!)
+            sessions.getValue(id).setHostActive(hostActive)
+        }
+        return true""", """        val previousSession = sessions.getValue(previousId)
+        val nextSession = sessions.getValue(id)
+        registry.select(id)
+        view?.let { surface ->
+            try {
+                previousSession.detach()
+                nextSession.attach(surface)
+                nextSession.setHostActive(hostActive)
+            } catch (_: Exception) {
+                registry.select(previousId)
+                runCatching { nextSession.detach() }
+                runCatching {
+                    previousSession.attach(surface)
+                    previousSession.setHostActive(hostActive)
+                }
+                return false
+            }
+        }
+        deferredUrls.remove(id)?.let(nextSession::load)
+        return true""", 'transactional tab switching')
     result[key] = replace_once(result[key], '        val session = sessions[id] ?: return false', '        val session = sessions[id] ?: return false\n        deferredUrls.remove(id)', 'discard closed restored page')
     result[key] = replace_once(result[key], '        if (activeId !in sessions) sessions[activeId] = newSession(tabs.single { it.id == activeId })', '        if (activeId !in sessions) sessions[activeId] = newSession(tabs.single { it.id == activeId })\n        if (wasActive) deferredUrls.remove(activeId)?.let { sessions.getValue(activeId).load(it) }', 'load selected successor only')
     result[key] = replace_once(result[key], '        val id = activeId\n        val tab = tabs.single', '        val id = activeId\n        deferredUrls.remove(id)\n        val tab = tabs.single', 'discard deferred page on Home')
@@ -21,7 +46,7 @@ def augment_advanced(result):
     key = 'main/engine/GeckoPageActions.kt'
     result[key] = replace_once(result[key], 'import androidx.compose.ui.unit.dp', 'import androidx.compose.ui.unit.dp\nimport kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext', 'asynchronous site-setting imports')
     result[key] = replace_once(result[key], '    val context = LocalContext.current', '    val context = LocalContext.current\n    val scope = rememberCoroutineScope()\n    var savingSite by remember { mutableStateOf(false) }', 'site-setting pending state')
-    result[key] = replace_once(result[key], '            Text("Page tools", style = MaterialTheme.typography.titleLarge)', '            Text("Page tools", style = MaterialTheme.typography.titleLarge)\n            if (!BuildConfig.PLAY_STORE_BUILD && (blocking || helper || youtubeAds)) {\n                val delivered = tab?.engine?.session?.let { GeckoFeatureBridge.helperStatus(it) }\n                Text(when (delivered) {\n                    true -> "Helper scripts delivered. Compatibility varies by page."\n                    false -> "Page helpers could not be applied. Reload or turn them off for this page."\n                    null -> "Helper delivery has not been confirmed for this document."\n                }, style = MaterialTheme.typography.bodySmall)\n            }', 'truthful helper delivery feedback')
+    result[key] = replace_once(result[key], '            Text("Page tools", style = MaterialTheme.typography.titleLarge)', '            Text("Page tools", style = MaterialTheme.typography.titleLarge)\n            if (!BuildConfig.PLAY_STORE_BUILD && (blocking || helper)) {\n                val delivered = tab?.engine?.session?.let { GeckoFeatureBridge.helperStatus(it) }\n                Text(when (delivered) {\n                    true -> "Helper scripts delivered. Compatibility varies by page."\n                    false -> "Page helpers could not be applied. Reload or turn them off for this page."\n                    null -> "Helper delivery has not been confirmed for this document."\n                }, style = MaterialTheme.typography.bodySmall)\n            }', 'truthful helper delivery feedback')
     result[key] = replace_once(result[key], 'Switch(checked = sitePaused, enabled = pageHost != null, onCheckedChange = { paused ->', 'Switch(checked = sitePaused, enabled = pageHost != null && !savingSite, onCheckedChange = { paused ->', 'prevent duplicate site-setting writes')
     result[key] = replace_once(result[key], '                    if (host != null) {', '                    if (host != null && !savingSite) {', 'guard site-setting submissions')
     result[key] = replace_once(result[key], '''                        runCatching { BrowserAdvancedRules.save(context, rules.copy(sites = sites)) }

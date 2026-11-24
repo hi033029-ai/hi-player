@@ -6,6 +6,10 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import android.util.LruCache
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material3.Icon
+import coil.compose.AsyncImage
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -44,6 +48,17 @@ import java.util.concurrent.Executors
  * for well-known sites, then favicons the browser saved while visiting a site,
  * then a coloured letter.
  */
+internal object WebPagePreviews {
+    val pages = androidx.compose.runtime.mutableStateMapOf<String, ImageBitmap>()
+    private val order = LinkedHashSet<String>()
+    fun save(url: String, image: ImageBitmap) {
+        order.remove(url)
+        order.add(url)
+        if (order.size > 24) order.first().let { order.remove(it); pages.remove(it) }
+        pages[url] = image
+    }
+}
+
 internal object HiSiteIcons {
     private val bundledData = mapOf(
         "google" to HiSiteIconData.GOOGLE,
@@ -191,40 +206,42 @@ internal fun HiSiteIcon(
     size: Dp,
     modifier: Modifier = Modifier,
     rounded: Boolean = false,
+    allowWebPreview: Boolean = true,
 ) {
     val context = LocalContext.current
+    val preview = if (allowWebPreview) WebPagePreviews.pages[url] else null
+    if (preview != null) {
+        Image(preview, null, modifier.size(size).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+        return
+    }
     val revision by HiSiteIcons.revision.collectAsState()
     val icon by produceState(initialValue = HiSiteIcons.peek(url), url, revision) {
-        if (value == null) value = withContext(Dispatchers.IO) { HiSiteIcons.load(context, url) }
+        value = HiSiteIcons.peek(url) ?: withContext(Dispatchers.IO) { HiSiteIcons.load(context, url) }
     }
     val shape = if (rounded) RoundedCornerShape(size * 0.28f) else CircleShape
-    val image = icon
-    if (image != null) {
-        Box(
-            modifier = modifier.size(size).clip(shape).background(Color.White),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                bitmap = image,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                filterQuality = FilterQuality.Medium,
-                modifier = Modifier.size(size).padding(size * 0.16f),
-            )
+    val uri = androidx.compose.runtime.remember(url) { runCatching { java.net.URI(url) }.getOrNull() }
+    val host = uri?.host.orEmpty().lowercase()
+    val web = allowWebPreview && uri?.scheme == "https" && uri.rawUserInfo == null && host.isNotBlank()
+    val videoId = if (web) when (host) {
+        "youtu.be" -> uri?.path?.removePrefix("/")
+        "youtube.com", "www.youtube.com", "m.youtube.com" -> when {
+            uri?.path == "/watch" -> Uri.parse(url).getQueryParameter("v")
+            uri?.path?.startsWith("/shorts/") == true -> uri.path.substringAfter("/shorts/").substringBefore('/')
+            else -> null
         }
-    } else {
-        val color = hiSiteLetterColor(label.ifBlank { url })
-        Box(
-            modifier = modifier.size(size).clip(shape).background(color.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label.trim().take(1).uppercase(),
-                color = color,
-                fontSize = (size.value * 0.42f).sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
+        else -> null
+    } else null
+    val artwork = when {
+        videoId?.matches(Regex("[A-Za-z0-9_-]{11}")) == true -> "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+        web && icon == null -> "https://${uri?.rawAuthority}/favicon.ico"
+        else -> null
+    }
+    Box(modifier.size(size).clip(shape).background(com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
+        contentAlignment = Alignment.Center) {
+        val image = icon
+        if (image != null) Image(image, null, Modifier.size(size).padding(size * .12f), contentScale = ContentScale.Fit)
+        else Icon(Icons.Default.Language, null, Modifier.size(size * .6f), tint = com.example.ui.theme.LocalHiPalette.current.textSecondary)
+        if (artwork != null) AsyncImage(artwork, null, Modifier.size(size), contentScale = if (videoId != null) ContentScale.Crop else ContentScale.Fit)
     }
 }
 

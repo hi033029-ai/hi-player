@@ -183,7 +183,10 @@ class VlcPlaybackEngine(
                 nativePlayer?.media = null
                 descriptor?.close()
                 descriptor = null
-            } catch (error: Exception) { fail(token, error); return@post }
+            } catch (error: Exception) {
+                if (!released) { fail(token, error); return@post }
+                // Continue final teardown even if the failed decoder cannot stop.
+            }
             main.post barrier@{
                 // Even a superseded stop must leave the old binding detached.
                 // Only the latest revision can attach or prepare a new surface.
@@ -192,7 +195,7 @@ class VlcPlaybackEngine(
                     if (bound) nativePlayer?.vlcVout?.detachViews()
                     bound = false
                     val nextView = view
-                    if (!released && nextView != null && nextView.holder.surface.isValid && nativePlayer != null) {
+                    if (!released && request != null && nextView != null && nextView.holder.surface.isValid && nativePlayer != null) {
                         val vout = nativePlayer.vlcVout
                         vout.setVideoSurface(nextView.holder.surface, null)
                         vout.attachViews(object : IVLCVout.OnNewVideoLayoutListener {
@@ -221,7 +224,9 @@ class VlcPlaybackEngine(
                         if (released) releaseOnWorker()
                         else if (surface != null) prepareOnWorker(token, surface)
                     }
-                } catch (error: RuntimeException) { fail(token, error) }
+                } catch (error: RuntimeException) {
+                    if (released) worker.post { releaseOnWorker() } else fail(token, error)
+                }
             }
         }
     }
@@ -267,7 +272,9 @@ class VlcPlaybackEngine(
                 }
                 worker.post {
                     if (!released && loadedRevision == token && revision.get() == token) {
-                        handleEvent(nativePlayer, type, token, changedTime)
+                        dispatchPlaybackEvent({ fail(token, it) }) {
+                            handleEvent(nativePlayer, type, token, changedTime)
+                        }
                     }
                 }
             }
@@ -368,7 +375,9 @@ class VlcPlaybackEngine(
     private fun active(action: (MediaPlayer) -> Unit) {
         val token = revision.get()
         worker.post {
-            if (!released && token == loadedRevision && token == revision.get()) player?.let(action)
+            if (!released && token == loadedRevision && token == revision.get()) {
+                dispatchPlaybackEvent({ fail(token, it) }) { player?.let(action) }
+            }
         }
     }
     fun play() { wantsPlayback = true; active { pausedSeekMs = null; it.play() } }
@@ -413,8 +422,9 @@ class VlcPlaybackEngine(
         active { it.setAudioTrack(info.trackIndex); refreshTracksOnWorker(it, loadedRevision) }
     }
     fun selectSubtitleTrack(info: VideoTrackInfo?) {
-        selectedSubtitle = info?.trackIndex ?: -1
-        active { it.setSpuTrack(selectedSubtitle!!); refreshTracksOnWorker(it, loadedRevision) }
+        val index = info?.trackIndex ?: -1
+        selectedSubtitle = index
+        active { it.setSpuTrack(index); refreshTracksOnWorker(it, loadedRevision) }
     }
     fun refreshTracks() { active { refreshTracksOnWorker(it, loadedRevision) } }
     private fun refreshTracksOnWorker(nativePlayer: MediaPlayer, token: Long) {
@@ -455,9 +465,37 @@ class VlcPlaybackEngine(
     }
     private fun releaseOnWorker() {
         worker.removeCallbacksAndMessages(null)
-        descriptor?.close(); descriptor = null
-        player?.release(); player = null
-        library?.release(); library = null
-        thread.quitSafely()
+        try {
+            descriptor?.close()
+        } catch (error: java.io.IOException) {
+            Log.w("HiPlayerLibVLC", "Descriptor close failed: " + error.javaClass.simpleName)
+        }
+        descriptor = null
+        try {
+            player?.release()
+        } catch (error: RuntimeException) {
+            Log.w("HiPlayerLibVLC", "Player release failed: " + error.javaClass.simpleName)
+        }
+        player = null
+        try {
+            library?.release()
+        } catch (error: RuntimeException) {
+            Log.w("HiPlayerLibVLC", "Library release failed: " + error.javaClass.simpleName)
+        } finally {
+            library = null
+            thread.quitSafely()
+        }
+    }
+}
+
+
+// Native events arrive on a HandlerThread, outside the try block that registered the listener.
+internal inline fun dispatchPlaybackEvent(onFailure: (Throwable) -> Unit, handle: () -> Unit) {
+    try {
+        handle()
+    } catch (error: RuntimeException) {
+        onFailure(error)
+    } catch (error: LinkageError) {
+        onFailure(error)
     }
 }

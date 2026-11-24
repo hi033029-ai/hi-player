@@ -9,8 +9,7 @@
   if (window.__hiAdShieldV1) return;
   window.__hiAdShieldV1 = true;
   var host = (location.hostname || '').toLowerCase();
-  // YouTube has its own ad skipper; sign-in and payment pages are left alone.
-  if (/(^|\.)(youtube|youtube-nocookie)\.com$/.test(host)) return;
+  if (/(^|\/)(login|signin|sign-in|oauth2?|checkout|captcha)(\/|$)/i.test(location.pathname)) return;
   if (/(^|\.)(accounts\.google|paypal|stripe|checkout\.stripe|appleid\.apple|login\.microsoftonline|login\.live)\.(com|net)$/.test(host)) return;
 
   function siteOf(h) {
@@ -43,6 +42,8 @@
     '.advertisement', '.advertising', '.advert', '.adsense', '.ezoic-ad', '.adthrive-ad', '.mv-ad-box',
     '#ad-banner', '#ad-container', '#adbox', '#ads-container', '#sticky-ad', '#banner-ad',
     '[aria-label="Advertisement" i]', '[aria-label="Ads" i]',
+    'aside[aria-label="Sponsored advertisement" i]', '[data-ad-placement][data-ad-unit-id]',
+    'iframe[title="Sponsored advertisement" i]', 'iframe[title="Third party ad content" i]',
     '.taboola', '[id^="taboola-"]', '.trc_rbox_container', '.OUTBRAIN', '.ob-widget', '.ob-smartfeed-wrapper',
     '[id^="mgid_"]', '.mgbox', '[id^="rcjsload"]', '.revcontent', '[id^="adngin-"]', '[id^="ezoic-pub-ad"]',
     // Ads inside HTML5 players (JW Player, Video.js, Flowplayer, Plyr, IMA, VAST overlays).
@@ -74,13 +75,15 @@
     var invisible = parseFloat(cs.opacity) < 0.1 ||
       (cs.backgroundColor === 'rgba(0, 0, 0, 0)' && cs.backgroundImage === 'none' &&
         !(el.textContent || '').trim() && !el.querySelector('img,video,canvas,svg,picture'));
-    return invisible || (parseInt(cs.zIndex, 10) || 0) >= 2147480000;
+    return invisible;
   }
   function onTap(e) {
     if (!e.isTrusted) return;
     var t = e.target;
     var a = t && t.closest ? t.closest('a[href]') : null;
-    if (!a || !crossSite(a.href)) return;
+    if (!a || !crossSite(a.href) || !a.closest(
+      '[data-ad-slot],[data-ad-unit],[data-sponsored="true"],.ad-overlay,.popup-ad,.ad-banner'
+    )) return;
     if (hijackOverlay(a) || (t !== a && hijackOverlay(t))) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -90,41 +93,24 @@
   document.addEventListener('click', onTap, true);
   document.addEventListener('auxclick', onTap, true);
 
-  // Scripts that build a hidden link to another site and click it themselves.
-  try {
-    var nativeClick = HTMLAnchorElement.prototype.click;
-    HTMLAnchorElement.prototype.click = function () {
-      try {
-        var target = (this.getAttribute('target') || '').toLowerCase();
-        if (!this.isConnected && target === '_blank' && crossSite(this.href)) return;
-      } catch (e) {}
-      return nativeClick.apply(this, arguments);
-    };
-  } catch (e) {}
-
-  // ---- 3. Standard-size ad frames from other sites (300x250, 728x90, ...).
-  var AD_SIZES = [[300, 250], [728, 90], [320, 50], [320, 100], [160, 600], [300, 600], [970, 250], [970, 90], [468, 60], [336, 280], [300, 50], [300, 100]];
-  function adSized(w, h) {
-    for (var i = 0; i < AD_SIZES.length; i++) {
-      if (Math.abs(AD_SIZES[i][0] - w) <= 2 && Math.abs(AD_SIZES[i][1] - h) <= 2) return true;
-    }
-    return false;
-  }
-  function sweepFrames() {
-    var frames = document.getElementsByTagName('iframe');
-    for (var i = 0; i < frames.length && i < 60; i++) {
-      var f = frames[i];
-      if (f.__hiAdChecked) continue;
-      var src = f.getAttribute('src') || '';
-      if (!src || /captcha|turnstile|challenges\.cloudflare|recaptcha|hcaptcha/i.test(src)) { f.__hiAdChecked = true; continue; }
-      var w = f.offsetWidth, h = f.offsetHeight;
-      if (!w || !h) continue;
-      f.__hiAdChecked = true;
-      if (crossSite(src) && adSized(w, h)) f.style.setProperty('display', 'none', 'important');
+  // Explicit advertising disclosures in feed cards and native ad units.
+  var DISCLOSURE = '[data-sponsored="true"],[data-ad-label],[aria-label="Sponsored" i],[aria-label="Paid promotion" i]';
+  var AD_LABEL = /^(sponsored|advertisement|promoted|paid promotion|مموّل|إعلان)$/i;
+  function sweepSponsored() {
+    var labels = document.querySelectorAll(DISCLOSURE);
+    for (var i = 0; i < labels.length && i < 60; i++) {
+      var label = labels[i];
+      var marked = label.getAttribute('data-sponsored') === 'true';
+      var caption = label.getAttribute('data-ad-label') || label.getAttribute('aria-label') || label.textContent || '';
+      if (!marked && !AD_LABEL.test(caption.trim())) continue;
+      var card = label.closest('[data-sponsored="true"],[data-ad-slot],article,[role="article"]');
+      if (card && !card.querySelector('form,input,textarea,[role="dialog"]')) {
+        card.style.setProperty('display', 'none', 'important');
+      }
     }
   }
 
-  // ---- 4. Ads inside HTML5 players: click "Skip ad", otherwise mute and jump to the end.
+  // ---- 4. Ads inside HTML5 players: click "Skip ad", otherwise seek to the end of a marked ad.
   var SKIP = '.jw-skip:not(.jw-skip-disabled),.videoAdUiSkipButton,.vast-skip-button,.vast-skip,.vjs-ad-skip,' +
     '.fp-ad-skip,.plyr__ads-skip,[class*="skip-ad" i],[class*="skipad" i],[id*="skip-ad" i],[aria-label="Skip Ad" i]';
   var AD_PLAYER = '.jw-flag-ads,.vjs-ad-playing,.fp-ad-playing,.plyr--ad,.ima-ad-container,[class*="preroll" i]';
@@ -138,8 +124,6 @@
     for (var j = 0; j < players.length && j < 6; j++) {
       var v = players[j].tagName === 'VIDEO' ? players[j] : players[j].querySelector('video');
       if (!v || !isFinite(v.duration) || !(v.duration > 0) || v.duration > 180) continue;
-      try { v.muted = true; } catch (e) {}
-      try { v.playbackRate = 16; } catch (e) {}
       try { if (v.currentTime < v.duration - 0.3) v.currentTime = v.duration - 0.1; } catch (e) {}
     }
   }
@@ -148,7 +132,7 @@
   var _st = window.setTimeout;
   function sweep() {
     pending = 0;
-    try { sweepFrames(); } catch (e) {}
+    try { sweepSponsored(); } catch (e) {}
     try { if (document.getElementsByTagName('video').length) skipPlayerAds(); } catch (e) {}
   }
   function schedule() {

@@ -7,16 +7,31 @@ const requestPage = details => {
   const top = (details.frameAncestors || []).find(frame => frame.frameId === 0);
   return (top && /^https?:\/\//i.test(top.url || "") && top.url) || details.documentUrl || details.originUrl || "";
 };
-browser.webRequest.onBeforeRequest.addListener(details =>
-  sendNative({kind:"request",url:details.url,page:requestPage(details),main:details.type === "main_frame"})
-    .then(result => ({cancel:result && result.blocked === true}), () => ({cancel:true})),
+let pendingFilters = 0;
+function filterRequest(details) {
+  if (pendingFilters >= 48) return {cancel:false};
+  pendingFilters++;
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = blocked => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      pendingFilters--;
+      resolve({cancel:blocked === true});
+    };
+    const timer = setTimeout(() => finish(false), 650);
+    sendNative({kind:"request",url:details.url,page:requestPage(details),main:details.type === "main_frame", media:details.type === "media"})
+      .then(result => finish(result?.blocked), () => finish(false));
+  });
+}
+browser.webRequest.onBeforeRequest.addListener(filterRequest,
   {urls:["http://*/*","https://*/*"]},["blocking"]);
 browser.runtime.onMessage.addListener(async (message, sender) => {
   if (sender.id !== browser.runtime.id || !sender.tab || message.kind !== "helpers") return false;
   const files = [];
   if (message.adBlock === true) files.push("orbit_adblock.js");
   if (message.pageSkipper === true) files.push("orbit_page_skipper.js");
-  if (message.youtube === true) files.push("orbit_youtube.js");
   try {
     if (message.pageSkipper !== true) await browser.scripting.executeScript({
       target:{tabId:sender.tab.id,frameIds:[sender.frameId]},world:"MAIN",injectImmediately:true,

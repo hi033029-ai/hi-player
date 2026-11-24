@@ -10,9 +10,9 @@ class GeckoPopupGateTest {
         assertFalse(gate.consume("https://example.org"))
         gate.permit("https://example.org")
         assertFalse(gate.consume("https://other.example"))
-        assertFalse(gate.consume("https://example.org"))
-        gate.permit("https://example.org")
+        gate.permit("https://second.example")
         assertTrue(gate.consume("https://example.org"))
+        assertTrue(gate.consume("https://second.example"))
         assertFalse(gate.consume("https://example.org"))
         gate.permit("about:blank")
         now += 5_001

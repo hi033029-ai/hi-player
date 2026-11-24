@@ -60,8 +60,8 @@ internal fun StreamWindow(
                     OutlinedTextField(
                         value = url, onValueChange = onUrlChange, enabled = !busy,
                         modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3,
+                        leadingIcon = { if (com.example.ui.screens.BrowserHistoryPolicy.isWebUrl(url)) com.example.ui.screens.HiSiteIcon(url, android.net.Uri.parse(url).host.orEmpty(), 32.dp, allowWebPreview = false) else Icon(Icons.Default.Link, null, tint = palette.textSecondary) },
                         label = { Text("Media URL") }, placeholder = { Text("https://…") },
-                        leadingIcon = { Icon(Icons.Default.Link, null, tint = palette.textSecondary) },
                         trailingIcon = { IconButton(enabled = !busy, onClick = { clipboard.getText()?.text?.let(onUrlChange) }) {
                             Icon(Icons.Default.ContentPaste, "Paste URL", tint = palette.textPrimary)
                         } },

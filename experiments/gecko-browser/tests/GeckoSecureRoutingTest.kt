@@ -25,6 +25,22 @@ class GeckoSecureRoutingTest {
         assertEquals("https://example.org/path?x=secret", routing.route(1))
         assertTrue(routing.policy(false).decide("https://example.org/next", "", false) is GeckoNavigationDecision.SecureSite)
     }
+    @Test fun tappedGoogleSignInOpensSecureTabButPrivateTapAsksFirst() {
+        val request = GeckoNavigationDecision.SecureSignIn(
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=example",
+            "https://example.org/login",
+            userGesture = true,
+        )
+        routing.decision(1, request)
+        assertEquals(listOf(request.entryUrl), opened)
+        assertEquals(request.returnPage, routing.route(1))
+        assertTrue(saved.isEmpty())
+        assertNull(routing.pending)
+        routing.decision(2, request)
+        assertEquals(1, opened.size)
+        assertEquals(2, routing.pending?.tabId)
+    }
+
     @Test fun privateRoutingIsMemoryOnlyAndCanBeCleared() {
         routing.decision(2, GeckoNavigationDecision.SecureSite("https://private.example/path", false))
         assertTrue(opened.isEmpty())
@@ -53,13 +69,15 @@ class GeckoSecureRoutingTest {
         assertTrue(saved.isEmpty())
         assertNull(routing.route(1))
     }
-    @Test fun googleSignInAlwaysUsesTheSecureExternalRoute() {
-        val google = "https://accounts.google.com/AccountChooser"
-        assertTrue(routing.policy(false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        assertTrue(routing.policyForTab(1, false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        assertTrue(routing.policyForTab(2, true).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
-        routing.leaveTab(1)
-        assertTrue(routing.policyForTab(1, false).decide(google, "https://example.org/", false) is GeckoNavigationDecision.SecureSignIn)
+    @Test fun websiteSignInCanStayInGeckoWhileOAuthUsesTheSecureRoute() {
+        val site = "https://m.youtube.com/"
+        val webLogin = "https://accounts.google.com/ServiceLogin?service=youtube"
+        val oauth = "https://accounts.google.com/o/oauth2/v2/auth?client_id=example"
+        for ((tabId, isPrivate) in listOf(1 to false, 2 to true)) {
+            val policy = routing.policyForTab(tabId, isPrivate).withPopupOpener(site)
+            assertEquals(GeckoNavigationDecision.Allow, policy.decide(webLogin, "", true))
+            assertTrue(policy.decide(oauth, "", false) is GeckoNavigationDecision.SecureSignIn)
+        }
     }
     @Test fun rejectsCredentialUrlsAndUnknownSchemes() {
         routing.decision(1, GeckoNavigationDecision.SecureSignIn("https://user:pass@example.org/"))

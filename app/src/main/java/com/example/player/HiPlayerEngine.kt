@@ -150,7 +150,6 @@ class HiPlayerEngine(
     private var videoEffectsInitialized = false
     private var rebuildingGradePipeline = false
     private var gradeRebuildRecoveryPending = false
-    private var gradeRebuildRetryAttempted = false
     private var pendingVideoPreparation: (() -> Unit)? = null
     private var surfaceWaitTimeout: Runnable? = null
     private val decodedSeekRevision = java.util.concurrent.atomic.AtomicLong()
@@ -344,17 +343,12 @@ class HiPlayerEngine(
 
     private fun applyVideoGrade(allowRebuild: Boolean = true) {
         val preset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
-        if (preset != null) {
-            // This also covers VLC -> Media3, which can reuse an empty native
-            // player without crossing the player-rebuild branch below.
-            trackSelector?.takeIf { it.parameters.tunnelingEnabled }?.let { selector ->
-                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(false).build()
-            }
-        }
         if (preset != null && _usesVlc.value) {
             val uri = vlcActiveUri ?: return
             vlcExoFallbackUri = uri
+            gradeRebuildRecoveryPending = true
             prepareMedia(uri, _currentPositionMs.value, desiredAutoPlay, mediaMimeType = activeMimeType)
+            return
         }
         val player = exoPlayer ?: return
         if (!_usesVlc.value && allowRebuild && !rebuildingGradePipeline &&
@@ -374,21 +368,42 @@ class HiPlayerEngine(
             rebuildingGradePipeline = true
             _playerError.value = null
             gradeRebuildRecoveryPending = true
-            gradeRebuildRetryAttempted = false
-            try {
+            val subtitle = activeExternalSubtitleUri
+            val subtitleMime = activeExternalSubtitleMime
+            fun rebuild(graded: Boolean) {
                 initializePlayer(configuredHwDecoding ?: true, configuredRemuxUltraBuffer ?: false,
                     configuredTunneling ?: false)
                 params?.let {
                     trackSelector?.parameters = it.buildUpon()
-                        .setTunnelingEnabled(configuredTunneling == true && preset == null)
+                        .setTunnelingEnabled(configuredTunneling == true && !graded)
                         .build()
                 }
-                prepareMedia(uri, position, autoPlay, activeExternalSubtitleUri, activeExternalSubtitleMime,
+                prepareMedia(uri, position, autoPlay, subtitle, subtitleMime,
                     item.localConfiguration?.mimeType, mediaTitle = item.mediaMetadata.title?.toString())
+            }
+            try {
+                rebuild(preset != null)
+            } catch (error: RuntimeException) {
+                Log.w("HiPlayerColor", "Picture transition failed: " + error.javaClass.simpleName)
+                gradeRebuildRecoveryPending = false
+                _hdrEnhanceActive.value = false
+                _hdrColorPreset.value = ColorPresets.HDR_DISABLED
+                if (preset == null) _playerError.value = "Could not restore video playback."
+                else try {
+                    rebuild(false)
+                } catch (fallback: RuntimeException) {
+                    Log.w("HiPlayerColor", "Direct output failed: " + fallback.javaClass.simpleName)
+                    _playerError.value = "Could not restore video playback."
+                }
             } finally { rebuildingGradePipeline = false }
             return
         }
         if (preset != null && appliedPreset != preset) {
+            // Configure the renderer that will actually receive the effect. Disabling
+            // tunneling on the outgoing player can restart its decoder during release.
+            trackSelector?.takeIf { it.parameters.tunnelingEnabled }?.let { selector ->
+                selector.parameters = selector.buildUponParameters().setTunnelingEnabled(false).build()
+            }
             val effect = liveGrade
             if (effect == null) {
                 liveGrade = ColorPresetEffect(preset).also { player.setVideoEffects(listOf(it)) }
@@ -439,7 +454,15 @@ class HiPlayerEngine(
         externalSubtitleReadJob = coroutineScope.launch {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    context.contentResolver.openInputStream(uri)?.buffered()?.use { input ->
+                        input.mark(3)
+                        val first = input.read()
+                        val second = input.read()
+                        input.reset()
+                        val encoding = if ((first == 255 && second == 254) || (first == 254 && second == 255))
+                            Charsets.UTF_16 else Charsets.UTF_8
+                        input.reader(encoding).readText().removePrefix("\uFEFF")
+                    }
                 }.getOrNull()
             }
             val current = if (_usesVlc.value) vlcActiveUri else exoPlayer?.currentMediaItem?.localConfiguration?.uri
@@ -549,7 +572,6 @@ class HiPlayerEngine(
     private var activeGrowingUri: Uri? = null
     private var downloadedSeekEndMs: Long? = null
     private var growingRetryJob: Job? = null
-    private var growingRetryAttempts = 0
     private var growingPlaybackReachedReady = false
     private var growingPlaybackGraceUntilMs = 0L
     var onVideoEnded: (() -> Unit)? = null
@@ -574,7 +596,6 @@ class HiPlayerEngine(
         override fun onRenderedFirstFrame() {
             if (!_usesVlc.value) _presentedPlayer.value = exoPlayer
             gradeRebuildRecoveryPending = false
-            gradeRebuildRetryAttempted = false
         }
 
         override fun onSurfaceSizeChanged(width: Int, height: Int) {
@@ -651,21 +672,32 @@ class HiPlayerEngine(
                 return
           
             }
-val gradeRetryItem = exoPlayer?.currentMediaItem
-val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
-            if (gradeRebuildRecoveryPending && !gradeRebuildRetryAttempted && gradeRetryUri != null) {
-                gradeRebuildRetryAttempted = true
+            val gradeRetryItem = exoPlayer?.currentMediaItem
+            val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
+            val renderer = error as? androidx.media3.exoplayer.ExoPlaybackException
+            val gradedVideoFailure = videoEffectsInitialized && (
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED ||
+                (renderer?.type == androidx.media3.exoplayer.ExoPlaybackException.TYPE_RENDERER &&
+                    MimeTypes.isVideo(renderer.rendererFormat?.sampleMimeType))
+            )
+            if ((gradeRebuildRecoveryPending || gradedVideoFailure) && gradeRetryUri != null) {
+                gradeRebuildRecoveryPending = false
                 val retryPosition = _currentPositionMs.value
                 val retryAutoPlay = desiredAutoPlay
                 val savedParams = trackSelector?.parameters
-                val activePreset = _hdrColorPreset.value.takeIf { shouldApplyColorPreset(it, _hdrEnhanceActive.value) }
+                val failedPlayer = exoPlayer
+                val failedRevision = routingRevision
                 val subtitleUri = activeExternalSubtitleUri
                 val subtitleMime = activeExternalSubtitleMime
                 val itemMime = gradeRetryItem.localConfiguration?.mimeType
                 val itemTitle = gradeRetryItem.mediaMetadata.title?.toString()
                 coroutineScope.launch(Dispatchers.Main) {
                     delay(150L)
-                    if (_usesVlc.value) return@launch
+                    if (_usesVlc.value || exoPlayer !== failedPlayer || routingRevision != failedRevision) return@launch
+                    // A decoder rejecting HDR grading must recover on direct output.
+                    _hdrEnhanceActive.value = false
+                    _hdrColorPreset.value = ColorPresets.HDR_DISABLED
                     rebuildingGradePipeline = true
                     try {
                         initializePlayer(
@@ -675,7 +707,7 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                         )
                         savedParams?.let {
                             trackSelector?.parameters = it.buildUpon()
-                                .setTunnelingEnabled(configuredTunneling == true && activePreset == null)
+                                .setTunnelingEnabled(configuredTunneling == true)
                                 .build()
                         }
                         prepareMedia(
@@ -688,6 +720,9 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                             mediaTitle = itemTitle,
                             resetDecoderRetry = false,
                         )
+                    } catch (fallback: RuntimeException) {
+                        Log.w("HiPlayerColor", "Direct output failed: " + fallback.javaClass.simpleName)
+                        _playerError.value = "Could not restore video playback."
                     } finally {
                         rebuildingGradePipeline = false
                     }
@@ -718,41 +753,50 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
             if (isDolbyVisionDecoderFailure && !dolbyVisionRetryAttempted && retryUri != null) {
                 dolbyVisionRetryAttempted = true
                 val retryPosition = _currentPositionMs.value
+                val failedRevision = routingRevision
+                val failedPlayer = exoPlayer
+                val subtitle = activeExternalSubtitleUri
+                val subtitleMime = activeExternalSubtitleMime
                 coroutineScope.launch(Dispatchers.Main) {
-                    // Dolby Vision streams can fail when tunneling is enabled.
-                    // Recreate the player once without tunneling and resume at
-                    // the current position; do not loop on a second failure.
-                    initializePlayer(
-                        enableHwDecoding = false,
-                        enableRemuxUltraBuffer = true,
-                        enableTunneling = false
-                    )
-                    prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                    if (routingRevision != failedRevision || exoPlayer !== failedPlayer || _usesVlc.value) return@launch
+                    try {
+                        initializePlayer(
+                            enableHwDecoding = false,
+                            enableRemuxUltraBuffer = configuredRemuxUltraBuffer ?: false,
+                            enableTunneling = false
+                        )
+                        prepareMedia(retryUri, retryPosition, desiredAutoPlay, subtitle, subtitleMime,
+                            activeMimeType, resetDecoderRetry = false)
+                    } catch (failure: RuntimeException) {
+                        Log.w("HiPlayerPlayback", "Decoder recovery failed: " + failure.javaClass.simpleName)
+                        _playerError.value = "Could not restart the video decoder."
+                    }
                 }
                 return
             }
-            if (retryUri != null && activeGrowingUri == retryUri && !growingPlaybackReachedReady) {
-                // Do not reject MP4/other containers immediately: if their
-                // metadata is at the beginning, they can play while growing;
-                // if it is at the end, retrying lets playback begin as soon as
-                // the index arrives.
-                if (growingRetryAttempts < 2 && shouldKeepAwaitingGrowingData(retryUri) &&
-                    error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED) {
-                    // An MP4 whose metadata arrives at the end can need more
-                    // than 30 seconds before its extractor becomes usable.
-                    // Keep retrying while the file remains registered as an
-                    // active download; navigation/release cancels the job.
-                    growingRetryAttempts = (growingRetryAttempts + 1).coerceAtMost(Int.MAX_VALUE)
+            if (retryUri != null && activeGrowingUri == retryUri &&
+                error.errorCode in PlaybackException.ERROR_CODE_IO_UNSPECIFIED..PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
+            ) {
+                val alias = DownloadingFilesRegistry.completedUri(downloadRegistryKey(retryUri))
+                val sourceCanGrow = error.errorCode != PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED &&
+                    shouldKeepAwaitingGrowingData(retryUri)
+                if (alias != null || sourceCanGrow) {
                     val retryPosition = _currentPositionMs.value
+                    val retryAutoPlay = desiredAutoPlay
+                    val target = alias?.let(Uri::parse) ?: retryUri
+                    growingRetryJob?.cancel()
                     _isBuffering.value = true
                     growingRetryJob = coroutineScope.launch(Dispatchers.Main) {
-                        delay(1500L)
-                        prepareMedia(retryUri, retryPosition, autoPlay = true, resetDecoderRetry = false)
+                        if (alias == null) delay(1500L)
+                        prepareMedia(target, retryPosition, autoPlay = retryAutoPlay,
+                            mediaMimeType = activeMimeType, resetDecoderRetry = false)
                     }
                     return
                 }
-                _playerError.value = incompleteDownloadMessage(retryUri)
-                return
+                if (!growingPlaybackReachedReady) {
+                    _playerError.value = "This download has not received playable data yet. Keep the download running and try again shortly."
+                    return
+                }
             }
             Log.e("HiPlayerPlayback", "Playback failed: ${error.errorCodeName}")
             _playerError.value = "This video could not be opened. Check the file or try another source."
@@ -910,6 +954,8 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                 videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                 playWhenReady = true
                 val frameOwner = this
+                var reportedFormat: androidx.media3.common.Format? = null
+                var reportedOutput: android.media.MediaFormat? = null
                 setVideoFrameMetadataListener { presentationTimeUs, _, format, output ->
                     if (_playerInstance.value !== frameOwner) return@setVideoFrameMetadataListener
                     renderedFrames.incrementAndGet()
@@ -923,11 +969,19 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                             }
                         }
                     }
-                    fun color(key: String): Int = if (output?.containsKey(key) == true) output.getInteger(key) else -1
-                    val observed = "standard=${color("color-standard")},transfer=${color("color-transfer")},range=${color("color-range")},input=${format.colorInfo}"
-                    if (lastCodecOutputColor != observed) {
-                        lastCodecOutputColor = observed
-                        Log.i("HiPlayerColor", "Codec output $observed")
+                    if (reportedFormat !== format || reportedOutput !== output) {
+                        reportedFormat = format
+                        reportedOutput = output
+                        // Vendor codec diagnostics are optional. A non-integer metadata value
+                        // must not throw from the video renderer's frame callback.
+                        fun color(key: String) = try {
+                            if (output?.containsKey(key) == true) output.getInteger(key) else -1
+                        } catch (_: ClassCastException) { -1 }
+                        val observed = "standard=${color("color-standard")},transfer=${color("color-transfer")},range=${color("color-range")},input=${format.colorInfo}"
+                        if (lastCodecOutputColor != observed) {
+                            lastCodecOutputColor = observed
+                            Log.i("HiPlayerColor", "Codec output $observed")
+                        }
                     }
                 }
                 addListener(playerListener)
@@ -1197,8 +1251,12 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
                 pendingBackendAudioIndex = _availableAudioTracks.value.indexOfFirst { it.isSelected }.takeIf { it >= 0 }
                 pendingBackendSubtitleIndex = _availableSubtitleTracks.value.indexOfFirst { it.isSelected }
             }
-            vlcPlayback?.stop()
+            // Media3 now owns playback. Release the retired native engine and
+            // sampler instead of keeping its library, thread and vout alive.
+            val retiring = vlcPlayback
+            vlcPlayback = null
             _usesVlc.value = false
+            retiring?.release()
             // A newly selected paused Media3 player may never emit an
             // onIsPlayingChanged(false) callback: it has always been paused.
             // Do not retain the old VLC instance's last asynchronous sample.
@@ -1215,7 +1273,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         if (uri != activeGrowingUri) {
             growingRetryJob?.cancel()
             growingRetryJob = null
-            growingRetryAttempts = 0
             downloadedSeekEndMs = null
             activeGrowingUri = uri.takeIf { isGrowingDownloadUri(it) }
             growingPlaybackReachedReady = false
@@ -1408,22 +1465,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
     private fun downloadRegistryKey(uri: Uri): String =
         if (uri.scheme == "file") uri.path.orEmpty() else uri.toString()
 
-    private fun isLikelyStreamableGrowingContainer(uri: Uri): Boolean {
-        val name = uri.lastPathSegment?.lowercase().orEmpty()
-        val withoutDownloadSuffix = PendingDownloadFormat.originalName(name)
-        return withoutDownloadSuffix.endsWith(".mkv") ||
-            withoutDownloadSuffix.endsWith(".webm") ||
-            withoutDownloadSuffix.endsWith(".ts")
-    }
-
-    private fun incompleteDownloadMessage(uri: Uri): String {
-        return if (isLikelyStreamableGrowingContainer(uri)) {
-            "This download has not received playable data yet. Keep the download running and try again shortly."
-        } else {
-            "This video is still downloading. Standard MP4 files need their final metadata before they can play; wait for the download to finish."
-        }
-    }
-
     fun play() {
         desiredAutoPlay = true
         if (routingTimeout != null) return
@@ -1499,7 +1540,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
-        growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
         resumeAfterForeground = false
@@ -2037,7 +2077,6 @@ val gradeRetryUri = gradeRetryItem?.localConfiguration?.uri
         growingRetryJob?.cancel()
         growingRetryJob = null
         activeGrowingUri = null
-        growingRetryAttempts = 0
         growingPlaybackReachedReady = false
         growingPlaybackGraceUntilMs = 0L
         resumeAfterForeground = false

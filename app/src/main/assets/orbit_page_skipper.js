@@ -2,7 +2,7 @@
 // @name         Hi Browser Page Skipper
 // @namespace    hi.browser
 // @version      3.0
-// @description  Speeds up countdown/wait pages, hides ads, banners and fake buttons
+// @description  Speeds up countdowns and continues supported wait pages
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -32,17 +32,15 @@
   if (SAFE.test(location.hostname + '.')) return;
 
   var _st = window.setTimeout, _si = window.setInterval, _ct = window.clearTimeout, _ci = window.clearInterval;
-  var _open = window.open;
   var NativeDate = window.Date, _dateNow = NativeDate.now;
   var _raf = window.requestAnimationFrame;
   var _perf = (window.performance && performance.now) ? performance.now.bind(performance) : null;
-  var allowOpen = 0;
   function realNow() { return _dateNow.call(NativeDate); }
 
   // ---- Wait-page detection. Runs only from the throttled scan below (never
   // inside timers), bounds the text sampled from large pages, and never treats pages with
   // forms (sign-in, codes, checkout) as wait pages.
-  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?)\s*(left|remaining)\b|(wait|continue|redirect|skip|link).{0,25}\b\d{1,2}:\d{2}\b|count ?down|generating (your |the )?link|get (the |your )?link|link is (being )?generat|skip (ad|in)\b)/i;
+  var WAIT = /(please wait|wait(ing)? (for )?\d+\s*(s|sec|secs|seconds?)\b|(continue|redirect(ing)?|skip(ping)?|link (will be )?(ready|available|generated))( you)? in \d+|\d+\s*(s|sec|secs|seconds?)\s*(left|remaining)\b|(wait|continue|redirect|skip|link).{0,25}\b\d{1,2}:\d{2}\b|count ?down|generating (your |the )?link|link is (being )?generat|skip (ad|in)\b)/i;
   var WAIT_CONTEXT = /\b(wait|continue|redirect|skip|link|download|file|destination|generat|ready)\b/i;
   var TIMER_WIDGET = /^(?:\d{1,3}|\d{1,2}:\d{2})(?:\s*(?:s|sec|secs|seconds?))?$/i;
   var isWaitPage = false;
@@ -216,56 +214,9 @@
     document.addEventListener('visibilitychange', function (e) { if (isWaitPage) e.stopImmediatePropagation(); }, true);
   } catch (e) {}
 
-  // ---- 2. Pop-ups / pop-unders from fake buttons
-  window.open = function () {
-    if (isWaitPage && Date.now() > allowOpen) return null;
-    return _open.apply(window, arguments);
-  };
-
-  // ---- 3. Ads and banners
-  function addStyle(css) {
-    try {
-      var s = document.createElement('style');
-      s.textContent = css;
-      (document.head || document.documentElement).appendChild(s);
-    } catch (e) {}
-  }
-  addStyle('ins.adsbygoogle,iframe[src*="doubleclick"],iframe[src*="googlesyndication"],iframe[src*="adsterra"],' +
-    '[id^="google_ads"],[id^="div-gpt-ad"],[class*="adsbox"],[class*="ad-banner"],[class*="adsbygoogle"],' +
-    'a[href*="doubleclick.net"],a[href*="adsterra"],a[href*="popads"],[id*="taboola"],[id*="outbrain"]{display:none!important}');
-
-  var waitStyled = false;
-  function styleWaitPage() {
-    if (waitStyled) return;
-    waitStyled = true;
-    addStyle('[class*="banner"],[id*="banner"],[class*="advert"],[id*="advert"],[class*="sponsor"],' +
-      'iframe:not([src*="captcha"]):not([src*="turnstile"]):not([src*="challenges.cloudflare"]){display:none!important}');
-    addStyle('a[target="_blank"]:has(> img){display:none!important}'); // ad tiles / fake thumbnails
-  }
-
-  function unlockScroll() {
-    [document.documentElement, document.body].forEach(function (el) {
-      if (el) el.style.setProperty('overflow', 'auto', 'important');
-    });
-  }
-
-  // Full-screen overlays (not captchas)
-  function removeOverlays() {
-    var els = document.querySelectorAll('div,section,aside,a,iframe'), n = Math.min(els.length, 400);
-    for (var i = 0; i < n; i++) {
-      var el = els[i], cs = getComputedStyle(el);
-      if ((cs.position === 'fixed' || cs.position === 'absolute') && parseInt(cs.zIndex, 10) >= 999) {
-        var r = el.getBoundingClientRect();
-        if (r.width > innerWidth * 0.6 && r.height > innerHeight * 0.6 &&
-            !el.querySelector('input,form,.g-recaptcha,.h-captcha,.cf-turnstile') &&
-            !/captcha|turnstile/i.test(el.outerHTML.slice(0, 300))) el.remove();
-      }
-    }
-  }
-
-  // ---- 4. Fake buttons vs the real one
-  var GOOD = /^\s*(get (the |your )?link|continue|click (here )?to continue|go to (the )?link|proceed|skip( ad)?|unlock( link)?|open link|continue to (the )?(link|destination|website))\s*[»>→]*\s*$/i;
-  var BAD = /(install|play|watch|update|flash|scan|virus|vpn|prize|allow notifications|start now|claim)/i;
+  // Leave popup decisions to the browser. Automatic continuation advances the
+  // wait step, while the site's download and generation controls need a tap.
+  var CONTINUE = /^\s*(continue|click (here )?to continue|go to (the )?link|proceed|skip( ad)?|open link|continue to (the )?(link|destination|website))\s*[»>→]*\s*$/i;
 
   function visible(el) {
     var r = el.getBoundingClientRect(), cs = getComputedStyle(el);
@@ -279,20 +230,15 @@
   }
   function handleButtons() {
     if (OPTIONS.autoContinue === false || hasSensitiveStep()) return;
-    var els = document.querySelectorAll('a,button,input[type=button],input[type=submit],div[role=button]');
+    var els = document.querySelectorAll('a,button,input[type=button],[role=button]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i], txt = (el.innerText || el.value || '').trim();
-      if (!txt || txt.length > 40) continue;
-      if (GOOD.test(txt)) {
-        if (!el.__orbitClicked && !el.disabled && visible(el) && sameSiteOrScript(el)) {
-          el.__orbitClicked = true;
-          allowOpen = Date.now() + 1500;
-          el.click();
-        }
-      } else if (BAD.test(txt) && !sameSiteOrScript(el)) {
-        // Fake "Play / Install / Update" buttons lead off-site; real controls don't.
-        el.style.setProperty('display', 'none', 'important');
-      }
+      var target = el.getAttribute('target');
+      if (el.__orbitClicked || el.disabled || el.type === 'submit' || el.hasAttribute('download') ||
+          (target && target.toLowerCase() !== '_self') || !CONTINUE.test(txt) ||
+          !sameSiteOrScript(el) || !visible(el)) continue;
+      el.__orbitClicked = true;
+      el.click();
     }
   }
 
@@ -329,9 +275,6 @@
       if (checks > 480) stop();
       return;
     }
-    styleWaitPage();
-    unlockScroll();
-    removeOverlays();
     handleButtons();
   }
 

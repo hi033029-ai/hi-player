@@ -2,6 +2,10 @@ package com.example.browser.gecko
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.ActivityInfo
+import com.example.data.PlayerPreferencesRepository
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Handler
@@ -109,7 +113,26 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     val accountHooks = remember(accountModel) {
         GeckoAccountHooks(signedIn = { accountModel.profile.value != null }, openAccount = { showAccount = true }, photoUrl = { accountModel.profile.value?.photoUrl })
     }
-    val fullscreen = coordinator.activeSnapshot.fullscreen
+    val snapshot = coordinator.activeSnapshot
+    val fullscreen = snapshot.fullscreen
+    val activeSession = (coordinator.controller.activeSession() as? GeckoManagedTab)?.engine?.session
+    var mini by remember(activeSession, snapshot.url) { mutableStateOf(false) }
+    DisposableEffect(activeSession, snapshot.url) {
+        onDispose { activeSession?.let { GeckoFeatureBridge.mediaCommand(it, "mini-exit") } }
+    }
+    val backgroundEnabled by remember(application) {
+        PlayerPreferencesRepository(application).settingsFlow.map { it.backgroundPlayEnabled }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = false)
+    DisposableEffect(activeSession, backgroundEnabled, snapshot.privateTab) {
+        val binding = if (activeSession != null && backgroundEnabled && !snapshot.privateTab)
+            BrowserMediaControls(application, activeSession) else null
+        onDispose { binding?.close() }
+    }
+    DisposableEffect(activeSession, arguments.isInPictureInPicture) {
+        val pip = arguments.isInPictureInPicture
+        if (pip && activeSession != null) GeckoFeatureBridge.mediaCommand(activeSession, "pip-enter")
+        onDispose { if (pip && activeSession != null) GeckoFeatureBridge.mediaCommand(activeSession, "pip-exit") }
+    }
     fun navigate(raw: String) {
         val url = normalizeBrowserInput(raw, provider) ?: return
         val media = StreamUrlClassifier.classify(url)
@@ -136,8 +159,17 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
     LaunchedEffect(arguments.isInPictureInPicture) { coordinator.controller.setHostActive(activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || arguments.isInPictureInPicture) }
     DisposableEffect(fullscreen, activity) {
         val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
-        if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars())
-        onDispose { if (fullscreen) controller.show(WindowInsetsCompat.Type.systemBars()) }
+        val orientation = activity.requestedOrientation
+        if (fullscreen) {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            if (fullscreen) {
+                activity.requestedOrientation = orientation
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
     }
     LaunchedEffect(arguments.externalUrl) { arguments.externalUrl?.let { navigate(it); latest.onExternalUrlConsumed() } }
     BackHandler {
@@ -171,7 +203,13 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                     catch (_: Exception) { voiceUnavailable = true }
                 },
                 onSettings = { showSettings = true }, onExit = { owner.release(); latest.onBack() },
-                onNavigate = ::navigate,
+                onNavigate = ::navigate, onVideoBack = {
+                    if (mini || activeSession == null) false else {
+                        if (fullscreen) coordinator.exitFullScreen()
+                        mini = GeckoFeatureBridge.mediaCommand(activeSession, "mini-enter")
+                        mini
+                    }
+                },
                 downloadsContent = { query -> BrowserDownloadsPanel(downloads, query,
                     onPlay = { id -> BrowserDownloads.playInPlayer(context, id, latest.onPlayDirectMedia) },
                     onCancelGecko = services::cancelDownload,
@@ -181,6 +219,10 @@ internal fun GeckoBrowserEntry(arguments: GeckoBrowserArguments, onUseWebView: (
                 account = accountHooks,
                 openDownloads = arguments.openDownloads, onDownloadsConsumed = arguments.onDownloadsConsumed,
             )
+            if (mini && !arguments.isInPictureInPicture) TextButton(onClick = {
+                activeSession?.let { GeckoFeatureBridge.mediaCommand(it, "mini-exit") }
+                mini = false
+            }) { Text("Expand video") }
         }
     }
     if (showSettings) GeckoAppearanceDialog(

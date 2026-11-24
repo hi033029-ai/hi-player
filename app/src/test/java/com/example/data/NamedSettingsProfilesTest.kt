@@ -29,14 +29,14 @@ class NamedSettingsProfilesTest {
         val serialized = context.dataStore.data.first()[stringPreferencesKey("named_profiles_v1")]!!
         assertFalse(serialized.contains("old-test-secret")); assertFalse(serialized.contains("opensubtitles"))
         repo.setOpenSubtitlesCredentials("new-test-key", "new-test-user", "new-test-secret")
-        repo.setThemeMode(AppThemeMode.HI_PLAYER_BLUE)
+        repo.setThemeMode(AppThemeMode.DEEP_SEA)
         repo.setPlaybackSpeedPercent(200)
         repo.applyProfile(id)
         val settings = repo.settingsFlow.first()
         assertEquals(125, settings.playbackSpeedPercent)
         assertEquals(listOf(1f, 2f, 3f, 4f, 5f), settings.equalizerBandsDb)
         assertEquals("new-test-secret", settings.openSubtitlesPassword)
-        assertEquals(AppThemeMode.HI_PLAYER_BLUE, settings.themeMode)
+        assertEquals(AppThemeMode.DEEP_SEA, settings.themeMode)
     }
     @Test fun missingSnapshotValuesRestoreDefaultsAndThemeIsIndependent() = runBlocking {
         val repo = repository
@@ -45,13 +45,13 @@ class NamedSettingsProfilesTest {
         repo.setPlaybackSpeedPercent(175)
         repo.applyProfile(defaultId)
         assertEquals(100, repo.settingsFlow.first().playbackSpeedPercent)
-        repo.setThemeMode(AppThemeMode.HI_PLAYER_BLUE)
+        repo.setThemeMode(AppThemeMode.DEEP_SEA)
         repo.saveProfile("Night", "theme")
         val themeId = repo.profilesFlow.first().first { it.kind == "theme" }.id
         repo.setThemeMode(AppThemeMode.SYSTEM)
         repo.setPlaybackSpeedPercent(150)
         repo.applyProfile(themeId)
-        assertEquals(AppThemeMode.HI_PLAYER_BLUE, repo.settingsFlow.first().themeMode)
+        assertEquals(AppThemeMode.DEEP_SEA, repo.settingsFlow.first().themeMode)
         assertEquals(150, repo.settingsFlow.first().playbackSpeedPercent)
         repo.deleteProfile(themeId)
         assertFalse(repo.profilesFlow.first().any { it.id == themeId })

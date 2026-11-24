@@ -101,7 +101,6 @@ import kotlin.math.roundToInt
 enum class OnboardingStep {
     SPLASH_LOGO,
     WELCOME_NOTE,
-    CHOOSE_THEME,
     PERMISSIONS,
     TEXT_SIZE
 }
@@ -111,11 +110,13 @@ fun SplashScreen(
     isFirstLaunch: Boolean,
     onFinish: (selectedTheme: AppThemeMode, textSizeSp: Int) -> Unit,
     onSkip: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    initialTheme: AppThemeMode = AppThemeMode.SYSTEM,
+    onThemeChanged: (AppThemeMode) -> Unit = {},
 ) {
     val context = LocalContext.current
     var currentStep by rememberSaveable { mutableStateOf(OnboardingStep.SPLASH_LOGO) }
-    var selectedTheme by rememberSaveable { mutableStateOf<AppThemeMode>(AppThemeMode.SYSTEM) }
+    var selectedTheme by rememberSaveable { mutableStateOf(initialTheme) }
     var textSizeSp by rememberSaveable { mutableStateOf(AppTextSize.DEFAULT) }
 
     var introShown by rememberSaveable { mutableStateOf(false) }
@@ -128,8 +129,7 @@ fun SplashScreen(
     }
     BackHandler(enabled = currentStep != OnboardingStep.SPLASH_LOGO && currentStep != OnboardingStep.WELCOME_NOTE) {
         currentStep = when (currentStep) {
-            OnboardingStep.CHOOSE_THEME -> OnboardingStep.WELCOME_NOTE
-            OnboardingStep.PERMISSIONS -> OnboardingStep.CHOOSE_THEME
+            OnboardingStep.PERMISSIONS -> OnboardingStep.WELCOME_NOTE
             else -> OnboardingStep.PERMISSIONS
         }
     }
@@ -174,26 +174,17 @@ fun SplashScreen(
 
                     OnboardingStep.WELCOME_NOTE -> {
                         WelcomeNoteView(
+                            selectedTheme = selectedTheme,
+                            onThemeSelected = { selectedTheme = it; onThemeChanged(it) },
                             playIntro = !introShown,
                             onIntroFinished = { introShown = true },
                             onContinue = {
                                 introShown = true
-                                currentStep = OnboardingStep.CHOOSE_THEME
+                                currentStep = OnboardingStep.PERMISSIONS
                             },
                             onSkip = {
                                 introShown = true
                                 if (!finishing) { finishing = true; onSkip() }
-                            }
-                        )
-                    }
-
-                    OnboardingStep.CHOOSE_THEME -> {
-                        ChooseThemeView(
-                            selectedTheme = selectedTheme,
-                            onThemeSelected = { selectedTheme = it },
-                            onBack = { currentStep = OnboardingStep.WELCOME_NOTE },
-                            onProceed = {
-                                currentStep = OnboardingStep.PERMISSIONS
                             }
                         )
                     }
@@ -361,6 +352,8 @@ private fun SplashLogoView(
 
 @Composable
 private fun WelcomeNoteView(
+    selectedTheme: AppThemeMode,
+    onThemeSelected: (AppThemeMode) -> Unit,
     playIntro: Boolean,
     onIntroFinished: () -> Unit,
     onContinue: () -> Unit,
@@ -387,11 +380,15 @@ private fun WelcomeNoteView(
             Spacer(Modifier.height(118.dp))
             Text("Welcome to Hi Player", fontSize = 21.sp, fontWeight = FontWeight.Bold,
                 color = com.example.ui.theme.LocalHiPalette.current.textPrimary, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(16.dp))
+            Text("Choose your theme", modifier = Modifier.align(Alignment.Start), fontWeight = FontWeight.SemiBold)
+            com.example.ui.components.HorizontalThemeSelector(selectedTheme, onThemeSelected)
+            Spacer(Modifier.height(16.dp))
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                WelcomeFeature(Icons.Default.Tv, "Videos & HDR", "Playback, subtitles and picture controls")
+                WelcomeFeature(Icons.Default.Tv, "Videos & HDR", "Choose a picture preset and pick up where you left off")
                 WelcomeFeature(Icons.Default.Headphones, "Music", "Background listening and equalizer")
-                WelcomeFeature(Icons.Default.Security, "Browser", "Tabs, downloads and video playback")
+                WelcomeFeature(Icons.Default.Security, "Browser", "Open sites in tabs, download files or watch videos online")
+                WelcomeFeature(Icons.Default.Tv, "Subtitles", "Load a subtitle file or search for open captions")
                 WelcomeFeature(Icons.Default.Folder, "Files & connections", "Browse, organise and connect storage")
             }
             Spacer(Modifier.height(12.dp))
@@ -437,207 +434,6 @@ private fun WelcomeFeature(icon: androidx.compose.ui.graphics.vector.ImageVector
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, color = palette.textPrimary, fontSize = 14.sp)
             Text(description, color = palette.textSecondary, fontSize = 12.sp, lineHeight = 17.sp)
-        }
-    }
-}
-
-@Composable
-private fun ChooseThemeView(
-    selectedTheme: AppThemeMode,
-    onThemeSelected: (AppThemeMode) -> Unit,
-    onBack: () -> Unit,
-    onProceed: () -> Unit
-) {
-    val selectedPalette = com.example.ui.theme.getPaletteForTheme(selectedTheme, androidx.compose.foundation.isSystemInDarkTheme())
-
-    var footerHeight by remember { mutableStateOf(180.dp) }
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 24.dp)
-                .padding(bottom = footerHeight + 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(16.dp)).hiContainerBorder(RoundedCornerShape(16.dp))
-                    .background(selectedPalette.primary.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = com.example.ui.components.rememberHiPlayerLogoPainter(),
-                    contentDescription = "Hi Player Logo",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(40.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "Choose Your Theme",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = com.example.ui.theme.LocalHiPalette.current.textPrimary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Select your preferred theme. Set it as default for the whole app.",
-                fontSize = 10.sp,
-                color = com.example.ui.theme.LocalHiPalette.current.textSecondary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3 Themes in Horizontal Form
-            com.example.ui.components.HorizontalThemeSelector(
-                selectedTheme = selectedTheme,
-                onThemeSelected = onThemeSelected,
-                showCustom = false,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Currently Selected Theme Detail Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.LocalHiPalette.current.surfaceElevated),
-                border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-                elevation = CardDefaults.cardElevation(0.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(selectedPalette.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "✓",
-                            color = if (selectedPalette.isDark) Color.Black else Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = selectedTheme.displayName,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            color = com.example.ui.theme.LocalHiPalette.current.textPrimary
-                        )
-                        Text(
-                            text = selectedTheme.description,
-                            fontSize = 10.sp,
-                            color = com.example.ui.theme.LocalHiPalette.current.textSecondary
-                        )
-                    }
-                }
-            }
-        }
-
-        }
-        OnboardingActions(
-            onHeightChanged = { footerHeight = it },
-            primaryLabel = "Apply & Continue", onPrimary = onProceed, accent = selectedPalette.primary,
-            secondaryLabel = "Back", onSecondary = onBack, primaryTag = "theme_proceed_button",
-            contentColor = if (selectedPalette.isDark) Color.Black else Color.White,
-        )
-    }
-}
-
-@Composable
-private fun ThemeOptionCard(
-    theme: AppThemeMode,
-    title: String,
-    subtitle: String,
-    bgPreview: Color,
-    accentPreview: Color,
-    textPreview: Color,
-    isSelected: Boolean,
-    onSelect: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onSelect)
-            .testTag("theme_card_${theme.id}"),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) com.example.ui.theme.LocalHiPalette.current.surface else com.example.ui.theme.LocalHiPalette.current.surfaceElevated
-        ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.LocalHiPalette.current.surfaceBorder),
-        elevation = CardDefaults.cardElevation(0.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(bgPreview)
-                        .border(1.dp, Color(0x33000000), RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .clip(CircleShape)
-                            .background(accentPreview)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(
-                        text = title,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.5.sp,
-                        color = com.example.ui.theme.LocalHiPalette.current.textPrimary
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = subtitle,
-                        fontSize = 10.sp,
-                        color = com.example.ui.theme.LocalHiPalette.current.textSecondary
-                    )
-                }
-            }
-
-            if (isSelected) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = "Selected",
-                    tint = com.example.ui.theme.LocalHiPalette.current.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
         }
     }
 }

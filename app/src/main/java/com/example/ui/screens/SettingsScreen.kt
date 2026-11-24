@@ -361,10 +361,11 @@ fun SettingsScreen(
                 onToggle = { showPlayback = !showPlayback }
             ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (android.os.Build.VERSION.SDK_INT >= 30) PreviousProcessExit()
                 SettingsSwitchItem(
                     icon = Icons.Default.Headphones,
                     title = "Background Audio Playback",
-                    subtitle = "Keep listening when app is minimized or screen locked",
+                    subtitle = "Keep player audio and supported browser videos playing when the app is minimized or the screen is locked",
                     checked = settings.backgroundPlayEnabled,
                     onCheckedChange = { enabled ->
                         if (enabled) pendingPlaybackPermission = "background"
@@ -530,4 +531,30 @@ private fun SettingsSwitchItem(
             )
         )
     }
+}
+
+
+@androidx.annotation.RequiresApi(30)
+@Composable
+private fun PreviousProcessExit() {
+    val app = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    var report by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(app) {
+        report = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val manager = app.getSystemService(android.app.ActivityManager::class.java)
+                val exit = manager.getHistoricalProcessExitReasons(app.packageName, 0, 12)
+                    .firstOrNull { it.processName == app.applicationInfo.processName } ?: return@runCatching null
+                val reason = when (exit.reason) {
+                    android.app.ApplicationExitInfo.REASON_CRASH -> "App crash"
+                    android.app.ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native crash"
+                    android.app.ApplicationExitInfo.REASON_LOW_MEMORY -> "Low memory"
+                    android.app.ApplicationExitInfo.REASON_ANR -> "App stopped responding"
+                    else -> "Android reason ${exit.reason}"
+                }
+                "Last app exit · $reason · ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(exit.timestamp))}"
+            }.getOrNull()
+        }
+    }
+    report?.let { androidx.compose.material3.Text(it) }
 }

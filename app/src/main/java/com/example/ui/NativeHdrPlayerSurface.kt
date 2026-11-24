@@ -21,7 +21,6 @@ fun NativeHdrPlayerSurface(
     modifier: Modifier = Modifier,
     bufferSize: IntSize? = null,
     displaySize: IntSize? = null,
-    onSurface: (SurfaceView?) -> Unit = {},
 ) {
     AndroidView(
         factory = { context ->
@@ -48,7 +47,6 @@ fun NativeHdrPlayerSurface(
             }
             video.setVideoDisplaySize(displaySize, bufferSize)
             if (video.player !== player) video.player = player
-            onSurface(surface)
         },
         onRelease = { host -> (host.getChildAt(0) as PlayerView).player = null },
         modifier = modifier,

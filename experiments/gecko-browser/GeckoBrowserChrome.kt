@@ -1,4 +1,5 @@
 package com.example.browser.gecko
+import androidx.compose.material.icons.filled.Download
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -55,6 +56,7 @@ internal fun GeckoBrowserChrome(
     permissionUi: GeckoPermissionUi? = null,
     services: GeckoBrowserServices? = null,
     modifier: Modifier = Modifier,
+    onVideoBack: (() -> Boolean)? = null,
     pageContent: @Composable (GeckoTabController<GeckoView>) -> Unit = { GeckoBrowserSurface(it) }, account: GeckoAccountHooks? = null,
 ) {
     val context = LocalContext.current
@@ -94,7 +96,7 @@ internal fun GeckoBrowserChrome(
         selectedProvider = selectedProvider, onProviderSelect = onProviderSelect,
         normalizeAddress = normalizeAddress, onVoiceSearch = onVoiceSearch, onNavigate = onNavigate,
         onMenu = { showMenu = true }, onDownloads = { librarySection = HiLibrarySection.DOWNLOADS },
-        find = find, modifier = modifier,
+        find = find, modifier = modifier, onVideoBack = onVideoBack,
         permissionUi = services?.permissions ?: permissionUi,
         historyRevision = libraryRevision,
         bookmarks = bookmarkEntries.map { it.title to it.url },
@@ -117,7 +119,10 @@ internal fun GeckoBrowserChrome(
     }
     if (services != null) {
         val fontScale = LocalConfiguration.current.fontScale
-        LaunchedEffect(services.settings, fontScale) { services.settings.applySystemScale(fontScale) }
+        val appDark = com.example.ui.theme.LocalHiPalette.current.isDark
+        LaunchedEffect(services.settings, fontScale, appDark) {
+            services.settings.applySystemScale(fontScale, appDark)
+        }
         LaunchedEffect(services.clearData.state) {
             if (services.clearData.state == GeckoClearDataState.COMPLETE || services.clearData.state == GeckoClearDataState.FAILED) libraryRevision++
         }
@@ -149,6 +154,7 @@ internal fun GeckoBrowserChrome(
         HiBrowserMenuSheet(
             tiles = listOf(
                 HiMenuAction("Bookmarks", Icons.Default.Bookmark) { librarySection = HiLibrarySection.BOOKMARKS },
+                HiMenuAction("Downloads", androidx.compose.material.icons.Icons.Default.Download) { librarySection = HiLibrarySection.DOWNLOADS },
                 HiMenuAction("History", Icons.Default.History) { librarySection = HiLibrarySection.HISTORY },
             ),
             onSetDefaultBrowser = null,
@@ -167,9 +173,10 @@ internal fun GeckoBrowserChrome(
                         onError = { qrNotice = it },
                     )
                 },
-                HiMenuAction("Desktop site", Icons.Default.DesktopWindows, enabled = onPage, checked = coordinator.desktopMode()) {
+                HiMenuAction("Desktop site", Icons.Default.DesktopWindows,
+                    enabled = services?.secureRouting?.route(coordinator.activeId) == null, checked = coordinator.desktopMode()) {
                     coordinator.setDesktop(!coordinator.desktopMode())
-                    coordinator.reload()
+                    if (onPage) coordinator.reload()
                 },
             ),
             rows = listOf(

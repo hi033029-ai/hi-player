@@ -18,7 +18,7 @@ internal class GeckoSecureRouting(
     private val openWebsite: (String) -> Boolean,
     private val openExternal: (String) -> Boolean,
 ) {
-    internal data class Request(val tabId: Int, val url: String, val isPrivate: Boolean, val external: Boolean)
+    internal data class Request(val tabId: Int, val url: String, val isPrivate: Boolean, val external: Boolean, val returnPage: String? = null, val rememberWebsite: Boolean = true)
     private val privateOrigins = mutableSetOf<String>()
     private val routes = mutableStateMapOf<Int, String>()
     var pending by mutableStateOf<Request?>(null)
@@ -26,14 +26,15 @@ internal class GeckoSecureRouting(
     var failure by mutableStateOf(false)
         private set
 
-    fun policy(isPrivate: Boolean) = createPolicy(isPrivate)
     @Suppress("UNUSED_PARAMETER")
-    fun policyForTab(tabId: Int, isPrivate: Boolean) = createPolicy(isPrivate)
-    private fun createPolicy(isPrivate: Boolean) = GeckoNavigationPolicy(
+    fun policyForTab(tabId: Int, isPrivate: Boolean) = policy(isPrivate)
+
+    fun policy(isPrivate: Boolean) = GeckoNavigationPolicy(
         SecureWebSessions::isGoogleAuthentication,
         SecureWebSessions::entryForGoogleAuth,
         { url -> val origin = SecureWebsitePolicy.originKey(url); origin != null &&
             if (isPrivate) origin in privateOrigins else prefers(url) },
+        googleSignInInBrowser = true,
     )
 
     fun decision(tabId: Int, decision: GeckoNavigationDecision) {
@@ -51,8 +52,14 @@ internal class GeckoSecureRouting(
             if (scheme !in setOf("mailto", "tel", "sms")) return
         } else if (SecureWebsitePolicy.originKey(url) == null) return
         // Even a script-initiated request needs an explicit tap before leaving Hi Browser.
-        pending = Request(tabId, url, isPrivate, external)
+        val returnPage = (decision as? GeckoNavigationDecision.SecureSignIn)?.returnPage
+            ?.takeIf { SecureWebsitePolicy.originKey(it) != null }
+        pending = Request(tabId, url, isPrivate, external, returnPage,
+            rememberWebsite = !SecureWebSessions.isGoogleAuthentication(url))
         failure = false
+        if (!isPrivate && decision is GeckoNavigationDecision.SecureSignIn &&
+            decision.userGesture && SecureWebSessions.isGoogleAuthentication(url)
+        ) confirm()
     }
 
     fun dismiss() { pending = null; failure = false }
@@ -64,9 +71,14 @@ internal class GeckoSecureRouting(
         val opened = runCatching { if (request.external) openExternal(request.url) else openWebsite(request.url) }.getOrDefault(false)
         if (!opened) { failure = true; return }
         if (!request.external) {
-            if (request.isPrivate) SecureWebsitePolicy.originKey(request.url)?.let(privateOrigins::add)
-            else rememberOrigin(request.url)
-            routes[request.tabId] = request.url
+            val page = request.returnPage ?: request.url
+            if (!SecureWebSessions.isGoogleAuthentication(page)) {
+                if (request.rememberWebsite) {
+                    if (request.isPrivate) SecureWebsitePolicy.originKey(page)?.let(privateOrigins::add)
+                    else rememberOrigin(page)
+                }
+                routes[request.tabId] = page
+            }
         }
     }
     fun route(tabId: Int): String? = routes[tabId]
@@ -80,10 +92,7 @@ internal class GeckoSecureRouting(
         if (tabPrivacy(tabId) == true) SecureWebsitePolicy.originKey(url)?.let(privateOrigins::remove)
         else forgetOrigin(url)
     }
-    fun leaveTab(tabId: Int) {
-        routes.remove(tabId)
-        if (pending?.tabId == tabId) dismiss()
-    }
+    fun leaveTab(tabId: Int) { routes.remove(tabId); if (pending?.tabId == tabId) dismiss() }
     fun prune(validIds: Set<Int>) {
         routes.keys.toList().filter { it !in validIds }.forEach(routes::remove)
         if (pending != null && pending?.tabId !in validIds) dismiss()

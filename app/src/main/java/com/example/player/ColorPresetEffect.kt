@@ -30,12 +30,12 @@ class ColorPresetEffect(initial: ColorPreset) : GlEffect {
             }
         } catch (error: GlUtil.GlException) { throw VideoFrameProcessingException(error) }
 
-        private var width = 1
-        private var height = 1
+        private var lastPreset: ColorPreset? = null
 
         override fun configure(inputWidth: Int, inputHeight: Int): Size {
-            width = inputWidth; height = inputHeight
-            return Size(width, height)
+            program.setFloatsUniform("uTexel", floatArrayOf(1f / inputWidth, 1f / inputHeight))
+            program.setFloatsUniform("uLuma", if (hdr) floatArrayOf(.2627f, .6780f, .0593f) else floatArrayOf(.2126f, .7152f, .0722f))
+            return Size(inputWidth, inputHeight)
         }
 
         override fun drawFrame(inputTexId: Int, presentationTimeUs: Long) {
@@ -43,29 +43,34 @@ class ColorPresetEffect(initial: ColorPreset) : GlEffect {
                 val preset = settings()
                 program.use()
                 program.setSamplerTexIdUniform("uTexture", inputTexId, 0)
-                program.setFloatsUniform("uGain", floatArrayOf(preset.red, preset.green, preset.blue))
-                program.setFloatsUniform("uLuma", if (hdr) floatArrayOf(.2627f, .6780f, .0593f) else floatArrayOf(.2126f, .7152f, .0722f))
-                program.setFloatUniform("uBrightness", preset.brightness)
-                program.setFloatUniform("uContrast", preset.contrast)
-                program.setFloatUniform("uSaturation", preset.saturation * preset.vibrance)
-                program.setFloatUniform("uSharpness", preset.sharpness)
-                program.setFloatUniform(
-                    "uHdrMidtoneLift",
-                    if (hdr && !preset.isIdentityTransform()) GRADED_HDR_MIDTONE_LIFT else 1f,
-                )
-                program.setFloatsUniform("uTexel", floatArrayOf(1f / width, 1f / height))
-                val targets = preset.targetAdjustments.take(8).toMutableList()
-                if (targets.isEmpty() && preset.targetHue >= 0) targets.add(ColorTargetAdjustment(preset.targetHue, preset.red, preset.green, preset.blue))
-                program.setIntUniform("uTargetCount", targets.size)
-                repeat(8) { i ->
-                    val t = targets.getOrNull(i)
-                    program.setFloatsUniform("uTarget$i", floatArrayOf(t?.hue ?: -1f, t?.red ?: 1f, t?.green ?: 1f, t?.blue ?: 1f))
-                    program.setFloatUniform("uTargetSat$i", t?.saturation ?: 1f)
+                if (preset !== lastPreset) {
+                    applyPreset(preset)
+                    lastPreset = preset
                 }
                 program.bindAttributesAndUniforms()
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
                 GlUtil.checkGlError()
             } catch (error: GlUtil.GlException) { throw VideoFrameProcessingException(error) }
+        }
+
+        private fun applyPreset(preset: ColorPreset) {
+            program.setFloatsUniform("uGain", floatArrayOf(preset.red, preset.green, preset.blue))
+            program.setFloatUniform("uBrightness", preset.brightness)
+            program.setFloatUniform("uContrast", preset.contrast)
+            program.setFloatUniform("uSaturation", preset.saturation * preset.vibrance)
+            program.setFloatUniform("uSharpness", preset.sharpness)
+            program.setFloatUniform(
+                "uHdrMidtoneLift",
+                if (hdr && !preset.isIdentityTransform()) GRADED_HDR_MIDTONE_LIFT else 1f,
+            )
+            val targets = preset.targetAdjustments.take(8).toMutableList()
+            if (targets.isEmpty() && preset.targetHue >= 0) targets.add(ColorTargetAdjustment(preset.targetHue, preset.red, preset.green, preset.blue))
+            program.setIntUniform("uTargetCount", targets.size)
+            repeat(8) { i ->
+                val t = targets.getOrNull(i)
+                program.setFloatsUniform("uTarget$i", floatArrayOf(t?.hue ?: -1f, t?.red ?: 1f, t?.green ?: 1f, t?.blue ?: 1f))
+                program.setFloatUniform("uTargetSat$i", t?.saturation ?: 1f)
+            }
         }
 
         override fun release() {

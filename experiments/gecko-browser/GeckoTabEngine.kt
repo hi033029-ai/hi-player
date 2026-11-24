@@ -2,7 +2,6 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.os.Looper
-import android.os.SystemClock
 import androidx.annotation.MainThread
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.AllowOrDeny
@@ -36,7 +35,6 @@ internal class GeckoTabEngine(
     private val promptDelegate: GeckoSession.PromptDelegate? = null,
     private val openWhenCreated: Boolean = true,
     private val onPopupRequested: ((String) -> GeckoSession?)? = null,
-    private val popupAllowed: (String, Boolean) -> Boolean = { _, gesture -> gesture },
     private val onCloseRequested: (() -> Unit)? = null,
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
@@ -53,16 +51,27 @@ internal class GeckoTabEngine(
     var snapshot = GeckoTabSnapshot(id, privateTab)
         private set
     private var attachedView: GeckoView? = null
+    private val autofillPreferences = GeckoPasswordAutofill.preferences(context)
+    private val autofillPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == GeckoPasswordAutofill.ENABLED) updateAutofill()
+    }
     private var closed = false
     private var userRequestedStop = false
-    private val popupGate = GeckoPopupGate(SystemClock::elapsedRealtime)
 
     init {
         checkMain()
-        session.promptDelegate = promptDelegate
+        session.promptDelegate = object : GeckoSession.PromptDelegate by (promptDelegate ?: object : GeckoSession.PromptDelegate {}) {
+            override fun onPopupPrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.PopupPrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
+                val target = prompt.targetUri.orEmpty().ifEmpty { "about:blank" }
+                val web = target == "about:blank" || GeckoFeatureBridge.validWebUrl(target)
+                val allow = web && !isAppPromotionLink(target, snapshot.url)
+                return GeckoResult.fromValue(prompt.confirm(if (allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY))
+            }
+        }
         session.permissionDelegate = permissionDelegate
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                if (isAppPromotionLink(url, snapshot.url)) { userRequestedStop = true; return }
                 userRequestedStop = false
                 update(GeckoLoadingState.start(snapshot, url))
             }
@@ -79,21 +88,26 @@ internal class GeckoTabEngine(
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(session: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny>? {
                 val newWindow = request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW
-                if (newWindow) popupGate.clear()
-                if (newWindow && !runCatching { popupAllowed(request.uri, request.hasUserGesture) }.getOrDefault(false)) {
+                if (isAppPromotionLink(request.uri, request.triggerUri ?: snapshot.url)) {
+                    if (!newWindow) {
+                        userRequestedStop = true
+                        update(GeckoLoadingState.cancel(snapshot))
+                    }
                     return GeckoResult.deny()
                 }
                 // A new blank child is needed by websites that create a window first and
                 // navigate it afterwards. Its later navigations still use normal policy.
-                val blankPopup = newWindow && request.uri == "about:blank"
+                val blankPopup = newWindow && (request.uri.isEmpty() || request.uri == "about:blank")
                 val decision = if (blankPopup) GeckoNavigationDecision.Allow
                     else navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
                 if (decision == GeckoNavigationDecision.Allow) {
-                    if (newWindow) popupGate.permit(request.uri)
                     return GeckoResult.allow()
                 }
-                if (!newWindow) update(GeckoLoadingState.cancel(snapshot))
-                if (decision != GeckoNavigationDecision.Block) onNavigationDecision(decision)
+                if (!newWindow) {
+                    userRequestedStop = true
+                    update(GeckoLoadingState.cancel(snapshot))
+                }
+                if (decision != GeckoNavigationDecision.Block && decision != GeckoNavigationDecision.Ignore) onNavigationDecision(decision)
                 return GeckoResult.deny()
             }
             override fun onLocationChange(
@@ -102,23 +116,29 @@ internal class GeckoTabEngine(
                 perms: List<GeckoSession.PermissionDelegate.ContentPermission>,
                 hasUserGesture: Boolean,
             ) {
-                update(GeckoLoadingState.location(snapshot, url))
+                if (!isAppPromotionLink(url, snapshot.url)) update(GeckoLoadingState.location(snapshot, url))
             }
             override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
                 // The host must apply popup and secure-origin policy first. Gecko, not
                 // this delegate, opens the returned new session after the callback.
-                if (!popupGate.consume(uri)) return null
+                if (uri.isNotEmpty() && uri != "about:blank" &&
+                    (!GeckoFeatureBridge.validWebUrl(uri) || isAppPromotionLink(uri, snapshot.url))) return null
                 val child = runCatching { onPopupRequested?.invoke(uri) }.getOrNull() ?: return null
                 if (child === session || child.isOpen) return null
                 return GeckoResult.fromValue(child)
             }
             override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
+                if (isAppPromotionLink(uri, snapshot.url)) {
+                    userRequestedStop = true
+                    update(GeckoLoadingState.cancel(snapshot))
+                    return null
+                }
                 val kind = when (error.category) {
                     WebRequestError.ERROR_CATEGORY_NETWORK -> GeckoPageError.NETWORK
                     WebRequestError.ERROR_CATEGORY_SECURITY, WebRequestError.ERROR_CATEGORY_SAFEBROWSING -> GeckoPageError.SECURITY
                     else -> GeckoPageError.CONTENT
                 }
-                update(if (userRequestedStop) GeckoLoadingState.cancel(snapshot) else GeckoLoadingState.error(snapshot, kind))
+                update(if (userRequestedStop && kind != GeckoPageError.SECURITY) GeckoLoadingState.cancel(snapshot) else GeckoLoadingState.error(snapshot, kind))
                 // Null halts the failed load; the UI must display a safe recovery state.
                 // Never ignore certificate errors.
                 return null
@@ -131,6 +151,9 @@ internal class GeckoTabEngine(
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onFirstContentfulPaint(session: GeckoSession) {
+                if (snapshot.awaitingFirstPaint) update(snapshot.copy(awaitingFirstPaint = false))
+            }
             override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
                 update(snapshot.copy(fullscreen = fullScreen))
             }
@@ -138,6 +161,12 @@ internal class GeckoTabEngine(
                 update(snapshot.copy(title = title?.takeIf { it.isNotBlank() } ?: "New tab"))
             }
             override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                // Gecko may report an unsuccessful document stop for an attachment.
+                // The download controller owns the result and any HTTP error message.
+                userRequestedStop = true
+                if (snapshot.error != GeckoPageError.SECURITY) {
+                    update(GeckoLoadingState.cancel(snapshot.copy(error = null)))
+                }
                 val offer = GeckoDownloadOffer(response)
                 if (onExternalResponse == null) runCatching { offer.close() } else {
                     try { onExternalResponse.invoke(offer) } catch (_: Exception) { runCatching { offer.close() } }
@@ -158,19 +187,27 @@ internal class GeckoTabEngine(
     @MainThread fun attach(view: GeckoView) {
         checkMain(); check(!closed)
         if (attachedView === view) return
-        attachedView?.releaseSession()
+        if (attachedView != null) detach()
+        setAutofill(view, false)
         view.setSession(session)
         attachedView = view
+        autofillPreferences.registerOnSharedPreferenceChangeListener(autofillPreferenceListener)
+        updateAutofill()
         session.setActive(true)
     }
     @MainThread fun detach() {
         checkMain()
-        attachedView?.releaseSession()
+        attachedView?.let { view ->
+            autofillPreferences.unregisterOnSharedPreferenceChangeListener(autofillPreferenceListener)
+            setAutofill(view, false)
+            view.releaseSession()
+        }
         attachedView = null
         if (!closed) session.setActive(false)
     }
     @MainThread fun load(url: String) {
         checkMain(); check(!closed)
+        if (isAppPromotionLink(url, snapshot.url)) return
         userRequestedStop = false
         update(GeckoLoadingState.start(snapshot, url))
         try { session.loadUri(url) } catch (error: Exception) {
@@ -221,8 +258,31 @@ internal class GeckoTabEngine(
     }
     @MainThread override fun close() {
         checkMain(); if (closed) return
-        detach(); closed = true; popupGate.clear(); session.close()
+        detach(); closed = true; session.close()
     }
-    private fun update(value: GeckoTabSnapshot) { if (!closed) { snapshot = value; onChanged(value) } }
+    private fun updateAutofill() {
+        val view = attachedView ?: return
+        setAutofill(view, GeckoPasswordAutofill.shouldEnable(
+            autofillPreferences.getBoolean(GeckoPasswordAutofill.ENABLED, false), snapshot,
+        ))
+    }
+
+    private fun setAutofill(view: GeckoView, enabled: Boolean) {
+        if (!GeckoPasswordAutofill.available()) return
+        if (view.autofillEnabled != enabled) {
+            if (!enabled) view.context.getSystemService(android.view.autofill.AutofillManager::class.java)?.cancel()
+            view.setAutofillEnabled(enabled)
+        }
+        view.importantForAutofill = if (enabled) android.view.View.IMPORTANT_FOR_AUTOFILL_YES
+            else android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
+
+    private fun update(value: GeckoTabSnapshot) {
+        if (closed) return
+        val eligibilityChanged = snapshot.url != value.url || snapshot.loadFailed != value.loadFailed
+        snapshot = value
+        if (eligibilityChanged) updateAutofill()
+        onChanged(value)
+    }
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
 }

@@ -2,7 +2,6 @@ package com.example.browser.gecko
 
 import com.example.data.AppTextSize
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
@@ -18,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.theme.AppDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.BuildConfig
-import com.example.ui.screens.BrowserAdvancedTools
 import com.example.ui.screens.GeckoBrowserArguments
 import com.example.ui.screens.OrbitBrowserFilterEngine
 import com.example.ui.screens.OrbitBrowserStore
@@ -38,7 +36,6 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
     val palette = LocalHiPalette.current
     val scope = rememberCoroutineScope()
     val current = services.coordinator.activeSnapshot
-    val host = remember(current.url) { Uri.parse(current.url).host }
     var appearance by remember { mutableStateOf(false) }
     var blocking by remember { mutableStateOf(store.adBlock) }
     var detection by remember { mutableStateOf(store.videoHandoff) }
@@ -56,6 +53,7 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                 GeckoSettingsGroup("Account", "Website sessions stay separate from the Hi Player account.") {
                     TextButton(onClick = onAccount) { Text("Hi Player account and cloud media") }
                 }
+                GeckoSettingsGroup("Extensions", "Install and manage compatible Firefox add-ons from Mozilla.") { GeckoExtensions() }
                 GeckoSettingsGroup("Appearance", "Webpage settings apply independently from app-wide text size.") {
                     Text("Webpage text · ${webpageZoom}%", style = MaterialTheme.typography.bodyMedium)
                     Slider(value = webpageZoom.toFloat(), valueRange = 80f..200f, steps = 11,
@@ -86,11 +84,8 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                         Text("Reset app text to ${AppTextSize.DEFAULT}sp")
                     }
                 }
-                GeckoSettingsGroup("Privacy and content", "Ad blocking applies on page loads; it does not bypass security challenges or server-enforced waits.") {
+                GeckoSettingsGroup("Privacy and content", "Automatically blocks known ad requests and hides identifiable ads on websites.") {
                     GeckoFeatureSwitch("Ad and tracker blocking", blocking) { blocking = it; store.adBlock = it }
-                }
-                GeckoSettingsGroup("Advanced site tools", "Rules are stored by hostname. Explicit blocks win over allows.") {
-                    BrowserAdvancedTools(host) { feedback = "Site rules saved. Reload to apply page helpers; unsent page input is not reloaded automatically." }
                 }
                 GeckoSettingsGroup("Videos", "Website cookies and protected or blob media stay in Gecko.") {
                     GeckoFeatureSwitch("Detect website videos", detection) { detection = it; store.videoHandoff = it }

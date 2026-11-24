@@ -1,11 +1,13 @@
 package com.example.browser.gecko
 
+import com.example.player.DownloadingFilesRegistry
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Files
 import java.util.concurrent.Executor
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
@@ -46,6 +48,32 @@ class GeckoDownloadControllerTest {
         fun runOne() { queue.removeAt(0).run() }
         fun run() { while (queue.isNotEmpty()) queue.removeAt(0).run() }
     }
+    @Test fun recordedVideoProvidesGrowingBytesAndCleansUpOnCommitOrAbort() {
+        val directory = Files.createTempDirectory("gecko-video-prefix").toFile()
+        val part = directory.resolve("video.part")
+        val key = part.absolutePath
+        val bytes = byteArrayOf(1, 2, 3)
+        try {
+            for (commit in listOf(true, false)) {
+                val target = Target()
+                val destination = GrowingGeckoDestination(target, part)
+                destination.open().use { output ->
+                    output.write(bytes)
+                    assertArrayEquals(bytes, part.readBytes())
+                    assertTrue(DownloadingFilesRegistry.isDownloading(key))
+                }
+                if (commit) destination.commit() else destination.abort()
+                assertEquals(commit, target.committed)
+                assertEquals(!commit, target.aborted)
+                assertFalse(part.exists())
+                assertFalse(DownloadingFilesRegistry.isDownloading(key))
+            }
+        } finally {
+            DownloadingFilesRegistry.completeOwned(key)
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun approvalCopiesAndCommitsWithoutPersistingSource() {
         val worker = Tasks(); val ui = Tasks(); val target = Target(); val source = Source()
         val controller = GeckoDownloadController(worker, { ui.execute(Runnable(it)) }) { _, _ -> target }
