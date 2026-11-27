@@ -49,7 +49,11 @@ internal class GeckoBrowserServices(
 
     private fun requestPopupReview(tabId: Int, target: String, reason: String, finish: (Boolean) -> Unit) {
         if (closed || coordinator.activeId != tabId || popupReview != null) { finish(false); return }
-        popupReview = PopupReview(tabId, coordinator.activeSnapshot.url, target, reason, finish)
+        val review = PopupReview(tabId, coordinator.activeSnapshot.url, target, reason, finish)
+        popupReview = review
+        main.postDelayed({
+            if (popupReview === review) resolvePopupReview(false)
+        }, 60_000)
     }
     fun resolvePopupReview(allow: Boolean) {
         val review = popupReview ?: return
@@ -113,6 +117,7 @@ internal class GeckoBrowserServices(
     }
     fun dismissDownloadNotice() { downloadNotice = null }
     @MainThread override fun close() {
+        resolvePopupReview(false)
         if (closed) return
         closed = true
         clearData.close()

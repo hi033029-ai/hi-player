@@ -24,20 +24,22 @@ def augment_parity(result):
         return result
     }
     private val delegate = object : WebExtension.MessageDelegate {''', 'off-main policy computation')
-    result[key] = replace_once(result[key], '''                val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(
-                    Uri.parse(url), prefs.adBlock, page?.let { Uri.parse(it).host }, message.optBoolean("main", false))
+    result[key] = replace_once(result[key], '''                // Top-level document decisions belong to the session navigation delegate.
+                if (message.optBoolean("main", false)) return reply(JSONObject().put("blocked", false))
+                val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(
+                    Uri.parse(url), prefs.adBlock, page?.let { Uri.parse(it).host }, false)
                 return reply(JSONObject().put("blocked", blocked))''', '''                val enabled = prefs.adBlock
                 val document = message.optBoolean("main", false)
                 val media = message.optBoolean("media", false)
                 val authPage = page?.let(com.example.auth.SecureWebSessions::isGoogleAuthentication) == true
                 val authRequest = com.example.auth.SecureWebSessions.isGoogleAuthentication(url)
-                if (!enabled || authPage || authRequest) return reply(JSONObject().put("blocked", false))
+                // GeckoBrowserHost reviews top-level destinations; do not cancel
+                // an already approved popup independently of the session.
+                if (document || !enabled || authPage || authRequest) return reply(JSONObject().put("blocked", false))
                 return policyReply {
                     val target = Uri.parse(url)
                     val host = page?.let { Uri.parse(it).host }
-                    val blocked = validWebUrl(url) && if (document) {
-                        BrowserAdvancedRules.decision(target.host, host) == true
-                    } else OrbitBrowserFilterEngine.shouldBlock(target, enabled, host, media)
+                    val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(target, enabled, host, media)
                     JSONObject().put("blocked", blocked)
                 }''', 'background request filtering')
     result[key] = replace_once(result[key], '''                    val pageHost = Uri.parse(sender.url).host

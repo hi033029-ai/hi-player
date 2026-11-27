@@ -17,6 +17,16 @@ class GeckoPopupPolicyTest {
         assertTrue(GeckoPopupPolicy.requiresReview(false, true, true))
         assertFalse(GeckoPopupPolicy.requiresReview(false, false, false))
     }
+    @Test fun delayedDownloadIntentDoesNotTrustUnrelatedDestinations() {
+        val page = "https://files.example/generate"
+        assertTrue(GeckoPopupPolicy.isTrustedDownloadTarget(page, "https://files.example:443/result"))
+        assertTrue(GeckoPopupPolicy.isTrustedDownloadTarget(page, "about:blank"))
+        assertFalse(GeckoPopupPolicy.isTrustedDownloadTarget(page, "https://different.example/result"))
+        assertFalse(GeckoPopupPolicy.isTrustedDownloadTarget(page, "http://files.example/result"))
+        assertFalse(GeckoPopupPolicy.isTrustedDownloadTarget(page, "https://files.example:444/result"))
+        assertFalse(GeckoPopupPolicy.isTrustedDownloadTarget(page, "https://files.example@different.example/result"))
+        assertFalse(GeckoPopupPolicy.isTrustedDownloadTarget("about:blank", "about:blank"))
+    }
     @Test fun promptHonorsSettingAndRecentDownloadIntent() {
         assertFalse(GeckoPopupPolicy.allowsPrompt(true, false) { false })
         assertTrue(GeckoPopupPolicy.allowsPrompt(true, false) { true })

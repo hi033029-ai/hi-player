@@ -147,8 +147,10 @@ internal object GeckoFeatureBridge {
                 if (message.optString("kind") != "request") return null
                 val url = message.optString("url")
                 val page = message.optString("page").takeIf(::validWebUrl)
+                // Top-level document decisions belong to the session navigation delegate.
+                if (message.optBoolean("main", false)) return reply(JSONObject().put("blocked", false))
                 val blocked = validWebUrl(url) && OrbitBrowserFilterEngine.shouldBlock(
-                    Uri.parse(url), prefs.adBlock, page?.let { Uri.parse(it).host }, message.optBoolean("main", false))
+                    Uri.parse(url), prefs.adBlock, page?.let { Uri.parse(it).host }, false)
                 return reply(JSONObject().put("blocked", blocked))
             }
             if (sender.environmentType != WebExtension.MessageSender.ENV_TYPE_CONTENT_SCRIPT) return null

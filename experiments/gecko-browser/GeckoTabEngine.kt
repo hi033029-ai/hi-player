@@ -115,9 +115,8 @@ internal class GeckoTabEngine(
                     }
                     return GeckoResult.deny()
                 }
-                // A new blank child is needed by websites that create a window first and
-                // navigate it afterwards. Its later navigations still use normal policy.
-                val blankPopup = newWindow && (request.uri.isEmpty() || request.uri == "about:blank")
+                // Allow a blank document before the generator submits a form or redirects.
+                val blankPopup = request.uri == "about:blank" || (newWindow && request.uri.isEmpty())
                 val decision = if (blankPopup) GeckoNavigationDecision.Allow
                     else navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
                 if (decision == GeckoNavigationDecision.Allow) {
