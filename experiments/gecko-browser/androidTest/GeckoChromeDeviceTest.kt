@@ -66,9 +66,15 @@ class GeckoChromeDeviceTest {
         click(id)
         control(id) { it.config.getOrNull(SemanticsProperties.Focused) == true }
         val automation = instrumentation.uiAutomation
-        fun editor(): AccessibilityNodeInfo = checkNotNull(
-            automation.rootInActiveWindow.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-        ) { "Address editor did not acquire input focus" }
+        fun editor(): AccessibilityNodeInfo {
+            val deadline = SystemClock.elapsedRealtime() + 10_000
+            while (SystemClock.elapsedRealtime() < deadline) {
+                val current = automation.rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+                if (current?.isEditable == true) return current
+                SystemClock.sleep(100)
+            }
+            error("Address editor did not acquire Android input focus")
+        }
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, url)
         }
