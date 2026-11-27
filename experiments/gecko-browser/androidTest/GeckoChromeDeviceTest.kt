@@ -2,10 +2,17 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.os.SystemClock
-import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.view.inspector.WindowInspector
+import androidx.compose.ui.node.RootForTest
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.AnnotatedString
 import android.os.Looper
 import android.util.Log
-import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,49 +23,49 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class GeckoChromeDeviceTest {
-    private val automation get() = InstrumentationRegistry.getInstrumentation().uiAutomation
+    private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
 
-    private fun find(node: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
-        node ?: return null
-        if (node.viewIdResourceName == label || node.contentDescription?.toString() == label ||
-            node.text?.toString() == label) return node
-        for (i in 0 until node.childCount) find(node.getChild(i), label)?.let { return it }
-        return null
+    private fun roots(view: View): Sequence<SemanticsNode> = sequence {
+        if (view is RootForTest) yield(view.semanticsOwner.rootSemanticsNode)
+        else if (view is ViewGroup) for (index in 0 until view.childCount) yieldAll(roots(view.getChildAt(index)))
     }
 
-    private fun control(label: String): AccessibilityNodeInfo {
-        Log.i("GeckoChromeTest", "Finding $label")
+    private fun nodes(node: SemanticsNode): Sequence<SemanticsNode> = sequence {
+        yield(node)
+        for (child in node.children) yieldAll(nodes(child))
+    }
+
+    private fun find(label: String): SemanticsNode? =
+        WindowInspector.getGlobalWindowViews().asReversed().asSequence()
+            .flatMap(::roots).flatMap(::nodes).firstOrNull { node ->
+                val config = node.config
+                config.getOrNull(SemanticsProperties.TestTag) == label ||
+                    config.getOrNull(SemanticsProperties.ContentDescription)?.contains(label) == true ||
+                    config.getOrNull(SemanticsProperties.Text)?.any { it.text == label } == true
+            }
+
+    private fun control(label: String, action: (SemanticsNode) -> Boolean) {
+        Log.i("GeckoChromeTest", "Checking $label")
         val deadline = SystemClock.elapsedRealtime() + 10_000
         while (SystemClock.elapsedRealtime() < deadline) {
-            val root = automation.rootInActiveWindow
-            find(root, label)?.let { return it }
-            if (label == "Browser menu" || label == "Browser home" || label.startsWith("Open tabs")) {
-                find(root, "Show browser toolbar")?.let { clickNode(it) }
-            }
+            var done = false
+            instrumentation.runOnMainSync { find(label)?.let { done = action(it) } }
+            if (done) return
             SystemClock.sleep(100)
         }
-        error("Browser control did not appear: $label")
+        error("Browser control did not reach the expected state: $label")
     }
 
-    private fun clickNode(node: AccessibilityNodeInfo) {
-        var target: AccessibilityNodeInfo? = node
-        while (target != null && !target.isClickable) target = target.parent
-        checkNotNull(target).let {
-            it.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
-            check(it.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-        }
+    private fun click(label: String) = control(label) { node ->
+        node.config.getOrNull(SemanticsActions.OnClick)?.action?.invoke() == true
     }
-
-    private fun click(label: String) = clickNode(control(label))
 
     private fun submit(url: String) {
         val id = "browser_address_input"
         click(id)
-        val args = Bundle().apply {
-            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, url)
-        }
-        check(control(id).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
-        check(control(id).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id))
+        control(id) { it.config.getOrNull(SemanticsActions.SetText)?.action?.invoke(AnnotatedString(url)) == true }
+        control(id) { it.config.getOrNull(SemanticsProperties.EditableText)?.text == url &&
+            it.config.getOrNull(SemanticsActions.OnImeAction)?.action?.invoke() == true }
     }
     @Test(timeout = 150_000) fun addressTabsBookmarksAndPlayerHandoffThroughRealAppBrowser() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -94,14 +101,14 @@ class GeckoChromeDeviceTest {
                 val page = server.root + "/bookmark-page"
                 submit(page)
                 awaitPage(90_000) { it.url == page && it.title == "Bookmark fixture" && !it.loading }
-                assertFalse(control("browser_address_input").isFocused)
+                control("browser_address_input") { it.config.getOrNull(SemanticsProperties.Focused) == false }
                 click("Browser menu")
                 click("Add bookmark")
                 click("Open tabs, 1 tab")
                 click("New tab")
-                assertTrue(control("Hi Browser").isVisibleToUser)
+                control("Hi Browser") { true }
                 click("Open tabs, 2 tabs")
-                click("Bookmark fixture")
+                click("browser_tab_1")
                 awaitPage(20_000) { it.url == page }
                 click("Browser home")
                 click("browser_bookmark_0")
