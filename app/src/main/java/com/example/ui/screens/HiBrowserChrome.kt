@@ -184,9 +184,6 @@ internal fun HiBrowserToolbar(
     LaunchedEffect(address, focused) {
         if (!focused) field = TextFieldValue(hiBrowserDisplayAddress(address))
     }
-    LaunchedEffect(focused) {
-        if (focused) field = TextFieldValue(address, selection = TextRange(0, address.length))
-    }
 
     fun submit() {
         val text = field.text
@@ -301,7 +298,13 @@ internal fun HiBrowserToolbar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("browser_address_input")
-                        .onFocusChanged { focused = it.isFocused; onFocusChange(it.isFocused) },
+                        .onFocusChanged {
+                            if (it.isFocused && !focused) {
+                                field = TextFieldValue(address, selection = TextRange(0, address.length))
+                            }
+                            focused = it.isFocused
+                            onFocusChange(it.isFocused)
+                        },
                 )
             }
             when {

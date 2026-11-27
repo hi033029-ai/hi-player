@@ -2,6 +2,8 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.os.SystemClock
+import android.os.Bundle
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.View
 import android.view.ViewGroup
 import android.view.inspector.WindowInspector
@@ -10,7 +12,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.text.AnnotatedString
 import android.os.Looper
 import android.util.Log
 import androidx.test.core.app.ActivityScenario
@@ -63,9 +64,17 @@ class GeckoChromeDeviceTest {
     private fun submit(url: String) {
         val id = "browser_address_input"
         click(id)
-        control(id) { it.config.getOrNull(SemanticsActions.SetText)?.action?.invoke(AnnotatedString(url)) == true }
-        control(id) { it.config.getOrNull(SemanticsProperties.EditableText)?.text == url &&
-            it.config.getOrNull(SemanticsActions.OnImeAction)?.action?.invoke() == true }
+        control(id) { it.config.getOrNull(SemanticsProperties.Focused) == true }
+        val automation = instrumentation.uiAutomation
+        fun editor(): AccessibilityNodeInfo = checkNotNull(
+            automation.rootInActiveWindow.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        ) { "Address editor did not acquire input focus" }
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, url)
+        }
+        check(editor().performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+        control(id) { it.config.getOrNull(SemanticsProperties.EditableText)?.text == url }
+        check(editor().performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id))
     }
     @Test(timeout = 150_000) fun addressTabsBookmarksAndPlayerHandoffThroughRealAppBrowser() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -87,7 +96,7 @@ class GeckoChromeDeviceTest {
             try {
                 fun pageIs(test: (GeckoTabSnapshot) -> Boolean): Boolean {
                     var matches = false
-                    scenario.onActivity { current -> current.owner.acquire()?.coordinator?.activeSnapshot?.let { matches = test(it) } }
+                    instrumentation.runOnMainSync { activity.owner.acquire()?.coordinator?.activeSnapshot?.let { matches = test(it) } }
                     return matches
                 }
                 fun awaitPage(timeoutMs: Long, test: (GeckoTabSnapshot) -> Boolean) {
