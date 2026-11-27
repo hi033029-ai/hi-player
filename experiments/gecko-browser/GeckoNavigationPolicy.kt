@@ -56,7 +56,14 @@ internal class GeckoNavigationPolicy(
             val path = uri.path.orEmpty().lowercase(Locale.ROOT)
             if (googleSignInInBrowser && !googleOAuthPath.containsMatchIn(path)) {
                 val rejected = path.contains("/signin/rejected")
-                return if (rejected) GeckoNavigationDecision.SecureSignIn(url, returnPage, userGesture)
+                // A normal tapped website login and redirects within Google's own
+                // login pages can remain inside Gecko. A cross-site automatic
+                // sign-in redirect, including one from an HTTP page that cannot
+                // be used as a secure return URL, needs explicit consent.
+                val crossSiteRedirect = !userGesture &&
+                    currentUrl.isNotBlank() && !isGoogleAuthentication(currentUrl) &&
+                    runCatching { URI(currentUrl).scheme?.lowercase(Locale.ROOT) in setOf("http", "https") }.getOrDefault(false)
+                return if (rejected || crossSiteRedirect) GeckoNavigationDecision.SecureSignIn(url, returnPage, userGesture)
                 else GeckoNavigationDecision.Allow
             }
             if (!userGesture && returnPage == null) return GeckoNavigationDecision.Ignore

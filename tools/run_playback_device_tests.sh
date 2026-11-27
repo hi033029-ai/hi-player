@@ -53,12 +53,41 @@ trap - ERR
 case "$api" in
   36) exit 0 ;;
   30)
-    suites="com.example.browser.gecko.GeckoMigrationDeviceTest,com.example.browser.gecko.GeckoChromeDeviceTest,$suites"
-    exec gradle --no-daemon '-Dorg.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8' \
-      :app:connectedDebugAndroidTest -PHI_PLAYER_GECKO_ENABLED=true \
-      -PHI_PLAYER_GECKO_DEVICE_TEST=true -PHI_PLAYER_GECKOVIEW_ABI=x86_64 \
-      -PHI_PLAYER_ABI_FILTERS=x86_64 --max-workers=1 \
-      "-Pandroid.testInstrumentationRunnerArguments.class=$suites"
+    # The compiled APKs are already installed. Keep every original test suite,
+    # but run Gecko integration and Compose chrome separately so a stalled
+    # instrumentation cannot consume the entire job without a failure report.
+    result=0
+    run_gecko_suite() {
+      local suite=$1 name=$2 limit=$3 log
+      log="$reports/$name.txt"
+      adb logcat -c
+      if timeout --kill-after=15s "$limit" adb shell am instrument -w -r -e class "$suite" "$runner" \
+          | tr -d '\r' | tee "$log" &&
+          grep -Exq 'OK \([1-9][0-9]* tests?\)' "$log" &&
+          grep -Fxq 'INSTRUMENTATION_CODE: -1' "$log"; then
+        local expected
+        IFS=, read -ra expected_suites <<< "$suite"
+        for expected in "${expected_suites[@]}"; do
+          if ! grep -Fxq "INSTRUMENTATION_STATUS: class=$expected" "$log"; then
+            echo "Missing test suite: $expected" >&2
+            result=1
+          fi
+        done
+      else
+        echo "Failed or timed out: $name ($suite)" >&2
+        result=1
+      fi
+      timeout 20s adb logcat -d > "$reports/$name-logcat.txt" || true
+      timeout 20s adb shell dumpsys activity activities > "$reports/$name-activities.txt" || true
+      timeout 20s adb shell dumpsys window > "$reports/$name-window.txt" || true
+      # Do not leave a stuck runner or app holding resources for the next suite.
+      timeout 20s adb shell am force-stop com.aistudio.hiplayer.vdmk.test || result=1
+      timeout 20s adb shell am force-stop com.aistudio.hiplayer.vdmk || result=1
+    }
+    run_gecko_suite com.example.browser.gecko.GeckoMigrationDeviceTest gecko-integration 6m
+    run_gecko_suite com.example.browser.gecko.GeckoChromeDeviceTest gecko-chrome 4m
+    run_gecko_suite "$suites" playback-and-app 12m
+    exit "$result"
     ;;
   24) suites="com.example.browser.gecko.GeckoFallbackDeviceTest,$suites" ;;
 esac

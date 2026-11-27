@@ -42,6 +42,17 @@ class GeckoNavigationPolicyTest {
             inBrowserGooglePolicy.decide("https://accounts.google.com/v3/signin/rejected?TL=abc", "https://example.org/page", false),
         )
     }
+    @Test fun automaticCrossSiteServiceLoginRequiresConsentEvenWithoutHttpsReturnPage() {
+        val login = "https://accounts.google.com/ServiceLogin"
+        assertEquals(GeckoNavigationDecision.SecureSignIn(login, null),
+            inBrowserGooglePolicy.decide(login, "http://127.0.0.1:8080/google-route", false))
+        assertEquals(GeckoNavigationDecision.SecureSignIn(login, "https://example.org/page"),
+            inBrowserGooglePolicy.decide(login, "https://example.org/page", false))
+        assertEquals(GeckoNavigationDecision.Allow,
+            inBrowserGooglePolicy.decide(login, "https://accounts.google.com/AccountChooser", false))
+        assertEquals(GeckoNavigationDecision.Allow,
+            inBrowserGooglePolicy.decide(login, "https://example.org/page", true))
+    }
     @Test fun savedSecureSiteRequiresUserGestureBeforeExternalLaunch() {
         assertEquals(GeckoNavigationDecision.SecureSite("https://secure.example/a", false),
             policy.decide("https://secure.example/a", "", false))
