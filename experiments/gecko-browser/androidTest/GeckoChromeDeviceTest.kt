@@ -3,6 +3,8 @@ package com.example.browser.gecko
 import android.content.Context
 import android.os.SystemClock
 import android.os.Bundle
+import android.os.Looper
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
@@ -25,6 +27,7 @@ class GeckoChromeDeviceTest {
     }
 
     private fun control(label: String): AccessibilityNodeInfo {
+        Log.i("GeckoChromeTest", "Finding $label")
         val deadline = SystemClock.elapsedRealtime() + 10_000
         while (SystemClock.elapsedRealtime() < deadline) {
             val root = automation.rootInActiveWindow
@@ -63,9 +66,18 @@ class GeckoChromeDeviceTest {
         context.filesDir.resolve("orbit-filters.txt").writeText("/adserver/\n")
         OrbitBrowserFilterEngine.refreshPlayFilters(context)
         FixtureServer(context).use { server ->
-            ActivityScenario.launch(GeckoChromeTestActivity::class.java).use { scenario ->
-                lateinit var activity: GeckoChromeTestActivity
-                scenario.onActivity { activity = it }
+            val scenario = ActivityScenario.launch(GeckoChromeTestActivity::class.java)
+            lateinit var activity: GeckoChromeTestActivity
+            scenario.onActivity { activity = it }
+            val observer = Thread {
+                try {
+                    Thread.sleep(30_000)
+                    Log.w("GeckoChromeTest", "Main thread during browser check:\n" +
+                        Looper.getMainLooper().thread.stackTrace.joinToString("\n"))
+                } catch (_: InterruptedException) { }
+            }
+            observer.start()
+            try {
                 fun pageIs(test: (GeckoTabSnapshot) -> Boolean): Boolean {
                     var matches = false
                     scenario.onActivity { current -> current.owner.acquire()?.coordinator?.activeSnapshot?.let { matches = test(it) } }
@@ -89,7 +101,7 @@ class GeckoChromeDeviceTest {
                 click("New tab")
                 assertTrue(control("Hi Browser").isVisibleToUser)
                 click("Open tabs, 2 tabs")
-                click("browser_tab_1")
+                click("Bookmark fixture")
                 awaitPage(20_000) { it.url == page }
                 click("Browser home")
                 click("browser_bookmark_0")
@@ -100,6 +112,9 @@ class GeckoChromeDeviceTest {
                     SystemClock.sleep(100)
                 }
                 assertEquals(server.root + "/video.mp4", activity.playedUrl)
+            } finally {
+                activity.runOnUiThread { activity.finish() }
+                observer.interrupt()
             }
         }
     }
