@@ -226,6 +226,8 @@ internal fun GeckoAppearanceDialog(
                     }
                     GeckoSettingSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", Icons.Default.Block,
                         settings.adBlock, "Ad and tracker blocking", settings::changeAdBlock)
+                    GeckoSettingSwitchRow("Block unwanted pop-ups", "Review new windows before they open", Icons.Default.Block,
+                        settings.popupBlock, "Block pop-ups", settings::changePopupBlock)
                     GeckoSettingSwitchRow("Skip page transitions", "Try to continue through supported pages", Icons.Default.Refresh,
                         settings.pageSkipper, "Skip page transitions", settings::changePageSkipper)
                     GeckoSettingsHeading("Videos")

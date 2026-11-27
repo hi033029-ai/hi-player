@@ -27,7 +27,7 @@ internal object GeckoFeatureBridge {
     private val clients = WeakHashMap<GeckoSession, Client>()
     private val ports = WeakHashMap<GeckoSession, WebExtension.Port>()
     private val waiting = WeakHashMap<GeckoSession, (Boolean) -> Unit>()
-    private val main = Handler(Looper.getMainLooper())
+    private val main by lazy { Handler(Looper.getMainLooper()) }
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "gecko-filters").apply { isDaemon = true } }
     private var runtime: GeckoRuntime? = null
     private var context: Context? = null
