@@ -86,6 +86,10 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                 }
                 GeckoSettingsGroup("Privacy and content", "Automatically blocks known ad requests and hides identifiable ads on websites.") {
                     GeckoFeatureSwitch("Ad and tracker blocking", blocking) { blocking = it; store.adBlock = it }
+                    GeckoFeatureSwitch("Block unwanted pop-ups", services.settings.popupBlock) {
+                        services.settings.changePopupBlock(it)
+                    }
+                    Text("Keep on to block unsolicited windows. Tapped links and recent download actions can still open new tabs. Turn off temporarily if a trusted website needs another window; ad filters still apply.", style = MaterialTheme.typography.bodySmall)
                 }
                 GeckoSettingsGroup("Videos", "Website cookies and protected or blob media stay in Gecko.") {
                     GeckoFeatureSwitch("Detect website videos", detection) { detection = it; store.videoHandoff = it }

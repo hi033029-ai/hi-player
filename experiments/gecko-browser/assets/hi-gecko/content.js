@@ -33,7 +33,10 @@
       if (bar && bar.contains(event.target)) { endGenerate(); return; }
       endGenerate();
       const button = event.target.closest?.('a,button,[role="button"],input[type="submit"],input[type="button"]');
-      if (!button) return;
+      if (!button) {
+        port.postMessage({kind:"clear-download-click", page:location.href});
+        return;
+      }
       const label = [button.getAttribute("aria-label"), button.textContent, button.value].filter(Boolean).join(" ").slice(0, 240);
       if (/generate(?: direct)? (?:download )?link/i.test(label) && !button.closest("form")) {
         generate = button; attempts = 0;
@@ -41,6 +44,8 @@
       }
       if (button.hasAttribute("download") || /\b(download|generate(?: direct)? link|get (?:download )?link)\b/i.test(label)) {
         port.postMessage({kind:"download-click", page:location.href});
+      } else {
+        port.postMessage({kind:"clear-download-click", page:location.href});
       }
     }, true);
     // Keep the page's own player and session alive, including its buffered media.

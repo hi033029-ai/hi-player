@@ -39,6 +39,7 @@ internal class GeckoTabEngine(
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
     private val onContextLink: ((String?, String?) -> Unit)? = null,
+    private val allowPopupPrompt: (String) -> Boolean = { false },
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -64,7 +65,10 @@ internal class GeckoTabEngine(
             override fun onPopupPrompt(session: GeckoSession, prompt: GeckoSession.PromptDelegate.PopupPrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
                 val target = prompt.targetUri.orEmpty().ifEmpty { "about:blank" }
                 val web = target == "about:blank" || GeckoFeatureBridge.validWebUrl(target)
-                val allow = web && !isAppPromotionLink(target, snapshot.url)
+                // Native user-initiated windows normally bypass this prompt.
+                // Apply the live preference here; do not re-gate onNewSession
+                // using a guessed gesture or an exact-URI ticket.
+                val allow = web && !isAppPromotionLink(target, snapshot.url) && allowPopupPrompt(target)
                 return GeckoResult.fromValue(prompt.confirm(if (allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY))
             }
         }
@@ -72,6 +76,7 @@ internal class GeckoTabEngine(
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
                 if (isAppPromotionLink(url, snapshot.url)) { userRequestedStop = true; return }
+                GeckoFeatureBridge.clearDownloadClick(session)
                 userRequestedStop = false
                 update(GeckoLoadingState.start(snapshot, url))
             }

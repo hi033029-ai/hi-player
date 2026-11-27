@@ -20,6 +20,10 @@ internal fun createGeckoBrowserCoordinator(
     onContextLink: (Int, String?, String?) -> Unit,
 ): GeckoBrowserCoordinator<GeckoView> {
     lateinit var coordinator: GeckoBrowserCoordinator<GeckoView>
+    fun advertising(url: String, openerPage: String): Boolean = GeckoFeatureBridge.validWebUrl(url) &&
+        !com.example.auth.SecureWebSessions.isGoogleAuthentication(url) &&
+        com.example.ui.screens.OrbitBrowserFilterEngine.shouldBlock(
+            android.net.Uri.parse(url), store.adBlock, android.net.Uri.parse(openerPage).host, true)
     fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean, openerPage: String = ""): GeckoManagedTab {
         lateinit var owned: GeckoManagedTab
         owned = GeckoManagedTab(
@@ -46,26 +50,28 @@ internal fun createGeckoBrowserCoordinator(
             },
             promptDelegate = promptDelegate,
             openWhenCreated = open,
+            allowPopupPrompt = { target ->
+                val page = coordinator.snapshots[tab.id]?.url.orEmpty()
+                GeckoPopupPolicy.allowsPrompt(store.popupBlock, advertising(target, page)) {
+                    GeckoFeatureBridge.consumeDownloadClick(owned.engine.session, page)
+                }
+            },
             onPopupRequested = popup@{ target ->
                 // Gecko itself opens the newly returned session. Keep it owned by the
                 // coordinator but do not attach or call loadUri before Gecko opens it.
                 val openerPage = coordinator.snapshots[tab.id]?.url.orEmpty()
-                fun advertising(url: String): Boolean = GeckoFeatureBridge.validWebUrl(url) &&
-                    !com.example.auth.SecureWebSessions.isGoogleAuthentication(url) &&
-                    com.example.ui.screens.OrbitBrowserFilterEngine.shouldBlock(
-                        android.net.Uri.parse(url), store.adBlock, android.net.Uri.parse(openerPage).host, true)
                 fun retry() {
                     if (coordinator.activeId == tab.id)
                         GeckoFeatureBridge.mediaCommand(owned.engine.session, "retry-generate")
                 }
-                if (advertising(target)) {
+                if (advertising(target, openerPage)) {
                     retry()
                     return@popup null
                 }
                 val child = coordinator.reservePopup(tab.id) { popup, callback ->
                     var discarded = false
                     createTab(popup, { state ->
-                        if (!discarded && coordinator.pendingPopupOpener(popup.id) == tab.id && advertising(state.url)) {
+                        if (!discarded && coordinator.pendingPopupOpener(popup.id) == tab.id && advertising(state.url, openerPage)) {
                             discarded = true
                             Handler(Looper.getMainLooper()).post {
                                 if (coordinator.pendingPopupOpener(popup.id) == tab.id) {

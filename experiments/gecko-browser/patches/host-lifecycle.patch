@@ -147,7 +147,7 @@ diff --git a/experiments/gecko-browser/GeckoFilePickerLauncher.kt b/experiments/
 diff --git a/experiments/gecko-browser/GeckoManagedTab.kt b/experiments/gecko-browser/GeckoManagedTab.kt
 --- a/experiments/gecko-browser/GeckoManagedTab.kt
 +++ b/experiments/gecko-browser/GeckoManagedTab.kt
-@@ -24,4 +24,5 @@
+@@ -25,4 +25,5 @@
      override fun attach(view: GeckoView) = engine.attach(view)
      override fun detach() = engine.detach()
 +    override fun setHostActive(active: Boolean) = engine.setHostActive(active)
@@ -259,7 +259,7 @@ diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko
 diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-browser/GeckoTabEngine.kt
 --- a/experiments/gecko-browser/GeckoTabEngine.kt
 +++ b/experiments/gecko-browser/GeckoTabEngine.kt
-@@ -206,4 +206,8 @@
+@@ -211,4 +211,8 @@
          if (!closed) session.setActive(false)
      }
 +    @MainThread fun setHostActive(active: Boolean) {

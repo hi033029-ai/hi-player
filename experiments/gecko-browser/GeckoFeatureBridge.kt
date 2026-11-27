@@ -69,9 +69,10 @@ internal object GeckoFeatureBridge {
         return sender.scheme == page.scheme && sender.encodedAuthority == page.encodedAuthority
     }
     private val downloadClicks = WeakHashMap<GeckoSession, Pair<String, Long>>()
+    fun clearDownloadClick(session: GeckoSession) { downloadClicks.remove(session) }
     fun consumeDownloadClick(session: GeckoSession, page: String): Boolean {
         val click = downloadClicks.remove(session) ?: return false
-        return click.first == page && android.os.SystemClock.elapsedRealtime() - click.second in 0L..5000L
+        return click.first.substringBefore('#') == page.substringBefore('#') && android.os.SystemClock.elapsedRealtime() - click.second in 0L..5000L
     }
     fun mediaCommand(session: GeckoSession, command: String): Boolean {
         val port = ports[session] ?: return false
@@ -174,6 +175,11 @@ internal object GeckoFeatureBridge {
                     val page = client.page()
                     if (sameDocument(sender.url, message.optString("page"), page))
                         downloadClicks[session] = page to android.os.SystemClock.elapsedRealtime()
+                }
+                "clear-download-click" -> {
+                    val session = sender.session ?: return null
+                    if (sameDocument(sender.url, message.optString("page"), client.page()))
+                        clearDownloadClick(session)
                 }
                 "media-modes" -> {
                     val session = sender.session ?: return null
