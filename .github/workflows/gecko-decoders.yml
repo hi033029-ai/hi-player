@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   decoders:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     concurrency:
       group: gecko-native-${{ github.workflow }}-${{ github.run_id }}-${{ github.run_attempt }}
