@@ -246,7 +246,13 @@ class LibraryPlaybackDeviceTest {
         var viewport = Rect()
         instrumentation.runOnMainSync {
             val surface = (host.window.decorView as ViewGroup).descendants.filterIsInstance<SurfaceView>().firstOrNull()
-            val parent = surface?.parent as? View ?: return@runOnMainSync
+                ?: return@runOnMainSync
+            // VLC has a direct SurfaceView child. Media3 nests its SurfaceView
+            // inside the already-resized PlayerView. Measure the full-screen
+            // host outside PlayerView, not the picture-sized inner container.
+            val playerView = generateSequence<View>(surface) { it.parent as? View }
+                .filterIsInstance<androidx.media3.ui.PlayerView>().firstOrNull()
+            val parent = (playerView ?: surface).parent as? View ?: return@runOnMainSync
             val location = IntArray(2)
             parent.getLocationOnScreen(location)
             viewport = Rect(location[0], location[1], location[0] + parent.width, location[1] + parent.height)
@@ -315,7 +321,7 @@ class LibraryPlaybackDeviceTest {
                 try {
                     awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
                         engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
-                            engine.vlcFirstFrame.value && engine.isPlaying.value &&
+                            (!engine.usesVlc.value || engine.vlcFirstFrame.value) && engine.isPlaying.value &&
                             engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
                             centeredMkvPicture(host, landscape)
                     }
