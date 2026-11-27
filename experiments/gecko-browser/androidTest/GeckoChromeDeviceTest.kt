@@ -2,20 +2,61 @@ package com.example.browser.gecko
 
 import android.content.Context
 import android.os.SystemClock
-import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import android.os.Bundle
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.ui.screens.OrbitBrowserFilterEngine
 import org.junit.Assert.*
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class GeckoChromeDeviceTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    private val automation get() = InstrumentationRegistry.getInstrumentation().uiAutomation
+
+    private fun find(node: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
+        node ?: return null
+        if (node.viewIdResourceName == label || node.contentDescription?.toString() == label ||
+            node.text?.toString() == label) return node
+        for (i in 0 until node.childCount) find(node.getChild(i), label)?.let { return it }
+        return null
+    }
+
+    private fun control(label: String): AccessibilityNodeInfo {
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (SystemClock.elapsedRealtime() < deadline) {
+            val root = automation.rootInActiveWindow
+            find(root, label)?.let { return it }
+            if (label == "Browser menu" || label == "Browser home" || label.startsWith("Open tabs")) {
+                find(root, "Show browser toolbar")?.let { clickNode(it) }
+            }
+            SystemClock.sleep(100)
+        }
+        error("Browser control did not appear: $label")
+    }
+
+    private fun clickNode(node: AccessibilityNodeInfo) {
+        var target: AccessibilityNodeInfo? = node
+        while (target != null && !target.isClickable) target = target.parent
+        checkNotNull(target).let {
+            it.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
+            check(it.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+        }
+    }
+
+    private fun click(label: String) = clickNode(control(label))
+
+    private fun submit(url: String) {
+        val id = "browser_address_input"
+        click(id)
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, url)
+        }
+        check(control(id).performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+        check(control(id).performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id))
+    }
     @Test(timeout = 150_000) fun addressTabsBookmarksAndPlayerHandoffThroughRealAppBrowser() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.getSharedPreferences("orbit_browser",Context.MODE_PRIVATE).edit().clear().commit()
@@ -30,9 +71,6 @@ class GeckoChromeDeviceTest {
                     scenario.onActivity { current -> current.owner.acquire()?.coordinator?.activeSnapshot?.let { matches = test(it) } }
                     return matches
                 }
-                // Browser state is owned by the Activity/main thread rather than
-                // the Compose clock. Avoid calling ActivityScenario.onActivity
-                // from inside Compose's wait/synchronization callback.
                 fun awaitPage(timeoutMs: Long, test: (GeckoTabSnapshot) -> Boolean) {
                     val deadline = SystemClock.elapsedRealtime() + timeoutMs
                     while (SystemClock.elapsedRealtime() < deadline) {
@@ -41,34 +79,27 @@ class GeckoChromeDeviceTest {
                     }
                     fail("Browser page snapshot did not reach the expected state within ${timeoutMs}ms")
                 }
-                compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/bookmark-page")
-                compose.onNodeWithTag("browser_address_input").performImeAction()
-                awaitPage(90_000) { it.title == "Bookmark fixture" && !it.loading }
-                compose.onNodeWithTag("browser_address_input").assertIsNotFocused()
-                compose.onNodeWithContentDescription("Browser menu").performClick()
-                compose.onNodeWithContentDescription("Add bookmark")
-                    .performScrollTo().assertIsDisplayed().performClick()
-                compose.onNodeWithContentDescription("Open tabs, 1 tab").performClick()
-                compose.onNodeWithContentDescription("New tab").performClick()
-                compose.onNodeWithText("Hi Browser").assertIsDisplayed()
-                compose.onNodeWithContentDescription("Open tabs, 2 tabs").performClick()
-                compose.onNodeWithTag("browser_tab_1").performClick()
-                awaitPage(20_000) { it.url == server.root+"/bookmark-page" }
-                compose.onNodeWithContentDescription("Browser home").performClick()
-                // The home surface and its bookmark row are composed after the
-                // Gecko tab snapshot switches to the blank start page. Waiting
-                // for that observable UI state avoids racing the transition on
-                // slower emulators and mirrors what a user can actually tap.
-                compose.waitUntil(20_000) {
-                    compose.onAllNodesWithTag("browser_bookmark_0")
-                        .fetchSemanticsNodes().isNotEmpty()
+                val page = server.root + "/bookmark-page"
+                submit(page)
+                awaitPage(90_000) { it.url == page && it.title == "Bookmark fixture" && !it.loading }
+                assertFalse(control("browser_address_input").isFocused)
+                click("Browser menu")
+                click("Add bookmark")
+                click("Open tabs, 1 tab")
+                click("New tab")
+                assertTrue(control("Hi Browser").isVisibleToUser)
+                click("Open tabs, 2 tabs")
+                click("browser_tab_1")
+                awaitPage(20_000) { it.url == page }
+                click("Browser home")
+                click("browser_bookmark_0")
+                awaitPage(20_000) { it.url == page }
+                submit(server.root + "/video.mp4")
+                val deadline = SystemClock.elapsedRealtime() + 5_000
+                while (activity.playedUrl == null && SystemClock.elapsedRealtime() < deadline) {
+                    SystemClock.sleep(100)
                 }
-                compose.onNodeWithTag("browser_bookmark_0").performScrollTo().performClick()
-                awaitPage(20_000) { it.url == server.root+"/bookmark-page" }
-                compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/video.mp4")
-                compose.onNodeWithTag("browser_address_input").performImeAction()
-                compose.waitUntil(5_000) { activity.playedUrl == server.root+"/video.mp4" }
-                assertNotNull("Direct media must reach Hi Player from the address bar",activity.playedUrl)
+                assertEquals(server.root + "/video.mp4", activity.playedUrl)
             }
         }
     }
