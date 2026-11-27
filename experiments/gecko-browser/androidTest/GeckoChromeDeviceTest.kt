@@ -41,9 +41,9 @@ class GeckoChromeDeviceTest {
                     }
                     fail("Browser page snapshot did not reach the expected state within ${timeoutMs}ms")
                 }
-                compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/page")
+                compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/bookmark-page")
                 compose.onNodeWithTag("browser_address_input").performImeAction()
-                awaitPage(90_000) { it.title == "Integrated Gecko ready" && !it.loading }
+                awaitPage(90_000) { it.title == "Bookmark fixture" && !it.loading }
                 compose.onNodeWithTag("browser_address_input").assertIsNotFocused()
                 compose.onNodeWithContentDescription("Browser menu").performClick()
                 compose.onNodeWithContentDescription("Add bookmark")
@@ -53,7 +53,7 @@ class GeckoChromeDeviceTest {
                 compose.onNodeWithText("Hi Browser").assertIsDisplayed()
                 compose.onNodeWithContentDescription("Open tabs, 2 tabs").performClick()
                 compose.onNodeWithTag("browser_tab_1").performClick()
-                awaitPage(20_000) { it.url == server.root+"/page" }
+                awaitPage(20_000) { it.url == server.root+"/bookmark-page" }
                 compose.onNodeWithContentDescription("Browser home").performClick()
                 // The home surface and its bookmark row are composed after the
                 // Gecko tab snapshot switches to the blank start page. Waiting
@@ -64,7 +64,7 @@ class GeckoChromeDeviceTest {
                         .fetchSemanticsNodes().isNotEmpty()
                 }
                 compose.onNodeWithTag("browser_bookmark_0").performScrollTo().performClick()
-                awaitPage(20_000) { it.url == server.root+"/page" }
+                awaitPage(20_000) { it.url == server.root+"/bookmark-page" }
                 compose.onNodeWithTag("browser_address_input").performClick().performTextReplacement(server.root+"/video.mp4")
                 compose.onNodeWithTag("browser_address_input").performImeAction()
                 compose.waitUntil(5_000) { activity.playedUrl == server.root+"/video.mp4" }

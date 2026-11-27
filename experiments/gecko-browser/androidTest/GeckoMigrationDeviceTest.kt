@@ -47,6 +47,7 @@ internal class FixtureServer(private val context: Context) : AutoCloseable {
                         var mime = "text/html; charset=utf-8"
                         val content = when {
                             path.startsWith("/adserver/") -> { blockedHits.incrementAndGet(); mime = "application/javascript"; "window.blockedAdRan=true".toByteArray() }
+                            path == "/bookmark-page" -> "<!doctype html><title>Bookmark fixture</title><p>Saved page</p>".toByteArray()
                             path == "/allowed.js" -> { mime = "application/javascript"; "window.allowedFixture=true".toByteArray() }
                             path == "/video.mp4" -> { mime = "video/mp4"; context.assets.open("gecko_test.mp4").use { it.readBytes() } }
                             path == "/set-cookie" -> { extra = "Set-Cookie: hi_gecko_fixture=normal; Path=/; HttpOnly\r\n"; "<title>Cookie set</title>".toByteArray() }
