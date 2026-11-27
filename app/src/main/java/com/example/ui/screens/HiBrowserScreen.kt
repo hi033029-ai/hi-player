@@ -229,6 +229,7 @@ private data class OrbitBrowserTab(
     val desktop: Boolean = false,
     val openerTabId: Int? = null,
     val historyState: android.os.Bundle? = null,
+    val popupChild: Boolean = false,
 )
 
 private enum class OrbitEntryList { BOOKMARKS, HISTORY }
@@ -499,7 +500,18 @@ fun HiBrowserScreen(
     var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
     var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
     val popupTransports = remember { mutableMapOf<Int, android.os.Message>() }
-    val popupChildren = remember { mutableSetOf<Int>() }
+    // The request interceptor runs on a worker thread. Scope approval to one
+    // exact GET on this tab, with a short expiry; never exempt a whole site.
+    val popupApprovals = remember { java.util.concurrent.ConcurrentHashMap<Int, Pair<String, Long>>() }
+    fun approvedPopupGet(tabId: Int, url: String, consume: Boolean): Boolean {
+        val ticket = popupApprovals[tabId] ?: return false
+        if (android.os.SystemClock.elapsedRealtime() - ticket.second !in 0..5_000) {
+            popupApprovals.remove(tabId, ticket)
+            return false
+        }
+        if (ticket.first != url) return false
+        return if (consume) popupApprovals.remove(tabId, ticket) else true
+    }
     data class PopupReview(val tabId: Int, val url: String, val source: WebView)
     var popupReview by remember { mutableStateOf<PopupReview?>(null) }
 
@@ -622,9 +634,8 @@ fun HiBrowserScreen(
         val id = nextTabId++
         if (popupTransport != null) {
             popupTransports[id] = popupTransport
-            popupChildren.add(id)
         }
-        tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl, openerTabId = openerId)
+        tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl, openerTabId = openerId, popupChild = popupTransport != null)
         recentTabIds = (recentTabIds - activeTabId - id) + activeTabId + id
         activeTabId = id
         address = initialUrl
@@ -651,7 +662,7 @@ fun HiBrowserScreen(
     fun closeTab(tabId: Int) {
         val closing = tabs.firstOrNull { it.id == tabId } ?: return
         popupTransports.remove(tabId)?.let(::discardPopupTransport)
-        popupChildren.remove(tabId)
+        popupApprovals.remove(tabId)
         if (popupReview?.tabId == tabId) popupReview = null
         val returnId = BrowserTabBackPolicy.target(tabId, closing.openerTabId, tabs.map { it.id }, recentTabIds)
         val remaining = tabs.filterNot { it.id == tabId }.map { if (it.openerTabId == tabId) it.copy(openerTabId = closing.openerTabId) else it }
@@ -1185,6 +1196,7 @@ fun HiBrowserScreen(
         onDispose {
             popupTransports.values.toList().forEach(::discardPopupTransport)
             popupTransports.clear()
+            popupApprovals.clear()
             popupReview = null
             val leavingApp = hostActivity?.let { it.isFinishing || it.isChangingConfigurations } ?: true
             val keepId = if (leavingApp) null else HiBrowserSession.activeTabId
@@ -1369,7 +1381,7 @@ fun HiBrowserScreen(
                 AndroidView(
                     factory = { viewContext ->
                         val tabId = activeTab.id
-                        val isPopupChild = tabId in popupChildren
+                        val isPopupChild = activeTab.popupChild
                         // Match the web color-scheme preference to the app appearance.
                         val themedContext = createOrbitWebContext(viewContext, store.darkMode)
                         // A tab that is still loaded (e.g. after returning to browser mode) keeps
@@ -1483,6 +1495,7 @@ fun HiBrowserScreen(
                             webViewClient = object : WebViewClient() {
                                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                     val uri = request.url
+                                    if (isPopupChild && request.isForMainFrame && uri.toString() == "about:blank") return false
                                     if (request.isForMainFrame && prefersSecureWebsite(uri.toString(), activeTab.privateTab)) {
                                         if (request.hasGesture()) openSecureWebsite(uri.toString(), activeTab.privateTab, tabId)
                                         else {
@@ -1506,7 +1519,9 @@ fun HiBrowserScreen(
                                     }
                                     if (request.isForMainFrame && uri.scheme in setOf("http", "https") &&
                                         !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) &&
-                                        store.adBlock && (BrowserVideoPolicy.isAdUrl(uri.toString()) ||
+                                        store.adBlock && !(isPopupChild && request.method.equals("GET", ignoreCase = true) &&
+                                            approvedPopupGet(tabId, uri.toString(), consume = false)) &&
+                                        (BrowserVideoPolicy.isAdUrl(uri.toString()) ||
                                             OrbitBrowserFilterEngine.shouldBlock(uri, true, mediaSniffer.pageHost(tabId)))) {
                                         if (isPopupChild && activeTabId == tabId && request.method.equals("GET", ignoreCase = true) && popupReview == null) {
                                             popupReview = PopupReview(tabId, uri.toString(), view)
@@ -1653,11 +1668,27 @@ fun HiBrowserScreen(
                                 }
                                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                                     val pageHost = if (request.isForMainFrame) null else mediaSniffer.pageHost(tabId)
-                                    // A popup GET approved in the UI must not be cancelled
-                                    // again by the asynchronous request filter.
-                                    val reviewedMainFrame = isPopupChild && request.isForMainFrame && request.method.equals("GET", ignoreCase = true)
-                                    val filtered = !reviewedMainFrame && OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost, mainFrame = request.isForMainFrame)
-                                    if (filtered) return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                                    val popupGet = isPopupChild && request.isForMainFrame &&
+                                        request.method.equals("GET", ignoreCase = true) &&
+                                        request.url.scheme in setOf("http", "https")
+                                    val approved = popupGet && approvedPopupGet(tabId, request.url.toString(), consume = true)
+                                    val filtered = !approved && (OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost, mainFrame = request.isForMainFrame) ||
+                                        (popupGet && adBlockFlag.enabled && BrowserVideoPolicy.isAdUrl(request.url.toString())))
+                                    if (filtered) {
+                                        // The first window.open URL may reach this interceptor without
+                                        // shouldOverrideUrlLoading. Surface the same review instead of
+                                        // silently leaving the new window empty. Never replay POSTs.
+                                        if (popupGet) {
+                                            val target = request.url.toString()
+                                            mainHandler.post {
+                                                if (activeTabId == tabId && tabs.any { it.id == tabId && it.webView === view } &&
+                                                    isOrbitWebViewUsable(view) && popupReview == null) {
+                                                    popupReview = PopupReview(tabId, target, view)
+                                                }
+                                            }
+                                        }
+                                        return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                                    }
                                     mediaSniffer.observeRequest(tabId, request.url)
                                     return null
                                 }
@@ -1860,7 +1891,10 @@ fun HiBrowserScreen(
                     TextButton(onClick = {
                         popupReview = null
                         if (activeTabId == review.tabId && tabs.any { it.id == review.tabId && it.webView === review.source } &&
-                            isOrbitWebViewUsable(review.source)) review.source.loadUrl(review.url)
+                            isOrbitWebViewUsable(review.source)) {
+                            popupApprovals[review.tabId] = review.url to android.os.SystemClock.elapsedRealtime()
+                            review.source.loadUrl(review.url)
+                        }
                     }) { Text("Continue anyway") }
                 },
                 dismissButton = { TextButton(onClick = { popupReview = null; closeTab(review.tabId) }) { Text("Stay here") } },
