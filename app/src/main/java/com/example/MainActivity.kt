@@ -149,7 +149,6 @@ class MainActivity : FragmentActivity() {
     private val pendingExternalVideoUri = mutableStateOf<Uri?>(null)
     private var pipTransitionRequested = false
     private var videoScreenVisible = false
-    private var startupSettingsReady = false
     // True while Hi Browser (not the video player) owns the PiP window.
     private val _browserPipActive = mutableStateOf(false)
     // Web page opened from a home-screen shortcut created by Hi Browser.
@@ -158,9 +157,8 @@ class MainActivity : FragmentActivity() {
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
-        val startupSplash = installSplashScreen()
+        installSplashScreen()
         super.onCreate(savedInstanceState)
-        startupSplash.setKeepOnScreenCondition { !startupSettingsReady }
         enableEdgeToEdge()
         com.example.ui.screens.BrowserFilterUpdateWorker.schedule(applicationContext)
 
@@ -169,7 +167,6 @@ class MainActivity : FragmentActivity() {
         setContent {
             val settings by libraryViewModel.playerSettings.collectAsStateWithLifecycle()
             val settingsLoaded by libraryViewModel.isSettingsLoaded.collectAsStateWithLifecycle()
-            androidx.compose.runtime.SideEffect { startupSettingsReady = settingsLoaded }
             var isShowingSplash by rememberSaveable { mutableStateOf(true) }
 
             HiPlayerTheme(
