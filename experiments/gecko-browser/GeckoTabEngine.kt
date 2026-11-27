@@ -34,12 +34,13 @@ internal class GeckoTabEngine(
     private val onNavigationDecision: (GeckoNavigationDecision) -> Unit,
     private val promptDelegate: GeckoSession.PromptDelegate? = null,
     private val openWhenCreated: Boolean = true,
-    private val onPopupRequested: ((String) -> GeckoSession?)? = null,
+    private val onPopupRequested: ((String) -> org.mozilla.geckoview.GeckoResult<GeckoSession>?)? = null,
     private val onCloseRequested: (() -> Unit)? = null,
     private val onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     private val permissionDelegate: GeckoSession.PermissionDelegate? = null,
     private val onContextLink: ((String?, String?) -> Unit)? = null,
-    private val allowPopupPrompt: (String) -> Boolean = { false },
+    private val allowPopupPrompt: (String, (Boolean) -> Unit) -> Unit = { _, finish -> finish(false) },
+    private val approveChildNavigation: (String) -> org.mozilla.geckoview.GeckoResult<org.mozilla.geckoview.AllowOrDeny>? = { null },
 ) : AutoCloseable {
     private val runtime = GeckoRuntimeHolder.get(context)
     private val settings = GeckoSessionSettings.Builder()
@@ -68,8 +69,22 @@ internal class GeckoTabEngine(
                 // Native user-initiated windows normally bypass this prompt.
                 // Apply the live preference here; do not re-gate onNewSession
                 // using a guessed gesture or an exact-URI ticket.
-                val allow = web && !isAppPromotionLink(target, snapshot.url) && allowPopupPrompt(target)
-                return GeckoResult.fromValue(prompt.confirm(if (allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY))
+                if (!web || isAppPromotionLink(target, snapshot.url))
+                    return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.DENY))
+                val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
+                var finished = false
+                prompt.setDelegate(object : GeckoSession.PromptDelegate.PromptInstanceDelegate {
+                    override fun onPromptDismiss(prompt: GeckoSession.PromptDelegate.BasePrompt) {
+                        if (!finished) { finished = true; result.complete(null) }
+                    }
+                })
+                allowPopupPrompt(target) { allow ->
+                    if (!finished) {
+                        finished = true
+                        result.complete(if (prompt.isComplete) null else prompt.confirm(if (allow) AllowOrDeny.ALLOW else AllowOrDeny.DENY))
+                    }
+                }
+                return result
             }
         }
         session.permissionDelegate = permissionDelegate
@@ -106,7 +121,7 @@ internal class GeckoTabEngine(
                 val decision = if (blankPopup) GeckoNavigationDecision.Allow
                     else navigationPolicy.decide(request.uri, snapshot.url, request.hasUserGesture)
                 if (decision == GeckoNavigationDecision.Allow) {
-                    return GeckoResult.allow()
+                    return if (newWindow) GeckoResult.allow() else approveChildNavigation(request.uri) ?: GeckoResult.allow()
                 }
                 if (!newWindow) {
                     userRequestedStop = true
@@ -128,9 +143,7 @@ internal class GeckoTabEngine(
                 // this delegate, opens the returned new session after the callback.
                 if (uri.isNotEmpty() && uri != "about:blank" &&
                     (!GeckoFeatureBridge.validWebUrl(uri) || isAppPromotionLink(uri, snapshot.url))) return null
-                val child = runCatching { onPopupRequested?.invoke(uri) }.getOrNull() ?: return null
-                if (child === session || child.isOpen) return null
-                return GeckoResult.fromValue(child)
+                return runCatching { onPopupRequested?.invoke(uri.ifEmpty { "about:blank" }) }.getOrNull()
             }
             override fun onLoadError(session: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
                 if (isAppPromotionLink(uri, snapshot.url)) {

@@ -44,7 +44,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        private set
      val clearData: GeckoClearDataController
      val secureRouting: GeckoSecureRouting
-@@ -52,6 +55,6 @@
+@@ -71,6 +74,6 @@
                  rememberOrigin = { SecureWebSessions.rememberBrowser(appContext, it) },
                  forgetOrigin = { SecureWebSessions.forgetBrowser(appContext, it) },
 -                openWebsite = { SecureWebSessions.open(context, it, android.graphics.Color.BLACK).isSuccess },
@@ -53,7 +53,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                openExternal = { url -> withHost { host -> host.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); true } },
              )
              contextActions = GeckoContextActions(
-@@ -59,10 +62,10 @@
+@@ -78,10 +81,10 @@
                  openTab = { privateTab, url -> if (coordinator.open(privateTab)) { coordinator.load(url); true } else false },
                  copy = { url ->
 -                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -66,7 +66,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +                    withHost { host -> host.startActivity(Intent.createChooser(send, "Share link")); true }
                  },
              )
-@@ -77,8 +80,31 @@
+@@ -97,8 +100,31 @@
              })
              clearData = createGeckoClearDataController(appContext, coordinator, worker, secureRouting::clearPrivateRouting)
 -        } catch (error: Exception) {
@@ -99,7 +99,7 @@ diff --git a/experiments/gecko-browser/GeckoBrowserServices.kt b/experiments/gec
 +        contextActions.dismiss()
      }
      private fun shouldRecordDownload(tabId: Int): Boolean = coordinator.tabs.firstOrNull { it.id == tabId }?.privateTab == false
-@@ -96,4 +122,5 @@
+@@ -116,4 +142,5 @@
          if (closed) return
          closed = true
 +        boundRegistry?.let(::unbind)
@@ -147,7 +147,7 @@ diff --git a/experiments/gecko-browser/GeckoFilePickerLauncher.kt b/experiments/
 diff --git a/experiments/gecko-browser/GeckoManagedTab.kt b/experiments/gecko-browser/GeckoManagedTab.kt
 --- a/experiments/gecko-browser/GeckoManagedTab.kt
 +++ b/experiments/gecko-browser/GeckoManagedTab.kt
-@@ -25,4 +25,5 @@
+@@ -26,4 +26,5 @@
      override fun attach(view: GeckoView) = engine.attach(view)
      override fun detach() = engine.detach()
 +    override fun setHostActive(active: Boolean) = engine.setHostActive(active)
@@ -259,7 +259,7 @@ diff --git a/experiments/gecko-browser/GeckoTabController.kt b/experiments/gecko
 diff --git a/experiments/gecko-browser/GeckoTabEngine.kt b/experiments/gecko-browser/GeckoTabEngine.kt
 --- a/experiments/gecko-browser/GeckoTabEngine.kt
 +++ b/experiments/gecko-browser/GeckoTabEngine.kt
-@@ -211,4 +211,8 @@
+@@ -224,4 +224,8 @@
          if (!closed) session.setActive(false)
      }
 +    @MainThread fun setHostActive(active: Boolean) {

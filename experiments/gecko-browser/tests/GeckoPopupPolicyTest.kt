@@ -10,6 +10,13 @@ class GeckoPopupPolicyTest {
         assertTrue(GeckoPopupPolicy.allows(blockPopups = true, hasUserGesture = true, destinationBlockedByProtection = false))
         assertTrue(GeckoPopupPolicy.allows(blockPopups = false, hasUserGesture = false, destinationBlockedByProtection = false))
     }
+    @Test fun uncertainAndFlaggedDestinationsRequireReviewInsteadOfSilentDenial() {
+        assertFalse(GeckoPopupPolicy.requiresReview(true, true, false))
+        assertTrue(GeckoPopupPolicy.requiresReview(true, false, false))
+        assertTrue(GeckoPopupPolicy.requiresReview(true, true, true))
+        assertTrue(GeckoPopupPolicy.requiresReview(false, true, true))
+        assertFalse(GeckoPopupPolicy.requiresReview(false, false, false))
+    }
     @Test fun promptHonorsSettingAndRecentDownloadIntent() {
         assertFalse(GeckoPopupPolicy.allowsPrompt(true, false) { false })
         assertTrue(GeckoPopupPolicy.allowsPrompt(true, false) { true })

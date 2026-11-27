@@ -43,6 +43,25 @@ internal class GeckoBrowserServices(
     val settings = createGeckoBrowserSettings(appContext, store)
     private var closed = false
 
+    internal data class PopupReview(val tabId: Int, val page: String, val target: String, val reason: String, val finish: (Boolean) -> Unit)
+    var popupReview by mutableStateOf<PopupReview?>(null)
+        private set
+
+    private fun requestPopupReview(tabId: Int, target: String, reason: String, finish: (Boolean) -> Unit) {
+        if (closed || coordinator.activeId != tabId || popupReview != null) { finish(false); return }
+        popupReview = PopupReview(tabId, coordinator.activeSnapshot.url, target, reason, finish)
+    }
+    fun resolvePopupReview(allow: Boolean) {
+        val review = popupReview ?: return
+        popupReview = null
+        val current = !closed && coordinator.activeId == review.tabId && coordinator.activeSnapshot.url == review.page
+        review.finish(allow && current)
+    }
+    fun cancelStalePopupReview() {
+        val review = popupReview ?: return
+        if (coordinator.activeId != review.tabId || coordinator.activeSnapshot.url != review.page) resolvePopupReview(false)
+    }
+
     init {
         try {
             settings.applySystemScale(context.resources.configuration.fontScale)
@@ -70,6 +89,7 @@ internal class GeckoBrowserServices(
                 appContext, store, secureRouting::policyForTab, secureRouting::decision,
                 filePicker, permissionBroker, onCloseRequested,
                 onContextLink = contextActions::offer,
+                requestPopupReview = ::requestPopupReview,
                 onExternalResponse = { tabId, offer ->
                 val successfulResponse = offer.statusCode in 200..299
                 if (!downloads.offer(offer, recordInHistory = shouldRecordDownload(tabId))) downloadNotice = if (successfulResponse)
@@ -99,6 +119,7 @@ internal class GeckoBrowserServices(
         try { coordinator.close() } finally { closeServices() }
     }
     private fun closeServices() {
+        resolvePopupReview(false)
         runCatching { permissionBroker.close() }
         runCatching { permissions.close() }
         runCatching { filePicker.close() }

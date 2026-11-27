@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.example.ui.screens.OrbitBrowserStore
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 
@@ -18,14 +20,18 @@ internal fun createGeckoBrowserCoordinator(
     onCloseRequested: (Int) -> Unit,
     onExternalResponse: (Int, GeckoDownloadOffer) -> Unit,
     onContextLink: (Int, String?, String?) -> Unit,
+    requestPopupReview: (Int, String, String, (Boolean) -> Unit) -> Unit = { _, _, _, finish -> finish(false) },
 ): GeckoBrowserCoordinator<GeckoView> {
     lateinit var coordinator: GeckoBrowserCoordinator<GeckoView>
     fun advertising(url: String, openerPage: String): Boolean = GeckoFeatureBridge.validWebUrl(url) &&
         !com.example.auth.SecureWebSessions.isGoogleAuthentication(url) &&
         com.example.ui.screens.OrbitBrowserFilterEngine.shouldBlock(
             android.net.Uri.parse(url), store.adBlock, android.net.Uri.parse(openerPage).host, true)
-    fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean, openerPage: String = ""): GeckoManagedTab {
+    fun createTab(tab: GeckoTabRegistry.Tab, changed: (GeckoTabSnapshot) -> Unit, open: Boolean,
+                  openerPage: String = "", approvedInitialTarget: String? = null): GeckoManagedTab {
         lateinit var owned: GeckoManagedTab
+        val approvedPrompts = GeckoPopupGate { android.os.SystemClock.elapsedRealtime() }
+        var initialApproval = approvedInitialTarget
         owned = GeckoManagedTab(
             context = context.applicationContext,
             tab = tab,
@@ -50,46 +56,62 @@ internal fun createGeckoBrowserCoordinator(
             },
             promptDelegate = promptDelegate,
             openWhenCreated = open,
-            allowPopupPrompt = { target ->
+            allowPopupPrompt = { target, finish ->
                 val page = coordinator.snapshots[tab.id]?.url.orEmpty()
-                GeckoPopupPolicy.allowsPrompt(store.popupBlock, advertising(target, page)) {
-                    GeckoFeatureBridge.consumeDownloadClick(owned.engine.session, page)
+                val flagged = advertising(target, page)
+                val tapped = !flagged && GeckoFeatureBridge.consumeDownloadClick(owned.engine.session, page)
+                if (!GeckoPopupPolicy.requiresReview(store.popupBlock, tapped, flagged)) {
+                    finish(true)
+                } else {
+                    requestPopupReview(tab.id, target, if (flagged) "The ad filter flagged this destination." else "The website requested a new tab without a confirmed tap.") { approved ->
+                        val current = coordinator.controller.isSession(tab.id, owned) && coordinator.snapshots[tab.id]?.url == page
+                        if (approved && current && flagged) approvedPrompts.permit(target)
+                        finish(approved && current)
+                    }
                 }
             },
-            onPopupRequested = popup@{ target ->
-                // Gecko itself opens the newly returned session. Keep it owned by the
-                // coordinator but do not attach or call loadUri before Gecko opens it.
-                val openerPage = coordinator.snapshots[tab.id]?.url.orEmpty()
-                fun retry() {
-                    if (coordinator.activeId == tab.id)
-                        GeckoFeatureBridge.mediaCommand(owned.engine.session, "retry-generate")
+            onPopupRequested = { target ->
+                val page = coordinator.snapshots[tab.id]?.url.orEmpty()
+                val result = GeckoResult<GeckoSession>()
+                fun finish(approved: Boolean, approvedTarget: String?) {
+                    if (!approved || !coordinator.controller.isSession(tab.id, owned) ||
+                        coordinator.snapshots[tab.id]?.url != page) {
+                        result.complete(null)
+                        return
+                    }
+                    val child = coordinator.reservePopup(tab.id) { popup, callback ->
+                        createTab(popup, callback, false, page, approvedTarget)
+                    } as? GeckoManagedTab
+                    if (child != null) {
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            if (coordinator.isPopupSession(child.tab.id, child) && !child.engine.session.isOpen) coordinator.closeTab(child.tab.id)
+                        }, 30_000)
+                    }
+                    result.complete(child?.engine?.session?.takeUnless { it === owned.engine.session || it.isOpen })
                 }
-                if (advertising(target, openerPage)) {
-                    retry()
-                    return@popup null
+                val flagged = advertising(target, page)
+                if (!flagged) finish(true, null)
+                else if (approvedPrompts.consume(target)) finish(true, target)
+                else requestPopupReview(tab.id, target, "The ad filter flagged this new-tab destination.") { approved ->
+                    finish(approved, target.takeIf { approved })
                 }
-                val child = coordinator.reservePopup(tab.id) { popup, callback ->
-                    var discarded = false
-                    createTab(popup, { state ->
-                        if (!discarded && coordinator.pendingPopupOpener(popup.id) == tab.id && advertising(state.url, openerPage)) {
-                            discarded = true
-                            Handler(Looper.getMainLooper()).post {
-                                if (coordinator.pendingPopupOpener(popup.id) == tab.id) {
-                                    coordinator.closeTab(popup.id)
-                                    retry()
-                                }
-                            }
-                        } else if (!discarded) callback(state)
-                    }, false, openerPage)
-                } as? GeckoManagedTab
-                if (child != null) {
-                    // Gecko opens the session after the delegate returns; discard abandoned
-                    // unopened reservations instead of consuming one of the tab slots forever.
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        if (coordinator.isPopupSession(child.tab.id, child) && !child.engine.session.isOpen) coordinator.closeTab(child.tab.id)
-                    }, 30_000)
+                result
+            },
+            approveChildNavigation = review@{ target ->
+                val opener = coordinator.pendingPopupOpener(tab.id) ?: return@review null
+                if (target == "about:blank" || target.isEmpty()) return@review null
+                val alreadyApproved = initialApproval == target
+                initialApproval = null
+                if (alreadyApproved || !advertising(target, openerPage)) return@review null
+                val result = GeckoResult<AllowOrDeny>()
+                requestPopupReview(opener, target, "The new tab redirected to a destination flagged by the ad filter.") { approved ->
+                    val current = coordinator.controller.isSession(tab.id, owned) && coordinator.pendingPopupOpener(tab.id) == opener
+                    result.complete(if (approved && current) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
+                    if (!approved && current) Handler(Looper.getMainLooper()).post {
+                        if (coordinator.pendingPopupOpener(tab.id) == opener) coordinator.closeTab(tab.id)
+                    }
                 }
-                child?.engine?.session
+                result
             },
             onCloseRequested = {
                 if (coordinator.isPopup(tab.id)) coordinator.closeTab(tab.id) else onCloseRequested(tab.id)

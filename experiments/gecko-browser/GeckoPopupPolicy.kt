@@ -10,6 +10,9 @@ internal object GeckoPopupPolicy {
      * A verified, short-lived download tap can authorize one such window.
      * Do not consume the tap for ads or when popup blocking is disabled.
      */
+    fun requiresReview(blockPopups: Boolean, userInitiated: Boolean, flaggedDestination: Boolean): Boolean =
+        flaggedDestination || (blockPopups && !userInitiated)
+
     fun allowsPrompt(blockPopups: Boolean, destinationBlockedByProtection: Boolean,
                      consumeDownloadClick: () -> Boolean): Boolean =
         !destinationBlockedByProtection && (!blockPopups || consumeDownloadClick())

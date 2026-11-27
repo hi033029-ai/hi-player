@@ -14,14 +14,15 @@ internal class GeckoManagedTab(
     onNavigationDecision: (GeckoNavigationDecision) -> Unit,
     promptDelegate: GeckoSession.PromptDelegate? = null,
     openWhenCreated: Boolean = true,
-    onPopupRequested: ((String) -> GeckoSession?)? = null,
+    onPopupRequested: ((String) -> org.mozilla.geckoview.GeckoResult<GeckoSession>?)? = null,
     onCloseRequested: (() -> Unit)? = null,
     onExternalResponse: ((GeckoDownloadOffer) -> Unit)? = null,
     permissionDelegate: GeckoSession.PermissionDelegate? = null,
     onContextLink: ((String?, String?) -> Unit)? = null,
-    allowPopupPrompt: (String) -> Boolean = { false },
+    allowPopupPrompt: (String, (Boolean) -> Unit) -> Unit = { _, finish -> finish(false) },
+    approveChildNavigation: (String) -> org.mozilla.geckoview.GeckoResult<org.mozilla.geckoview.AllowOrDeny>? = { null },
 ) : GeckoManagedSession<GeckoView>, GeckoFindable {
-    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, onCloseRequested, onExternalResponse, permissionDelegate, onContextLink, allowPopupPrompt)
+    val engine = GeckoTabEngine(context, tab.id, tab.privateTab, desktop, onChanged, navigationPolicy, onNavigationDecision, promptDelegate, openWhenCreated, onPopupRequested, onCloseRequested, onExternalResponse, permissionDelegate, onContextLink, allowPopupPrompt, approveChildNavigation)
     override fun attach(view: GeckoView) = engine.attach(view)
     override fun detach() = engine.detach()
     override fun load(url: String) = engine.load(url)

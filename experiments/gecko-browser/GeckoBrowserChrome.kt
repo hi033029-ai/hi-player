@@ -108,6 +108,24 @@ internal fun GeckoBrowserChrome(
         GeckoSecureRoutingDialogs(services.secureRouting, coordinator.activeId)
         GeckoContextActionsDialog(services.contextActions, coordinator.activeId)
         GeckoDownloadUi(services.downloads)
+        LaunchedEffect(coordinator.activeId, current.url) { services.cancelStalePopupReview() }
+        services.popupReview?.let { review ->
+            com.example.ui.theme.AppAlertDialog(
+                onDismissRequest = { services.resolvePopupReview(false) },
+                title = { androidx.compose.material3.Text("Open this new tab?") },
+                text = {
+                    androidx.compose.foundation.layout.Column {
+                        androidx.compose.material3.Text(review.reason)
+                        androidx.compose.material3.Text(
+                            if (review.target == "about:blank") "Destination not yet provided" else android.net.Uri.parse(review.target).host.orEmpty()
+                        )
+                        androidx.compose.material3.Text("Continue only if you trust the destination. Your original tab stays open.")
+                    }
+                },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { services.resolvePopupReview(true) }) { androidx.compose.material3.Text("Continue anyway") } },
+                dismissButton = { androidx.compose.material3.TextButton(onClick = { services.resolvePopupReview(false) }) { androidx.compose.material3.Text("Stay here") } },
+            )
+        }
         services.downloadNotice?.takeIf { services.downloads.state !is GeckoDownloadState.Offer && services.downloads.state !is GeckoDownloadState.Finished }?.let { notice ->
             com.example.ui.theme.AppAlertDialog(
                 onDismissRequest = services::dismissDownloadNotice,

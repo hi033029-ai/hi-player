@@ -89,7 +89,7 @@ internal fun GeckoSettingsPanel(args: GeckoBrowserArguments, services: GeckoBrow
                     GeckoFeatureSwitch("Block unwanted pop-ups", services.settings.popupBlock) {
                         services.settings.changePopupBlock(it)
                     }
-                    Text("Keep on to block unsolicited windows. Tapped links and recent download actions can still open new tabs. Turn off temporarily if a trusted website needs another window; ad filters still apply.", style = MaterialTheme.typography.bodySmall)
+                    Text("Open ordinary tapped links normally. Ask before opening unconfirmed or ad-filtered new tabs, with a one-time choice to continue or stay here. Security checks still apply.", style = MaterialTheme.typography.bodySmall)
                 }
                 GeckoSettingsGroup("Videos", "Website cookies and protected or blob media stay in Gecko.") {
                     GeckoFeatureSwitch("Detect website videos", detection) { detection = it; store.videoHandoff = it }
