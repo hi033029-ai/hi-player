@@ -498,6 +498,16 @@ fun HiBrowserScreen(
     val redirectSources = remember { mutableMapOf<Int, String>() }
     var textZoomPercent by remember { mutableIntStateOf(store.textZoom) }
     var popupBlockEnabled by remember { mutableStateOf(store.popupBlock) }
+    val popupTransports = remember { mutableMapOf<Int, android.os.Message>() }
+    val popupChildren = remember { mutableSetOf<Int>() }
+    data class PopupReview(val tabId: Int, val url: String, val source: WebView)
+    var popupReview by remember { mutableStateOf<PopupReview?>(null) }
+
+    fun discardPopupTransport(message: android.os.Message) {
+        val transport = message.obj as? WebView.WebViewTransport ?: return
+        transport.webView = null
+        message.sendToTarget()
+    }
     var findBarVisible by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findMatchLabel by remember { mutableStateOf("") }
@@ -603,12 +613,17 @@ fun HiBrowserScreen(
         return true
     }
 
-    fun openNewTab(privateTab: Boolean, initialUrl: String = "", openerId: Int? = activeTabId) {
+    fun openNewTab(privateTab: Boolean, initialUrl: String = "", openerId: Int? = activeTabId,
+                   popupTransport: android.os.Message? = null) {
         if (tabs.size >= 12) {
             Toast.makeText(context, "Close a tab before opening another (12-tab limit)", Toast.LENGTH_SHORT).show()
             return
         }
         val id = nextTabId++
+        if (popupTransport != null) {
+            popupTransports[id] = popupTransport
+            popupChildren.add(id)
+        }
         tabs = tabs + OrbitBrowserTab(id = id, privateTab = privateTab, url = initialUrl, openerTabId = openerId)
         recentTabIds = (recentTabIds - activeTabId - id) + activeTabId + id
         activeTabId = id
@@ -635,6 +650,9 @@ fun HiBrowserScreen(
 
     fun closeTab(tabId: Int) {
         val closing = tabs.firstOrNull { it.id == tabId } ?: return
+        popupTransports.remove(tabId)?.let(::discardPopupTransport)
+        popupChildren.remove(tabId)
+        if (popupReview?.tabId == tabId) popupReview = null
         val returnId = BrowserTabBackPolicy.target(tabId, closing.openerTabId, tabs.map { it.id }, recentTabIds)
         val remaining = tabs.filterNot { it.id == tabId }.map { if (it.openerTabId == tabId) it.copy(openerTabId = closing.openerTabId) else it }
         recentTabIds = recentTabIds - tabId
@@ -1165,6 +1183,9 @@ fun HiBrowserScreen(
     // reload when opened. Everything is released when the activity finishes.
     DisposableEffect(Unit) {
         onDispose {
+            popupTransports.values.toList().forEach(::discardPopupTransport)
+            popupTransports.clear()
+            popupReview = null
             val leavingApp = hostActivity?.let { it.isFinishing || it.isChangingConfigurations } ?: true
             val keepId = if (leavingApp) null else HiBrowserSession.activeTabId
             HiBrowserSession.tabs = latestTabs.map { tab ->
@@ -1348,6 +1369,7 @@ fun HiBrowserScreen(
                 AndroidView(
                     factory = { viewContext ->
                         val tabId = activeTab.id
+                        val isPopupChild = tabId in popupChildren
                         // Match the web color-scheme preference to the app appearance.
                         val themedContext = createOrbitWebContext(viewContext, store.darkMode)
                         // A tab that is still loaded (e.g. after returning to browser mode) keeps
@@ -1423,9 +1445,6 @@ fun HiBrowserScreen(
                                     if (activity == null) callback.onCustomViewHidden()
                                     else fullscreen.enter(activity, customView, callback)
                                 }
-                                // Tapped links are user intent: only block destinations on the ad/tracker lists.
-                                fun isAdPopup(url: String): Boolean =
-                                    OrbitBrowserFilterEngine.shouldBlock(Uri.parse(url), store.adBlock, mediaSniffer.pageHost(tabId))
                                 override fun onCloseWindow(window: WebView) {
                                     tabs.firstOrNull { it.webView === window }?.let { closeTab(it.id) }
                                 }
@@ -1449,52 +1468,15 @@ fun HiBrowserScreen(
                                     }
                                 }
                                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
-                                    if (store.popupBlock) {
-                                        // Only a real link tap may open a window; it opens in this tab like a normal link.
-                                        val hit = view.hitTestResult
-                                        val tappedLink = isUserGesture && (
-                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE ||
-                                                hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-                                            )
-                                        if (!tappedLink && isUserGesture) {
-                                            val authTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                                            authTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                                if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
-                                                else Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
-                                            }
-                                            resultMsg.sendToTarget()
-                                            return true
-                                        }
-                                        if (!tappedLink) {
-                                            Toast.makeText(viewContext, "Pop-up blocked", Toast.LENGTH_SHORT).show()
-                                            return false
-                                        }
-                                        val href = hit.extra?.takeIf {
-                                            hit.type == WebView.HitTestResult.SRC_ANCHOR_TYPE &&
-                                                (it.startsWith("http://") || it.startsWith("https://"))
-                                        }
-                                        if (href != null) {
-                                            if (SecureWebSessions.isGoogleAuthentication(href)) requestSecureSite(href, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
-                                            else if (prefersSecureWebsite(href, activeTab.privateTab)) openSecureWebsite(href, activeTab.privateTab, tabId)
-                                            else if (!isAdPopup(href)) view.loadUrl(href)
-                                            else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
-                                            return false
-                                        }
-                                        val linkTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                                        linkTransport.webView = HiBrowserPopupCatcher.create(viewContext) { linkUrl ->
-                                            if (SecureWebSessions.isGoogleAuthentication(linkUrl)) requestSecureSite(linkUrl, fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
-                                            else if (prefersSecureWebsite(linkUrl, activeTab.privateTab)) openSecureWebsite(linkUrl, activeTab.privateTab, tabId)
-                                            else if (!isAdPopup(linkUrl)) view.loadUrl(linkUrl)
-                                            else Toast.makeText(viewContext, "Ad pop-up blocked", Toast.LENGTH_SHORT).show()
-                                        }
-                                        resultMsg.sendToTarget()
-                                        return true
+                                    if (activeTabId != tabId || tabs.size >= 12 ||
+                                        resultMsg.obj !is WebView.WebViewTransport) return false
+                                    if (store.popupBlock && !isUserGesture) {
+                                        showBrowserToast("Unsolicited pop-up blocked")
+                                        return false
                                     }
-                                    val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
-                                    transport.webView = HiBrowserPopupCatcher.create(viewContext) { popupUrl ->
-                                        openUrlFromPage(popupUrl, view, activeTab.privateTab, isUserGesture)
-                                    }
-                                    resultMsg.sendToTarget()
+                                    // Adopt the actual child supplied by Chromium after its full
+                                    // settings and callbacks are installed, without replaying its URL.
+                                    openNewTab(activeTab.privateTab, "about:blank", openerId = tabId, popupTransport = resultMsg)
                                     return true
                                 }
                             }
@@ -1522,9 +1504,17 @@ fun HiBrowserScreen(
                                         requestSecureSite(uri.toString(), fromPrivateTab = activeTab.privateTab, forSignIn = true, tabId = tabId)
                                         return true
                                     }
-                                    if (request.isForMainFrame && !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) && (BrowserVideoPolicy.isAdUrl(uri.toString()) || OrbitBrowserFilterEngine.shouldBlock(uri, store.adBlock, mediaSniffer.pageHost(tabId)))) return true
+                                    if (request.isForMainFrame && uri.scheme in setOf("http", "https") &&
+                                        !(BuildConfig.PLAY_STORE_BUILD && isOrbitYoutube(uri.toString())) &&
+                                        store.adBlock && (BrowserVideoPolicy.isAdUrl(uri.toString()) ||
+                                            OrbitBrowserFilterEngine.shouldBlock(uri, true, mediaSniffer.pageHost(tabId)))) {
+                                        if (isPopupChild && activeTabId == tabId && request.method.equals("GET", ignoreCase = true) && popupReview == null) {
+                                            popupReview = PopupReview(tabId, uri.toString(), view)
+                                        }
+                                        return true
+                                    }
                                     if (uri.scheme == "http" || uri.scheme == "https") {
-                                        if (request.isForMainFrame && !isOrbitYoutube(uri.toString())) {
+                                        if (request.isForMainFrame && !isPopupChild && !isOrbitYoutube(uri.toString())) {
                                             val stream = StreamUrlClassifier.classify(uri.toString())
                                             if (BrowserVideoPolicy.isAdUrl(uri.toString())) return true
                                             if (stream.isPlayableInHiPlayer && !stream.requiresWebResolution) {
@@ -1663,7 +1653,10 @@ fun HiBrowserScreen(
                                 }
                                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                                     val pageHost = if (request.isForMainFrame) null else mediaSniffer.pageHost(tabId)
-                                    val filtered = OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost, mainFrame = request.isForMainFrame)
+                                    // A popup GET approved in the UI must not be cancelled
+                                    // again by the asynchronous request filter.
+                                    val reviewedMainFrame = isPopupChild && request.isForMainFrame && request.method.equals("GET", ignoreCase = true)
+                                    val filtered = !reviewedMainFrame && OrbitBrowserFilterEngine.shouldBlock(request.url, adBlockFlag.enabled, pageHost, mainFrame = request.isForMainFrame)
                                     if (filtered) return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                                     mediaSniffer.observeRequest(tabId, request.url)
                                     return null
@@ -1686,7 +1679,7 @@ fun HiBrowserScreen(
                                 val name = DownloadFileResolver.resolve(URLUtil.guessFileName(url, contentDisposition, mimeType), url, mimeType, contentDisposition).fileName
                                 pendingDownload = BrowserDownloadRequest(url, userAgent.orEmpty(), contentDisposition.orEmpty(), mimeType, name, size.coerceAtLeast(0), this.url.orEmpty())
                             })
-                            if (existing == null) {
+                            if (existing == null && tabId !in popupTransports) {
                                 val restored = activeTab.historyState?.let { state -> runCatching { restoreState(state) }.getOrNull() }
                                 if (activeTab.url.isNotBlank() && (restored == null || restored.currentItem?.url != activeTab.url)) loadUrl(activeTab.url)
                             } else {
@@ -1694,6 +1687,11 @@ fun HiBrowserScreen(
                             }
                         }
                         updateTab(tabId) { it.copy(webView = view) }
+                        popupTransports.remove(tabId)?.let { message ->
+                            val transport = message.obj as WebView.WebViewTransport
+                            transport.webView = view
+                            message.sendToTarget()
+                        }
                         view
                     },
                     update = { view ->
@@ -1850,6 +1848,24 @@ fun HiBrowserScreen(
                 )
             }
         }
+    }
+
+    popupReview?.let { review ->
+        if (activeTabId == review.tabId) {
+            AlertDialog(
+                onDismissRequest = { popupReview = null; closeTab(review.tabId) },
+                title = { Text("Open this new tab?") },
+                text = { Text("The ad filter flagged " + Uri.parse(review.url).host.orEmpty() + ". Continue only if you trust this destination.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        popupReview = null
+                        if (activeTabId == review.tabId && tabs.any { it.id == review.tabId && it.webView === review.source } &&
+                            isOrbitWebViewUsable(review.source)) review.source.loadUrl(review.url)
+                    }) { Text("Continue anyway") }
+                },
+                dismissButton = { TextButton(onClick = { popupReview = null; closeTab(review.tabId) }) { Text("Stay here") } },
+            )
+        } else LaunchedEffect(activeTabId, review) { popupReview = null }
     }
 
     if (showBrowserSettings) {
@@ -2544,7 +2560,7 @@ private fun BrowserSettingsDialog(
                 }
                 BrowserSettingsGroup("Privacy and content") {
                     BrowserSettingsSwitchRow("Ad and tracker blocking", "Block common ad and tracker requests", adBlock, onAdBlockChange)
-                    BrowserSettingsSwitchRow("Block pop-ups", "Links open in this tab; other new windows are blocked", popupBlock, onPopupBlockChange)
+                    BrowserSettingsSwitchRow("Block pop-ups", "Open tapped links in new tabs; block unsolicited windows and review flagged popup destinations", popupBlock, onPopupBlockChange)
                     BrowserSettingsSwitchRow("Skip page transitions", "Try to continue through supported pages", pageSkipper, onPageSkipperChange)
                 }
                 BrowserSettingsGroup("Videos") {
