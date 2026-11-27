@@ -7,7 +7,7 @@ on:
         type: boolean
         default: false
   push:
-    branches: [main, feat/geckoview-browser-migration]
+    branches: [main, feat/geckoview-browser-migration, fix/browser-downloads-and-popups]
 permissions:
   contents: read
 concurrency:
