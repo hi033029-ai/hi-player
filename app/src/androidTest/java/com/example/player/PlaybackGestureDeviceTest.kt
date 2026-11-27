@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -222,10 +223,8 @@ class PlaybackGestureDeviceTest {
                     if (compose.onAllNodesWithContentDescription("HDR enhancement").fetchSemanticsNodes().isEmpty()) {
                         compose.onNodeWithTag("player_gesture_surface").performTouchInput { click(center) }
                     }
-                    compose.onNodeWithContentDescription("HDR enhancement").performClick()
-                    for (label in listOf("Turn on", "Turn off")) {
-                        val previous = engine.playerInstance.value
-                        compose.onNodeWithText(label).performClick()
+                    val hdr = compose.onNodeWithContentDescription("HDR enhancement")
+                    fun assertHandoff(previous: Any?) {
                         compose.waitUntil(22_000) {
                             val next = engine.playerInstance.value
                             next != null && next !== previous && engine.presentedPlayer.value === next
@@ -234,6 +233,19 @@ class PlaybackGestureDeviceTest {
                         assertFalse(engine.isPlaying.value)
                         assertNull(engine.playerError.value)
                     }
+                    val beforeEnable = engine.playerInstance.value
+                    hdr.performClick() // A normal tap toggles enhancement.
+                    assertHandoff(beforeEnable)
+                    // A long press opens the presets. The modal animation may still
+                    // be finishing after the replacement renderer is presented.
+                    compose.waitForIdle()
+                    hdr.performTouchInput { longClick(center) }
+                    compose.waitUntil(10_000) {
+                        compose.onAllNodesWithTag("hdr_preset_menu").fetchSemanticsNodes().isNotEmpty()
+                    }
+                    val beforeDisable = engine.playerInstance.value
+                    compose.onNodeWithText("Turn off").performClick()
+                    assertHandoff(beforeDisable)
                     assertTrue("Duration changed during the handoff: $observed",
                         observed.isNotEmpty() && observed.all { it == duration })
                 } finally { job.cancel() }

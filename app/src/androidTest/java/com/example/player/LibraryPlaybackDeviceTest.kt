@@ -312,11 +312,19 @@ class LibraryPlaybackDeviceTest {
                     }
                     tapLabel("Rotate Screen")
                 }
-                awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
-                    engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
-                        engine.vlcFirstFrame.value && engine.isPlaying.value &&
-                        engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
-                        centeredMkvPicture(host, landscape)
+                try {
+                    awaitStep("centered IMAX video pixels, orientation step $index, continuously advancing from $previousMs") {
+                        engine.aspectRatioMode.value == AspectRatioMode.IMAX_DIGITAL &&
+                            engine.vlcFirstFrame.value && engine.isPlaying.value &&
+                            engine.currentPositionMs.value in (previousMs + 100)..(previousMs + 30_000) &&
+                            centeredMkvPicture(host, landscape)
+                    }
+                } catch (failure: IllegalStateException) {
+                    val pixels = centeredMkvPicture(host, landscape)
+                    throw IllegalStateException("IMAX step $index: ratio=${engine.aspectRatioMode.value}, " +
+                        "vlc=${engine.usesVlc.value}, firstFrame=${engine.vlcFirstFrame.value}, " +
+                        "playing=${engine.isPlaying.value}, position=${engine.currentPositionMs.value}, " +
+                        "previous=$previousMs, centeredPixels=$pixels, error=${engine.playerError.value}", failure)
                 }
                 previousMs = engine.currentPositionMs.value
             }

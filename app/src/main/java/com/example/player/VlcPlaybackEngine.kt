@@ -77,6 +77,8 @@ class VlcPlaybackEngine(
     private var descriptor: ParcelFileDescriptor? = null
     private var loadedRevision = -1L
     private var pendingResumeMs = 0L
+    private var resumeStartedAt = 0L
+    private var resumeSeekIssued = false
     // Worker only. While paused, ignore pre-seek samples and accept the native
     // clock (or time event) near the latest requested presentation time.
     private var pausedSeekMs: Long? = null
@@ -243,12 +245,20 @@ class VlcPlaybackEngine(
                 descriptor = fd
                 Media(lib, fd.fileDescriptor)
             } else Media(lib, next.uri)
+            // Open at the saved position instead of decoding from zero and
+            // then asking an already running decoder to jump several minutes.
+            pendingResumeMs = lastGoodMs.coerceAtLeast(0L)
+            resumeStartedAt = 0L
+            resumeSeekIssued = false
             try {
                 media.setHWDecoderEnabled(true, false)
                 media.addOption(":no-video-title-show")
+                if (pendingResumeMs > 0L) {
+                    val seconds = String.format(java.util.Locale.ROOT, "%.3f", pendingResumeMs / 1000.0)
+                    media.addOption(":start-time=$seconds")
+                }
                 nativePlayer.media = media
             } finally { media.release() }
-            pendingResumeMs = lastGoodMs.takeIf { it > 0 } ?: next.startMs
             pausedSeekMs = null
             buffering = true
             outputSurface = surface
@@ -289,23 +299,22 @@ class VlcPlaybackEngine(
             MediaPlayer.Event.Opening -> buffering = true
             MediaPlayer.Event.TimeChanged -> {
                 if (pausedSeekMs == null && pendingResumeMs == 0L) {
-                    lastGoodMs = (changedTime ?: nativePlayer.time).coerceAtLeast(0L)
+                    // A queued TimeChanged may refer to the pre-seek clock.
+                    // Read the current native clock, not the old event payload.
+                    val actual = nativePlayer.time
+                    if (actual >= 0L) lastGoodMs = actual
                 }
             }
             MediaPlayer.Event.Playing -> {
                 buffering = false
-                if (pendingResumeMs > 0) {
-                    if (!nativePlayer.isSeekable) {
-                        postMain(token) { onSeekUnavailable(pendingResumeMs) }
-                        return
-                    }
-                    nativePlayer.setTime(pendingResumeMs)
-                    pendingResumeMs = 0
+                if (pendingResumeMs > 0 && resumeStartedAt == 0L) {
+                    resumeStartedAt = SystemClock.elapsedRealtime()
                 }
                 applyControls(nativePlayer)
                 selectedAudio?.let { nativePlayer.setAudioTrack(it) }
                 selectedSubtitle?.let { nativePlayer.setSpuTrack(it) }
-                if (!wantsPlayback) nativePlayer.pause()
+                // A paused resume must first land at the saved position.
+                if (!wantsPlayback && pendingResumeMs == 0L) nativePlayer.pause()
                 refreshTracksOnWorker(nativePlayer, token)
             }
             MediaPlayer.Event.Paused -> buffering = false
@@ -325,13 +334,31 @@ class VlcPlaybackEngine(
     private fun publishOnWorker(nativePlayer: MediaPlayer, token: Long, changedTime: Long? = null) {
         if (released || token != loadedRevision || token != revision.get()) return
         val time = nativePlayer.time
+        if (pendingResumeMs > 0 && resumeStartedAt > 0L) {
+            val target = pendingResumeMs
+            val elapsed = SystemClock.elapsedRealtime() - resumeStartedAt
+            if (time in (target - 1_000L).coerceAtLeast(0L)..(target + elapsed + 1_000L)) {
+                pendingResumeMs = 0L
+                lastGoodMs = time
+                resumeStartedAt = 0L
+                if (!wantsPlayback) nativePlayer.pause()
+            } else if (!resumeSeekIssued && elapsed >= 500L && nativePlayer.isSeekable) {
+                resumeSeekIssued = true
+                nativePlayer.setTime(target)
+            } else if (elapsed >= 8_000L) {
+                // Do not publish false resume success or reset the timeline.
+                resumeStartedAt = 0L
+                postMain(token) { onSeekUnavailable(target) }
+                return
+            }
+        }
         // A vout/layout event is not proof that a frame was displayed.
         val media = nativePlayer.media
         val displayedCount = try { media?.stats?.displayedPictures ?: 0 }
                         finally { media?.release() }
         val displayed = displayedCount > displayedPictures
         displayedPictures = displayedCount
-        if (displayedCount > 0 || time > 0) confirmSurfaceFrame(token)
+        if (pendingResumeMs == 0L && (displayedCount > 0 || time > 0)) confirmSurfaceFrame(token)
         if (pendingResumeMs == 0L) {
             val target = pausedSeekMs
             if (target != null) {
@@ -394,6 +421,8 @@ class VlcPlaybackEngine(
         val target = positionMs.coerceAtLeast(0)
         active {
             if (it.isSeekable) {
+                pendingResumeMs = 0L
+                resumeStartedAt = 0L
                 pausedSeekMs = target.takeUnless { wantsPlayback }
                 it.setTime(target)
                 publishOnWorker(it, loadedRevision)

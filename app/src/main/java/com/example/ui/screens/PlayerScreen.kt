@@ -293,14 +293,15 @@ fun PlayerScreen(
     var showHdrPresetMenu by remember { mutableStateOf(false) }
     var showHdrCustomizer by remember { mutableStateOf(false) }
     var hdrMenuInteractionNonce by remember { mutableStateOf(0) }
-var isHdrMenuInteracting by remember { mutableStateOf(false) }
-LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrMenuInteractionNonce, isHdrMenuInteracting) {
-if (!showHdrPresetMenu && !showHdrCustomizer) return@LaunchedEffect
-if (isHdrMenuInteracting) return@LaunchedEffect
-kotlinx.coroutines.delay(3000L)
-showHdrPresetMenu = false
-showHdrCustomizer = false
-}
+    var isHdrMenuInteracting by remember { mutableStateOf(false) }
+    LaunchedEffect(showHdrPresetMenu, showHdrCustomizer, hdrMenuInteractionNonce, isHdrMenuInteracting,
+        isPlaying, hdrWindow, pendingGrade, managedHdrSwitching) {
+        if (!showHdrPresetMenu && !showHdrCustomizer) return@LaunchedEffect
+        if (!isPlaying || isHdrMenuInteracting || hdrWindow != null || pendingGrade != null || managedHdrSwitching) return@LaunchedEffect
+        delay(3000L)
+        showHdrPresetMenu = false
+        showHdrCustomizer = false
+    }
     LaunchedEffect(hdrWindow, pendingGrade, applyColorPresetToVideo, playerError) {
         if (playerError != null || (pendingGrade == null && hdrWindow == true && !playerViewModel.engine.hdrEnhanceActive.value))
             hdrWindow = null
